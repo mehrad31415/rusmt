@@ -179,18 +179,27 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
         (Ok(_), None) => {
             if !ok_hint {
                 // If the file is not supposed to pass (does not end with `_ok.rs`), report an error
-                return Err(anyhow!("file {:?} with successful test has no `_ok` suffix", path).into());
+                return Err(
+                    anyhow!("file {:?} with successful test has no `_ok` suffix", path).into(),
+                );
             }
         }
         // Test passed, but there is an expected error output file (test was expected to fail)
         (Ok(_), Some(exp)) => {
             if !update {
                 // If not updating the baseline, report an error with the expected failure message
-                return Err(anyhow!("test file {:?} passed while expecting failure\n{}", path, exp).into());
+                return Err(anyhow!(
+                    "test file {:?} passed while expecting failure\n{}",
+                    path,
+                    exp
+                )
+                .into());
             }
             if !ok_hint {
                 // If the file is not supposed to pass, report an error
-                return Err(anyhow!("file {:?} with successful test has no `_ok` suffix", path).into());
+                return Err(
+                    anyhow!("file {:?} with successful test has no `_ok` suffix", path).into(),
+                );
             }
             // Since updating the baseline, remove the expected error output file
             fs::remove_file(path_exp)?;
@@ -199,7 +208,12 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
         (Err(err), None) => {
             if !update {
                 // If not updating the baseline, report an error with the failure message
-                return Err(anyhow!("test file {:?} failed while expecting success\n{}", path, err).into());
+                return Err(anyhow!(
+                    "test file {:?} failed while expecting success\n{}",
+                    path,
+                    err
+                )
+                .into());
             }
             if ok_hint {
                 // If the file is supposed to pass, report an error

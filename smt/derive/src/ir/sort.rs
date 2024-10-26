@@ -9,7 +9,7 @@ use crate::parser::name::UsrTypeName;
 use crate::parser::ty::{EnumVariant, TypeBody, TypeTag};
 
 /// A unique and complete reference to an SMT sort
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum Sort {
     /// boolean
     Boolean,
@@ -50,6 +50,7 @@ impl Display for Sort {
     }
 }
 
+#[derive(Debug)]
 /// A helper enum to represent a variant definition in an ADT type
 pub enum Variant {
     Unit,
@@ -73,6 +74,7 @@ impl Display for Variant {
     }
 }
 
+#[derive(Debug)]
 /// Complete definition of a sort
 pub enum DataType {
     Tuple(Vec<Sort>),
@@ -103,7 +105,7 @@ impl Display for DataType {
 }
 
 /// A registry of data types involved
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TypeRegistry {
     /// a map from user-defined type and instantiations to sort id
     idx_named: BTreeMap<UsrSortName, BTreeMap<Vec<Sort>, UsrSortId>>,

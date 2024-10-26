@@ -10,7 +10,7 @@ use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
 
 /// Function signature
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FunSig {
     /// parameters
     pub params: Vec<(Symbol, Sort)>,
@@ -18,6 +18,7 @@ pub struct FunSig {
     pub ret_ty: Sort,
 }
 
+#[derive(Debug)]
 /// Function definition
 pub enum FunDef {
     /// imperatively defined function
@@ -27,7 +28,7 @@ pub enum FunDef {
 }
 
 /// A registry of functions involved
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct FunRegistry {
     /// a map from user-defined functions and instantiations to function id
     pub lookup: BTreeMap<UsrFunName, BTreeMap<Vec<Sort>, UsrFunId>>,

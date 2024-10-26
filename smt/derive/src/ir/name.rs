@@ -2,7 +2,7 @@
 macro_rules! name {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+        #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
         pub struct $name {
             ident: String,
         }

@@ -13,6 +13,7 @@ use crate::parser::infer::TypeRef;
 use crate::parser::name::{TypeParamName, UsrFuncName};
 use crate::parser::ty::TypeTag;
 
+#[derive(Debug)]
 /// A context for intermediate representation
 pub struct IRContext {
     /// description

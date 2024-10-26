@@ -49,6 +49,7 @@ enum MetaValue {
     Set(BTreeSet<Ident>),
 }
 
+#[derive(Debug)]
 /// A mark for an annotated impl function
 pub struct ImplMark {
     /// whether to derive a receiver-style method for this function
@@ -57,6 +58,7 @@ pub struct ImplMark {
     pub specs: BTreeSet<UsrFuncName>,
 }
 
+#[derive(Debug)]
 /// A mark for an annotated spec function
 pub struct SpecMark {
     /// whether to derive a receiver-style method for this function

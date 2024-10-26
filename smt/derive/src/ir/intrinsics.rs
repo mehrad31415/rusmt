@@ -1,6 +1,7 @@
 use crate::ir::index::ExpId;
 use crate::ir::sort::Sort;
 
+#[derive(Debug)]
 /// Intrinsic procedure
 pub enum Intrinsic {
     /// `Boolean::from`

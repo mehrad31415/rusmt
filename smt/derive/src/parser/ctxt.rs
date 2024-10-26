@@ -5,9 +5,6 @@ use std::fmt::{Display, Formatter};
 use std::fs; 
 use std::path::Path; // for path handling
 use log::trace; // For logging during debugging
-// Only include TokenStream during testing
-#[cfg(test)]
-use proc_macro2::TokenStream;
 // Import syn crate types for parsing Rust code
 use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemMod, ItemStruct, Result, Stmt};
 use walkdir::WalkDir; // For walking through directories recursively
@@ -22,6 +19,7 @@ use crate::parser::infer::{TIError, TypeRef, TypeUnifier};
 use crate::parser::name::{AxiomName, UsrFuncName, UsrTypeName};
 use crate::parser::ty::{TypeBody, TypeDef, TypeTag};
 
+#[derive(Debug)]
 /// SMT-marked type
 pub enum MarkedType {
     Enum(ItemEnum),
@@ -38,6 +36,7 @@ impl MarkedType {
     }
 }
 
+#[derive(Debug)]
 /// SMT-marked function as impl
 pub struct MarkedImpl {
     item: ItemFn,
@@ -51,6 +50,7 @@ impl MarkedImpl {
     }
 }
 
+#[derive(Debug)]
 /// SMT-marked function as spec
 pub struct MarkedSpec {
     item: ItemFn,
@@ -64,6 +64,7 @@ impl MarkedSpec {
     }
 }
 
+#[derive(Debug)]
 /// SMT-marked const as axiom
 pub struct MarkedAxiom {
     item: ItemFn,
@@ -108,6 +109,7 @@ impl Display for Refinement {
     }
 }
 
+#[derive(Debug)]
 /// Context manager for holding marked items
 pub struct Context {
     types: BTreeMap<UsrTypeName, MarkedType>,
@@ -211,7 +213,7 @@ impl Context {
     }
 
     /// Process the content (i.e., syntax) of the entire file
-    fn process_syntax(&mut self, file: File) -> Result<()> {
+    pub fn process_syntax(&mut self, file: File) -> Result<()> {
         let File {
             shebang: _,
             attrs: _,
@@ -285,7 +287,7 @@ impl Context {
     }
 
     /// Check whether the marks declared are consistent or not
-    fn sanity_check(&self) -> Result<()> {
+    pub fn sanity_check(&self) -> Result<()> {
         // avoid naming conflict
         let mut names = BTreeMap::new();
         for (key, (kind, ident)) in self
@@ -355,19 +357,6 @@ impl Context {
             specs: self.specs,
             axioms: self.axioms,
         })
-    }
-
-    #[cfg(test)]
-    pub fn new_from_stream(stream: TokenStream) -> Result<Self> {
-        let mut ctxt = Self {
-            types: BTreeMap::new(),
-            impls: BTreeMap::new(),
-            specs: BTreeMap::new(),
-            axioms: BTreeMap::new(),
-        };
-        ctxt.process_syntax(syn::parse2(stream)?)?;
-        ctxt.sanity_check()?;
-        Ok(ctxt)
     }
 }
 
@@ -860,19 +849,4 @@ impl ASTContext {
         }
         related
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::parser::test::unit_test;
-
-    unit_test!(basics, {
-        #[smt_type]
-        struct SimpleBool(Boolean);
-    });
-
-    unit_test!(with_generics, {
-        #[smt_type]
-        struct SimpleVec<T:SMT>(Seq<T>);
-    });
 }

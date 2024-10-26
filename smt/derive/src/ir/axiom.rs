@@ -12,6 +12,7 @@ use crate::parser::func::{Axiom, FuncSig};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::AxiomName;
 
+#[derive(Debug)]
 /// Axiom
 pub struct Predicate {
     /// parameters
@@ -23,7 +24,7 @@ pub struct Predicate {
 }
 
 /// A registry of axioms involved
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct AxiomRegistry {
     /// a map from axiom instantiations to axiom id
     pub lookup: BTreeMap<UsrAxiomName, BTreeMap<Vec<Sort>, UsrAxiomId>>,

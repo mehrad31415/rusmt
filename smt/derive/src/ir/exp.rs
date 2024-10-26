@@ -12,6 +12,7 @@ use crate::parser::intrinsics::Intrinsic as Native;
 use crate::parser::name::VarName;
 use crate::parser::ty::TypeTag;
 
+#[derive(Debug)]
 /// The origin of a variable
 pub enum VarKind {
     /// function parameter
@@ -31,6 +32,7 @@ pub enum VarKind {
     },
 }
 
+#[derive(Debug)]
 /// Information about a variable
 pub struct Variable {
     pub name: Symbol,
@@ -38,12 +40,14 @@ pub struct Variable {
     pub sort: Sort,
 }
 
+#[derive(Debug)]
 /// Denotes how a variable gets match-bounded
 pub enum EnumSelector {
     Tuple(usize),
     Record(String),
 }
 
+#[derive(Debug)]
 /// Denotes how to construct an enum variant
 pub enum VariantCtor {
     Unit,
@@ -51,6 +55,7 @@ pub enum VariantCtor {
     Record(BTreeMap<String, ExpId>),
 }
 
+#[derive(Debug)]
 /// Denotes how to destruct an enum variant and bind variables
 pub enum VariantDtor {
     Unit,
@@ -58,6 +63,7 @@ pub enum VariantDtor {
     Record(BTreeMap<String, Option<VarId>>),
 }
 
+#[derive(Debug)]
 /// One atom in the match case to unpack
 pub struct MatchAtom {
     head: ExpId,
@@ -66,18 +72,21 @@ pub struct MatchAtom {
     variant: VariantDtor,
 }
 
+#[derive(Debug)]
 /// One match case
 pub struct MatchCase {
     atoms: Vec<MatchAtom>,
     body: ExpId,
 }
 
+#[derive(Debug)]
 /// One phi case (i.e., conditional branch)
 pub struct PhiCase {
     cond: ExpId,
     body: ExpId,
 }
 
+#[derive(Debug)]
 /// An expression
 pub enum Expression {
     /// `<var>`
@@ -144,7 +153,7 @@ pub enum Expression {
 }
 
 /// A registry of expressions (organized around a function body)
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ExpRegistry {
     /// a map from variable id to variables
     vars: BTreeMap<VarId, Variable>,

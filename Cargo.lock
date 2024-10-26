@@ -620,6 +620,7 @@ dependencies = [
  "rusmart-cli",
  "rusmart-utils",
  "syn",
+ "tempfile",
  "walkdir",
 ]
 

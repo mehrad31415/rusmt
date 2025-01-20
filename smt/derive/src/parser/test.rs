@@ -92,7 +92,6 @@ mod tests {
             .map(|ir_context| {
                 // if the pipeline succeeds, return success
                 dbg!(&ir_context);
-                
             })
     }
 

@@ -90,7 +90,7 @@ macro_rules! bail_if_exists {
     ($item:expr) => {
         match $item {
             None => (),
-            Some(__v) => crate::bail_on!(__v, "unexpected"),
+            Some(__v) => $crate::bail_on!(__v, "unexpected"),
         }
     };
 }
@@ -106,7 +106,7 @@ macro_rules! bail_if_exists {
 macro_rules! bail_if_missing {
     ($item:expr, $par:expr, $note:literal) => {
         match $item {
-            None => crate::bail_on!($par, "expect {}", $note),
+            None => $crate::bail_on!($par, "expect {}", $note),
             Some(__v) => __v,
         }
     };

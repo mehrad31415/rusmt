@@ -841,7 +841,7 @@ mod tests {
                 b: u64,
             }
         };
-        let res = derive_for_type(attr.into(), item.into());
+        let res = derive_for_type(attr, item);
         assert!(res.is_ok());
         let tokens = res.unwrap();
         let generated_code = tokens.to_string();

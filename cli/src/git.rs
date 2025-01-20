@@ -194,7 +194,7 @@ mod tests {
         let path = PathBuf::from("invalid_path");
         let repo = GitRepo::new(path.clone(), None);
         assert!(repo.is_err());
-        assert!(repo.err().expect("").to_string().contains(&format!(
+        assert!(repo.expect_err("").to_string().contains(&format!(
             "The issue might be because the path {:?} does not exist.",
             path
         )));
@@ -208,8 +208,7 @@ mod tests {
         let repo = GitRepo::new(path, None);
         assert!(repo.is_err());
         assert!(repo
-            .err()
-            .expect("could not get error")
+            .expect_err("could not get error")
             .to_string()
             .contains("commit probing failed"));
     }
@@ -251,7 +250,7 @@ mod tests {
         let result = repo.checkout(&temp_dir);
         assert!(result.is_err());
         assert_eq!(
-            result.err().expect("could not get error").to_string(),
+            result.expect_err("could not get error").to_string(),
             "checkout path already exists: temp_existing_dir"
         );
 

@@ -394,10 +394,7 @@ mod tests {
 
         assert!(artifact.is_err());
         assert_eq!(
-            artifact
-                .err()
-                .expect("could not get error value")
-                .to_string(),
+            artifact.expect_err("could not get error value").to_string(),
             "artifact path already exists"
         );
 

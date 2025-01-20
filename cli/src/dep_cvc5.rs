@@ -17,7 +17,7 @@ use crate::dep::{Artifact, Dependency};
 // ------------------------------------------DEFINITIONS------------------------------------------//
 
 // path constants
-static PATH_REPO: [&'static str; 2] = ["deps", "cvc5"];
+static PATH_REPO: [&str; 2] = ["deps", "cvc5"];
 
 /// Represent the dependency: CVC5
 #[derive(Debug, PartialEq, Eq)]
@@ -199,10 +199,7 @@ mod tests {
         let result = DepCVC5::list_configurations(&artifact);
         assert!(result.is_err(), "list_configurations should fail");
         assert_eq!(
-            result
-                .err()
-                .expect("could not get error message")
-                .to_string(),
+            result.expect_err("could not get error message").to_string(),
             "list configuration failed"
         );
 

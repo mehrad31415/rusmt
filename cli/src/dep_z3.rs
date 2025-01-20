@@ -18,7 +18,7 @@ use std::fs;
 // ------------------------------------------DEFINITIONS------------------------------------------//
 
 // path constants
-static PATH_REPO: [&'static str; 2] = ["deps", "z3"];
+static PATH_REPO: [&str; 2] = ["deps", "z3"];
 
 /// Represent the dependency: Z3
 #[derive(Debug, PartialEq, Eq)]

@@ -394,7 +394,10 @@ mod tests {
 
         assert!(artifact.is_err());
         assert_eq!(
-            artifact.err().expect("could not get error value").to_string(),
+            artifact
+                .err()
+                .expect("could not get error value")
+                .to_string(),
             "artifact path already exists"
         );
 
@@ -463,7 +466,8 @@ mod tests {
 
         let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         base = base.join("tmp");
-        let artifact = Artifact::init(&mut repo, base.clone()).expect("could not initialize artifact");
+        let artifact =
+            Artifact::init(&mut repo, base.clone()).expect("could not initialize artifact");
 
         (
             base,

@@ -2,10 +2,10 @@ mod model;
 
 use anyhow::anyhow; // for error handling
 use datatest_stable::harness; // or writing file-driven or data-driven tests
-use rusmart_smt_derive::model;
+use rusmart_smt_derive::model; // model is the internal entrypoint for front-end to intermediate representation
 use std::collections::BTreeSet; // for ordered sets
 use std::path::Path; // for file paths
-use std::{env, fs}; // for environment variables and file system operations // model is the internal entrypoint for front-end to intermediate representation
+use std::{env, fs}; // for environment variables and file system operations
 
 static ENV_UPDATE_BASELINE: &str = "UPBL";
 
@@ -144,7 +144,7 @@ fn check_mod(path: &Path) -> datatest_stable::Result<()> {
 fn test_model(path: &Path) -> datatest_stable::Result<()> {
     // Handle mod.rs files differently by checking module consistency
     let base = path
-        .file_name()
+        .file_name() // gets the final part of the path (for example, in path/to/mod.rs, it would return mod.rs)
         .expect("filename")
         .to_str()
         .expect("ascii-based filename");
@@ -170,7 +170,7 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
     // `cargo test`        => update = false
     let update = match env::var_os(ENV_UPDATE_BASELINE) {
         None => false,
-        Some(e) => e.into_string().map_or(false, |s| s == "1"),
+        Some(e) => e.into_string().map_or(false, |s| s == "1"), // if the e cannot be converted to a string, it returns the default value of false. Otherwise, it checks if the string is equal to "1".
     };
 
     // Run the model function on the test file

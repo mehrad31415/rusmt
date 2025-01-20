@@ -1,5 +1,7 @@
+//! This module is only used in the Expr module.
+//! This module provide utilities for analyzing match expressions.
+
 use std::collections::BTreeMap;
-use std::fmt::{Display, Formatter};
 
 use itertools::Itertools;
 use syn::{ExprMatch, ExprPath, FieldPat, Member, Pat, PatOr, PatStruct, PatTupleStruct, Result};
@@ -9,23 +11,11 @@ use crate::parser::expr::{CtxtForExpr, Expr, MatchCombo, MatchVariant, Unpack};
 use crate::parser::generics::GenericsInstFull;
 use crate::parser::infer::{ti_unify, TypeRef, TypeUnifier};
 use crate::parser::name::{UsrTypeName, VarName};
-use crate::parser::path::ADTPath;
+use crate::parser::path::{ADTBranch, ADTPath};
 use crate::parser::ty::EnumVariant;
 
-/// An identifier for a ADT variant
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct ADTBranch {
-    pub ty_name: UsrTypeName,
-    pub variant: String,
-}
-
-impl Display for ADTBranch {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}::{}", self.ty_name, self.variant)
-    }
-}
-
 /// An atom for a specific variable in the match head
+/// For example in match (x, y) { (1, 2) => ... } one MatchAtom is for x and the other is for y
 pub enum MatchAtom {
     Default,
     Binding(BTreeMap<ADTBranch, Unpack>),
@@ -33,8 +23,8 @@ pub enum MatchAtom {
 
 /// A full match arm for all variables in the match head
 struct MatchArm {
-    atoms: Vec<MatchAtom>,
-    body: Expr,
+    atoms: Vec<MatchAtom>, // the atoms for each variable in the match head
+    body: Expr,            // the body of the match arm (the expression to be executed)
 }
 
 /// An analyzer for match expression
@@ -45,12 +35,16 @@ impl MatchAnalyzer {
     fn analyze_pat_match_binding(pat: &Pat) -> Result<Option<VarName>> {
         let binding = match pat {
             Pat::Wild(_) => None,
-            _ => Some(pat.try_into()?),
+            _ => Some(pat.try_into()?), // it will give an error if the pattern has a subpattern, is a ref, or is mutable. Otherwise, the ident is extracted. If the identifier is not a reserved keyword or underscore, the varname is returned.
         };
         Ok(binding)
     }
 
     /// Analyze a pattern for: match arm -> head -> case
+    /// For example, in match (1, 2) { (some, thing) => ... } the case for the first arm is (some, thing)
+    /// for each arm: each of the (some, 1) and (thing, 2) are made in the expr.rs module and passed to the analyze_pat_match_head one by one
+    /// in (some, 1), the `some` pattern is analyzed in this function
+    /// The pattern can only be an enum, tuple struct, or record struct
     fn analyze_pat_match_case<T: CtxtForExpr>(
         ctxt: &T,
         unifier: &mut TypeUnifier,
@@ -61,30 +55,45 @@ impl MatchAnalyzer {
         Unpack,
         BTreeMap<VarName, TypeRef>,
     )> {
+        // create the bindings for the pattern
         let mut bindings = BTreeMap::new();
 
         let (branch, inst, unpack) = match pat {
+            // matching against enum variants
             Pat::Path(pat_path) => {
                 let ExprPath {
                     attrs: _,
                     qself,
                     path,
                 } = pat_path;
+                // the qself should not be there (for example this is invalid: <T>::A)
                 bail_if_exists!(qself.as_ref().map(|q| &q.ty));
 
+                // so the path should be an enum variant and can only have two segments.
+                // match 1 {
+                //     1 => println!("Hello, world!"), // 1 is a Pat::Lit and is not allowed. This is because we use the Integer record struct defined in the dt.rs of the stdlib. So normal numbers are not allowed.
+                //     x => println!("{}", x), // x is a Pat::Ident and only has one segment and is not allowed. this is because x plays the role of a wildcard. So there is no need to have a binding for it.
+                // } not allowed
+                // in let x = 1; match 1 { x => println!("{}", x) } the inner x is different from the outer x. So again no binding is created
                 let adt = ADTPath::from_path(ctxt, path)?;
-                let (branch, inst) = adt.complete(unifier);
+                let (branch, inst) = adt.complete(unifier); // unit variant enum::<i32>::A
                 let variant = match ctxt.get_adt_variant_details(&branch) {
-                    None => bail_on!(path, "not a valid enum branch"),
+                    None => bail_on!(path, "not a valid enum branch"), // it will never happen as this is already checked in the ADTPath::from_path
                     Some(def) => def,
                 };
 
+                // unnecessary check
                 match variant {
+                    // the variant can only be a unit variant (if it was a record, it is Pat::Struct & for tuple struct, it is Pat::TupleStruct)
+                    // so it would not be a Pat::Path if not a unit variant
                     EnumVariant::Unit => (),
-                    _ => bail_on!(pat, "unexpected pattern"),
+                    _ => bail_on!(pat, "unexpected pattern"), // thus this pattern will never be reached
                 }
+                // branch contains the enum type name and variant name
+                // inst contains the type parameters matched with the arguments
                 (branch, inst, Unpack::Unit)
             }
+            // A tuple struct or tuple variant pattern: `Variant(x, y, .., z)`
             Pat::TupleStruct(pat_tuple) => {
                 let PatTupleStruct {
                     attrs: _,
@@ -93,29 +102,38 @@ impl MatchAnalyzer {
                     paren_token: _,
                     elems,
                 } = pat_tuple;
+                // the qself should not be there (for example this is invalid: <T>::A)
                 bail_if_exists!(qself.as_ref().map(|q| &q.ty));
 
+                // it should definitely be a tuple variant pattern (so matching can only happen against tuple variants). If the pattern was a struct like struct MyStruct(i32); it will give an error on this line
                 let adt = ADTPath::from_path(ctxt, path)?;
                 let (branch, inst) = adt.complete(unifier);
                 let variant = match ctxt.get_adt_variant_details(&branch) {
-                    None => bail_on!(path, "not a valid enum branch"),
+                    None => bail_on!(path, "not a valid enum branch"), // it will never happen as this is already checked in the ADTPath::from_path
                     Some(def) => def,
                 };
 
                 match variant {
                     EnumVariant::Tuple(def_tuple) => {
                         let slots = &def_tuple.slots;
+                        // if the number of the arguments in the calling place of the tuple struct and the number of the arguments in the definition of the tuple struct do not match, then give an error
                         if elems.len() != slots.len() {
                             bail_on!(elems, "number of slots mismatch");
                         }
 
                         let mut unpack = BTreeMap::new();
+                        // in the match ... { MyEnum::MyVariant(a,b)=> ... } a and b are the elems.
+                        // the slots will be the type of a and b in the definition of the tuple variant
+                        // for each of the a and b, we will check if it is a binding or not
                         for (i, (elem, slot)) in elems.iter().zip(slots.iter()).enumerate() {
                             match Self::analyze_pat_match_binding(elem)? {
-                                None => (),
+                                None => (), // for wildcard, no binding is created
                                 Some(var) => {
+                                    // conver the typetag to typeref. For all cases it is straightforward.
+                                    // the `inst` is a list of type parameters in the definition of the type to the arguments in the calling place
+                                    // for type parameters (slot is a type parameter), inst.instantiate(slot) finds the corresponding argument
                                     let ty_substitute = match inst.instantiate(slot) {
-                                        None => bail_on!(elem, "no such type parameter"),
+                                        None => bail_on!(elem, "no such type parameter"), // this will never happen as the inst is formed using the type parameters of the definition and slot is taken from the definition as well
                                         Some(instantiated) => instantiated,
                                     };
                                     match bindings.insert(var.clone(), ty_substitute) {
@@ -130,9 +148,11 @@ impl MatchAnalyzer {
                         }
                         (branch, inst, Unpack::Tuple(unpack))
                     }
+                    // the variant can only be a tuple variant
                     _ => bail_on!(pat, "unexpected pattern"),
                 }
             }
+            // A struct or struct variant pattern: `Variant { x, y, .. }`.
             Pat::Struct(pat_struct) => {
                 let PatStruct {
                     attrs: _,
@@ -142,24 +162,29 @@ impl MatchAnalyzer {
                     fields,
                     rest,
                 } = pat_struct;
+                // the qself should not be there (for example this is invalid: <T>::A)
                 bail_if_exists!(qself.as_ref().map(|q| &q.ty));
+                // the rest should not be there (for example this is invalid: MyEnum::MyVariant { a, .. } )
                 bail_if_exists!(rest);
 
+                // it should definitely be a record variant pattern (so matching can only happen against record variants). If the pattern was a struct like struct MyStruct { a: i32 }; it will give an error on this line
                 let adt = ADTPath::from_path(ctxt, path)?;
                 let (branch, inst) = adt.complete(unifier);
                 let variant = match ctxt.get_adt_variant_details(&branch) {
-                    None => bail_on!(path, "not a valid enum branch"),
+                    None => bail_on!(path, "not a valid enum branch"), // it will never happen as this is already checked in the ADTPath::from_path
                     Some(def) => def,
                 };
 
                 match variant {
                     EnumVariant::Record(def_record) => {
                         let records = &def_record.fields;
+                        // if the number of the arguments in the calling place of the record struct and the number of the arguments in the definition of the record struct do not match, then give an error
                         if fields.len() != records.len() {
                             bail_on!(fields, "number of fields mismatch");
                         }
 
                         let mut unpack = BTreeMap::new();
+                        // in the calling place
                         for field in fields {
                             let FieldPat {
                                 attrs: _,
@@ -167,15 +192,19 @@ impl MatchAnalyzer {
                                 colon_token: _,
                                 pat,
                             } = field;
+                            // the member should be named for record struct
                             let field_name = match member {
                                 Member::Named(name) => name.to_string(),
                                 Member::Unnamed(_) => bail_on!(member, "unnamed field"),
                             };
 
+                            // the field used in the call should be in the definition of the record struct
                             let field_type = match records.get(&field_name) {
                                 None => bail_on!(member, "no such field"),
                                 Some(t) => t,
                             };
+
+                            // instantiate the type reference
                             let ty_substitute = match inst.instantiate(field_type) {
                                 None => bail_on!(member, "no such type parameter"),
                                 Some(instantiated) => instantiated,
@@ -183,6 +212,7 @@ impl MatchAnalyzer {
 
                             match Self::analyze_pat_match_binding(pat)? {
                                 None => (),
+                                // only varname is allowed as a binding
                                 Some(var) => {
                                     match bindings.insert(var.clone(), ty_substitute) {
                                         None => (),
@@ -196,9 +226,11 @@ impl MatchAnalyzer {
                         }
                         (branch, inst, Unpack::Record(unpack))
                     }
+                    // the variant can only be a record variant
                     _ => bail_on!(pat, "unexpected pattern"),
                 }
             }
+            // the case pattern can only be an enum, variant record, or variant tuple
             _ => bail_on!(pat, "invalid case pattern"),
         };
 
@@ -206,27 +238,40 @@ impl MatchAnalyzer {
     }
 
     /// Analyze a pattern for: match arm -> head
+    /// For example, in match (1, 2) { (some, thing) => ... } the head is (1, 2) and the case for the first arm is (some, thing)
+    /// for each arm in the match body, the pattern is taken (for example (some, thing)). Each of the (some, 1) and (thing, 2) are made and passed to the analyze_pat_match_head one by one
+    /// ctxt: is the ExprParserRoot (this will always remain the same because we are parsing only inside one function - so the context, the kind, and the signature will remain the same)
     pub fn analyze_pat_match_head<T: CtxtForExpr>(
         ctxt: &T,
         unifier: &mut TypeUnifier,
-        ety: &TypeRef,
         pat: &Pat,
+        head: &Expr,
     ) -> Result<(MatchAtom, BTreeMap<VarName, TypeRef>)> {
+        // receive the TypeRef of the header
+        let ety = head.ty();
+
         let (atom, bindings) = match pat {
+            // A pattern that matches any value: `_`.
+            // if the pattern is `_`, then it is a default pattern and no bindings are there
             Pat::Wild(_) => (MatchAtom::Default, BTreeMap::new()),
+            // A pattern that matches any one of a set of cases
+            // for example match x { 1 | 2 => ... }
             Pat::Or(pat_or) => {
                 let PatOr {
                     attrs: _,
                     leading_vert,
                     cases,
                 } = pat_or;
+                // the leading `|` should not be there
                 bail_if_exists!(leading_vert);
 
                 let mut variants = BTreeMap::new();
-                let mut iter = cases.iter();
-                let pat_case = bail_if_missing!(iter.next(), pat_or, "case patterns");
+                let mut iter = cases.iter(); // iterator over the cases
+                                             // there should be at least one case
+                let pat_case = bail_if_missing!(iter.next(), pat_or, "empty or case pattern");
 
                 // analyze the bindings
+                // analyze_pat_match_case receives the pattern, the unifier, and the context
                 let (branch, inst, unpack, ref_bindings) =
                     Self::analyze_pat_match_case(ctxt, unifier, pat_case)?;
 
@@ -261,12 +306,20 @@ impl MatchAnalyzer {
                 // done
                 (MatchAtom::Binding(variants), ref_bindings)
             }
+            // other than a wildcard or a or pattern, the pattern can only be enum unit, enum tuple, or enum record
             _ => {
                 // analyze the bindings
+                // branch is the enum type name and variant name of the pattern (every pattern is a variant of an enum)
+                // inst is the type parameters matched with the arguments of the calling place
+                // unpack is the unpacked form of the pattern (unit, tuple, or record)
+                // bindings is the map of the bindings (contains the variable name and the type reference)
+                // bindings lists the elements inside the variant tuple or record
                 let (branch, inst, unpack, bindings) =
                     Self::analyze_pat_match_case(ctxt, unifier, pat)?;
 
-                // unify the type
+                // unify the type (the type of the header is the expected type of the pattern)
+                // ety is the type of the header
+                // ty_ref is the type of the pattern (TypeRef::User<ty_name of branch, arguments>
                 let ty_ref = inst.make_ty(branch.ty_name.clone());
                 ti_unify!(unifier, ety, &ty_ref, pat);
 
@@ -275,17 +328,20 @@ impl MatchAnalyzer {
                 (MatchAtom::Binding(variants), bindings)
             }
         };
+
+        // done
         Ok((atom, bindings))
     }
 }
 
 /// An organizer for the match arms
+/// Encapsulates the list of match arms for a match expression
 pub struct MatchOrganizer {
     arms: Vec<MatchArm>,
 }
 
 impl MatchOrganizer {
-    /// Create a new organizer
+    /// Create a new organizer with no arms
     pub fn new() -> Self {
         Self { arms: vec![] }
     }

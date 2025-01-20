@@ -60,6 +60,10 @@ pub enum Intrinsic {
     StrLt { lhs: ExpId, rhs: ExpId },
     /// `Text::le`
     StrLe { lhs: ExpId, rhs: ExpId },
+    /// `Text::gt`
+    StrGt { lhs: ExpId, rhs: ExpId },
+    /// `Text::ge`
+    StrGe { lhs: ExpId, rhs: ExpId },
     /// `Cloak::shield`
     BoxShield { t: Sort, val: ExpId },
     /// `Cloak::reveal`

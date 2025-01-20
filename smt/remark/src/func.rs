@@ -10,8 +10,8 @@ use quote::quote;
 use syn::{FnArg, ItemFn, PatType, Path, PathSegment, Result, Signature, Type, TypePath};
 
 use crate::attr::{parse_dict, MetaValue};
-use crate::{bail_if_exists, bail_if_missing, bail_on};
 use crate::generics::TypeParamGroup;
+use crate::{bail_if_exists, bail_if_missing, bail_on};
 
 /// Checks the function signature and derives additional code if a method attribute is present.
 ///
@@ -163,6 +163,7 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
             let PathSegment { ident, arguments } = segment;
             // Ensure the type is not a type argument (cannot derive a method for a type argument).
             // so basically the first argument cannot be like x:T because in that case, T should implement the SMT trait, thus it is in the self_ty_consumed_params and ident is T.
+            // the reason is that if it is T, then the method should be implemented for the generic type T, but that not possible as type T does not exist.
             if self_ty_consumed_params.contains(ident) {
                 bail_on!(ident, "cannot derive a method for a type argument");
             }
@@ -180,7 +181,7 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
     let tokenized_impl_generics = self_ty_consumed_params.to_syntax_def();
 
     // Get the method type parameters by removing the self type parameters.
-    // ??? this basically gets all the generic types that are not used in the first arg of the func
+    // this basically gets all the generic types that are not used in the first arg of the func for the method signature in impl block
     let method_ty_params = ty_params.diff(&self_ty_consumed_params);
     // <U:SMT, T:SMT ...> will be created for all the generics NOT used inside the first arg of func.
     let tokenized_method_generics = method_ty_params.to_syntax_def();
@@ -279,8 +280,8 @@ fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result
 
     // Check for other attributes based on the kind.
     match kind {
-        FnKind::Impl => dict.remove("specs"), //? smt_impl can have specs attribute
-        FnKind::Spec => dict.remove("impls"), //? smt_spec can have impls attribute
+        FnKind::Impl => dict.remove("specs"), // smt_impl can only have specs attribute
+        FnKind::Spec => dict.remove("impls"), // smt_spec can only have impls attribute
     };
     // If there are any remaining attributes, return an error.
     // so only method and specs are allowed for smt_spec and method and impls are allowed for smt_impl
@@ -527,8 +528,8 @@ mod tests {
     // }  this part is cover in the test case
     #[test]
     fn test_check_and_derive_type_argument() {
-        // ??? so basically the first input should never have a generic type. Because if it has a generic type then it will need to implement the SMT trait. Therefore, it is in the intersection (self_ty_consumed_params)
-        // ??? unless the generics are embedded like fn add<T: SMT, U : SMT>(a: Struct<T>, b: U)
+        // so basically the first input should never have a generic type if a method exists. Because the method should be implemented for the generic type and that is not possible.
+        // unless the generics are embedded like fn add<T: SMT, U : SMT>(a: Struct<T>, b: U) this is totally fine.
         let item_fn: syn::ItemFn = parse_quote! {
             fn add<T: SMT, U : SMT>(a: T, b: U) -> i32 {
                 b

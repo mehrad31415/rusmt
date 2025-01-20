@@ -1,2 +1,2 @@
-expect initializer
+expect initializer for let-binding statement missing
 let x ;

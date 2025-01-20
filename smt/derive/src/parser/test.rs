@@ -123,17 +123,10 @@ mod tests {
     );
 
     // in bool_basics.rs it is a failure test but here it is a success test
-    unit_test!(
-        r,
-        {
-            #[smt_impl]
-            fn foo(x: Boolean, y: Boolean) -> Boolean {
-                x.not()
-                    .and(false.into())
-                    .or(true.into())
-                    .xor(y)
-                    .eq(x.ne(y))
-            }
+    unit_test!(r, {
+        #[smt_impl]
+        fn foo(x: Boolean, y: Boolean) -> Boolean {
+            x.not().and(false.into()).or(true.into()).xor(y).eq(x.ne(y))
         }
-    );
+    });
 }

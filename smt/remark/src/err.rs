@@ -1,12 +1,12 @@
 //! Error handling utilities
-//! 
+//!
 //! This `err` module provides five <macros by example> to handle errors in a more concise way:
 //! - `fail_on!` to return a compiler error
 //! - `fail_if_error!` to return a compiler error if an error is found
 //! - `bail_on!` to return an Error instance
 //! - `bail_if_exists!` to return an Error instance if a token exists
 //! - `bail_if_missing!` to return an Error instance if a token is missing
-//! 
+//!
 //! The fail_on macro is equivalent to fail_if_error(bail_on(...)).
 //! The macros will be accessible by `use rusmart_smt_remark::*` in or outside the crate.
 
@@ -15,7 +15,8 @@
 /// - `fail_on!(item (value), "message")` to return a compiler error with a literal message
 /// - `fail_on!(item (value), "message {}", arg)` to return a compiler error with a formatted message
 /// - The proc_macro::TokenStream is the input and return type of the top level procedural macros.
-/// We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the smt-remark-derive crate.
+///
+///     We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the smt-remark-derive crate.
 // The into_compile_error method converts a syn::Error to proc_macro2::TokenStream.
 // The proc_macro::TokenStream::from is used to convert the proc_macro2::TokenStream to proc_macro::TokenStream.
 // Error has got a method named into_compile_error() which generates a compilation error from the error object.
@@ -39,12 +40,12 @@ macro_rules! fail_on {
 // procedural macros can only be exported from proc-macro crates (not declarative macros).
 // So fail_on! as a declarative macro cannot be exported using #[macro_export] to be used from outside the crate. In other words, fail_on! can only be used inside the err.rs module.
 // However, to make it accessible in other modules in the crate, we can write pub(crate) use fail_on;.
-/// This line was previously needed to make the macro accessible in other modules in the crate.
-/// It is no longer needed because the crate is no longer a proc-macro crate.
-/// pub(crate) use fail_on;
+// This line was previously needed to make the macro accessible in other modules in the crate.
+// It is no longer needed because the crate is no longer a proc-macro crate.
+// pub(crate) use fail_on;
 
 /// Special case on fail: when an error happens
-/// It has two patterns: 
+/// It has two patterns:
 /// - `fail_if_error!(Ok(proc_macro2::TokenStream::from(value)))` to return the value wrapped as token stream if it is Ok
 /// - `fail_if_error!(Err(error))` to return the error as a compiler error
 /// In the second case the `error` is of type syn::Error and the into_compile_error method converts a syn::Error to proc_macro2::TokenStream.
@@ -64,8 +65,9 @@ macro_rules! fail_if_error {
 /// It has two patterns:
 /// - `bail_on!(item (value), "message")` to return an Error instance with a literal message
 /// - `bail_on!(item (value), "message {}", arg)` to return an Error instance with a formatted message
-/// This macro is similar to fail_on! but it returns an Error instance instead of a compiler error.
-/// This error instance can be passed on to be used to generate a compiler error later.
+///
+///     This macro is similar to fail_on! but it returns an Error instance instead of a compiler error.
+///     This error instance can be passed on to be used to generate a compiler error later.
 #[macro_export]
 macro_rules! bail_on {
     ($item:expr, $msg:literal $(,)?) => {
@@ -110,5 +112,3 @@ macro_rules! bail_if_missing {
     };
 }
 // pub(crate) use bail_if_missing; not needed anymore
-
-

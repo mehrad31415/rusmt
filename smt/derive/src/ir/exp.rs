@@ -6,10 +6,10 @@ use crate::ir::index::{ExpId, UsrFunId, UsrSortId, VarId};
 use crate::ir::intrinsics::Intrinsic;
 use crate::ir::name::Symbol;
 use crate::ir::sort::{DataType, Sort, Variant};
-use crate::parser::adt::ADTBranch;
 use crate::parser::expr::{Expr, LetBinding, Op, Unpack, VarDecl};
 use crate::parser::intrinsics::Intrinsic as Native;
 use crate::parser::name::VarName;
+use crate::parser::path::ADTBranch;
 use crate::parser::ty::TypeTag;
 
 #[derive(Debug)]
@@ -970,6 +970,14 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         lhs: self.resolve(lhs, Some(&Sort::Text)),
                         rhs: self.resolve(rhs, Some(&Sort::Text)),
                     },
+                    Native::StrGe { lhs, rhs } => Intrinsic::StrGe {
+                        lhs: self.resolve(lhs, Some(&Sort::Text)),
+                        rhs: self.resolve(rhs, Some(&Sort::Text)),
+                    },
+                    Native::StrGt { lhs, rhs } => Intrinsic::StrGt {
+                        lhs: self.resolve(lhs, Some(&Sort::Text)),
+                        rhs: self.resolve(rhs, Some(&Sort::Text)),
+                    },
                     // cloak
                     Native::BoxShield { t, val } => {
                         let sort = self.parent.resolve_type(t);
@@ -1363,7 +1371,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::NumGt { .. } => Sort::Boolean,
                 // string
                 Intrinsic::StrVal(_) => Sort::Text,
-                Intrinsic::StrLt { .. } | Intrinsic::StrLe { .. } => Sort::Boolean,
+                Intrinsic::StrLt { .. }
+                | Intrinsic::StrLe { .. }
+                | Intrinsic::StrGe { .. }
+                | Intrinsic::StrGt { .. } => Sort::Boolean,
                 // cloak
                 Intrinsic::BoxShield { t, .. } | Intrinsic::BoxReveal { t, .. } => t.clone(),
                 // seq

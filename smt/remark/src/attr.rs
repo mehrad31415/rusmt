@@ -59,15 +59,15 @@ pub enum MetaValue {
 pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
     let mut store: BTreeMap<String, MetaValue> = BTreeMap::new(); // Stores the parsed key-value pairs
     let mut iter = stream.clone().into_iter(); // Creates an iterator over the token stream
-    // this will be a None value if the stream is empty
+                                               // this will be a None value if the stream is empty
     let mut cursor = iter.next(); // Current token
 
     while cursor.is_some() {
         // Extract key
         let token = bail_if_missing!(cursor.as_ref(), stream, "key"); // this will never lead to a compile error because cursor is checked to be Some at the beginning of the loop.
-        // Extract the key as an identifier
-        // A key must be an identifier for example in #[my_attr(key = value)]
-        // #[my_attr(1 = value)] leads to an error
+                                                                      // Extract the key as an identifier
+                                                                      // A key must be an identifier for example in #[my_attr(key = value)]
+                                                                      // #[my_attr(1 = value)] leads to an error
         let key = match token {
             TokenTree::Ident(ident) => ident.to_string(),
             _ => bail_on!(token, "key not an identifier"), // return an error if the token is not an identifier
@@ -121,9 +121,10 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
                     // Advance the cursor
                     sub_cursor = sub_iter.next();
                     // Skip commas between items
-                    if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',') {
+                    if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
+                    {
                         sub_cursor = sub_iter.next();
-                    } else if !sub_cursor.is_none() {
+                    } else if sub_cursor.is_some() {
                         // Return an error if a comma is missing between items
                         bail_on!(sub_cursor, "expect comma between items");
                     }
@@ -143,7 +144,7 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
         // Skip commas between key-value pairs
         if matches!(cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',') {
             cursor = iter.next();
-        } else if !cursor.is_none() {
+        } else if cursor.is_some() {
             // Return an error if a comma is missing between key-value pairs
             bail_on!(cursor, "expect comma between key-value pairs");
         }
@@ -249,7 +250,7 @@ mod tests {
         let result = parse_dict(&tokens);
 
         assert!(result.is_err());
-        
+
         let result = result.unwrap_err().to_string();
         assert_eq!(result, "key not an identifier");
     }
@@ -317,7 +318,6 @@ mod tests {
 
         let result = result.unwrap_err().to_string();
         assert_eq!(result, "expect val");
-
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use std::fmt::{Display, Formatter}; // Imported for implementing the Display trait
-use syn::{Ident, Pat, PatIdent, Path, PathArguments, PathSegment, Result}; // Import syn crate types for parsing Rust code
+use syn::{Ident, Pat, PatIdent, Path, Result}; // Import syn crate types for parsing Rust code
 
 use crate::parser::dsl::SysMacroName;
-use crate::parser::err::{bail_if_exists, bail_if_missing, bail_on};
+use crate::parser::err::{bail_if_exists, bail_on};
 use crate::parser::func::CastFuncName;
 use crate::parser::func::ReservedFuncName;
 use crate::parser::func::SysFuncName;
@@ -20,7 +20,7 @@ use crate::parser::ty::SysTypeName;
 /// SysTrait: //* SMT
 /// SysTypeName: //* Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error
 /// Sized is a supertrait of ReservedIdent, meaning that all types implementing ReservedIdent must also implement Sized.
-/// ? This trait is not object safe. It cannot be used as a trait object because it is not DST (Dynamically Sized Type). For example, Box<dyn ReservedIdent> is not allowed. https://doc.rust-lang.org/std/marker/trait.Sized.html
+/// - ? This trait is not object safe. It cannot be used as a trait object because it is not DST (Dynamically Sized Type). For example, Box<dyn ReservedIdent> is not allowed. https://doc.rust-lang.org/std/marker/trait.Sized.html
 pub trait ReservedIdent: Sized {
     /// Tries to parse a reserved identifier from a string.
     ///
@@ -48,7 +48,7 @@ pub trait ReservedIdent: Sized {
     /// Returns an error if the path does not contain a reserved identifier.
     fn parse_path(path: &Path) -> Result<Self> {
         // Parse the identifier from the path.
-        let ident = parse_ident_from_path(path)?;
+        let ident = path.get_ident().expect("expect an identifier in the path");
         // Try to convert the identifier to the reserved type.
         match Self::from_str(ident.to_string().as_str()) {
             None => bail_on!(ident, "not a reserved identifier"),
@@ -66,7 +66,7 @@ pub trait ReservedIdent: Sized {
 ///
 /// # Returns
 ///
-/// * `Result<String>` - Ok containing the identifier name if valid, Err otherwise.
+/// * `Result<String>` - Ok containing the identifier name if valid, Err if reserved.
 ///
 /// # Errors
 ///
@@ -123,30 +123,30 @@ fn validate_user_ident(ident: &Ident) -> Result<String> {
 /// Returns an error if the path is invalid, has leading colons, multiple segments,
 /// or contains unexpected arguments.
 /// parse_ident_from_path is the same as get_ident in the syn crate. https://docs.rs/syn/1.0.77/syn/struct.Path.html#method.get_ident. get_ident just returns an Option<&Ident> while parse_ident_from_path returns a Result<&Ident>.
-fn parse_ident_from_path(path: &Path) -> Result<&Ident> {
-    let Path {
-        leading_colon,
-        segments,
-    } = path;
+// fn parse_ident_from_path(path: &Path) -> Result<&Ident> {
+//     let Path {
+//         leading_colon,
+//         segments,
+//     } = path;
 
-    // Leading colons are not allowed in a plain identifier.
-    bail_if_exists!(leading_colon);
+//     // Leading colons are not allowed in a plain identifier.
+//     bail_if_exists!(leading_colon);
 
-    let mut iter = segments.iter();
+//     let mut iter = segments.iter();
 
-    // There should be exactly one segment; single identifier expected.
-    let segment = bail_if_missing!(iter.next(), path, "invalid path with no segments");
-    bail_if_exists!(iter.next());
+//     // There should be exactly one segment; single identifier expected.
+//     let segment = bail_if_missing!(iter.next(), path, "invalid path with no segments");
+//     bail_if_exists!(iter.next());
 
-    let PathSegment { ident, arguments } = segment;
-    // Arguments are not expected in a plain identifier.
-    if !matches!(arguments, PathArguments::None) {
-        bail_on!(arguments, "unexpected argument in path");
-    }
+//     let PathSegment { ident, arguments } = segment;
+//     // Arguments are not expected in a plain identifier.
+//     if !matches!(arguments, PathArguments::None) {
+//         bail_on!(arguments, "unexpected argument in path");
+//     }
 
-    // Return the identifier.
-    Ok(ident)
-}
+//     // Return the identifier.
+//     Ok(ident)
+// }
 
 /// Parses a plain identifier from a pattern.
 ///
@@ -181,7 +181,6 @@ fn parse_ident_from_pat(pat: &Pat) -> Result<&Ident> {
             // Only allow plain names without references, mutability, or sub-patterns.
             bail_if_exists!(by_ref);
             bail_if_exists!(mutability);
-            bail_if_exists!(subpat.as_ref().map(|(at, _)| at));
             bail_if_exists!(subpat.as_ref().map(|(_, sub)| sub));
 
             // Return the identifier.
@@ -266,7 +265,7 @@ macro_rules! name {
             /// Otherwise, an identifier is extracted and validated.
             /// If the identifier is reserved or an underscore, an error is returned.
             fn try_from(value: &Path) -> Result<Self> {
-                parse_ident_from_path(value)?.try_into()
+                value.get_ident().expect(stringify!("The path <{}> is not an identifier", value)).try_into()
             }
         }
 
@@ -328,6 +327,30 @@ macro_rules! name {
     };
 }
 
+// Define UsrTypeName using the name! macro (this is used to store user-defined types marked with smt_type attribute).
+name! {
+    /// Identifier for a user-defined type (i.e., structs and enums).
+    /// A user-defined type name is converted to a user sort name in the ir (intermediate representation).
+    UsrTypeName
+        > crate::ir::name::UsrSortName
+}
+
+// Define UsrFuncName using the name! macro (this is used to store user-defined functions marked with smt_impl or smt_spec attribute).
+name! {
+    /// Identifier for a user-defined function (i.e., non-reserved).
+    /// A user-defined function name is converted to a user function name in the ir (intermediate representation).
+    UsrFuncName
+        > crate::ir::name::UsrFunName
+}
+
+// Define AxiomName using the name! macro (this is used to store user-defined functions marked with smt_axiom attribute).
+name! {
+    /// Identifier for an axiom.
+    /// An axiom name is converted to a user axiom name in the ir (intermediate representation).
+    AxiomName
+        > crate::ir::name::UsrAxiomName
+}
+
 // Define TypeParamName using the name! macro.
 // we can use `from` to convert from SmtSortName to TypeParamName
 // for example, let a = SmtSortName { ident: "SortName".to_string() };
@@ -338,30 +361,6 @@ name! {
     /// An type parameter is converted to a smt sort name in the ir (intermediate representation).
     TypeParamName
         > crate::ir::name::SmtSortName
-}
-
-// Define UsrTypeName using the name! macro.
-name! {
-    /// Identifier for a user-defined type (i.e., non-reserved).
-    /// A user-defined type name is converted to a user sort name in the ir (intermediate representation).
-    UsrTypeName
-        > crate::ir::name::UsrSortName
-}
-
-// Define UsrFuncName using the name! macro.
-name! {
-    /// Identifier for a user-defined function (i.e., non-reserved).
-    /// A user-defined function name is converted to a user function name in the ir (intermediate representation).
-    UsrFuncName
-        > crate::ir::name::UsrFunName
-}
-
-// Define AxiomName using the name! macro.
-name! {
-    /// Identifier for an axiom.
-    /// An axiom name is converted to a user axiom name in the ir (intermediate representation).
-    AxiomName
-        > crate::ir::name::UsrAxiomName
 }
 
 // Define VarName using the name! macro.
@@ -415,6 +414,7 @@ impl UsrFuncName {
     /// # Panics
     ///
     /// Panics if the provided name is not a recognized intrinsic function.
+    /// This function is used in the `builtin` function of the `apply` module to create intrinsic functions.
     pub fn intrinsic(name: &str) -> Self {
         match name {
             // Logical operators.
@@ -428,7 +428,7 @@ impl UsrFuncName {
             // Cloak operations.
             | "shield" | "reveal"
             // Collections (common).
-            | "new" | "empty" | "length" | "iterator"
+            | "new" | "is_empty" | "length" | "iterator"
             // Sequence operations.
             | "append" | "at_unchecked" | "includes"
             // Set operations.
@@ -586,67 +586,67 @@ mod tests {
         assert!(res.is_ok_and(|v| v == "my_var"));
     }
 
-    #[test]
-    /// Tests the parse_ident_from_path - bail_if_exists!(leading_colon); is invoked
-    fn test_parse_ident_from_path_leading_colon_err() {
-        let path = parse_quote!(::Boolean);
-        let res = parse_ident_from_path(&path);
+    // #[test]
+    // /// Tests the parse_ident_from_path - bail_if_exists!(leading_colon); is invoked
+    // fn test_parse_ident_from_path_leading_colon_err() {
+    //     let path = parse_quote!(::Boolean);
+    //     let res = parse_ident_from_path(&path);
 
-        assert!(res.is_err());
-        assert_eq!(res.err().unwrap().to_string(), "unexpected\n::");
-    }
+    //     assert!(res.is_err());
+    //     assert_eq!(res.err().unwrap().to_string(), "unexpected\n::");
+    // }
 
-    #[test]
-    /// Tests the parse_ident_from_path - let segment = bail_if_missing!(iter.next(), path, "invalid path with no segments"); is invoked.
-    fn test_parse_ident_from_path_no_segment() {
-        let path = Path {
-            leading_colon: None,                          // No leading colon (e.g., `::`).
-            segments: syn::punctuated::Punctuated::new(), // No path segments.
-        };
+    // #[test]
+    // /// Tests the parse_ident_from_path - let segment = bail_if_missing!(iter.next(), path, "invalid path with no segments"); is invoked.
+    // fn test_parse_ident_from_path_no_segment() {
+    //     let path = Path {
+    //         leading_colon: None,                          // No leading colon (e.g., `::`).
+    //         segments: syn::punctuated::Punctuated::new(), // No path segments.
+    //     };
 
-        let res = parse_ident_from_path(&path);
+    //     let res = parse_ident_from_path(&path);
 
-        assert!(res.is_err());
-        assert_eq!(
-            res.err().unwrap().to_string(),
-            "expect invalid path with no segments\n"
-        );
-    }
+    //     assert!(res.is_err());
+    //     assert_eq!(
+    //         res.err().unwrap().to_string(),
+    //         "expect invalid path with no segments\n"
+    //     );
+    // }
 
-    #[test]
-    /// Tests the parse_ident_from_path - bail_if_exists!(iter.next()); is invoked.
-    fn test_parse_ident_from_path_more_segments() {
-        let path = parse_quote!(Boolean::Integer::Nonsense);
+    // #[test]
+    // /// Tests the parse_ident_from_path - bail_if_exists!(iter.next()); is invoked.
+    // fn test_parse_ident_from_path_more_segments() {
+    //     let path = parse_quote!(Boolean::Integer::Nonsense);
 
-        let res = parse_ident_from_path(&path);
+    //     let res = parse_ident_from_path(&path);
 
-        assert!(res.is_err());
-        assert_eq!(res.err().unwrap().to_string(), "unexpected\nInteger");
-    }
+    //     assert!(res.is_err());
+    //     assert_eq!(res.err().unwrap().to_string(), "unexpected\nInteger");
+    // }
 
-    #[test]
-    /// Tests the parse_ident_from_path - if !matches!(arguments, PathArguments::None) path is covered.
-    /// bail_on!(arguments, "unexpected argument in path"); is invoked
-    fn test_parse_ident_from_path_arguments() {
-        let path = parse_quote!(Boolean<a>);
+    // #[test]
+    // /// Tests the parse_ident_from_path - if !matches!(arguments, PathArguments::None) path is covered.
+    // /// bail_on!(arguments, "unexpected argument in path"); is invoked
+    // fn test_parse_ident_from_path_arguments() {
+    //     let path = parse_quote!(Boolean<a>);
 
-        let res = parse_ident_from_path(&path);
+    //     let res = parse_ident_from_path(&path);
 
-        assert!(res.is_err());
-        assert_eq!(
-            res.err().unwrap().to_string(),
-            "unexpected argument in path\n< a >"
-        );
-    }
+    //     assert!(res.is_err());
+    //     assert_eq!(
+    //         res.err().unwrap().to_string(),
+    //         "unexpected argument in path\n< a >"
+    //     );
+    // }
 
-    #[test]
-    /// tests the happy flow of parse_ident_from_path
-    fn test_parse_ident_from_path_ok() {
-        let path = parse_quote!(Boolean);
-        let res = parse_ident_from_path(&path);
+    // #[test]
+    // /// tests the happy flow of parse_ident_from_path
+    // fn test_parse_ident_from_path_ok() {
+    //     let path = parse_quote!(Boolean);
+    //     let res = parse_ident_from_path(&path);
 
-        assert!(res.is_ok());
-    }
+    //     assert!(res.is_ok());
+    // }
 
     #[test]
     /// Tests parse_ident_from_pat - _ => bail_on!(pat, "not an identifier pattern")

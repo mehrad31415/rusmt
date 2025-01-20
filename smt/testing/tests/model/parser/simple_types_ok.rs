@@ -5,4 +5,4 @@ use rusmart_smt_stdlib::{Boolean, Seq, SMT};
 struct SimpleBool(Boolean);
 
 #[smt_type]
-struct SimpleVec<T:SMT>(Seq<T>);
+struct SimpleVec<T: SMT>(Seq<T>);

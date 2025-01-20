@@ -41,7 +41,7 @@ use paste::paste;
 /// In the below example, the operators add, sub, mul, div, and rem are implemented for the Integer type.
 /// Note 1: The type needs to be a struct with an `inner` field that is wrapped inside an `Intern`.
 /// Note 2: The designated operators are required to be defined for the type inside the Intern.
-/// 
+///
 /// Example: arith_operator!(Integer, add, sub, mul, div, rem);
 macro_rules! arith_operator {
     ($l:ty $(,$op: tt)*) => {
@@ -67,7 +67,7 @@ macro_rules! arith_operator {
 /// 3. the third pattern is the smt implementation for tuples of size 2 to 12.
 /// In generic types, the type parameters need to implement the SMT trait.
 /// In both cases, the types need to be a struct with a field `inner` that implements the Ord trait.
-/// 
+///
 /// Example: smt_impl!(Integer);
 macro_rules! smt_impl {
     ($l:ty) => {
@@ -127,7 +127,7 @@ smt_impl! { A B C D E F G H I J K L }
 /// `le` is less than or equal to
 /// `ge` is greater than or equal to
 /// `gt` is greater than
-/// 
+///
 /// Example: order_operator!(Integer, lt, le, ge, gt);
 macro_rules! order_operator {
     ($l:ty $(,$op: tt)*) => {
@@ -146,9 +146,9 @@ macro_rules! order_operator {
 /// let a = Integer::from(1);
 /// let a:Integer = 1.into(); // this needs to be annotated
 /// let a:Integer = From::from(1); // this needs to be annotated
-/// 
-/// Example: 
-///     1) integer_from_literal!(i8, i16, i32, i64, i128, isize); 
+///
+/// Example:
+///     1) integer_from_literal!(i8, i16, i32, i64, i128, isize);
 ///     2) integer_from_literal!(u8, u16, u32, u64, u128, usize);
 macro_rules! integer_from_literal {
     ($l:ty $(,$e:ty)* $(,)?) => {
@@ -174,9 +174,9 @@ macro_rules! integer_from_literal {
 /// let a = Rational::from(1);
 /// let a:Rational = 1.into(); // this needs to be annotated
 /// let a:Rational = From::from(1); // this needs to be annotated
-/// 
-/// Example: 
-///     1) rational_from_literal_int!(i8, i16, i32, i64, i128, isize); 
+///
+/// Example:
+///     1) rational_from_literal_int!(i8, i16, i32, i64, i128, isize);
 ///     2) rational_from_literal_int!(u8, u16, u32, u64, u128, usize);
 macro_rules! rational_from_literal_int {
     ($l:ty $(,$e:ty)* $(,)?) => {
@@ -200,7 +200,7 @@ macro_rules! rational_from_literal_int {
 #[allow(unused_macros)]
 #[macro_export]
 /// the cloak! macro for initializing a new cloak with an element
-/// 
+///
 /// Example: cloak!(Integer::from(1));
 macro_rules! cloak {
     ( $x:expr ) => {{
@@ -209,10 +209,9 @@ macro_rules! cloak {
     }};
 }
 
-#[allow(unused_macros)]
 #[macro_export]
 /// the seq! macro for initializing a new sequence with elements
-/// 
+///
 /// Example: seq!(Integer::from(1), Integer::from(2));
 macro_rules! seq {
     ($($e:expr),*) => {
@@ -226,10 +225,9 @@ macro_rules! seq {
     };
 }
 
-#[allow(unused_macros)]
 #[macro_export]
 /// the set! macro for initializing a new set with elements
-/// 
+///
 /// Example: set!(Integer::from(1), Integer::from(2));
 macro_rules! set {
     ( $($e:expr),*) => {
@@ -243,10 +241,9 @@ macro_rules! set {
     };
 }
 
-#[allow(unused_macros)]
 #[macro_export]
 /// the map! macro for initializing a new map with key-value pairs
-/// 
+///
 /// Example: map!((Integer::from(1), Text::from("one")), (Integer::from(2), Text::from("two")));
 macro_rules! map {
 ($( ($e1:expr, $e2:expr) ),*) => {
@@ -515,12 +512,21 @@ impl Error {
 /// Wrap for an SMT type for Rust-semantics enrichment
 /// The SMTWrap is a tuple struct that wraps an SMT type.
 // In SMTWrap, instead of using #[derive(Eq)] we implement the trait manually to avoid imposing the T: Eq constraint.
-#[derive(Debug, Clone, Copy, Default, Hash)]
+#[derive(Debug, Clone, Copy, Default)]
 struct SMTWrap<T: SMT>(T);
 
 impl<T: SMT> PartialEq for SMTWrap<T> {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(other.0).inner
+    }
+}
+
+// because we manually implement the PartialEq for SMTWrap
+// we need to manually implement the Hash trait as well
+// see https://rust-lang.github.io/rust-clippy/master/index.html#derived_hash_with_manual_eq
+impl<T: SMT> Hash for SMTWrap<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
@@ -618,14 +624,13 @@ impl<T: SMT> Seq<T> {
     pub fn at_unchecked(self, i: Integer) -> T {
         self.inner
             .get(i.inner.to_usize().expect("index out of usize range"))
-            .expect(
-                format!(
+            .unwrap_or_else(|| {
+                panic!(
                     "index {:?} out of bound for Seq with type {}",
                     i,
                     std::any::type_name::<T>()
                 )
-                .as_str(),
-            )
+            })
             .0
     }
 
@@ -759,13 +764,12 @@ impl<K: SMT, V: SMT> Map<K, V> {
     pub fn get_unchecked(self, k: K) -> V {
         self.inner
             .get(&SMTWrap(k))
-            .expect(
-                format!(
+            .unwrap_or_else(|| {
+                panic!(
                     "key does not exist for SMT Array with key types {}",
                     std::any::type_name::<K>()
                 )
-                .as_str(),
-            )
+            })
             .0
     }
 
@@ -984,10 +988,12 @@ mod test {
         let res1 = var1.lt(var2); // 1 < 3
         let res2 = var1.le(var2); // 1 <= 3
         let res3 = var1.ge(var2); // 1 >= 3 (false)
+        let res4 = Integer::from(3).gt(Integer::from(1).add(Integer::from(1))); // 3 > 1 + 1
 
         assert_eq!(res1, Boolean::from(true));
         assert_eq!(res2, Boolean::from(true));
         assert_eq!(res3, false.into());
+        assert_eq!(res4, true.into());
     }
 
     #[test]
@@ -1271,13 +1277,17 @@ mod test {
         assert_eq!(
             var1,
             Rational {
-                inner: Intern::new(BigRational::from_float(1.5).expect("Failed to convert float to BigRational"))
+                inner: Intern::new(
+                    BigRational::from_float(1.5).expect("Failed to convert float to BigRational")
+                )
             }
         );
         assert_eq!(
             var2,
             Rational {
-                inner: Intern::new(BigRational::from_float(1.6).expect("Failed to convert float to BigRational"))
+                inner: Intern::new(
+                    BigRational::from_float(1.6).expect("Failed to convert float to BigRational")
+                )
             }
         );
     }
@@ -1347,7 +1357,14 @@ mod test {
 
         // the first element is 0 and the second element is 1.
         assert_eq!(*var3.inner.iter().next().expect("Error is empty"), 0);
-        assert_eq!(*var3.inner.iter().nth(1).expect("Error does not have 2 elements"), 1);
+        assert_eq!(
+            *var3
+                .inner
+                .iter()
+                .nth(1)
+                .expect("Error does not have 2 elements"),
+            1
+        );
 
         // in merging var3 {0,1} and var1 {0} because the inner value is a set the values are not duplicated.
         let var4 = var3.merge(var1);
@@ -1370,7 +1387,10 @@ mod test {
         let var1 = SMTWrap(cloak!(Integer::from(1)));
         let var2 = SMTWrap(cloak!(Integer::from(10)));
 
-        assert_eq!(var2.partial_cmp(&var1).expect("Failed to compare"), Ordering::Greater);
+        assert_eq!(
+            var2.partial_cmp(&var1).expect("Failed to compare"),
+            Ordering::Greater
+        );
     }
 
     #[test]
@@ -1553,7 +1573,6 @@ mod test {
         assert_eq!(iter[0], Text::from("one"));
         assert_eq!(iter[1], Text::from("three")); // it is in lexicographical order
         assert_eq!(iter[2], Text::from("two"));
-
     }
 
     #[test]
@@ -1655,7 +1674,9 @@ mod test {
     /// the default value of Error is an empty set
     fn test_default_error() {
         let var1 = Error::default();
-        let var2 = Error { inner: Intern::new(BTreeSet::new()) };
+        let var2 = Error {
+            inner: Intern::new(BTreeSet::new()),
+        };
         assert_eq!(var1, var2);
     }
 
@@ -1671,7 +1692,9 @@ mod test {
     /// the default value of Seq is an empty sequence
     fn test_default_seq() {
         let var1 = Seq::<Integer>::default();
-        let var2 = Seq { inner: Intern::new(Vec::new()) };
+        let var2 = Seq {
+            inner: Intern::new(Vec::new()),
+        };
         assert_eq!(var1, var2);
         assert!(*var1.is_empty());
     }
@@ -1680,7 +1703,9 @@ mod test {
     /// the default value of SMT Set is an empty set
     fn test_default_set() {
         let var1 = Set::<Integer>::default();
-        let var2 = Set { inner: Intern::new(BTreeSet::new()) };
+        let var2 = Set {
+            inner: Intern::new(BTreeSet::new()),
+        };
         assert_eq!(var1, var2);
         assert!(*var1.is_empty());
     }
@@ -1689,8 +1714,10 @@ mod test {
     /// the default value of SMT Map is an empty map
     fn test_default_map() {
         let var1 = Map::<Integer, Integer>::default();
-        let var2 = Map { inner: Intern::new(BTreeMap::<SMTWrap<Integer>, SMTWrap<Integer>>::new()) };
+        let var2 = Map {
+            inner: Intern::new(BTreeMap::<SMTWrap<Integer>, SMTWrap<Integer>>::new()),
+        };
         assert_eq!(var1, var2);
         assert!(*var1.is_empty());
-    }  
+    }
 }

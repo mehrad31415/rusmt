@@ -100,7 +100,7 @@ impl Mark {
     /// - The syntax does not match the expected format.
     fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
         let mut store = BTreeMap::new(); // Stores the parsed key-value pairs
-        let mut iter = stream.clone().into_iter(); // Creates an iterator over the token stream
+        let mut iter = stream.clone().into_iter(); // Creates an ownership iterator over the token stream
 
         // this will be a None value if the stream is empty
         let mut cursor = iter.next(); // Current token
@@ -211,7 +211,8 @@ impl Mark {
             return Ok(None);
         }
 
-        let mark = match meta { // rust does not allow multiple attributes in a single attribute like #[my_attr1, my_attr2]. Instead, it should be #[my_attr1] #[my_attr2]...
+        let mark = match meta {
+            // rust does not allow multiple attributes in a single attribute like #[my_attr1, my_attr2]. Instead, it should be #[my_attr1] #[my_attr2]...
             // Path like `test` in #[test]
             // If it is a path, we parse it for Annotations.
             // Basically the parse_path checks if the path is an identifier (not a path with leading colons, only one segment, and no arguments).
@@ -234,78 +235,80 @@ impl Mark {
                 path,      // path in the above example is `derive`
                 delimiter, // delimiter in the above example is Parenthesis
                 tokens,    // tokens in the above example are `Copy`
-            }) => match Annotation::parse_path(path) {
-                None => return Ok(None),
-                Some(Annotation::Type) | Some(Annotation::Axiom) => {
-                    bail_on!(attr, "unexpected list") // for smt_type and smt_axiom, no attributes are expected
-                }
-                Some(Annotation::Impl) => {
-                    // MacroDelimiter is a grouping token that surrounds a macro body: `m!(...)` or `m!{...}` or `m![...]`
-                    // If the delimiter is not Parenthesis (brace or bracket), it will return an error.
-                    if !matches!(delimiter, MacroDelimiter::Paren(_)) {
-                        bail_on!(attr, "not a parenthesis-enclosed list");
+            }) => {
+                match Annotation::parse_path(path) {
+                    None => return Ok(None),
+                    Some(Annotation::Type) | Some(Annotation::Axiom) => {
+                        bail_on!(attr, "unexpected list\nfor smt_type and smt_axiom, no attributes are expected")
                     }
-
-                    let mut store = Self::parse_dict(tokens)?;
-                    // #[smt_impl(method = my_method, specs = [spec1, spec2])] is valid
-                    let method = match store.remove("method") {
-                        None => None,
-                        // if the ident is not a reserved keyword, it will be parsed to a UsrFuncName
-                        // reserved keywords are: (SMT), (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error), (eq, ne), (clone, default), (from, into), (exists, forall, choose), _.
-                        Some(MetaValue::One(item)) => Some((&item).try_into()?),
-                        Some(_) => bail_on!(tokens, "invalid method"), // at most one method is expected
-                    };
-
-                    let mut specs = BTreeSet::new();
-                    match store.remove("specs") {
-                        None => (),
-                        Some(MetaValue::One(ref item)) => {
-                            specs.insert(UsrFuncName::try_from(item)?);
+                    Some(Annotation::Impl) => {
+                        // MacroDelimiter is a grouping token that surrounds a macro body: `m!(...)` or `m!{...}` or `m![...]`
+                        // If the delimiter is not Parenthesis (it is a brace or bracket), it will return an error.
+                        if !matches!(delimiter, MacroDelimiter::Paren(_)) {
+                            bail_on!(attr, "not a parenthesis-enclosed list for {:?}", path);
                         }
-                        Some(MetaValue::Set(items)) => {
-                            for item in items.iter() {
+
+                        let mut store = Self::parse_dict(tokens)?;
+                        // #[smt_impl(method = my_method, specs = [spec1, spec2])] is valid
+                        let method = match store.remove("method") {
+                            None => None,
+                            // if the ident is not a reserved keyword, it will be parsed to a UsrFuncName
+                            // reserved keywords are: (SMT), (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error), (eq, ne), (clone, default), (from, into), (exists, forall, choose), _.
+                            Some(MetaValue::One(item)) => Some((&item).try_into()?),
+                            Some(_) => bail_on!(tokens, "invalid method"), // at most one method is expected
+                        };
+
+                        let mut specs = BTreeSet::new();
+                        match store.remove("specs") {
+                            None => (),
+                            Some(MetaValue::One(ref item)) => {
                                 specs.insert(UsrFuncName::try_from(item)?);
                             }
-                        }
-                    };
-
-                    if !store.is_empty() {
-                        bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `method` and `specs`
-                    }
-                    Self::Impl(ImplMark { method, specs })
-                }
-                Some(Annotation::Spec) => {
-                    if !matches!(delimiter, MacroDelimiter::Paren(_)) {
-                        bail_on!(attr, "not a parenthesis-enclosed list");
-                    }
-
-                    let mut store = Self::parse_dict(tokens)?;
-                    let method = match store.remove("method") {
-                        None => None,
-                        Some(MetaValue::One(ref item)) => Some(item.try_into()?),
-                        Some(_) => bail_on!(tokens, "invalid method"),
-                    };
-
-                    let mut impls = BTreeSet::new();
-                    match store.remove("impls") {
-                        None => (),
-                        Some(MetaValue::One(ref item)) => {
-                            impls.insert(item.try_into()?);
-                        }
-                        Some(MetaValue::Set(items)) => {
-                            for item in items.iter() {
-                                impls.insert(UsrFuncName::try_from(item)?);
+                            Some(MetaValue::Set(items)) => {
+                                for item in items.iter() {
+                                    specs.insert(UsrFuncName::try_from(item)?);
+                                }
                             }
-                        }
-                    };
+                        };
 
-                    if !store.is_empty() {
-                        // no other entries are expected except `method` and `impls`
-                        bail_on!(tokens, "unrecognized entries");
+                        if !store.is_empty() {
+                            bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `method` and `specs`
+                        }
+                        Self::Impl(ImplMark { method, specs })
                     }
-                    Self::Spec(SpecMark { method, impls })
+                    Some(Annotation::Spec) => {
+                        if !matches!(delimiter, MacroDelimiter::Paren(_)) {
+                            bail_on!(attr, "not a parenthesis-enclosed list");
+                        }
+
+                        let mut store = Self::parse_dict(tokens)?;
+                        let method = match store.remove("method") {
+                            None => None,
+                            Some(MetaValue::One(ref item)) => Some(item.try_into()?),
+                            Some(_) => bail_on!(tokens, "invalid method"),
+                        };
+
+                        let mut impls = BTreeSet::new();
+                        match store.remove("impls") {
+                            None => (),
+                            Some(MetaValue::One(ref item)) => {
+                                impls.insert(item.try_into()?);
+                            }
+                            Some(MetaValue::Set(items)) => {
+                                for item in items.iter() {
+                                    impls.insert(UsrFuncName::try_from(item)?);
+                                }
+                            }
+                        };
+
+                        if !store.is_empty() {
+                            // no other entries are expected except `method` and `impls`
+                            bail_on!(tokens, "unrecognized entries");
+                        }
+                        Self::Spec(SpecMark { method, impls })
+                    }
                 }
-            },
+            }
             // A name-value meta is like the `path = "..."` in `#[path = "sys/windows.rs"]`.
             Meta::NameValue(MetaNameValue {
                 path,        // path in the above example is `path`
@@ -774,7 +777,7 @@ mod tests {
                     method: None,
                     specs
                 }
-            ) if specs.len() == 0
+            ) if specs.is_empty()
         ))));
     }
 
@@ -901,7 +904,7 @@ mod tests {
                     method: None,
                     impls
                 }
-            ) if impls.len() == 0
+            ) if impls.is_empty()
         ))));
     }
 

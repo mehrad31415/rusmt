@@ -12,7 +12,7 @@ use crate::parser::name::UsrFuncName;
 use crate::parser::ty::SysTypeName;
 
 /// Intrinsic procedure
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Intrinsic {
     /// `Boolean::from`
     BoolVal(bool),
@@ -70,6 +70,10 @@ pub enum Intrinsic {
     StrLt { lhs: Expr, rhs: Expr },
     /// `Text::le`
     StrLe { lhs: Expr, rhs: Expr },
+    /// `Text::gt`
+    StrGt { lhs: Expr, rhs: Expr },
+    /// `Text::ge`
+    StrGe { lhs: Expr, rhs: Expr },
     /// `Cloak::shield`
     BoxShield { t: TypeRef, val: Expr },
     /// `Cloak::reveal`
@@ -367,6 +371,8 @@ impl Intrinsic {
             // text
             (Q::Text, "lt") => mk2!(StrLt, ty_args, args),
             (Q::Text, "le") => mk2!(StrLe, ty_args, args),
+            (Q::Text, "gt") => mk2!(StrGt, ty_args, args),
+            (Q::Text, "ge") => mk2!(StrGe, ty_args, args),
             // cloak
             (Q::Cloak, "shield") => mk1_t!(BoxShield, ty_args, args, val),
             (Q::Cloak, "reveal") => mk1_t!(BoxReveal, ty_args, args, val),
@@ -515,8 +521,12 @@ impl Display for Intrinsic {
             Self::IntLe { lhs, rhs } | Self::NumLe { lhs, rhs } | Self::StrLe { lhs, rhs } => {
                 write!(f, "{} <= {}", lhs, rhs)
             }
-            Self::IntGe { lhs, rhs } | Self::NumGe { lhs, rhs } => write!(f, "{} >= {}", lhs, rhs),
-            Self::IntGt { lhs, rhs } | Self::NumGt { lhs, rhs } => write!(f, "{} > {}", lhs, rhs),
+            Self::IntGe { lhs, rhs } | Self::NumGe { lhs, rhs } | Self::StrGe { lhs, rhs } => {
+                write!(f, "{} >= {}", lhs, rhs)
+            }
+            Self::IntGt { lhs, rhs } | Self::NumGt { lhs, rhs } | Self::StrGt { lhs, rhs } => {
+                write!(f, "{} > {}", lhs, rhs)
+            }
             Self::IntAdd { lhs, rhs } | Self::NumAdd { lhs, rhs } => write!(f, "{} + {}", lhs, rhs),
             Self::IntSub { lhs, rhs } | Self::NumSub { lhs, rhs } => write!(f, "{} - {}", lhs, rhs),
             Self::IntMul { lhs, rhs } | Self::NumMul { lhs, rhs } => write!(f, "{} * {}", lhs, rhs),

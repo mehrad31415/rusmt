@@ -101,10 +101,10 @@ impl Dependency for DepCVC5 {
 mod tests {
     use super::*;
     use crate::git::GitRepo;
+    use rusmart_utils::config::WKS;
     use std::fs;
     use std::io::Write;
     use std::path::PathBuf;
-    use rusmart_utils::config::WKS;
 
     #[test]
     /// testing the repo_path_from_root function for the DepCVC5 type.
@@ -116,7 +116,7 @@ mod tests {
     /// This is necessary to clone the cvc5 repository to the deps/cvc5 directory.
     fn make_cvc5() {
         let path = WKS.base.clone();
-        
+
         let mut command = Command::new("git");
         command
             .args(["submodule", "update", "--init", "--recursive"])
@@ -145,7 +145,8 @@ mod tests {
         // dst is empty but in src, the cvc5 is cloned and checked out.
         let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         base = base.join("tmp");
-        let artifact = Artifact::init(&mut git_repo, base.clone()).expect("could not initialize artifact");
+        let artifact =
+            Artifact::init(&mut git_repo, base.clone()).expect("could not initialize artifact");
 
         (base, artifact)
     }
@@ -198,7 +199,10 @@ mod tests {
         let result = DepCVC5::list_configurations(&artifact);
         assert!(result.is_err(), "list_configurations should fail");
         assert_eq!(
-            result.err().expect("could not get error message").to_string(),
+            result
+                .err()
+                .expect("could not get error message")
+                .to_string(),
             "list configuration failed"
         );
 

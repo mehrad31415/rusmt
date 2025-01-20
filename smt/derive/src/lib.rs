@@ -5,17 +5,17 @@ use syn::Result; // 'syn' is a parsing library for Rust code, 'Result' is an ali
 
 use rusmart_utils::config::initialize; // initialize all configs
 
-use crate::backend::error::BackendError; // Error type from backend module
+use crate::backend::error::BackendError; // An error for backend generator (e.g., not supported)
 use crate::backend::exec::invoke_backend; // Unified backend generation and execution service
 use crate::backend::solvers; // Available list of backend solvers (z3 and cvc5)
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context; // Context manager for holding marked items
 
-#[allow(dead_code)] // TODO: remove the dead_code attribute
+// #[allow(dead_code)]
 mod analysis;
-#[allow(dead_code)] // TODO: remove the dead_code attribute
+// #[allow(dead_code)]
 mod backend;
-#[allow(dead_code)] // TODO: remove the dead_code attribute
+// #[allow(dead_code)]
 mod ir;
 mod parser;
 
@@ -63,6 +63,7 @@ fn pipeline(ctxt: Context) -> Result<Vec<IRContext>> {
 /// * A `Result` containing a vector of `IRContext` instances if successful, or an error if parsing fails.
 pub fn model<P: AsRef<Path>>(input: P) -> Result<Vec<IRContext>> {
     // Create a new parsing context from the input file and run the pipeline.
+    // the `new` function collects all the smt-marked items from the input file and stores them in the context (types, specs, impls, axioms)
     pipeline(Context::new(input)?)
 }
 

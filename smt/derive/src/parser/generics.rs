@@ -34,7 +34,15 @@ impl ReservedIdent for SysTrait {
 }
 
 impl SysTrait {
-    /// Ensure that a generics declaration satisfies the trait
+    /// Ensure that a generics declaration satisfies the SMT trait
+    ///
+    /// # Errors
+    ///
+    /// 1. If there is an equality token or a default value
+    /// 2. If there is no colon token
+    /// 3. If there is a parenthesized trait bound, lifetimes, or a modifier
+    /// 4. If the trait bound is not SMT
+    /// 5. If there are more than one trait bounds
     fn validate_type_param_decl(param: &TypeParam) -> Result<TypeParamName> {
         let TypeParam {
             attrs: _,
@@ -45,14 +53,21 @@ impl SysTrait {
             default,
         } = param;
 
+        // equality token and default value are not allowed
         bail_if_exists!(eq_token);
         bail_if_exists!(default);
 
-        // ensure that the trait bound includes and only includes SMT
+        // colon token is required
         bail_if_missing!(colon_token, param, "trait bound");
 
+        // create an iterator for the bounds
         let mut iter = bounds.iter();
+        // must have at least one bound
         let bound = bail_if_missing!(iter.next(), bounds, "trait bound");
+        // must have only one bound
+        bail_if_exists!(iter.next());
+
+        // ensure that the trait bound includes and only includes SMT
         match bound {
             TypeParamBound::Trait(trait_bound) => {
                 let TraitBound {
@@ -62,28 +77,35 @@ impl SysTrait {
                     path,
                 } = trait_bound;
 
+                // cannot have a parenthesized trait bound like Fn()
+                // cannot have lifetimes like 'a
+                // cannot have a modifier like ?Sized
                 bail_if_exists!(paren_token.as_ref().map(|e| quote_spanned!(e.span=>)));
                 bail_if_exists!(lifetimes);
                 if !matches!(modifier, TraitBoundModifier::None) {
                     bail_on!(modifier, "unexpected");
                 }
 
+                // returns an error if the path is not a reserved identifier
+                // in the case of SysTrait, the only reserved identifier is SMT
                 let trait_name = SysTrait::parse_path(path)?;
+                // the below check is not necessary since the only reserved identifier is SMT
                 if !matches!(trait_name, SysTrait::SMT) {
                     bail_on!(path, "unexpected trait")
                 }
             }
+            // cannot be a lifetime or const bound
             _ => bail_on!(bound, "invalid bound"),
         }
-        bail_if_exists!(iter.next());
 
-        // all checks passed
+        // all checks passed (if `ident` is a reserved keyword, then Err will be returned)
         ident.try_into()
     }
 }
 
 /// Declaration of generics
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+/// For a simple type, the vector of type parameters is empty
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct Generics {
     pub params: Vec<TypeParamName>,
 }
@@ -91,15 +113,23 @@ pub struct Generics {
 impl Generics {
     /// Create a new generics for intrinsics
     pub fn intrinsic(params: Vec<TypeParamName>) -> Self {
-        for name in &params {
-            if params.iter().filter(|n| *n == name).count() != 1 {
-                panic!("duplicated type parameter name");
-            }
+        // convert params to a set to check for duplicates
+        let params_set: BTreeSet<_> = params.clone().into_iter().collect();
+        // check for duplicates
+        if params.len() != params_set.len() {
+            panic!("duplicated type parameter name");
         }
         Self { params }
     }
 
     /// Convert from generics
+    ///
+    /// # Errors
+    ///
+    /// 1. If there is a where clause
+    /// 2. If there are duplicate type parameters
+    /// 3. If there are non-type parameters like lifetimes, consts, etc.
+    /// 4. If the type parameters do not implement the SMT trait
     pub fn from_generics(generics: &GenericsDecl) -> Result<Self> {
         let GenericsDecl {
             lt_token,
@@ -108,34 +138,41 @@ impl Generics {
             gt_token,
         } = generics;
 
+        // where clause is not allowed
+        bail_if_exists!(where_clause);
+        // list of type parameters
         let mut declared = vec![];
 
         if params.is_empty() {
+            // if no generics are declared, then no <...> is needed
             bail_if_exists!(lt_token);
             bail_if_exists!(gt_token);
         } else {
+            // if generics are declared, then <...> is needed
             bail_if_missing!(lt_token, generics, "<");
             bail_if_missing!(gt_token, generics, ">");
 
             for item in params {
                 match item {
                     GenericParam::Type(ty_param) => {
+                        // checks if the type parameters ONLY implement the SMT trait
                         let name = SysTrait::validate_type_param_decl(ty_param)?;
+                        // duplicate type parameters are not allowed
                         if declared.contains(&name) {
-                            bail_on!(ty_param, "name conflict on generics");
+                            bail_on!(ty_param, "duplicate type parameter {}", name);
                         }
                         declared.push(name);
                     }
-                    _ => bail_on!(item, "type parameters only"),
+                    _ => bail_on!(item, "type parameters only"), // lifetimes, consts, etc. not allowed
                 }
             }
         };
-        bail_if_exists!(where_clause);
 
         Ok(Self { params: declared })
     }
 
     /// Convert from a marked type
+    /// This is used to extract the generics in the conversion between Context to ContextWithGenerics in the module ctxt
     pub fn from_marked_type(item: &MarkedType) -> Result<Self> {
         let generics = match item {
             MarkedType::Enum(ItemEnum {
@@ -161,11 +198,12 @@ impl Generics {
     }
 
     /// Filter another set of type parameters
+    /// Keep only those elements that are not in the `names` set
     pub fn filter(&self, names: &BTreeSet<TypeParamName>) -> Self {
         let filtered = self
             .params
             .iter()
-            .filter(|n| !names.contains(*n))
+            .filter(|n| !names.contains(*n)) // only includes those where the predicate is true
             .cloned()
             .collect();
         Self { params: filtered }
@@ -252,44 +290,53 @@ impl GenericsInstPartial {
         Some(Self { args: ty_args })
     }
 
-    /// A utility function to parse type arguments
+    /// A utility function to parse type arguments and match them with type parameters (generics) to create a partial instantiation
+    /// As ExprParserRoot is the only type that implements the CtxtForExpr trait, ctxt is a reference to an ExprParserRoot
     pub fn from_args<T: CtxtForExpr>(
         ctxt: &T,
         generics: &Generics,
         arguments: &PathArguments,
     ) -> Result<Self> {
         let ty_params = &generics.params;
-        let ty_args = match arguments {
+        let ty_args: BTreeMap<TypeParamName, (usize, Option<TypeTag>)> = match arguments {
+            // if there are no arguments, then all type parameters are set to None
             PathArguments::None => ty_params
                 .iter()
                 .enumerate()
                 .map(|(i, n)| (n.clone(), (i, None)))
                 .collect(),
+            // if there are angle-bracketed arguments, then the type parameters are set to the parsed type arguments
             PathArguments::AngleBracketed(pack) => {
                 // probe for arguments
                 let AngleBracketedGenericArguments {
                     colon2_token,
-                    args,
                     lt_token: _,
+                    args,
                     gt_token: _,
                 } = pack;
-                bail_if_missing!(colon2_token, pack, "::");
+                // The :: is required for example let success = Result::<i32, &str>::Ok(3); Note that <i32, &str> is not a segment, but a type argument list.
+                bail_if_missing!(colon2_token, pack, "::"); // turbofish syntax is required
+
+                // check if the number of type arguments matches the number of type parameters, otherwise return an error
+                if args.len() != ty_params.len() {
+                    bail_on!(pack, "type argument number mismatch");
+                }
 
                 let mut ty_args = vec![];
                 for arg in args {
                     match arg {
+                        // only type arguments are allowed
                         GenericArgument::Type(ty) => {
                             let elem = match ty {
+                                // when using _ explicitly used in a type position in Rust, it corresponds to a type inference placeholder, represented as Type::Infer in the Rust Abstract Syntax Tree (AST).
+                                // in this case, the type argument is set to None
                                 Type::Infer(_) => None,
-                                _ => Some(TypeTag::from_type(ctxt, ty)?),
+                                _ => Some(TypeTag::from_type(ctxt, ty)?), // otherwise, the type argument is parsed
                             };
-                            ty_args.push(elem);
+                            ty_args.push(elem); // add the parsed type argument to the list
                         }
-                        _ => bail_on!(arg, "invalid type argument"),
+                        _ => bail_on!(arg, "invalid type argument"), // only type arguments are allowed for example lifetimes, consts, etc. are not allowed
                     }
-                }
-                if ty_args.len() != ty_params.len() {
-                    bail_on!(pack, "type argument number mismatch");
                 }
 
                 // construct partial instantiation
@@ -300,6 +347,7 @@ impl GenericsInstPartial {
                     .map(|(i, (n, t))| (n.clone(), (i, t)))
                     .collect()
             }
+            // parenthesized arguments are not allowed
             PathArguments::Parenthesized(_) => bail_on!(arguments, "invalid arguments"),
         };
         Ok(Self { args: ty_args })
@@ -312,8 +360,8 @@ impl GenericsInstPartial {
             .into_iter()
             .map(|(k, (i, inst))| {
                 let completed = match inst {
-                    None => TypeRef::Var(unifier.mk_var()),
-                    Some(tag) => (&tag).into(),
+                    None => TypeRef::Var(unifier.mk_var()), // if the type argument is None, then a fresh type variable is created
+                    Some(tag) => (&tag).into(), // otherwise, the type argument is converted to a TypeRef
                 };
                 (k, (i, completed))
             })
@@ -361,31 +409,37 @@ impl GenericsInstFull {
     }
 
     /// Instantiate a type tag by applying type parameter substitution
+    /// This is used in the conversion from TypeTag to TypeRef
+    /// In the case of a type parameter, the corresponding TypeRef is found in the args field of the GenericsInstFull struct and returned
+    /// In other cases, the TypeTag is simply converted to a TypeRef
+    /// It only returns None if the type parameter is not found in the args field
     pub fn instantiate(&self, tag: &TypeTag) -> Option<TypeRef> {
         let updated = match tag {
             TypeTag::Boolean => TypeRef::Boolean,
             TypeTag::Integer => TypeRef::Integer,
             TypeTag::Rational => TypeRef::Rational,
             TypeTag::Text => TypeRef::Text,
+            TypeTag::Error => TypeRef::Error,
+            // the into method is for converting TypeRef to Box<TypeRef>
             TypeTag::Cloak(sub) => TypeRef::Cloak(self.instantiate(sub)?.into()),
             TypeTag::Seq(sub) => TypeRef::Seq(self.instantiate(sub)?.into()),
             TypeTag::Set(sub) => TypeRef::Set(self.instantiate(sub)?.into()),
             TypeTag::Map(key, val) => {
                 TypeRef::Map(self.instantiate(key)?.into(), self.instantiate(val)?.into())
             }
-            TypeTag::Error => TypeRef::Error,
             TypeTag::User(name, args) => TypeRef::User(
                 name.clone(),
                 args.iter()
                     .map(|t| self.instantiate(t))
-                    .collect::<Option<_>>()?,
+                    .collect::<Option<Vec<TypeRef>>>()?,
             ),
             TypeTag::Pack(elems) => TypeRef::Pack(
                 elems
                     .iter()
                     .map(|t| self.instantiate(t))
-                    .collect::<Option<_>>()?,
+                    .collect::<Option<Vec<TypeRef>>>()?,
             ),
+            // the type parameter is substituted with the corresponding type ref
             TypeTag::Parameter(name) => self.args.get(name).map(|(_, t)| t)?.clone(),
         };
         Some(updated)

@@ -12,10 +12,10 @@ use rusmart_smt_remark::{func, ty};
 #[proc_macro_attribute]
 #[cfg(not(tarpaulin_include))]
 #[inline] // The #[inline] attribute in Rust is a compiler directive that suggests to the compiler that it should try to "inline" the function where it is used. Inlining a function means replacing a function call with the body of that function. Imagine you have a small function:
-// fn add(a: i32, b: i32) -> i32 {
-//     a + b
-// }
-// When you call add(2, 3) in your code, normally, the CPU needs to perform a function call operation, which means it jumps to the function's memory location, executes it, and then returns the result. Inlining, instead, copies the body of add directly into the call site, like let result = 2 + 3 instead of let result=add(3,2). This can be more efficient because it avoids the overhead of a function call. However, the compiler is free to ignore this if it believes inlining isn’t optimal (for example, if the function is very large or inlining would increase binary size too much). It has #[inline(always)] and #[inline(never)] variants as well, which force the compiler to always inline or never inline the function, respectively. For the most part, it's a good idea to trust the compiler's judgment for inlining unless you have a specific reason to use it.
+          // fn add(a: i32, b: i32) -> i32 {
+          //     a + b
+          // }
+          // When you call add(2, 3) in your code, normally, the CPU needs to perform a function call operation, which means it jumps to the function's memory location, executes it, and then returns the result. Inlining, instead, copies the body of add directly into the call site, like let result = 2 + 3 instead of let result=add(3,2). This can be more efficient because it avoids the overhead of a function call. However, the compiler is free to ignore this if it believes inlining isn’t optimal (for example, if the function is very large or inlining would increase binary size too much). It has #[inline(always)] and #[inline(never)] variants as well, which force the compiler to always inline or never inline the function, respectively. For the most part, it's a good idea to trust the compiler's judgment for inlining unless you have a specific reason to use it. For small functions, using #[inline] is usually a good choice.
 pub fn smt_type(attr: Syntax, item: Syntax) -> Syntax {
     let attr: TokenStream = TokenStream::from(attr);
     let item: TokenStream = TokenStream::from(item);
@@ -60,7 +60,8 @@ pub fn smt_axiom(attr: Syntax, item: Syntax) -> Syntax {
 
     // ensure that the underlying item is a type
     let target: Item = parse_macro_input!(item as Item);
-    if !matches!(target, Item::Fn(_)) { // only functions are allowed for smt_axiom
+    if !matches!(target, Item::Fn(_)) {
+        // only functions are allowed for smt_axiom
         fail_on!(target, "expect fn");
     }
 

@@ -12,10 +12,9 @@ pub mod ty;
 mod apply;
 pub mod func;
 
-mod pat;
-mod path;
+pub mod path;
 
-pub mod adt;
+mod adt;
 mod dsl;
 pub mod expr;
 pub mod intrinsics;

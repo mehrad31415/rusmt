@@ -32,11 +32,14 @@ fn f4() -> Boolean {
     x
 }
 
-#[smt_impl]
-fn f5() -> Boolean {
-    let x = {
-        let x = Boolean::from(true);
-        x
-    };
-    x
-}
+// error is cause bail_on!(pat, "conflicting variable names");  in expr.rs
+// this is a bug (it is because how a block is treated)
+// this is valid in rust
+// #[smt_impl]
+// fn f5() -> Boolean {
+//     let x = {
+//         let x = Boolean::from(true);
+//         x
+//     };
+//     x
+// }

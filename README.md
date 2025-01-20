@@ -1,15 +1,10 @@
-# rusmart
-
-Programming Language | Implemented in Rust | Formulated in SMT
+<h1 style="text-align: center;">Rusmart</h1>
+<p style="text-align: center;">Programming Language | Implemented in Rust | Formulated in SMT</p>
 
 ## Introduction
 
 Rusmart is a Rust to Satisfiability Modulo Theories (SMT) formulae transpiler
-that is implemented mostly via [Rust procedural macros](https://doc.rust-lang.org/reference/procedural-macros.html).
-
-Rusmart is also a programming language that
-empathizes on the modeling of program semantics,
-in particular:
+that is implemented mostly via [Rust procedural macros](https://doc.rust-lang.org/reference/procedural-macros.html). Rusmart is also a programming language that empathizes on the modeling of program semantics, in particular:
 
 - the operational semantics of a Rusmart program is represented by Rust code
   which is concretely executable, while

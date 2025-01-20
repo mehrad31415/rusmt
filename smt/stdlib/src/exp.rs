@@ -231,4 +231,3 @@ mod test {
         assert_eq!(v, Integer::from(1));
     }
 }
-

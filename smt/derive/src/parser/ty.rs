@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
-use itertools::Itertools;
+use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string.
+
 use syn::punctuated::Punctuated;
 use syn::{
     AngleBracketedGenericArguments, Field, FieldMutability, Fields, FieldsNamed, FieldsUnnamed,
@@ -9,21 +10,24 @@ use syn::{
     Type, TypePath, TypeTuple as TypePack, Variant,
 };
 
+// The ContextWithGenerics are imported to form the TypeDef for each type.
 use crate::parser::ctxt::{ContextWithGenerics, MarkedType};
 use crate::parser::err::{bail_if_empty, bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::generics::Generics;
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};
 
 /// A context suitable for type analysis
+/// Three types implement this trait: TypeParseCtxt (in ty.rs), FuncSigParseCtxt (in func.rs), and ExprParserRoot (in expr.rs)
 pub trait CtxtForType {
-    /// Retrieve the generics in the current context
+    /// Retrieve the generics of the current type
     fn generics(&self) -> &Generics;
 
-    /// Retrieve the generics declared (if any) for a user-defined type
+    /// Retrieve the generics declared (if any) for a user-defined type. If the user-defined type is not found, return None.
     fn get_type_generics(&self, name: &UsrTypeName) -> Option<&Generics>;
 }
 
 /// A context provider for type parsing
+/// It encapsulates the whole context and the generics of the current type
 struct TypeParseCtxt<'a> {
     ctxt: &'a ContextWithGenerics,
     generics: &'a Generics,
@@ -40,7 +44,7 @@ impl CtxtForType for TypeParseCtxt<'_> {
 }
 
 /// Reserved type name
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum SysTypeName {
     Boolean,
     Integer,
@@ -70,6 +74,7 @@ impl Display for SysTypeName {
     }
 }
 
+// System type names are reserved and cannot be used as user-defined type names
 impl ReservedIdent for SysTypeName {
     fn from_str(ident: &str) -> Option<Self> {
         let matched = match ident.to_string().as_str() {
@@ -90,6 +95,7 @@ impl ReservedIdent for SysTypeName {
 
 impl SysTypeName {
     /// Create the associated generics for an intrinsic type
+    /// This is used because initially all the generics of the function delcaration in the db are empty.
     pub fn generics(&self) -> Generics {
         match self {
             Self::Boolean | Self::Integer | Self::Rational | Self::Text | Self::Error => {
@@ -126,27 +132,34 @@ impl SysTypeName {
 }
 
 /// A type name
+/// The three variants replicate a system defined type, a user defined type, and a generic type parameter
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum TypeName {
     Sys(SysTypeName),
-    Usr(UsrTypeName),
-    Param(TypeParamName),
+    Usr(UsrTypeName),     // UsrTypeName is wrapper of string (defined in name.rs).
+    Param(TypeParamName), // TypeParamName is wrapper of string (defined in name.rs).
 }
 
 impl TypeName {
     /// Try to convert an ident into a type name
     pub fn try_from(generics: &Generics, ident: &Ident) -> Result<Self> {
         let name = ident.to_string();
+        // see if it is a reserved type name (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error)
         let parsed = match SysTypeName::from_str(&name) {
+            // if it is not a reserved type name, we try to convert it to a type parameter
             None => {
-                // type parameters take priority over user-defined type names
+                // type parameters take priority over user-defined type names (this is a design choice made by the rust authors as well)
+                // ident.try_into()? validates the ident so that the ident is not a reserved name (it cannot be a SysTypeName at this point) but it can be other reserved names like SysTrait (SMT), SysFuncName (eq, ne) ...
+                // If it is a reserved name, an error is thrown.
                 let param_name = ident.try_into()?;
                 if generics.params.contains(&param_name) {
                     Self::Param(param_name)
                 } else {
+                    // if it is not a type parameter, we convert it to a user-defined type name
                     Self::Usr(ident.try_into()?)
                 }
             }
+            // if it is a reserved type name, we convert it to a SysTypeName
             Some(n) => Self::Sys(n),
         };
         Ok(parsed)
@@ -164,7 +177,7 @@ impl Display for TypeName {
 }
 
 /// A unique and complete reference to an SMT-related type
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum TypeTag {
     /// boolean
     Boolean,
@@ -184,16 +197,21 @@ pub enum TypeTag {
     Map(Box<TypeTag>, Box<TypeTag>),
     /// dynamic error type
     Error,
-    /// user-defined type
+    /// user-defined type with type arguments as a list
     User(UsrTypeName, Vec<TypeTag>),
     /// a tuple of types
     Pack(Vec<TypeTag>),
-    /// parameter
+    /// a type parameter
     Parameter(TypeParamName),
 }
 
 impl TypeTag {
     /// Convert from a type argument pack (in type path)
+    /// Returns a vector of TypeTags of the arguments
+    ///
+    /// Errors:
+    ///
+    /// If any of the generic arguments are not a type, like a lifetime or a const argument, an error is thrown.
     fn from_args<CTX: CtxtForType>(
         ctxt: &CTX,
         args: &Punctuated<GenericArgument, Token![,]>,
@@ -202,6 +220,7 @@ impl TypeTag {
         for arg in args {
             match arg {
                 GenericArgument::Type(ty) => {
+                    // first convert the type to TypeTag and then push it to the list
                     list.push(Self::from_type(ctxt, ty)?);
                 }
                 _ => bail_on!(arg, "invalid type argument"),
@@ -211,14 +230,18 @@ impl TypeTag {
     }
 
     /// Convert from a type argument pack (in type path)
+    ///
+    /// Errors:
+    ///
+    /// If there is a leading colon, an error is thrown.
     pub fn from_args_in_type_path<CTX: CtxtForType>(
         ctxt: &CTX,
         pack: &AngleBracketedGenericArguments,
     ) -> Result<Vec<Self>> {
         let AngleBracketedGenericArguments {
             colon2_token,
-            args,
             lt_token: _,
+            args,
             gt_token: _,
         } = pack;
         bail_if_exists!(colon2_token);
@@ -261,25 +284,37 @@ impl TypeTag {
         Ok((a1, a2))
     }
 
-    /// Convert from a path
+    /// Convert from a path to TypeTag
+    ///
+    /// Errors:
+    ///
+    /// If there is a leading colon, an error is thrown. For example, this is not allowed: ::std::collections::HashMap
+    /// If there is more or less than one segment, an error is thrown. For example, this is not allowed: std::collections::HashMap
     fn from_type_path<CTX: CtxtForType>(ctxt: &CTX, path: &Path) -> Result<Self> {
         let Path {
             leading_colon,
             segments,
         } = path;
+        // no leading colon allowed
         bail_if_exists!(leading_colon);
-
-        // in reverse order
-        let mut iter = segments.iter().rev();
+        // there must be exactly one segment
+        let mut iter = segments.iter();
         let segment = bail_if_missing!(iter.next(), path, "ident");
+        bail_if_exists!(iter.next());
+
+        // extract the ident and arguments
         let PathSegment { ident, arguments } = segment;
 
+        // try to convert the identifier of the path into a TypeName & ctxt.generics() is used to get the generics of the current type
+        // This checks if the type name is a reserved name (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error) or a user-defined name or a type parameter
         let tag = match TypeName::try_from(ctxt.generics(), ident)? {
             TypeName::Sys(intrinsic) => match (intrinsic, arguments) {
+                // a boolean, integer, rational, text, or error type cannot have any arguments
                 (SysTypeName::Boolean, PathArguments::None) => Self::Boolean,
                 (SysTypeName::Integer, PathArguments::None) => Self::Integer,
                 (SysTypeName::Rational, PathArguments::None) => Self::Rational,
                 (SysTypeName::Text, PathArguments::None) => Self::Text,
+                // a cloak, seq, set type must have exactly one argument
                 (SysTypeName::Cloak, PathArguments::AngleBracketed(pack)) => {
                     let sub = Self::from_args_expect_1(ctxt, pack)?;
                     Self::Cloak(sub.into())
@@ -292,6 +327,7 @@ impl TypeTag {
                     let sub = Self::from_args_expect_1(ctxt, pack)?;
                     Self::Set(sub.into())
                 }
+                // a map type must have exactly two arguments
                 (SysTypeName::Map, PathArguments::AngleBracketed(pack)) => {
                     let (key, val) = Self::from_args_expect_2(ctxt, pack)?;
                     Self::Map(key.into(), val.into())
@@ -299,57 +335,104 @@ impl TypeTag {
                 (SysTypeName::Error, PathArguments::None) => Self::Error,
                 _ => bail_on!(segment, "invalid type tag for intrinsic type"),
             },
+            // a user-defined type name
+            // ctxt.get_type_generics(&name) checks if the user-defined type name exists at all
+            // the way this happens is that the generics are checked for the type name in the WHOLE context
+            // because a user defined type is either an enum or a struct so they are stored in the context
+            // Note that any type needs to be annotated with #[smt_type] to be stored in the context
+            // (that is why the whole context needs to be passed on from TypeBody::from_marked - for the user-type definition check)
+            // and if it exists (even empty), the type name is valid
             TypeName::Usr(name) => match ctxt.get_type_generics(&name) {
-                None => bail_on!(ident, "no such type"),
+                None => bail_on!(ident, "no such type"), // if the type name does not exist, an error is thrown
                 Some(generics) => match generics.params.len() {
+                    // a defined type with no generics is a simple type
                     0 => {
+                        // obviously, if the defined type has no generics, it cannot have any arguments (like Vec<i32>)
                         if !matches!(arguments, PathArguments::None) {
                             bail_on!(arguments, "unexpected");
                         }
                         Self::User(name, vec![])
                     }
                     n => match arguments {
+                        // a defined type with generics must have the same number of arguments
+                        // for example, this is not allowed: MyType<i32, i32> where MyType is defined as MyType<T>
                         PathArguments::None => bail_on!(ident, "expect type arguments"),
                         PathArguments::AngleBracketed(pack) => {
+                            // convert the type arguments to TypeTag
                             let args = Self::from_args_in_type_path(ctxt, pack)?;
                             if args.len() != n {
                                 bail_on!(arguments, "type argument number mismatch");
                             }
                             Self::User(name, args)
                         }
-                        _ => bail_on!(arguments, "invalid type arguments"),
+                        // Parenthesized path arguments are not allowed
+                        // for example, this is not allowed: MyType(i32) as this doesn't show generic arguments!
+                        _ => bail_on!(arguments, "invalid parenthesized type arguments"),
                     },
                 },
             },
+            // a type parameter in TypeName is converted to a TypeTag::Parameter
             TypeName::Param(name) => Self::Parameter(name),
         };
-        bail_if_exists!(iter.next());
 
         Ok(tag)
     }
 
-    /// Convert from a type
+    /// Convert from a type to TypeTag
+    ///
+    /// Use cases:
+    ///
+    /// Used for fields of each of the variants of an enum for example
+    /// enum MyEnum {Variant(i32,String)} the i32, String part is processed by this function.
+    /// enum MyEnum {Variant {a: i32, b: i32}} the i32, i32 part is processed by this function.
+    ///
+    /// Also used for fields of a struct for example
+    /// struct MyStruct(i32, i32) the i32, i32 part is processed by this function.
+    /// struct MyStruct {a: i32, b: i32} the i32, i32 part is processed by this function.
+    ///
+    /// Process:
+    ///
+    /// A tuple is converted into TypeTag::Pack and a path is converted calling Self::from_type_path(ctxt, path)
+    ///
+    /// Errors:
+    ///
+    /// If the type is not a path or a tuple, an error is thrown. So only tuples and path types are allowed for fields of variants.
+    /// If the path has a qself, an error is thrown. For example, this is not allowed: <Vec<T> as SomeTrait>::Associated
     pub fn from_type<CTX: CtxtForType>(ctxt: &CTX, ty: &Type) -> Result<Self> {
         match ty {
+            // simple types
             Type::Path(TypePath { qself, path }) => {
+                // no qself allowed, for example this is not allowed: <Vec<T> as SomeTrait>::Associated
                 bail_if_exists!(qself.as_ref().map(|q| q.ty.as_ref()));
                 Self::from_type_path(ctxt, path)
             }
+            // tuple types (TypeTuple has been renamed to TypePack because an already defined TypeTuple struct exists in the current scope)
             Type::Tuple(TypePack {
                 paren_token: _,
                 elems,
             }) => {
                 let mut pack = vec![];
                 for elem in elems {
+                    // recursively convert each element of the tuple to TypeTag
                     pack.push(Self::from_type(ctxt, elem)?);
                 }
+                // a tuple is represented as a pack of types
                 Ok(Self::Pack(pack))
             }
+            // no other types are allowed except for paths and tuples
             _ => bail_on!(ty, "expect type path or tuple"),
         }
     }
 
     /// Convert a series of generic arguments
+    ///
+    /// Errors:
+    ///
+    /// If the generic arguments are not a type, an error is thrown.
+    /// If the arguments are empty, an error is thrown.
+    /// If the colon2_token is missing, an error is thrown.
+    ///
+    /// This function is used when calling a function with generic arguments. like: MyType::<i32, i32>
     pub fn from_generics<CTX: CtxtForType>(
         ctxt: &CTX,
         generics: &AngleBracketedGenericArguments,
@@ -404,6 +487,10 @@ impl TypeTag {
     }
 
     /// Collect type parameters involved in this type tag
+    ///
+    /// This function is used to collect all the type parameters used for the first parameter of a user-defined function.
+    /// After doing so, we filter out these type parameters from the generics of the function.
+    /// Th rest are used to declare a method implementation for the type of the first parameter.
     pub fn type_params_used(&self) -> BTreeSet<TypeParamName> {
         let mut params = BTreeSet::new();
         self.type_params_used_recursive(&mut params);
@@ -438,19 +525,31 @@ impl Display for TypeTag {
     }
 }
 
+#[derive(Debug)]
 /// Represents a tuple definition
+/// TypeTuple encapsulates a list of types
+/// ADT for a struct with unnamed fields or an enum variant with unnamed fields
 pub struct TypeTuple {
     pub slots: Vec<TypeTag>,
 }
 
 impl TypeTuple {
-    /// Convert from a list of fields
+    /// Convert from a fields token
+    /// This is used to parse the fields of a tuple struct or each of the variants of an enum
+    /// for example in enum MyEnum {Variant(i32,String)}, the i32, String part is processed by this function.
+    /// or in struct MyStruct(i32, i32), the i32, i32 part is processed by this function.
+    ///
+    /// Errors:
+    ///
+    /// An error is thrown, if the variant field is mutable (never happens).
+    /// If there exists identifiers, an error is thrown.
     fn from_fields<'a, I: Iterator<Item = &'a Field>, CTX: CtxtForType>(
         ctxt: &CTX,
         items: I,
     ) -> Result<Self> {
         let mut slots = vec![];
 
+        // for each of the fields, TypeTag::from_type(ctxt, ty)? generates the tag from the type and inserts it into the slot.
         for field in items {
             let Field {
                 attrs: _,
@@ -461,13 +560,16 @@ impl TypeTuple {
                 ty,
             } = field;
 
+            // this will never happen *for now* as FieldMutability is always None
             if !matches!(mutability, FieldMutability::None) {
                 bail_on!(field, "unexpected slot mutability");
             }
+
+            // if the slot has a name, an error is returned
             bail_if_exists!(ident);
             bail_if_exists!(colon_token);
 
-            let tag = TypeTag::from_type(ctxt, ty)?;
+            let tag = TypeTag::from_type(ctxt, ty)?; // convert the type to TypeTag
             slots.push(tag);
         }
 
@@ -481,19 +583,32 @@ impl Display for TypeTuple {
     }
 }
 
+#[derive(Debug)]
 /// Represents a record definition
+/// TypeRecord encapsulates a map between the field names and their respective types
+/// ADT for a struct with named fields or an enum variant with named fields
 pub struct TypeRecord {
     pub fields: BTreeMap<String, TypeTag>,
 }
 
 impl TypeRecord {
     /// Convert from a fields token
+    /// This is used to parse the fields of a struct or each of the variants of an enum
+    /// for example in enum MyEnum {Variant {a: i32, b: i32}}, the a: i32, b: i32 part is processed by this function.
+    /// or in struct MyStruct {a: i32, b: i32}, the a: i32, b: i32 part is processed by this function.
+    ///
+    /// Errors:
+    ///
+    /// An error is thrown, if the variant field is mutable (never happens).
+    /// If there are no identifiers, an error is thrown.
+    /// if there are duplicate names, an error is thrown. for example: enum MyEnum {Variant {a: i32, a: i32}}
     fn from_fields<'b, I: Iterator<Item = &'b Field>, CTX: CtxtForType>(
         ctxt: &CTX,
         items: I,
     ) -> Result<Self> {
         let mut fields = BTreeMap::new();
 
+        // for each of the fields, TypeTag::from_type(ctxt, ty)? generates the tag from the type. It is paired with the name and inserted into the map.
         for field in items {
             let Field {
                 attrs: _,
@@ -504,13 +619,18 @@ impl TypeRecord {
                 ty,
             } = field;
 
+            // this will never happen *for now* as FieldMutability is always None
             if !matches!(mutability, FieldMutability::None) {
                 bail_on!(field, "unexpected field mutability");
             }
+
+            // if the field has no name, an error is returned
             let name = bail_if_missing!(ident, field, "name");
+            // if the field has no colon, an error is returned
             bail_if_missing!(colon_token, field, "colon");
 
             let tag = TypeTag::from_type(ctxt, ty)?;
+            // if the field name already exists, an error is returned (caught by the rust compiler)
             match fields.insert(name.to_string(), tag) {
                 None => (),
                 Some(_) => bail_on!(ident, "duplicated field name"),
@@ -533,7 +653,13 @@ impl Display for TypeRecord {
     }
 }
 
+#[derive(Debug)]
 /// A helper enum to represent a variant definition in an ADT type
+/// ADT for an enum variant
+/// - Unit: no fields like Variant1
+/// - Tuple: unnamed fields like Variant2(i32)
+/// - Record: named fields like Variant3 {sub_variant:i32}
+/// These three variations are exactly similar for an empty struct, tuple struct, and record struct respectively.
 pub enum EnumVariant {
     Unit,
     Tuple(TypeTuple),
@@ -541,18 +667,21 @@ pub enum EnumVariant {
 }
 
 impl EnumVariant {
-    /// Convert from fields token
+    /// Convert a struct or each of the variants of an enum to EnumVariant.
+    /// Depending on whether the field is a unit, unnamed, or named, the EnumVariant for that variant is built for unit, tuple, or record, respectively.
     fn from_fields<CTX: CtxtForType>(ctxt: &CTX, fields: &Fields) -> Result<Self> {
         let variant = match fields {
-            Fields::Unit => Self::Unit,
+            Fields::Unit => Self::Unit, // the field is Variant1 for example
             Fields::Named(FieldsNamed {
+                // the field is Variant2 {sub_variant:i32} for example
                 brace_token: _,
                 named,
-            }) => Self::Record(TypeRecord::from_fields(ctxt, named.iter())?),
+            }) => Self::Record(TypeRecord::from_fields(ctxt, named.iter())?), // construct the TypeRecord
             Fields::Unnamed(FieldsUnnamed {
+                // the field is Variant3(i32) for example
                 paren_token: _,
                 unnamed,
-            }) => Self::Tuple(TypeTuple::from_fields(ctxt, unnamed.iter())?),
+            }) => Self::Tuple(TypeTuple::from_fields(ctxt, unnamed.iter())?), // construct the TypeTuple
         };
         Ok(variant)
     }
@@ -568,19 +697,30 @@ impl Display for EnumVariant {
     }
 }
 
+#[derive(Debug)]
 /// Represents an ADT definition
+/// TypeEnum encapsulates a map between the variant names and their respective EnumVariant (structure)
 pub struct TypeEnum {
     pub variants: BTreeMap<String, EnumVariant>,
 }
 
 impl TypeEnum {
     /// Convert from a list of variants
+    ///
+    /// Errors:
+    ///
+    /// If any of the variants have a discriminant, an error is thrown.
+    /// If there are duplicate variant names, an error is thrown.
+    /// If any of the variants are a tuple with no slots, an error is thrown. Like enum MyEnum {A ()}
+    /// If any of the variants are a record with no fields, an error is thrown. Like enum MyEnum {A {}}
+    // ctxt also be TypeParseCtxt instead of a type parameter which implements CtxtForType.
     fn from_variants<'a, I: Iterator<Item = &'a Variant>, CTX: CtxtForType>(
         ctxt: &CTX,
         items: I,
     ) -> Result<Self> {
         let mut variants = BTreeMap::new();
 
+        // for each of the variants, EnumVariant::from_fields(ctxt, fields)? generates the EnumVariant from the fields.
         for variant in items {
             let Variant {
                 attrs: _,
@@ -589,15 +729,21 @@ impl TypeEnum {
                 discriminant,
             } = variant;
 
+            // if there is a discriminant, an error is returned
             bail_if_exists!(discriminant.as_ref().map(|(_, e)| e));
+
+            // for each variant, the EnumVariant is constructed.
             let branch = EnumVariant::from_fields(ctxt, fields)?;
 
             // check variant consistency
             match &branch {
-                EnumVariant::Unit => (),
-                EnumVariant::Tuple(tuple) => bail_if_empty!(tuple.slots, variant, "slots"),
-                EnumVariant::Record(record) => bail_if_empty!(record.fields, variant, "fields"),
+                EnumVariant::Unit => (), // inside an enum, a unit variant is allowed but a unit struct is not allowed
+                EnumVariant::Tuple(tuple) => bail_if_empty!(tuple.slots, variant, "slots"), // this will throw an error for: pub enum MyEnum { A() } becuase A is a tuple variant with no slots
+                EnumVariant::Record(record) => bail_if_empty!(record.fields, variant, "fields"), // this will throw an error for: pub enum MyEnum { A {} } becuase A is a record variant with no fields
             }
+
+            // insert the variant
+            // if the variant name already exists, an error is returned
             match variants.insert(ident.to_string(), branch) {
                 None => (),
                 Some(_) => bail_on!(ident, "duplicated variant name"),
@@ -615,12 +761,16 @@ impl Display for TypeEnum {
             "[{}]",
             self.variants
                 .iter()
-                .format_with("\n", |(n, t), p| p(&format_args!("{}{}", n, t))),
+                .format_with("\n", |(n, t), p| p(&format_args!("{}:{}", n, t))),
         )
     }
 }
 
+#[derive(Debug)]
 /// The body part of a type definition
+/// A type definition is either an enum or a struct
+/// enums are represented by TypeBody::Enum(TypeEnum)
+/// structs are represented by TypeBody::Tuple(TypeTuple) or TypeBody::Record(TypeRecord)
 pub enum TypeBody {
     Tuple(TypeTuple),
     Record(TypeRecord),
@@ -628,16 +778,29 @@ pub enum TypeBody {
 }
 
 impl TypeBody {
-    /// Convert from a marked type
+    /// Convert from a MarkedType (marked type) to a TypeBody (type body)
+    ///
+    /// Errors:
+    ///
+    /// if marked type is an Enum(ItemEnum), an error will be thrown if no variants exist. enum MyEnum {}
+    /// if marked type is a Struct(ItemStruct) - record struct - , an error will be thrown if no fields exist. struct MyStruct {}
+    /// if marked type is a Struct(ItemStruct) - tuple struct - , an error will be thrown if no slots exist. struct MyStruct();
+    /// in case of tuple struct, an error will be thrown if a semicolon is missing at the end. struct MyStruct(i32)
+    /// in case of record struct, an error will be thrown if a semicolon exists at the end. struct MyStruct {a:i32};
+    /// a unit struct is not allowed. struct MyStruct;
     pub fn from_marked(
         driver: &ContextWithGenerics,
         generics: &Generics,
         item: &MarkedType,
     ) -> Result<Self> {
+        // we encapsulate the `context with generics` and the `generics` themselves
+        // A context provider for type parsing
         let ctxt = TypeParseCtxt {
-            ctxt: driver,
-            generics,
+            ctxt: driver, // the whole context containing all the types
+            generics,     // generics of the current type
         };
+
+        // depending on the item type (enum or struct) we have different parsing strategies
         let parsed = match item {
             MarkedType::Enum(item) => {
                 let ItemEnum {
@@ -645,36 +808,45 @@ impl TypeBody {
                     vis: _,
                     enum_token: _,
                     ident: _,    // handled earlier
-                    generics: _, // handled earlier
+                    generics: _, // handled earlier (when the conversion from Context to ContextWithGenerics happened in parse_generics)
                     brace_token: _,
                     variants,
                 } = item;
-                bail_if_empty!(variants, item, "variants");
+                bail_if_empty!(variants, item, "variants"); // expect at least one variant so enum MyEnum {} is not allowed
 
-                // build from variants
+                // converts MarkedType::Enum(ItemEnum) to TypeBody::Enum(TypeEnum)
+                // TypeBody::Enum is the same as MarkedType::Enum but the latter is a wrapper for the syn enum type and the former is a wrapper for the TypeEnum.
+                // So the syn enum type is converted into TypeEnum. The TypeEnum inside is built by the TypeEnum::from_variants function.
+                // A TypeEnum is a wrapper of a map between the variant names and EnumVariant.
+                // so it encapsulates the list of all variants of the enum.
                 Self::Enum(TypeEnum::from_variants(&ctxt, variants.iter())?)
             }
+            // only handles the fields of the struct
             MarkedType::Struct(item) => {
                 let ItemStruct {
                     attrs: _,
                     vis: _,
                     struct_token: _,
                     ident: _,    // handled earlier
-                    generics: _, // handled earlier
+                    generics: _, // handled earlier (when the conversion from Context to ContextWithGenerics happened in parse_generics)
                     fields,
                     semi_token,
                 } = item;
 
                 // exploit the similarity with ADT variant
                 match EnumVariant::from_fields(&ctxt, fields)? {
-                    EnumVariant::Unit => bail_on!(item, "expect fields or slots"),
+                    EnumVariant::Unit => bail_on!(item, "expect fields or slots"), // a unit struct is not allowed so struct MyStruct; is not allowed
                     EnumVariant::Tuple(tuple) => {
+                        // a tuple struct must have at least one slot so struct MyStruct() is not allowed
                         bail_if_empty!(tuple.slots, item, "slots");
+                        // a tuple struct must have a semicolon at the end (like struct MyStruct(i32);) - this will never happen because it is caught by the rust compiler
                         bail_if_missing!(semi_token, item, "expect ; at the end");
                         Self::Tuple(tuple)
                     }
                     EnumVariant::Record(record) => {
+                        // a record struct must have at least one field so struct MyStruct{} is not allowed
                         bail_if_empty!(record.fields, item, "fields");
+                        // a record struct must not have a semicolon at the end (like struct MyStruct {a:i32}) - this will never happen because it is caught by the rust compiler
                         bail_if_exists!(semi_token);
                         Self::Record(record)
                     }
@@ -695,6 +867,7 @@ impl Display for TypeBody {
     }
 }
 
+#[derive(Debug)]
 /// A complete definition of a type (generics + body)
 pub struct TypeDef {
     pub head: Generics,

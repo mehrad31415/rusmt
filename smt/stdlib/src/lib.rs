@@ -1,12 +1,11 @@
 //! stdlib
-//! 
+//!
 //! This is Rusmart standard library (stdlib) that contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT.
-//! 
+//!
 //! The library crate contains the following modules:
-//! 
+//!
 //! * dt - SMT-related data types
 //! * exp - SMT-related expressions
-
 
 /// SMT-related data types
 mod dt;

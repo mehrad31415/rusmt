@@ -61,6 +61,7 @@ impl ReservedIdent for SysMacroName {
 /// AST node representing a variable declaration in an iterative quantifier.
 ///
 /// For example, in `x in xs`, `ident` would be `x`, and `collection` would be `xs`.
+/// This is only used to define the variable declarations in the IterQuant struct.
 struct IterVar {
     /// The identifier of the variable.
     ident: Ident,
@@ -86,6 +87,7 @@ impl Parse for IterVar {
 /// AST node representing an iterative quantifier.
 ///
 /// For example, `x in xs, y in ys => body`.
+/// This is only used to define the AST of the iterated quantifier in the Quantifier enum.
 struct IterQuant {
     /// The list of variable declarations delimited by commas.
     vars: Punctuated<IterVar, Token![,]>,
@@ -155,6 +157,8 @@ impl Quantifier {
     /// # Returns
     ///
     /// Returns a `Quantifier` if parsing succeeds, or a `syn::Error` otherwise.
+    ///
+    /// This function is used in parsing an expression macro in the `convert_expr` function of the `expr` module.
     pub fn parse<T: CtxtForExpr>(ctxt: &T, expr: &ExprMacro) -> Result<Self> {
         // Destructure the macro expression to extract the macro path, delimiter, and tokens
         let ExprMacro {
@@ -234,7 +238,7 @@ impl Quantifier {
                             }
 
                             // Resolve the type tag from the type
-                            let ty = TypeTag::from_type(ctxt, &ty)?; //? what does this do?
+                            let ty = TypeTag::from_type(ctxt, &ty)?; // convert the type to TypeTag abstract syntax tree
                             param_decls.push((name, ty));
                         }
                         _ => bail_on!(param, "invalid quantifier variable declaration"),
@@ -277,7 +281,7 @@ impl Quantifier {
                     } = var;
 
                     // Convert the identifier to a variable name
-                    // this returns an error if the identifier is a reserved keyword.
+                    // this returns an error if the identifier is a reserved keyword or an underscore.
                     let name: VarName = (&ident).try_into()?;
 
                     // Check for conflicting variable names
@@ -337,7 +341,7 @@ mod tests {
 
         let IterQuant {
             vars,
-            _imply_token:_,
+            _imply_token: _,
             body,
         } = par;
 

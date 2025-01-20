@@ -174,18 +174,18 @@ mod tests {
         env::set_var("VERBOSE", "1");
 
         // Because INITIALIZED is set to false, this assertion should pass
-        assert_eq!(INITIALIZED.load(Ordering::SeqCst), false);
+        assert!(!INITIALIZED.load(Ordering::SeqCst));
 
         // Call initialize and assert the expected outcome
         initialize();
 
         // Assert that INITIALIZED is now true, meaning that the initialization process has been completed
-        assert_eq!(INITIALIZED.load(Ordering::SeqCst), true);
+        assert!(INITIALIZED.load(Ordering::SeqCst));
 
         initialize();
 
         // Assert that INITIALIZED is still true
-        assert_eq!(INITIALIZED.load(Ordering::SeqCst), true);
+        assert!(INITIALIZED.load(Ordering::SeqCst));
 
         // Assert that the logging level is set to Info
         // Note that other paths cannot be tested because the MODE is a lazy static variable and is defined inside a proc macro

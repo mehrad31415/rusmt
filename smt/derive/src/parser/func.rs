@@ -142,7 +142,7 @@ impl Display for ReservedFuncName {
 /// - A system function (`Sys`), such as `eq` or `ne`.
 /// - A user-defined function (`Usr`).
 /// - A reserved function (`Reserved`), such as `clone` or `default`.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum FuncName {
     /// A casting function name.
     Cast(CastFuncName),
@@ -176,7 +176,7 @@ impl FuncName {
                 Some(n) => Self::Cast(n),
                 None => match SysFuncName::from_str(&name) {
                     Some(n) => Self::Sys(n),
-                    None => Self::Usr(ident.try_into()?), // returns an error if ident is a reserved keyword. Invokes method `fn try_from(value: &Ident) -> Result<Self> { validate_user_ident(value).map(|ident| Self { ident }) } from the name module`
+                    None => Self::Usr(ident.try_into()?), // returns an error if ident is a reserved keyword or an underscore. Invokes method `fn try_from(value: &Ident) -> Result<Self> { validate_user_ident(value).map(|ident| Self { ident }) } from the name module`
                 },
             },
         };
@@ -201,12 +201,12 @@ impl Display for FuncName {
 /// This struct provides context information needed when parsing function signatures,
 /// such as generics and type information.
 struct FuncSigParseCtxt<'a> {
-    ctxt: &'a ContextWithType,
-    generics: &'a Generics,
+    ctxt: &'a ContextWithType, // this field is used to check if a user defined type is present in the ctxt when calling get_type_generics which will give None if the type is not present
+    generics: &'a Generics, // this field is to check if a type is a type parameter (and if it is not, possibly a user defined type)
 }
 
 impl CtxtForType for FuncSigParseCtxt<'_> {
-    /// Returns the generics associated with the context.
+    /// Returns the generics associated with the type.
     fn generics(&self) -> &Generics {
         self.generics
     }
@@ -216,6 +216,7 @@ impl CtxtForType for FuncSigParseCtxt<'_> {
     }
 }
 
+#[derive(Debug, Clone)]
 /// Represents a function signature.
 ///
 /// This struct contains information about a function's signature, including its
@@ -224,13 +225,14 @@ pub struct FuncSig {
     /// The generics associated with the function.
     pub generics: Generics,
     /// The parameters of the function, each with a name and type.
-    pub params: Vec<(VarName, TypeTag)>,
+    pub params: Vec<(VarName, TypeTag)>, // the reason Vec was used not BtreeMap is because the order of the parameters is important
     /// The return type of the function.
     pub ret_ty: TypeTag,
 }
 
 impl FuncSig {
     /// Constructs a `FuncSig` from a `syn::Signature`.
+    /// Used to create ADT from the signature of a function.
     ///
     /// This method parses a function signature from the syntax tree and extracts
     /// the generics, parameters, and return type.
@@ -252,6 +254,7 @@ impl FuncSig {
     /// - The function has a `self` parameter.
     /// - The function has duplicated parameter names.
     /// - The function lacks a return type.
+    /// - The return type can only be a tuple or a path otherwise an error is thrown.
     pub fn from_sig(driver: &ContextWithType, sig: &Signature) -> Result<Self> {
         let Signature {
             constness,
@@ -277,7 +280,7 @@ impl FuncSig {
         // Parse generics
         let generics = Generics::from_generics(generics)?;
         let ctxt = FuncSigParseCtxt {
-            ctxt: driver,
+            ctxt: driver, // the ctxt is needed because when converting a type to TypeTag, it checks for any user defined types and that can only be checked through the typs fields in the ctxt.
             generics: &generics,
         };
 
@@ -295,6 +298,8 @@ impl FuncSig {
                         ty,
                     } = typed;
                     // Parse parameter name
+                    // if the pat is mutable, reference, has a sub-pattern, is a reserved keyword or underscore, return an error
+                    // otherwise, convert the pattern into a variable name
                     let name: VarName = pat.as_ref().try_into()?;
                     // Check for duplicated parameter names
                     if !param_names.insert(name.clone()) {
@@ -310,13 +315,13 @@ impl FuncSig {
         // Parse return type
         let ret_ty = match output {
             ReturnType::Default => bail_on!(sig, "expect return type"),
-            ReturnType::Type(_, rty) => TypeTag::from_type(&ctxt, rty)?,
+            ReturnType::Type(_, rty) => TypeTag::from_type(&ctxt, rty)?, // construct the TypeTag from the return type
         };
 
         // Construct and return the `FuncSig`
         Ok(Self {
             generics,
-            params: param_decls,
+            params: param_decls, // holds the parameters input and their respective types
             ret_ty,
         })
     }
@@ -324,11 +329,19 @@ impl FuncSig {
     /// Collects variables declared in the parameter list into a map.
     ///
     /// Returns a `BTreeMap` mapping each parameter name to its type.
+    /// Basically converts a Vec<(VarName, TypeTag)> into a BTreeMap<VarName, TypeTag>
     pub fn param_map(&self) -> BTreeMap<VarName, TypeTag> {
-        self.params
+        let param: BTreeMap<VarName, TypeTag> = self
+            .params
             .iter()
             .map(|(name, ty)| (name.clone(), ty.clone()))
-            .collect()
+            .collect();
+
+        if param.len() != self.params.len() {
+            panic!("duplicated parameter name");
+        }
+
+        param
     }
 
     /// Tests whether two function signatures are type-compatible.
@@ -342,6 +355,8 @@ impl FuncSig {
     /// # Returns
     ///
     /// `true` if the signatures are compatible, `false` otherwise.
+    ///
+    /// This function is used in ctxt.rs to check that the implementation and the corresponding specification have compatible function signatures.
     pub fn is_compatible(&self, sig: &FuncSig) -> bool {
         // if the length of the type parameter lists are different, they are not compatible
         if self.generics.params.len() != sig.generics.params.len() {
@@ -353,14 +368,12 @@ impl FuncSig {
         self_generics.sort();
         sig_generics.sort();
 
-        let gens: BTreeMap<TypeParamName, TypeParamName> = self_generics
-            .into_iter()
-            .zip(sig_generics.into_iter())
-            .collect();
+        let gens: BTreeMap<TypeParamName, TypeParamName> =
+            self_generics.into_iter().zip(sig_generics).collect();
 
         // Compare parameter types
         let lhs_params: Vec<TypeTag> = self.params.clone().into_iter().map(|(_, t)| t).collect();
-        let lhs_params = unify(lhs_params, &gens).unwrap();
+        let lhs_params = unify(lhs_params, &gens).expect("unification failed in params");
         let rhs_params: BTreeSet<TypeTag> =
             sig.params.clone().into_iter().map(|(_, t)| t).collect();
         if lhs_params != rhs_params {
@@ -370,7 +383,7 @@ impl FuncSig {
         // Compare return types
         let ret_ty = vec![self.ret_ty.clone()];
         let ret_ty = unify(ret_ty, &gens)
-            .unwrap()
+            .expect("unification failed in return type")
             .first()
             .expect("function must have a return type")
             .clone();
@@ -391,8 +404,8 @@ impl FuncSig {
 ///
 /// # Errors
 ///
-/// The function will return an error using the `bail_on!` macro if a `TypeTag::Parameter` is found in `params` but is not defined in the `gens` map (an unbound type parameter).
-/// 
+/// Returns an error using the `bail_on!` macro if a `TypeTag::Parameter` is found in `params` but is not defined in the `gens` map (an unbound type parameter).
+///
 /// # Recursive Unification
 ///
 /// The function handles nested types (like `Cloak`, `Seq`, `Set`, `Map`, `User`, and `Pack`) by calling `unify` recursively for the inner type(s). It ensures that all nested type parameters are also unified.
@@ -418,7 +431,7 @@ fn unify(
             TypeTag::Cloak(t) => {
                 res.insert(TypeTag::Cloak(Box::new(
                     unify(vec![*t.clone()], gens)
-                        .unwrap()
+                        .expect("unification failed in cloak")
                         .into_iter()
                         .next()
                         .unwrap(),
@@ -428,7 +441,7 @@ fn unify(
             TypeTag::Seq(t) => {
                 res.insert(TypeTag::Seq(Box::new(
                     unify(vec![*t.clone()], gens)
-                        .unwrap()
+                        .expect("unification failed in seq")
                         .into_iter()
                         .next()
                         .unwrap(),
@@ -438,7 +451,7 @@ fn unify(
             TypeTag::Set(t) => {
                 res.insert(TypeTag::Set(Box::new(
                     unify(vec![*t.clone()], gens)
-                        .unwrap()
+                        .expect("unification failed in set")
                         .into_iter()
                         .next()
                         .unwrap(),
@@ -449,14 +462,14 @@ fn unify(
                 res.insert(TypeTag::Map(
                     Box::new(
                         unify(vec![*k.clone()], gens)
-                            .unwrap()
+                            .expect("unification failed in map")
                             .into_iter()
                             .next()
                             .unwrap(),
                     ),
                     Box::new(
                         unify(vec![*v.clone()], gens)
-                            .unwrap()
+                            .expect("unification failed in map")
                             .into_iter()
                             .next()
                             .unwrap(),
@@ -469,7 +482,7 @@ fn unify(
                 for arg in args {
                     new_args.push(
                         unify(vec![arg.clone()], gens)
-                            .unwrap()
+                            .expect("unification failed in user type")
                             .into_iter()
                             .next()
                             .unwrap(),
@@ -483,7 +496,7 @@ fn unify(
                 for arg in t {
                     new_args.push(
                         unify(vec![arg.clone()], gens)
-                            .unwrap()
+                            .expect("unification failed in pack tuple")
                             .into_iter()
                             .next()
                             .unwrap(),
@@ -497,7 +510,7 @@ fn unify(
             }
         }
     }
-    
+
     // done
     Ok(res)
 }
@@ -505,7 +518,7 @@ fn unify(
 /// Function definition for implementation.
 ///
 /// This struct represents a function definition in an implementation block,
-/// containing the function signature and the function body.
+/// containing the function signature and the function body as an expression.
 pub struct ImplFuncDef {
     /// The function signature.
     pub head: FuncSig,
@@ -516,11 +529,11 @@ pub struct ImplFuncDef {
 /// Function definition for specification.
 ///
 /// This struct represents a function definition in a specification block,
-/// containing the function signature and an optional function body (a function may be declared without a body).
+/// containing the function signature and an optional function body.
 pub struct SpecFuncDef {
     /// The function signature.
     pub head: FuncSig,
-    /// An optional function body as an expression.
+    /// An optional function body as an expression. `None` is for uninterpreted functions.
     pub body: Option<Expr>,
 }
 
@@ -535,6 +548,7 @@ pub struct FuncDef {
     pub body: Option<Expr>,
 }
 
+// conversion from ImplFuncDef to FuncDef
 impl From<ImplFuncDef> for FuncDef {
     /// Converts an `ImplFuncDef` into a `FuncDef`.
     fn from(def: ImplFuncDef) -> Self {
@@ -546,6 +560,7 @@ impl From<ImplFuncDef> for FuncDef {
     }
 }
 
+// conversion from SpecFuncDef to FuncDef
 impl From<SpecFuncDef> for FuncDef {
     /// Converts a `SpecFuncDef` into a `FuncDef`.
     fn from(def: SpecFuncDef) -> Self {
@@ -556,9 +571,7 @@ impl From<SpecFuncDef> for FuncDef {
 
 /// Function definition for an axiom.
 ///
-/// This struct represents an axiom, which is a function with a body that is considered
-/// to be always true.
-///
+/// This struct represents an axiom, which is a function with a body.
 /// The body of an axiom is an expression that represents the axiom's assertion.
 pub struct Axiom {
     /// The function signature.
@@ -583,17 +596,17 @@ impl Axiom {
     ///
     /// # Errors
     ///
-    /// This method returns an error if the macro invocation does not have the expected format.
+    /// This method returns an error if the macro invocation unimplemented!() is not used correctly (with arguments or different delimiters).
     pub fn is_unimplemented(stmts: &[Stmt]) -> Result<bool> {
-        // The function body should contain exactly one statement
+        // If the function body contains more (or less) than one statement, it is not `unimplemented!()`
         if stmts.len() != 1 {
             return Ok(false);
         }
 
         // Check if the statement is an expression macro (e.g., `unimplemented!()`)
         let mac = match stmts.first().unwrap() {
-            Stmt::Expr(Exp::Macro(ExprMacro { attrs: _, mac }), None) => mac,
-            _ => return Ok(false),
+            Stmt::Expr(Exp::Macro(ExprMacro { attrs: _, mac }), _) => mac, // extract the macro from the expression
+            _ => return Ok(false), // if the statement is not an expression macro, it is for sure not `unimplemented!()`
         };
 
         let Macro {
@@ -603,12 +616,12 @@ impl Axiom {
             tokens,
         } = mac;
 
-        // Check if the macro is `unimplemented`
+        // Checks if the path is an ident (only has one segment, no arguments, no leading colon) and whether it is `unimplemented`
         if !path.is_ident("unimplemented") {
             return Ok(false);
         }
 
-        // More rigorous checking of the macro syntax
+        // sanity check: the delimiter must be parentheses & no tokens are allowed
         if !matches!(delimiter, MacroDelimiter::Paren(_)) {
             bail_on!(mac, "invalid delimiter");
         }

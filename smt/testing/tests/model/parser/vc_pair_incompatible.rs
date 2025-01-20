@@ -10,3 +10,20 @@ fn impl_foo(a: Integer, b: Integer) -> Boolean {
 fn spec_foo(a: Rational, b: Rational) -> Boolean {
     a.eq(b)
 }
+
+/*
+#[smt_impl(spec=spec_add_one)]
+fn add_one(a:Integer) -> Integer {
+    a+1
+}
+
+#[smt_spec]
+fn spec_add_one(a: Integer) {
+    unimplemented!()
+}
+
+#[smt_axiom]
+fn spec_add_one_axiom(a: Integer) -> Boolean {
+  spec_add_one(a) == a + 1
+}
+*/

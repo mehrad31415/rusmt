@@ -104,8 +104,8 @@ impl Dependency for DepZ3 {
 mod tests {
     use super::*;
     use crate::git::GitRepo;
-    use std::path::PathBuf;
     use rusmart_utils::config::WKS;
+    use std::path::PathBuf;
 
     #[test]
     // testing the repo_path_from_root function for the DepZ3 type.
@@ -146,7 +146,8 @@ mod tests {
         // dst is empty but in src, the z3 is cloned and checked out.
         let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         base = base.join("tmp");
-        let artifact = Artifact::init(&mut git_repo, base.clone()).expect("could not initialize artifact");
+        let artifact =
+            Artifact::init(&mut git_repo, base.clone()).expect("could not initialize artifact");
 
         (base, artifact)
     }

@@ -118,7 +118,7 @@ impl TypeParamGroup {
                                 bail_on!(modifier, "invalid modifier");
                             }
                             bail_if_exists!(lifetimes); // Lifetimes are not expected for example for<'a> Foo<&'a T> Higher ranked trait bounds are not expected
-                            // HRTB are the same as lifetimes but they mean that the trait is generic over all lifetimes 'a but if we wrote Foo<&'a T> it would mean that the trait is generic over a specific lifetime 'a
+                                                        // HRTB are the same as lifetimes but they mean that the trait is generic over all lifetimes 'a but if we wrote Foo<&'a T> it would mean that the trait is generic over a specific lifetime 'a
                             bail_if_exists!(leading_colon); // Leading colon is not expected for example T: ::std
 
                             // Check the path segments
@@ -351,8 +351,8 @@ fn collect_type_arguments_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use syn::{parse_quote, Generics, Type};
     use syn::punctuated::Punctuated;
+    use syn::{parse_quote, Generics, Type};
 
     #[test]
     fn test_parse_generics_params_empty_bail() {
@@ -894,7 +894,7 @@ mod tests {
         let group = TypeParamGroup {
             params: vec![parse_quote!(T), parse_quote!(U)],
         };
-        // let ty: Type = parse_quote!(myString(T)); //? this does not get parsed as a type 
+        // let ty: Type = parse_quote!(myString(T)); //? this does not get parsed as a type
         let ty: Type = Type::Path(TypePath {
             qself: None,
             path: Path {
@@ -904,7 +904,7 @@ mod tests {
                     ident: parse_quote!(myString),
                     arguments: PathArguments::Parenthesized(parse_quote!((T))),
                 }]),
-            }
+            },
         });
         let result = group.collect_type_arguments(&ty);
         assert!(result.is_err());

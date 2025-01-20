@@ -167,7 +167,7 @@ impl Mark {
                         if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
                         {
                             sub_cursor = sub_iter.next();
-                        } else if !sub_cursor.is_none() {
+                        } else if sub_cursor.is_some() {
                             // Return an error if a comma is missing between items
                             bail_on!(sub_cursor, "expect comma between items");
                         }
@@ -186,7 +186,7 @@ impl Mark {
             // Skip commas between key-value pairs
             if matches!(cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',') {
                 cursor = iter.next();
-            } else if !cursor.is_none() {
+            } else if cursor.is_some() {
                 // Return an error if a comma is missing between key-value pairs
                 bail_on!(cursor, "expect comma between key-value pairs");
             }

@@ -976,7 +976,7 @@ impl<'ctx> ExprParserRoot<'ctx> {
         );
 
         match result {
-            Ok(()) => return Ok(parsed),
+            Ok(()) => Ok(parsed),
             Err(e) => bail_on!(stmts.last().expect("at least one statement"), "{}", e), // this will be invoked when the type is incomplete
         }
     }

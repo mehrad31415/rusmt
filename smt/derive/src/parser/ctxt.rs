@@ -581,7 +581,7 @@ impl ContextWithType {
 
         for (name, (sig, raw)) in sig_impls.iter() {
             // this will never throw an error and the `expect` is only to unwrap the MarkedImpl
-            let mark = &self.impls.get(&name).expect("impl").mark;
+            let mark = &self.impls.get(name).expect("impl").mark;
             // check signature
             for spec_name in &mark.specs {
                 // a spec used in the list of impl must be defined.
@@ -1005,7 +1005,7 @@ impl ASTContext {
                 }
                 related
                     .entry(key.clone())
-                    .or_insert_with(BTreeSet::new)
+                    .or_default()
                     .insert(Monomorphization { args: axiom_inst });
             }
         }

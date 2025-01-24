@@ -1,8 +1,7 @@
 //! Module for parsing quantifiers in the macro system.
 //!
 //! This module defines the AST structures and parsing logic for quantifiers
-//! such as `exists`, `forall`, and `choose`. It supports both typed quantifiers
-//! using closure syntax and iterated quantifiers using foreach syntax.
+//! such as `exists`, `forall`, and `choose`.
 
 use proc_macro2::TokenTree; // token tree is a single token or a sequence of tokens. It is the building block of a token stream.
 use syn::{
@@ -23,7 +22,7 @@ use syn::{
     Token, // Token![:] for example, is a macro that expands to a Token::Colon.
 };
 
-use crate::parser::err::{bail_if_exists, bail_on};
+use crate::{bail_if_exists, bail_on};
 use crate::parser::expr::CtxtForExpr;
 use crate::parser::name::{ReservedIdent, VarName};
 use crate::parser::ty::TypeTag;

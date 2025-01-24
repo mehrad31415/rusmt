@@ -21,15 +21,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 // The Result type is a type that represents either success (Ok) or failure (Err).
 // It is a type alias of the std::result::Result type: pub type Result<T, E = Error> = std::result::Result<T, E>;
-// anyhow function is used to create an error from a string or an error type that can be converted into an anyhow::Error.
-// bail function is used to return an error from a function without explicitly mentioning return. bail!(....) = return Err(anyhow!(...)).
+// anyhow macro is used to create an error from a string or an error type that can be converted into an anyhow::Error.
+// bail macro is used to return an error from a function without explicitly mentioning return. bail!(....) = return Err(anyhow!(...)).
 // The Context trait allows you to add extra context when an operation returns an error. This is done by calling the context or with_context methods on a Result.
 use anyhow::{anyhow, bail, Context, Result};
 
 //---------------------------------------------------------------------------------------------------//
 
 // These traits are derived for writing unit tests.
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 /// Represents a Git-based repository
 /// This struct encapsulates the path to a Git repository and the commit hash.
 pub struct GitRepo {
@@ -47,7 +47,7 @@ impl GitRepo {
     ///
     /// # Returns
     ///
-    /// * `Result<Self>` - Returns an instance of `GitRepo` on success, or an error if the commit probing fails.
+    /// * `Result<Self>` - Returns an instance of `GitRepo` on success, or an anyhow error if the commit probing fails.
     ///
     /// The function runs `git rev-list -n 1 <version>`.
     /// version has two options: None or Some(&str).
@@ -153,9 +153,7 @@ impl GitRepo {
 
         // checkout
         let mut cmd = Command::new("git");
-        cmd.arg("checkout");
-        cmd.arg(&self.commit);
-        cmd.current_dir(path_src);
+        cmd.arg("checkout").arg(&self.commit).current_dir(path_src);
 
         let output = cmd.output().context(format!(
             "checkout to commit {} failed in path {:?}",

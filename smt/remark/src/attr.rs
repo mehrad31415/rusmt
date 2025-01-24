@@ -59,15 +59,17 @@ pub enum MetaValue {
 pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
     let mut store: BTreeMap<String, MetaValue> = BTreeMap::new(); // Stores the parsed key-value pairs
     let mut iter = stream.clone().into_iter(); // Creates an iterator over the token stream
-                                               // this will be a None value if the stream is empty
+
+    // this will be a None value if the stream is empty
     let mut cursor = iter.next(); // Current token
 
     while cursor.is_some() {
         // Extract key
         let token = bail_if_missing!(cursor.as_ref(), stream, "key"); // this will never lead to a compile error because cursor is checked to be Some at the beginning of the loop.
-                                                                      // Extract the key as an identifier
-                                                                      // A key must be an identifier for example in #[my_attr(key = value)]
-                                                                      // #[my_attr(1 = value)] leads to an error
+
+        // Extract the key as an identifier
+        // A key must be an identifier for example in #[my_attr(key = value)]
+        // #[my_attr(1 = value)] leads to an error
         let key = match token {
             TokenTree::Ident(ident) => ident.to_string(),
             _ => bail_on!(token, "key not an identifier"), // return an error if the token is not an identifier
@@ -101,8 +103,14 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
 
                 let sub = group.stream(); // creates a TokenStream
                 let mut sub_iter = sub.into_iter(); // Iterator over the sub-stream
-                                                    // sub_cursor will be a None value if we have #[my_attr(key = [])]
+
+                // sub_cursor will be a None value if we have #[my_attr(key = [])]
                 let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
+
+                if sub_cursor.is_none() {
+                    bail_on!(group, "expect at least one item in set");
+                }
+
                 while sub_cursor.is_some() {
                     // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
                     let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
@@ -279,6 +287,18 @@ mod tests {
 
         let result = result.unwrap_err().to_string();
         assert_eq!(result, "expect =");
+    }
+
+    #[test]
+    // #[my_attr(key = [])] testing the case when there is no item in the set
+    fn test_one_item_in_set () {
+        let tokens: proc_macro2::TokenStream = quote! { key = [] };
+        let result = parse_dict(&tokens);
+
+        assert!(result.is_err());
+
+        let result = result.unwrap_err().to_string();
+        assert_eq!(result, "expect at least one item in set");
     }
 
     #[test]

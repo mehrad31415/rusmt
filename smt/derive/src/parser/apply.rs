@@ -13,8 +13,8 @@ use crate::parser::func::FuncSig; // Import function signature ADT.
 use crate::parser::generics::{Generics, GenericsInstFull, GenericsInstPartial}; // Import generics handling utilities.
 use crate::parser::infer::{TIError, TypeRef, TypeUnifier}; // Import type inference utilities.
 use crate::parser::intrinsics::Intrinsic; // Import intrinsic function handling.
-use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName}; // Import naming utilities.
-use crate::parser::ty::{SysTypeName, TypeName, TypeTag}; // Import type representation utilities.
+use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName}; // Import type parameters, user-defined function names, and user-defined type names.
+use crate::parser::ty::{SysTypeName, TypeName, TypeTag};
 
 /// Marks whether this function is for implementation (`Impl`) or specification (`Spec`).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -94,7 +94,7 @@ impl TypeFn {
 }
 
 #[derive(Debug)]
-/// A database of function types, used for looking up functions during parsing or compilation.
+/// A database of function types, used for looking up functions.
 pub struct ApplyDatabase {
     /// User-defined functions without a qualifier (standalone functions).
     /// It is a map from function names to their respective function signatures and kinds (Impl or Spec).
@@ -141,6 +141,7 @@ impl ApplyDatabase {
             Some(_) => {
                 // Duplicate entry found.
                 // This happens if for a particular fn_name, the ty_name already exists in the map, but we are trying to insert it again. So the insert only concerns the map value associated with the key, not the key itself. Basically this happens when for a specific type, there exists multiple implementations of the same function.
+                // we cannot add a specification for a built in type because it only differs in TypeFn::kind. So if we try to add a specification for a built-in type, it will panic.
                 panic!("duplicated built-in: {}::{}", ty_name, fn_name);
             }
         }
@@ -329,6 +330,7 @@ impl ApplyDatabase {
                 },
             };
             // Extract all the type parameters used in the receiver type.
+            // aren't self_ty_generics and self_ty_args the same list (basically typetag:typeparameter version of it)?
             let self_ty_generics = self_ty.type_params_used();
 
             let ty_params = &sig.generics.params;
@@ -340,7 +342,12 @@ impl ApplyDatabase {
             let method = TypeFn {
                 kind,
                 generics: sig.generics.filter(&self_ty_generics), // remove the type parameters used in the receiver type from the function signature.
-                params: sig.params.iter().map(|(_, ty)| ty.clone()).collect(),
+                params: sig
+                    .params
+                    .iter()
+                    .skip(1) // Skip the first element because it is the receiver type and is no longer the parameter of the method.
+                    .map(|(_, ty)| ty.clone())
+                    .collect::<Vec<_>>(),
                 ret_ty: sig.ret_ty.clone(),
             };
 
@@ -425,7 +432,7 @@ impl ApplyDatabase {
     /// This will return None:
     /// - if the function is not found.
     /// - if the function is found but the system type is not found.
-    /// - if the function is found and the system type is found we are looking for a Spec, but the function is an Impl.
+    /// - if the function is found and the system type is found we are looking for a Spec, but the function is an Impl. Basically this should not happen as all functions in the system type are impl so looking for a spec is illogical.
     pub fn lookup_usr_func_on_sys_type(
         &self,
         kind: Kind,
@@ -453,7 +460,7 @@ impl ApplyDatabase {
     /// This will return None:
     /// - if the function is not found.
     /// - if the function is found but it is not implemented on the user-defined type.
-    /// - if the function is found and it is implemented on the user-defined type, but we are looking for a Spec, but the function is an Impl.
+    /// - if the function is found and it is implemented on the user-defined type, but we are looking for a Spec, but the function is an Impl. A method will only be a spec, if the function which it is annotated on is a spec.
     pub fn lookup_usr_func_on_usr_type(
         &self,
         kind: Kind,

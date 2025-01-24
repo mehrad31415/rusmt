@@ -7,8 +7,9 @@
 //! - `bail_if_exists!` to return an Error instance if a token exists
 //! - `bail_if_missing!` to return an Error instance if a token is missing
 //!
-//! The fail_on macro is equivalent to fail_if_error(bail_on(...)).
-//! The macros will be accessible by `use rusmart_smt_remark::*` in or outside the crate.
+//! The fail_on(x) macro can be rewritten as fail_if_error(bail_on(x)).
+//! The macros will be accessible by `use rusmart_smt_remark::*` outside the crate.
+//! The macros will be accessible by `use crate::*` inside the crate.
 
 /// Shortcut to return a compiler error
 /// It has two patterns:
@@ -16,11 +17,12 @@
 /// - `fail_on!(item (value), "message {}", arg)` to return a compiler error with a formatted message
 /// - The proc_macro::TokenStream is the input and return type of the top level procedural macros.
 ///
-///     We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the smt-remark-derive crate.
+///     We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the rusmart-smt-remark-derive crate.
 // The into_compile_error method converts a syn::Error to proc_macro2::TokenStream.
 // The proc_macro::TokenStream::from is used to convert the proc_macro2::TokenStream to proc_macro::TokenStream.
 // Error has got a method named into_compile_error() which generates a compilation error from the error object.
 // Syn uses spans to represent the location (line and column number) of the expression in the source where it was initially located. This is used mainly for error reporting. All structs (AST elements) implement Spanned. The span can be attached to errors so that the compile renders them on the offending lines.
+// this is only used in the declaration of smt_axiom proc-macro-attribute.
 #[macro_export]
 macro_rules! fail_on {
     ($item:expr, $msg:literal $(,)?) => {

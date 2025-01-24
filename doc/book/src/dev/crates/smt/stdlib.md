@@ -1,6 +1,6 @@
 ### Rusmart Standard Library (stdlib)
 
-Rusmart standard library (_stdlib_) contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT. The _rusmart-smt-stdlib_ package consists of one _library crate_. The library crate is written in _src/lib.rs_ and contains the following content:
+Rusmart standard library (_stdlib_) contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT. The _rusmart-smt-stdlib_ package consists of one _library crate_. The root of the library crate, _src/lib.rs_, contains the following content:
 
 ```rust
 /// SMT-related data types
@@ -61,8 +61,8 @@ Note that this approach of wrapping inside a struct with an `inner` field is a c
 - `Cloak<T>`: A wrapper over `T` to allow recursive data types to be defined (similar to `Box<T>` in Rust). A `Cloak<T>` will be uncloaked to `T` after the parsing stage of Rusmart.
 - `Seq<T>`: SMT sequence of type `T` similar to Rust `Vec<T>`.
 - `Set<T>`: SMT set of type `T` similar to Rust `BTreeSet<T>`.
-- `Map<K, V>`: SMT array of key type `K` and value type `Option<V>` with `None` as the default values. This is to support the modeling on which key may exist. Similar to Rust `BTreeMap<K, V>`.
-- `Error`: A special marker to indicate error states. The error state is created by calling the `Error::new()` function. Every time the `new()` method is called, a new error state is created with a unique inner value. The inner values are incremented by one each time a new error state is created.
+- `Map<K, V>`: SMT array of key type `K` and value type `V`, similar to Rust `BTreeMap<K, V>`.
+- `Error`: A special marker to indicate error states. The error state is created by calling the `Error::fresh()` function. Every time the `fresh()` method is called, a new error state is created with a unique inner value. The inner values are incremented by one each time a new error state is created.
 
 ## Expressions
 

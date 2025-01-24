@@ -10,7 +10,7 @@ use syn::{
 };
 
 use crate::parser::ctxt::MarkedType;
-use crate::parser::err::{bail_if_exists, bail_if_missing, bail_on};
+use crate::{bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::expr::CtxtForExpr;
 use crate::parser::infer::{TypeRef, TypeUnifier, TypeVar};
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};

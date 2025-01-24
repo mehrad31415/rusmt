@@ -16,7 +16,7 @@
 //!
 //! * `Set<T>` - SMT set - A set of SMT values of type T.
 //!
-//! * `Map<K,V>` - SMT map - SMT array of key type K and value type Option<V> with None as the default values.
+//! * `Map<K,V>` - SMT map - SMT array of key type K and value type V.
 //!
 //! * `Error` - SMT error - A special marker to indicate error states.
 
@@ -41,13 +41,14 @@ use paste::paste;
 /// In the below example, the operators add, sub, mul, div, and rem are implemented for the Integer type.
 /// Note 1: The type needs to be a struct with an `inner` field that is wrapped inside an `Intern`.
 /// Note 2: The designated operators are required to be defined for the type inside the Intern.
+/// Note 3: Either the type or the operator needs to be defined in this library crate (orphan rule).
 ///
 /// Example: arith_operator!(Integer, add, sub, mul, div, rem);
 macro_rules! arith_operator {
-    ($l:ty $(,$op: tt)*) => {
+    ($l:ty, $($op: tt),*) => {
         impl $l {
             $(
-                #[allow(clippy::should_implement_trait)]
+                #[allow(clippy::should_implement_trait)] // surpress the warning that the trait (Add, Sub, etc.) should be implemented instead of directly implementing the operator
                 pub fn $op(self, rhs: Self) -> Self {
                     Self {
                         inner: Intern::new(
@@ -66,7 +67,7 @@ macro_rules! arith_operator {
 /// 2. generic types (Cloak, Seq, Set, Map), fall in the second pattern.
 /// 3. the third pattern is the smt implementation for tuples of size 2 to 12.
 /// In generic types, the type parameters need to implement the SMT trait.
-/// In both cases, the types need to be a struct with a field `inner` that implements the Ord trait.
+/// In all cases, the types need to be a struct with a field `inner` that implements the Ord trait.
 ///
 /// Example: smt_impl!(Integer);
 macro_rules! smt_impl {
@@ -86,21 +87,23 @@ macro_rules! smt_impl {
     };
     ( $n0:ident $($nx:ident)+ ) => {
         impl<$n0: SMT $(, $nx: SMT)+> SMT for ($n0 $(, $nx)+) {
-            #[allow(non_snake_case)]
-            fn _cmp(self, rhs: Self) -> Ordering {
-                let (paste!{[<l_ $n0>]} $(, paste!{[<l_ $nx>]})+) = self;
-                let (paste!{[<r_ $n0>]} $(, paste!{[<r_ $nx>]})+) = rhs;
-                match $n0::_cmp(paste!{[<l_ $n0>]}, paste!{[<r_ $n0>]}) {
-                    Ordering::Less => return Ordering::Less,
-                    Ordering::Greater => return Ordering::Greater,
-                    Ordering::Equal => {},
-                };
-                $(match $nx::_cmp(paste!{[<l_ $nx>]}, paste!{[<r_ $nx>]}) {
-                    Ordering::Less => return Ordering::Less,
-                    Ordering::Greater => return Ordering::Greater,
-                    Ordering::Equal => {},
-                };)+
-                Ordering::Equal
+            paste!{
+                #[allow(non_snake_case)]
+                fn _cmp(self, rhs: Self) -> Ordering {
+                    let ([<l_ $n0>] $(, [<l_ $nx>])+) = self;
+                    let ([<r_ $n0>] $(, [<r_ $nx>])+) = rhs;
+                    match $n0::_cmp([<l_ $n0>], [<r_ $n0>]) {
+                        Ordering::Less => return Ordering::Less,
+                        Ordering::Greater => return Ordering::Greater,
+                        Ordering::Equal => {},
+                    };
+                    $(match $nx::_cmp([<l_ $nx>], [<r_ $nx>]) {
+                        Ordering::Less => return Ordering::Less,
+                        Ordering::Greater => return Ordering::Greater,
+                        Ordering::Equal => {},
+                    };)+
+                    Ordering::Equal
+                }
             }
         }
     };
@@ -197,7 +200,6 @@ macro_rules! rational_from_literal_int {
     };
 }
 
-#[allow(unused_macros)]
 #[macro_export]
 /// the cloak! macro for initializing a new cloak with an element
 ///
@@ -301,6 +303,7 @@ pub trait SMT: 'static + Copy + Default + Hash + Send + Sync {
 /// This SMT type implements the PartialEq and Eq traits to allow equality comparison for assertions.
 /// The debug trait is implemented to allow for printing the assertion results.
 /// This SMT type must implement the Copy, Hash, and Default traits as the supertraits of the SMT trait.
+/// The Send and Sync are automatically implemented for the SMT boolean type.
 /// The Clone trait is implemented because it is required by the Copy trait.
 /// The Deref trait is implemented to allow for dereferencing the inner boolean value.
 /// The From trait is implemented to allow for converting a Rust boolean value to the SMT boolean type.
@@ -308,6 +311,7 @@ pub trait SMT: 'static + Copy + Default + Hash + Send + Sync {
 pub struct Boolean {
     inner: bool,
 }
+
 smt_impl!(Boolean);
 
 impl Deref for Boolean {
@@ -324,6 +328,7 @@ impl From<bool> for Boolean {
 }
 
 /// SMT boolean operators which follow the logical semantics
+/// All methods have been defined such that they take ownership of the self parameter.
 impl Boolean {
     #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
@@ -363,8 +368,6 @@ impl Boolean {
 /// For example, we can write a.add(b) or Integer::add(a,b) to add two Integer values a and b.
 /// The order_operator! macro is used to implement the order operators for the Integer type.
 /// For example, we can write a.lt(b) or Integer::lt(a,b) to check if a is less than b.
-// The Nums trait is implemented for the Integer type to allow for the conversion of Integer values to Rational values.
-// The implementation for Integer has been added for the comparison between Rationals and Integers.
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Integer {
     inner: Intern<BigInt>,
@@ -378,6 +381,8 @@ arith_operator!(Integer, add, sub, mul, div, rem);
 // The ne and eq operators are implemented by default in the SMT
 order_operator!(Integer, lt, le, ge, gt);
 
+// The Nums trait is implemented for the Integer type to allow for the conversion of Integer values to Rational values.
+// The implementation for Integer has been added for the comparison between Rationals and Integers.
 // impl Nums for Integer {
 //     fn into_rational(self) -> Rational {
 //         let num = self.inner.as_ref().clone().to_i64().expect("Failed to convert BigInt to i64");
@@ -473,7 +478,7 @@ order_operator!(Text, lt, le, ge, gt);
 /// ** 5) Dynamically assigned error
 /// This type is used to represent an error state in the SMT system.
 /// The error state is created by calling the Error::fresh() function.
-/// Every time the new() method is called, a new error state is created with a unique inner value.
+/// Every time the fresh() method is called, a new error state is created with a unique inner value.
 /// The inner values are incremented by one each time a new error state is created.
 /// The merge method is used to merge two error states where duplicates are not allowed.
 ///
@@ -512,6 +517,7 @@ impl Error {
 /// Wrap for an SMT type for Rust-semantics enrichment
 /// The SMTWrap is a tuple struct that wraps an SMT type.
 // In SMTWrap, instead of using #[derive(Eq)] we implement the trait manually to avoid imposing the T: Eq constraint.
+
 #[derive(Debug, Clone, Copy, Default)]
 struct SMTWrap<T: SMT>(T);
 
@@ -589,7 +595,7 @@ pub struct Seq<T: SMT> {
 smt_impl!(Seq, T);
 
 impl<T: SMT> Seq<T> {
-    /// create an new sequence
+    /// create a new sequence
     /// operation: `Seq::new()`
     pub fn new() -> Self {
         Self {

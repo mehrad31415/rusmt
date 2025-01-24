@@ -14,8 +14,8 @@ help:
 	@echo "$$cmdline"
 
 lint:
-	@cargo fmt 
-	@cargo clippy --all-targets --all-features
+	@cargo fmt && \
+	cargo clippy --all-targets --all-features
 
 cloc:
 	@cloc \

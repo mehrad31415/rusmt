@@ -16,15 +16,13 @@ use syn::{
 };
 
 use crate::parser::ctxt::ContextWithType; // Context manager after type analysis is done
-use crate::parser::err::{bail_if_exists, bail_if_non_empty, bail_on}; // Error handling macros
 use crate::parser::expr::Expr; // Our own expression type
 use crate::parser::generics::Generics; // Declaration of generics
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrFuncName, UsrTypeName, VarName}; // Name handling
-use crate::parser::ty::{CtxtForType, TypeTag}; // CtxtForType: A context suitable for type analysis and TypeTag: A unique and complete reference to an SMT-related type
+use crate::parser::ty::{CtxtForType, TypeTag};
+use crate::{bail_if_exists, bail_if_non_empty, bail_on}; // Error handling macros // CtxtForType: A context suitable for type analysis and TypeTag: A unique and complete reference to an SMT-related type
 
 /// Represents casting-related function names
-///
-/// This enum is used to distinguish between the `from` and `into` casting functions.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum CastFuncName {
     /// The `from` function, used for converting from one type to another. For example, Integer::from("42") would convert the string "42" to the integer 42.
@@ -60,8 +58,6 @@ impl Display for CastFuncName {
     }
 }
 
-/// System function names.
-///
 /// This enum represents names of system functions, such as `eq` and `ne`.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum SysFuncName {
@@ -98,8 +94,6 @@ impl Display for SysFuncName {
     }
 }
 
-/// Reserved function names.
-///
 /// This enum represents names of reserved functions, such as `clone` and `default`.
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum ReservedFuncName {
@@ -225,7 +219,7 @@ pub struct FuncSig {
     /// The generics associated with the function.
     pub generics: Generics,
     /// The parameters of the function, each with a name and type.
-    pub params: Vec<(VarName, TypeTag)>, // the reason Vec was used not BtreeMap is because the order of the parameters is important
+    pub params: Vec<(VarName, TypeTag)>, // the reason Vec was used not BtreeMap is because the original order of the parameters is important
     /// The return type of the function.
     pub ret_ty: TypeTag,
 }
@@ -262,7 +256,7 @@ impl FuncSig {
             unsafety,
             abi,
             fn_token: _,
-            ident: _, // handled earlier
+            ident: _, // handled earlier (the fact that the function name is unique was handled in the ctxt.rs file in the sanity check)
             generics,
             paren_token: _,
             inputs,
@@ -277,7 +271,7 @@ impl FuncSig {
         bail_if_exists!(abi);
         bail_if_exists!(variadic);
 
-        // Parse generics
+        // Parse generics (this also ensures that the type parameters are unique and ONLY implement the SMT trait)
         let generics = Generics::from_generics(generics)?;
         let ctxt = FuncSigParseCtxt {
             ctxt: driver, // the ctxt is needed because when converting a type to TypeTag, it checks for any user defined types and that can only be checked through the typs fields in the ctxt.
@@ -314,7 +308,7 @@ impl FuncSig {
 
         // Parse return type
         let ret_ty = match output {
-            ReturnType::Default => bail_on!(sig, "expect return type"),
+            ReturnType::Default => bail_on!(sig, "expect return type"), // all functions in rusmart must have a return type (like functionally typed languages)
             ReturnType::Type(_, rty) => TypeTag::from_type(&ctxt, rty)?, // construct the TypeTag from the return type
         };
 
@@ -337,6 +331,7 @@ impl FuncSig {
             .map(|(name, ty)| (name.clone(), ty.clone()))
             .collect();
 
+        // can never happen in the pipeline because in constructing the FuncSig, we checked for duplicated parameter names
         if param.len() != self.params.len() {
             panic!("duplicated parameter name");
         }
@@ -408,7 +403,8 @@ impl FuncSig {
 ///
 /// # Recursive Unification
 ///
-/// The function handles nested types (like `Cloak`, `Seq`, `Set`, `Map`, `User`, and `Pack`) by calling `unify` recursively for the inner type(s). It ensures that all nested type parameters are also unified.
+/// The function handles nested types (like `Cloak`, `Seq`, `Set`, `Map`, `User`, and `Pack`) by calling `unify` recursively for the inner type(s).
+/// It ensures that all nested type parameters are also unified.
 fn unify(
     params: Vec<TypeTag>,
     gens: &BTreeMap<TypeParamName, TypeParamName>,
@@ -478,31 +474,14 @@ fn unify(
             }
             // Handle the `User` type tag (recursively unify each argument)
             TypeTag::User(name, args) => {
-                let mut new_args = vec![];
-                for arg in args {
-                    new_args.push(
-                        unify(vec![arg.clone()], gens)
-                            .expect("unification failed in user type")
-                            .into_iter()
-                            .next()
-                            .unwrap(),
-                    );
-                }
-                res.insert(TypeTag::User(name, new_args));
+                res.insert(TypeTag::User(
+                    name,
+                    unify(args, gens)?.into_iter().collect(),
+                ));
             }
             // Handle the `Pack` type tag (recursively unify each element in the pack)
             TypeTag::Pack(t) => {
-                let mut new_args = vec![];
-                for arg in t {
-                    new_args.push(
-                        unify(vec![arg.clone()], gens)
-                            .expect("unification failed in pack tuple")
-                            .into_iter()
-                            .next()
-                            .unwrap(),
-                    );
-                }
-                res.insert(TypeTag::Pack(new_args));
+                res.insert(TypeTag::Pack(unify(t, gens)?.into_iter().collect()));
             }
             // Handle other type tags (Boolean, Integer, Rational, Text, Error)
             _ => {
@@ -584,7 +563,7 @@ impl Axiom {
     /// Checks whether the entire function body is `unimplemented!()`.
     ///
     /// This method is used to determine if the function body consists solely of a call
-    /// to `unimplemented!()`, indicating that the function has no implementation.
+    /// to `unimplemented!()`, indicating that the function has no implementation. This is only used to check for #[smt_spec] marked functions.
     ///
     /// # Arguments
     ///

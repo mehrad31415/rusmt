@@ -13,9 +13,7 @@ use crate::parser::ctxt::Context; // Context manager for holding marked items
 
 // #[allow(dead_code)]
 mod analysis;
-// #[allow(dead_code)]
 mod backend;
-// #[allow(dead_code)]
 mod ir;
 mod parser;
 
@@ -48,7 +46,7 @@ fn pipeline(ctxt: Context) -> Result<Vec<IRContext>> {
     Ok(models)
 }
 
-/// Internal entrypoint for front-end, processing the input file and generating intermediate representations.
+/// Entrypoint for front-end, processing the input file and generating intermediate representations.
 ///
 /// # Type Parameters
 ///
@@ -67,7 +65,7 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<Vec<IRContext>> {
     pipeline(Context::new(input)?)
 }
 
-/// Internal entrypoint for back-end, solving the models with available solvers and writing outputs to the specified directory.
+/// Entrypoint for back-end, solving the models with available solvers and writing outputs to the specified directory.
 ///
 /// # Type Parameters
 ///
@@ -82,7 +80,7 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<Vec<IRContext>> {
 ///
 /// This function will panic if the output directory already exists or if directory creation fails.
 pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
-    // Prepare the workspace by ensuring the output directory does not exist and then creating it.
+    // ensuring the output directory does not exist and then creating it.
     let output = output.as_ref();
     if output.exists() {
         panic!("output directory exists");
@@ -140,16 +138,12 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
 /// # Returns
 ///
 /// A `Result` indicating success or failure during the processing.
-///
-/// # Errors
-///
-/// This function propagates errors from parsing and the pipeline processing.
 pub fn derive<P1: AsRef<Path>, P2: AsRef<Path>>(input: P1, output: P2) -> Result<()> {
     // Initialize configurations (e.g., logging, environment variables).
     initialize();
 
     // Run the pipeline to parse the input and generate models (IRContexts).
-    let models = pipeline(Context::new(input)?)?;
+    let models = model(input)?;
     debug!("derivation completed");
     // Solve the models using available solvers and write outputs.
     solve(&models, output);

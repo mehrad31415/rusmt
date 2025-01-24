@@ -4,11 +4,10 @@ use syn::{parse_macro_input, Item};
 
 use rusmart_smt_remark::{fail_if_error, fail_on};
 use rusmart_smt_remark::{func, ty};
-/// Annotation over a Rust type
-/// This annotation can only be applied on a Rust type definition i.e., struct and enum
+/// Annotation over a Rust type (can only be applied on a Rust type definition i.e., struct and enum)
 /// Attributes will not be accepted. i.e., #[smt_type(<...attrs...>)] will cause an error
-/// This will basically generate the code for deriving Clone, Debug, Hash, Default, Copy for the struct/enum
-/// and also implement the SMT trait for the struct/enum
+/// This will basically generate the code for deriving Clone, Debug, Hash, Default, Copy for the struct/enum and also implement the SMT trait for the struct/enum
+/// if ty::derive_for_type(attr, item) gives an Err, then a compile error will be raised. Otherwise if it gives an Ok, then the output will be produced
 #[proc_macro_attribute]
 #[cfg(not(tarpaulin_include))]
 #[inline] // The #[inline] attribute in Rust is a compiler directive that suggests to the compiler that it should try to "inline" the function where it is used. Inlining a function means replacing a function call with the body of that function. Imagine you have a small function:

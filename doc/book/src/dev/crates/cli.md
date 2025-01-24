@@ -1,6 +1,6 @@
 ### Preliminary Information
 
-_Z3_ and _CVC5_ are mentioned here because they play a key role in how the _rusmart-cli_ package operates. Before describing the crate and the modules the package contains, I will first want to reflect on the _.gitmodules_ file, which has the following content:
+_Z3_ and _CVC5_ are mentioned here because they play a key role in how the _rusmart-cli_ package operates. Before describing the package and the crates within the package, I will first want to reflect on the _.gitmodules_ file, which has the following content:
 
 ```bash
 [submodule "cvc5 dependency"]
@@ -42,7 +42,7 @@ The commands `make reset` and `make deps`, run the two mentioned commands. We wi
 1. `@cd cli && cargo run reset`: This command includes a _@_ indicating that when `make reset` is executed only the output of the command will be printed to the _stdout_, and not the command itself (the command will not be echoed). The command changes the directory to the _cli_ directory and runs the command `cargo run reset`. `cargo run` has been given a parameter `reset` which is not a default parameter. When running the package, the _main_ function of the _binary crate_ will be invoked. This function initializes the workspace and the configurations. Then it parses the command line using the _clap_ crate. If the parameter is _reset_, the _studio/native (or alternatively studio/docker)_ directory will be removed. If the directory does not exist, _The studio directory does not exist; there is nothing to reset..._ will be printed to _stderr_.
 
 2. `@cd cli && \ cargo run deps z3 build --force`: This command includes a _@_ indicating that when `make deps` is executed only the output of the command will be printed to the _stdout_, and not the command itself. The command changes the directory to the _cli_ directory and executes the command `cargo run deps z3 build --force`. `cargo run` has been given a parameter `deps z3 build --force` which is not a default parameter. When running the package, the _main_ function of the _binary crate_ will be invoked. This function initializes the workspace and the configurations. Then it parses the command line using the _clap_ crate. If the subcommand is _deps_, then the subcommand (sub-subcommand in this case 🙃) `z3 build --force` will be executed. Depending on whether the subcommand is `z3 build --force` or `cvc5 build --force`, the coressponding action will be taken internally.
-	- For _Z3_, first the programs checks whether the _studio/native/deps/Z3/<commit hash> (or alternatively _studio/docker/deps/Z3/<commit hash> for docker containers)_ directory is an _artifact_ or not. An _artifact_, is a directory that exists and contains the _src_ and _dst_ subdirectories (each of which contain specific configuration files). If the directories exist, because the rebuilt is forced, a _warning message_ __Force rebuilding package__ will be printed and the base directory will be removed. If the rebuilt was not forced an _informational message_ __Package already exists__ would have been printed and nothing would happen. Nevertheless, if the directory _studio/native/deps/Z3/<commit hash> (or alternatively _studio/docker/deps/Z3/<commit hash> for docker containers)_ does not exist, or the rebuilt is forced, then the _Z3_ dependecy is built. This happens such that the _studio/native/deps/Z3/<commit hash>_ directory (or alternatively _studio/docker/deps/Z3/<commit hash> for docker containers)_ directory is created. Subdirectories _src_ and _dst_ are also created. Furthermore, from the _deps/Z3_ directory the repository is cloned and checked out to the _src_ subdirectory. Therefore, before this stage you need to be sure that the git submodule exists in the _deps/Z3_ directory. To ensure this you should have executed the prementioned `git submodule init` and `git submodule update` commands. Last but not least, the _Z3_ dependency is built. To do so a subdirectory _build_ is created in the <src> _studio/native/deps/Z3/<commit hash>/src (or alternatively _studio/docker/deps/Z3/<commit hash>/src for docker containers)_ path. The _cmake_ command is used to configure the build. Specifically, `cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DZ3_SINGLE_THREADED=TRUE <studio/native/deps/Z3/<commit hash>/src>` is executed in the _build_ directory. Then the build is executed by running `cmake --build <studio/native/deps/Z3/<commit hash>/src/build>`. The _install_ is executed by running `cmake --install <studio/native/deps/Z3/<commit hash>/src/build> --prefix <studio/native/deps/Z3/<commit hash>/dst>`.
+	- For _Z3_, first the programs checks whether the _studio/native/deps/Z3/<commit hash> (or alternatively _studio/docker/deps/Z3/<commit hash> for docker containers)_ directory is an _artifact_ or not. An _artifact_, is a directory that exists and contains the _src_ and _dst_ subdirectories (each of which contain specific configuration files). If the directories exist, because the rebuilt is forced, a _warning message_ __Force rebuilding package__ will be printed and the base directory will be removed. If the rebuilt was not forced an _informational message_ __Package already exists__ would have been printed and nothing would happen. Nevertheless, if the directory _studio/native/deps/Z3/<commit hash> (or alternatively _studio/docker/deps/Z3/<commit hash> for docker containers)_ does not exist, or the rebuilt is forced, then the _Z3_ dependecy is built. This happens such that the _studio/native/deps/Z3/<commit hash>_ directory (or alternatively _studio/docker/deps/Z3/<commit hash> for docker containers)_ directory is created. Subdirectories _src_ and _dst_ are also created. Furthermore, from the _deps/Z3_ directory the repository is cloned and checked out to the _src_ subdirectory. Therefore, before this stage you need to be sure that the git submodule exists in the _deps/Z3_ directory. To ensure this you should have executed the prementioned `git submodule init` and `git submodule update` commands. Last but not least, the _Z3_ dependency is built. To do so a subdirectory _build_ is created in the <src> _studio/native/deps/Z3/commit hash/src (or alternatively _studio/docker/deps/Z3/commit hash/src for docker containers)_ path. The _cmake_ command is used to configure the build. Specifically, `cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DZ3_SINGLE_THREADED=TRUE <studio/native/deps/Z3/<commit hash>/src>` is executed in the _build_ directory. Then the build is executed by running `cmake --build <studio/native/deps/Z3/<commit hash>/src/build>`. The _install_ is executed by running `cmake --install <studio/native/deps/Z3/<commit hash>/src/build> --prefix <studio/native/deps/Z3/<commit hash>/dst>`.
 
 	- For _CVC5_, the same procedure is followed as for _Z3_. The only difference is that the _CVC5_ repository is cloned from the _deps/CVC5_ directory and checked out to the corresponding _src_ subdirectory. Also the build commands are different; the `./configure.sh debug --prefix=<studio/native/deps/CVC5/<commit hash>/dst> --ninja --gpl --auto-download` command is executed in the _src_ directory. The build is executed by running `ninja` in the _build_ directory. The _install_ is executed by running `ninja install` in the _build_ directory.
 
@@ -54,9 +54,9 @@ Note that these are the internal implementations. When running `make deps`, the 
 		- if reset
 			- reset workspace
 		- if deps
-			- run subcommand for depargs (in cli.rs)
-		        - run_internal for depaction
-					- creating a new depstate (in dep.rs)
+			- run subcommand for dep_args (in cli.rs)
+		        - run_internal for dep_action
+					- creating a new dep_state (in dep.rs)
 						- if action Config
 							- configuring the dependency
 						- if action Build
@@ -91,18 +91,20 @@ Lastly, the `cargo run -- --help` command can be run. This command shows the hel
 As a result, the help message will be as follows:
 
 ```
-Tool: semantic-smt-cli
-Author: Meng Xu <meng.xu.cs@uwaterloo.ca>
-Version: 0.1.0
-A command line interface for the Rusmart project
-Usage: rusmart-cli <COMMAND>
-Commands:
-reset  Wipe-clean the entire workspacedksvjdfsjkn
-deps   Manage dependencies (subcommand is defined in DepArgs)
-help   Print this message or the help of the given subcommand(s)
-Options:
--h, --help     Print help
--V, --version  Print version
+ Tool: semantic-smt-cli
+ Author: Meng Xu <meng.xu.cs@uwaterloo.ca>
+ Version: 0.1.0
+ A command line interface for the Rusmart project
+ 
+ Usage: rusmart-cli <COMMAND> 
+  Commands:
+   reset  Run cargo run -- reset to delete the studio directory
+   deps   Manage dependencies (subcommand is defined in DepArgs) for example> cargo run deps cvc5 build
+   help   Print this message or the help of the given subcommand(s)
+
+ Options:
+   -h, --help     Print help
+   -V, --version  Print version
 ```
 
 Note that the about, version, and author fields are defined in the _Cargo.toml_ file. Also notice that the provided command is different than `cargo run --help`. We write `cargo run -- --help` to see the help message for the binary. However `cargo run --help` shows the help message for the cargo command itself. The dummy -- is used to separate the cargo command from the arguments passed to the binary. Thus, we could also write `cargo run -- reset` to run the reset command. Nevertheless, the _--_ flag is only necessary when the arguments passed to the binary are the same as the cargo command. This is to avoid ambiguity.
@@ -160,7 +162,7 @@ We execute the costumized command by loosely running the following: `cargo run <
 		- `artifact`: The artifact; which encapsulates the base, source, and destination directories.
 		- `_phantom`: A PhantomData.
 		- The _Package_ struct has a `destroy` function that removes the artifact directory and returns a _Scratch_ struct.
-	- The _DepState_ enum automatically differentiates the scratch and package version of LLVM. It has two variants:
+	- The _DepState_ enum automatically differentiates the scratch and package version. It has two variants:
 		- `Scratch`: The scratch state.
 		- `Package`: The package state.
 		- The _DepState_ enum has three functions:
@@ -183,6 +185,8 @@ The _lints.rust_ section is only defined for the _Cargo.toml_ of a _package_ (no
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
 ```
 
-This flag allows using __#[cfg(not(tarpaulin_include))]__ in the code to exclude the code (function) from the coverage report, without generating a warning. As the _main_ function in the _main.rs_ file will not be tested, we have written __#[cfg(not(tarpaulin_include))]__ before the function. This excludes the _main_ function from the coverage report. Overall, we have written unit tests for the _rusmart-cli_ package with a coverage of _56.10%_. The reasons for the low coverage are as follows:
-	- Some of the code is not practically reachable and is not tested.
-	- The code containing _make_ and _build_ functions are computationally expensive and time-consuming to test. Therefore, we have not tested them.
+This flag allows using __#[cfg(not(tarpaulin_include))]__ in the code to exclude the code (function) from the coverage report, without generating a warning. As the _main_ function in the _main.rs_ file will not be tested, we have written __#[cfg(not(tarpaulin_include))]__ before the function. This excludes the _main_ function from the coverage report. Overall, we have written unit tests for the _rusmart-cli_ package with a coverage of _56.10%_. 
+
++ The reasons for the low coverage are as follows:
+	+ Some of the code is not practically reachable and is not tested.
+	+ The code containing _make_ and _build_ functions are computationally expensive and time-consuming to test. Therefore, we have not tested them.

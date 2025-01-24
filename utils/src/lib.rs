@@ -1,3 +1,4 @@
+// this macro checks the missing documentation in all the `public` modules in the mdoule tree of the library crate. In this case, the only public module in the module tree is `config`.
 #![deny(missing_docs)]
 
 //! # Utils

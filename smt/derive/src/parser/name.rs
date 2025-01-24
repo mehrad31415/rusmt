@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter}; // Imported for implementing the Display tra
 use syn::{Ident, Pat, PatIdent, Path, Result}; // Import syn crate types for parsing Rust code
 
 use crate::parser::dsl::SysMacroName;
-use crate::parser::err::{bail_if_exists, bail_on};
+use crate::{bail_if_exists, bail_on};
 use crate::parser::func::CastFuncName;
 use crate::parser::func::ReservedFuncName;
 use crate::parser::func::SysFuncName;
@@ -46,6 +46,7 @@ pub trait ReservedIdent: Sized {
     /// # Errors
     ///
     /// Returns an error if the path does not contain a reserved identifier.
+    /// The path must not have a leading colon, the number of path segments must be 1, and the first path segment must not have angle bracketed or parenthesized; otherwise an error is returned.
     fn parse_path(path: &Path) -> Result<Self> {
         // Parse the identifier from the path.
         let ident = path.get_ident().expect("expect an identifier in the path");
@@ -166,7 +167,7 @@ fn validate_user_ident(ident: &Ident) -> Result<String> {
 /// by_ref and mutability are Some in the above pattern
 /// ref in the left side is the same as & in the right side
 /// ident is my_var and subpat is @ Some(sub_var) in the above pattern
-/// the subpat field of PatIdent is a tuple with two elements, the first element is the @ symbol and the second element is the sub-pattern. when we write if let a @ Some(b) = Some(1) {/* */}, a is the identifier with value Some(1) and b is the sub-pattern with value 1.
+/// the subpat field of PatIdent is a tuple with two elements, the first element is the @ symbol and the second element is the sub-pattern. when we write - if let a @ Some(b) = Some(1) {/* */}, a is the identifier with value Some(1) and b is the sub-pattern with value 1.
 fn parse_ident_from_pat(pat: &Pat) -> Result<&Ident> {
     match pat {
         Pat::Ident(decl) => {
@@ -705,7 +706,7 @@ mod tests {
 
         let res = parse_ident_from_pat(&pat);
         assert!(res.is_err());
-        assert_eq!(res.err().unwrap().to_string(), "unexpected\n@");
+        assert_eq!(res.err().unwrap().to_string(), "unexpected\nSome (b)");
     }
 
     #[test]

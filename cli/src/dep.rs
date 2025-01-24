@@ -44,7 +44,7 @@ use std::marker::PhantomData;
 // the Path and PathBuf are used to represent file paths (first is immutable, second is mutable)
 use std::path::{Path, PathBuf};
 // the anyhow module is used to handle errors in a more convenient way
-// Result is a type that represents either success or failure and is a synonym for Result<T, Error> of the std::result module
+// Result is a type that represents either success or failure and is a synonym for Result<T, anyhow::Error> of the std::result module
 use anyhow::{bail, Result};
 // a logging facade that provides macros for logging at different levels
 // info! is used to log information messages
@@ -52,7 +52,7 @@ use anyhow::{bail, Result};
 use log::{info, warn};
 // the tempfile module is used to create temporary files and directories
 use tempfile::tempdir;
-// the workspace struct containing the base and studio paths
+// the workspace struct containing the base and studio (native or docker) paths
 use rusmart_utils::config::WKS;
 // the git repo struct containing the path and commit hash
 use crate::git::GitRepo;
@@ -86,7 +86,7 @@ pub struct Artifact {
     pub dst: PathBuf,
 }
 
-/// Implement the Artifact struct
+/// Implement the Artifact struct (initialization and seeking associate functions)
 impl Artifact {
     /// Initialize an artifact from a git repo
     ///
@@ -174,7 +174,7 @@ impl<T: Dependency> Scratch<T> {
     /// github repository is cloned and checked out inside the src directory. Until this step the dst directory is empty.
     /// Then the artifact is built which depending on whether it is a Z3 or CVC5 artifact the behaviour is different. This is why we have defined a PhatomData so that the corresponding function of the type can be called.
     /// After that a package is returned with the same data.
-    // Not tested as the build function is computationally expensive and time-consuming.
+    // Not tested as the `build` function is computationally expensive and time-consuming.
     pub fn make(self) -> Result<Package<T>> {
         let Self {
             mut repo,
@@ -377,7 +377,7 @@ mod tests {
         assert!(artifact.is_ok());
 
         // clean up
-        fs::remove_dir_all(&base).expect("could not remove tmp directory");
+        fs::remove_dir_all(&base).expect("Could not remove tmp directory");
     }
 
     #[test]
@@ -463,6 +463,12 @@ mod tests {
 
         let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         base = base.join("tmp");
+
+        // check if the directories are created beforehand
+        if Path::new(&base).exists() {
+            fs::remove_dir_all(&base).expect("could not remove tmp directory");
+        }
+
         let artifact =
             Artifact::init(&mut repo, base.clone()).expect("could not initialize artifact");
 

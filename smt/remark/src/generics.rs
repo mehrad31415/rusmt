@@ -1,9 +1,7 @@
 //! This module provides a utility for parsing and manipulating generic type parameters.
 //!
 //! The `TypeParamGroup` struct is used to collect and manage type parameters in generic definitions.
-//! It provides methods for parsing generics, checking for type parameter existence, collecting type arguments,
-//! calculating differences between groups, and converting type parameters into syntax suitable for definition and usage.
-//!
+//! It provides methods for parsing generics, checking for type parameter existence, and converting type parameters into syntax suitable for definition and usage.
 
 use proc_macro2::{Ident, TokenStream};
 use std::collections::BTreeSet;
@@ -31,7 +29,7 @@ impl TypeParamGroup {
     ///
     /// This function checks for correctness in the generics syntax, ensuring that:
     /// - Angle brackets are correctly used.
-    /// - Each type parameter has a `: SMT` trait bound.
+    /// - Each type parameter has ONLY a `: SMT` trait bound.
     /// - There are no duplicate type parameters.
     ///
     /// # Arguments
@@ -85,7 +83,6 @@ impl TypeParamGroup {
                     bail_if_missing!(colon_token, param, ":");
 
                     // Equal token and default should not be present
-                    // use of default is actually being phased out in Rust and it will lead to hard errors in the future
                     bail_if_exists!(eq_token);
                     bail_if_exists!(default); // unreachable invocation because it cannot exist if the = doesnt exist according to rust compiler
 
@@ -95,8 +92,8 @@ impl TypeParamGroup {
                     // bound will be an error if there is no trait bound
                     let bound = bail_if_missing!(iter.next(), param, "trait");
 
+                    //  only one bound is expected and it should be the SMT trait
                     bail_if_exists!(iter.next()); // No extra bounds expected
-                                                  //* so only one bound is expected and it should be the SMT trait
 
                     match bound {
                         TypeParamBound::Trait(TraitBound {
@@ -136,7 +133,7 @@ impl TypeParamGroup {
                                 bail_on!(ident, "expect SMT trait");
                             }
                         }
-                        // if the bound is not a trait bound return an error
+                        // if the bound is not a trait bound (is lifetime or verbatim) return an error
                         _ => bail_on!(bound, "expect trait bound"),
                     }
 
@@ -146,6 +143,7 @@ impl TypeParamGroup {
                     }
                     ty_params_vec.push(ident.clone());
                 }
+                // cannot be a constant or a lifetime
                 _ => bail_on!(param, "expect generic type parameter"),
             }
         }
@@ -218,6 +216,7 @@ impl TypeParamGroup {
     /// # Returns
     ///
     /// Returns a `TokenStream` representing the type parameter definitions.
+    /// The result of this is used after `impl`, `struct` in defnition, `enum` in definition, etc. keywords to define type parameters and trait bounds.
     pub fn to_syntax_def(&self) -> TokenStream {
         if self.params.is_empty() {
             TokenStream::new()
@@ -232,6 +231,7 @@ impl TypeParamGroup {
     /// # Returns
     ///
     /// Returns a `TokenStream` representing the type parameter usages.
+    /// The result of this is used when referring to the type parameters in the code for example after the name of the struct or enum in impl block.
     pub fn to_syntax_use(&self) -> TokenStream {
         if self.params.is_empty() {
             TokenStream::new()
@@ -246,6 +246,7 @@ impl TypeParamGroup {
     /// # Returns
     ///
     /// Returns a `TokenStream` representing the type parameter invocations.
+    /// The result of this is used when invoking a function with type parameters for example function_name::<T>
     pub fn to_syntax_invoke(&self) -> TokenStream {
         if self.params.is_empty() {
             TokenStream::new()
@@ -310,7 +311,7 @@ fn collect_type_arguments_recursive(
                 return Ok(());
             }
             if ty_args.insert(ident.clone()) {
-                // Insert into ordered vector if it's a new argument
+                // insert into ordered vector if it's a new argument
                 ty_args_ordered.push(ident.clone());
             }
         }

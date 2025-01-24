@@ -13,17 +13,17 @@ use crate::attr::{parse_dict, MetaValue};
 use crate::generics::TypeParamGroup;
 use crate::{bail_if_exists, bail_if_missing, bail_on};
 
-/// Checks the function signature and derives additional code if a method attribute is present.
+/// Checks the function signature and derives additional code if a (method) attribute is present.
 ///
 /// This function inspects the target function's signature to ensure it meets certain criteria,
 /// such as not being `const`, `async`, `unsafe`, or having an ABI or variadic parameters.
 /// Additionally, all of the generics used in the function signature must ONLY implement the `SMT` trait.
-/// If a method `input` is provided (it is some), the function `argument` must have at least one input parameter.
+/// If a method attribute is provided (it is some), the function `argument` must have at least one input parameter.
 /// The first parameter must not be a receiver (e.g., `self`) and must be a typed pattern.
 /// The type of the first parameter cannot be T, U, etc., as these are type arguments.
 /// The type of the first parameter can contain nested type arguments.
 ///
-/// It then optionally generates an implementation of a method for the type specified by the first
+/// It then generates an implementation of a method for the type specified by the first
 /// parameter, if a `method` attribute is provided.
 ///
 /// # Arguments
@@ -131,7 +131,7 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
 
     // Collect and validate type arguments involved.
     // self_ty_consumed_params will contain all the generics used in the type of the first argument of the function.
-    // also if self_ty is a struct tuple it will give an error
+    // also if self_ty is a struct tuple it will give an error. Other error cases can be found in the function.
     let self_ty_consumed_params = ty_params.collect_type_arguments(self_ty)?;
 
     // Decide whether to early terminate.
@@ -250,7 +250,7 @@ enum FnKind {
 ///
 /// A token stream containing the original function and any derived code.
 // Could not previously test because procedural macro API is used outside of a procedural macro error.
-// The function signature is changed to accept TokenStream instead of Syntax.
+// The function signature is changed to accept proc_macro2::TokenStream instead of proc_macro::TokenStream.
 // attr is key1 = value1, key2 = value2 so in #[my_attr(...)] only the ... part is passed to the attr
 fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result<TokenStream> {
     // Parse the attributes into a dictionary.

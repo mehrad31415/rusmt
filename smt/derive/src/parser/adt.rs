@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use itertools::Itertools;
 use syn::{ExprMatch, ExprPath, FieldPat, Member, Pat, PatOr, PatStruct, PatTupleStruct, Result};
 
-use crate::parser::err::{bail_if_exists, bail_if_missing, bail_on};
+use crate::{bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::expr::{CtxtForExpr, Expr, MatchCombo, MatchVariant, Unpack};
 use crate::parser::generics::GenericsInstFull;
 use crate::parser::infer::{ti_unify, TypeRef, TypeUnifier};

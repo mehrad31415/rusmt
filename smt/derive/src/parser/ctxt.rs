@@ -6,11 +6,12 @@ use std::fs; // for filesystem operations; for reading a single file in process_
 use std::path::Path; // for path handling
 
 use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemMod, ItemStruct, Result, Stmt}; // Import syn crate types for parsing Rust code
-                                                                                   // use walkdir::WalkDir; // For walking through directories recursively (in  Context::new<P: AsRef<Path>>(path_input: P) -> Result<Self>)
+
+use walkdir::WalkDir; // For walking through directories recursively (in  Context::new<P: AsRef<Path>>(path_input: P) -> Result<Self>)
 
 use crate::parser::apply::{ApplyDatabase, Kind};
 use crate::parser::attr::{ImplMark, Mark, SpecMark};
-use crate::parser::err::{bail_if_exists, bail_on, bail_on_with_note};
+use crate::{bail_if_exists, bail_on, bail_on_with_note};
 use crate::parser::expr::{Expr, ExprParserRoot, Op};
 use crate::parser::func::{Axiom, FuncDef, FuncSig, ImplFuncDef, SpecFuncDef};
 use crate::parser::generics::{Generics, GenericsInstPartial, Monomorphization, PartialInst};
@@ -101,7 +102,6 @@ impl Display for NamedItem {
 }
 
 /// A refinement relation
-//? What is a refinement relation?
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct Refinement {
     pub fn_impl: UsrFuncName,
@@ -142,21 +142,20 @@ impl Context {
         if path_input.is_file() {
             // process the file
             ctxt.process_file(path_input)?;
-        } // the else will never be executed as the input is always a file because the harness! recursively walks through the directory
-          // else {
-          //     // create a WalkDir iterator starting from path_input and recursively walk through all subdirectories.
-          //     // process all files in the directory
-          //     for entry in WalkDir::new(path_input) {
-          //         let entry = entry.unwrap_or_else(|err| {
-          //             panic!(
-          //                 "unable to walk the directory {}: {}",
-          //                 path_input.to_string_lossy(),
-          //                 err
-          //             )
-          //         });
-          //         ctxt.process_file(entry.path())?;
-          //     }
-          // }
+        } else {
+            // create a WalkDir iterator starting from path_input and recursively walk through all subdirectories.
+            // process all files in the directory
+            for entry in WalkDir::new(path_input) {
+                let entry = entry.unwrap_or_else(|err| {
+                    panic!(
+                        "unable to walk the directory {}: {}",
+                        path_input.to_string_lossy(),
+                        err
+                    )
+                });
+                ctxt.process_file(entry.path())?;
+            }
+        }
 
         // post-collection checking
         ctxt.sanity_check()?;
@@ -342,7 +341,7 @@ impl Context {
 
         // k.as_ref() & v.name() both return the name of the type, impl, spec, or axiom
         // The names are stored in the value as well so that they can be used to display the error message and the span location of the error
-        // NamedItem::Type, NamedItem::Impl, NamedItem::Spec, NamedItem::Axiom are used to identify the type of the item where the name conflict occurs. They are defined because BTreeMap are homogeneous.
+        // NamedItem::Type, NamedItem::Impl, NamedItem::Spec, NamedItem::Axiom are used to identify the type of the item where the name conflict occurs. They are defined because BTreeMap is homogeneous.
         for (key, (kind, ident)) in self
             .types
             .iter()
@@ -483,7 +482,7 @@ impl ContextWithGenerics {
 
 #[derive(Debug)]
 /// Context manager after type analysis is done
-/// The finalized `types` is a container of all the types defined by the user.
+/// The finalized `types` is a container of all the types defined by the user which are marked with #[smt_type].
 /// It contains a mapping from the type name to the TypeDef.
 /// TypeDef is an encapsulation of the details of the type.
 /// TypeDef has a header which lists all the generics used in the type.
@@ -501,16 +500,18 @@ impl ContextWithType {
     /// used for finding if a user defined type exists in the context
     /// If return value is None, then the type does not exist in the context
     pub fn get_type_generics(&self, name: &UsrTypeName) -> Option<&Generics> {
-        self.types.get(name).map(|def| &def.head)
+        self.types.get(name).map(|def: &TypeDef| &def.head)
     }
 
     /// Parse function signatures
-    /// At this point the types are already parsed and finalized. The next step is to parse the function signatures. A function can be marked as an impl, spec, or axiom.
+    /// At this point the types are already parsed and finalized. 
+    /// The next step is to parse the function signatures. A function can be marked as an impl, spec, or axiom.
     /// parse_func_sigs converts a ContextWithType struct into a ContextWithSig if successful.
-    /// The difference between the two structs is that the `impls`, `specs`, and `axioms` fields in the structs are different. So only the `types` field is the same in both structs.
+    /// The difference between the two structs is that the `impls`, `specs`, and `axioms` fields in the structs are different. 
+    /// So only the `types` field is the same in both structs.
     /// In ContextWithType, `impls` is a BTreeMap<UsrFuncName, MarkedImpl>, `specs` is a BTreeMap<UsrFuncName, MarkedSpec>, and `axioms` is a BTreeMap<AxiomName, MarkedAxiom>.
     /// In ContextWithSig, `impls` is a BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>, `specs` is a BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>, and `axioms` is a BTreeMap<AxiomName, (FuncSig, Vec<Stmt>)>.
-    /// So `MarkedImpl`, `MarkedSpec`, and `MarkedAxiom` are converted into `(FuncSig, Vec<Stmt>)`.
+    /// So `MarkedImpl`, `MarkedSpec`, and `MarkedAxiom` all are converted into `(FuncSig, Vec<Stmt>)`.
     /// MarkedImpl for example encapsulates the item function, an optional method name, and the list of spec names. The FuncSig and Vec<Stmt> are the function signature and the function body respectively that are extracted from the item function. Same goes for MarkedSpec and MarkedAxiom.
     /// FuncSig is an ADT which encapsulates the generics, the input parameters, and the return type of the function signature.
     pub fn parse_func_sigs(self) -> Result<ContextWithSig> {
@@ -618,7 +619,8 @@ impl ContextWithType {
             // check signature for each impl in the list of impls that is defined in the spec
             // for example, if the spec is #[smt_spec(method = my_method, impls = [impl1, impl2])], then impl1 and impl2 are checked
             for impl_name in &mark.impls {
-                // retrieve the signature of the impl
+                // retrieve the signature of the impl 
+                // if an impl inside #[smt_spec(impls = [.....])] is not defined, then an error is thrown
                 let (impl_sig, impl_raw) = sig_impls.get(impl_name).expect("impl");
                 // if the signature of the impl and spec are not compatible, then an error is thrown
                 if !impl_sig.is_compatible(sig) {
@@ -693,7 +695,7 @@ pub struct ContextWithSig {
     axioms: BTreeMap<AxiomName, (FuncSig, Vec<Stmt>)>,
     /// a database for verification conditions (i.e., impl and spec mapping)
     vc_db: BTreeSet<Refinement>,
-    /// a database for all the marked functions (impl, spec, axiom). These can be standalone user-defined functions, system functions, and methods.
+    /// a database for all the marked functions (impl, spec). These can be standalone user-defined functions, system functions, and methods.
     pub fn_db: ApplyDatabase,
 }
 

@@ -1,2 +1,2 @@
-not an enum type
-IntegerWrapper
+unrecognized pattern for declaration - expect an identifier or a tuple
+IntegerWrapper { inner : y }

@@ -44,13 +44,16 @@ The name in the _\[\[test\]\]_ section suggests that this package is devoted to 
 The _tempfile_ library provides a secure and easy way to create temporary files and directories. The _tempfile::tempdir_ function creates a temporary directory and returns a _TempDir_ object. The _TempDir_ object is a handle to a temporary directory that deletes the directory when it goes out of scope. 
 
 _\[lints.rust\]_ and _\[lints.clippy\]_ are used to suppress warnings from the Rust and Clippy linters, respectively. The former configures Rust's built-in lints (the ones that __rustc__ enforces) and the latter configures the behavior of __clippy__, which is an additional linting tool for Rust that provides more advanced and stylistic lints than the default Rust lints. The _non_camel_case_types_ and _unused_ lints are set to _allow_ in the _\[lints.rust\]_ section, while all lints are set to _allow_ in the _\[lints.clippy\]_ section. The _non_camel_case_types_ lint is used to suppress warnings about types that do not follow the camel case convention. The _unused_ lint is used to suppress warnings about unused code. The _all_ lint is used to suppress all warnings from the Clippy linter.
+
 ---
 #### Test Organization
 
 Before delving deep into the source code, let's first talk about test organization in rust. In Rust, integration tests are entirely external to your library. They use your library in the same way any other code would, which means they can only call functions that are part of your library’s _public API_. To organize integration tests within a package, we create a _tests_ directory at the top level of our project directory, next to _src_. Cargo knows to look for integration test files in this directory. Inside _tests_, we can create any number of test files, and Cargo will compile each of the files as an individual crate. Nevertheless, in the case of this project, which is a workspace, as the integration tests involve multiple packages - _rusmart-smt-derive_, _rusmart-smt-remark-derive_, _rusmart-smt-stdlib_, and _rusmart-utils_ - a separate package has been created for the integration tests. If our package was a binary crate that only contained a src/main.rs file and didn't have a src/lib.rs file, we couldn't create integration tests in the tests directory. Therefore, the _testing_ package consists of a library crate with a _lib.rs_ file and a _tests_ directory containing the integration tests. The _lib.rs_ file in this case is empty as the tests target the API of external crates. The _tests_ directory contains the _integration.rs_ file, which is the entry point for the integration tests. In the normal configuration, the _integration.rs_ file would be a  test file and will appear in the test output. However, as we have disabled the libtest harness, the _integration.rs_ file will not appear in the test output. Instead, the harness macro in the _integration.rs_ file will run the integration tests defined in separate files located in the _testing/tests/model_ directory. This is because the _integration.rs_ file contains the following code:
 
 ```rust
-harness!(test_model, "tests/model", r"^.*\.rs$");
+datatest_stable::harness! {
+    { test = test_model, root = "tests/model", pattern = r"^.*\.rs$" },
+}
 ```
 
 As you can see, the _harness!_ macro is used to run the _test\_model_ function for each file in the _tests/model_ directory that matches the regular expression _^.*\.rs$_. The regular expression matches all Rust files with the _.rs_ extension. The explanation of the regex is as follows:
@@ -61,6 +64,7 @@ As you can see, the _harness!_ macro is used to run the _test\_model_ function f
 - _$_ asserts the end of a line.
 
 Note that the directory given to the harness macro is relative to the _Cargo.toml_ file of the package. Also, the harness macro is defined recursively, so that the function is applied to all files matching the pattern in the directory and its _subdirectories_.
+
 ---
 
 #### The source code of integration.rs

@@ -12,7 +12,7 @@ use crate::parser::adt::{MatchAnalyzer, MatchOrganizer};
 use crate::parser::apply::{Kind, TypeFn};
 use crate::parser::ctxt::ContextWithSig;
 use crate::parser::dsl::{Quantifier, SysMacroName};
-use crate::parser::err::{bail_if_exists, bail_if_missing, bail_if_non_empty, bail_on};
+use crate::{bail_if_exists, bail_if_missing, bail_if_non_empty, bail_on};
 use crate::parser::func::{CastFuncName, FuncName, FuncSig, SysFuncName};
 use crate::parser::generics::Generics;
 use crate::parser::infer::{ti_unify, TypeRef, TypeUnifier};
@@ -1524,7 +1524,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 // if the block has a label, bail (labels are not allowed)
                 // for example { 'a: { let x = 5; } } is not allowed
                 bail_if_exists!(label);
-                //TODO enable shadowing in rusmart
+                // TODO enable shadowing in rusmart
                 return self.convert_stmts(unifier, stmts);
             }
             // An `if` expression with an optional `else` block: `if expr { ... }

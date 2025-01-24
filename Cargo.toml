@@ -21,9 +21,9 @@ resolver = "2"
 anyhow = "1.0.86"
 clap = { version = "4.5.13", features = ["derive"] }
 command-group = "5.0.1"
-datatest-stable = "0.2.9"
+datatest-stable = "0.3.2"
 internment = { version = "0.8.4", features = ["arc"] }
-itertools = "0.13.0"
+itertools = "0.14.0"
 lazy_static = "1.5.0"
 log = "0.4.22"
 num_cpus = "1.16.0"
@@ -31,15 +31,13 @@ num-bigint = "0.4.6"
 num-rational = "0.4.2"
 num-traits = "0.2.19"
 paste = "1.0.15"
-petgraph = "0.6.5"
+petgraph = "0.7.1"
 proc-macro2 = "1.0.86"
 quote = "1.0.36"
 syn = { version = "2.0.72", features = ["full", "extra-traits"] }
 tempfile = "3.11.0"
 simplelog = "0.12.2"
 walkdir = "2.5.0"
-trybuild = "1.0"
-
 
 rusmart-utils = { path = "utils" }
 rusmart-cli = { path = "cli" }

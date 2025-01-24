@@ -4,15 +4,15 @@ This document provides an overview of the development components, including the 
 
 ### Makefile
 
-The `Makefile` provides a set of predefined commands that help manage the project, including code formatting, dependency management, and documentation generation. In a Makefile, the `@` symbol before a command suppresses the default behavior of make to `echo` the command to the terminal before executing it. By using `@`, the command is executed silently (without printing the command itself), and only the output of the command is shown. The backslashes at the end of each line allow the command to span multiple lines for readability. The `&&` operator is used to run multiple commands sequentially. Below is a description of each command available in the Makefile:
+The `Makefile` provides a set of predefined commands that help manage the project, including code formatting, dependency management, and documentation generation. In a Makefile, the `@` symbol before a command suppresses the default behavior of make to `echo` the command to the terminal before executing it. By using `@`, the command is executed silently (without printing the command itself), and only the output of the command is shown. The backslashes at the end of _one_ command line allow the command to span over multiple lines. The `&&` operator is used to run multiple commands sequentially. For example,`@cargo fmt && cargo clippy --all-targets --all-features` and `@cargo fmt @cargo clippy --all-targets --all-features` are equivalent. Below is a description of each command available in the Makefile:
 
 - **help**: Displays a list of available commands and functionalities. Run this command with `make help` to see the options and descriptions.
 
-- **lint**: Formats the code according to Rust's style guidelines using `cargo fmt`, and runs Clippy using `cargo clippy`, a linting tool, to catch common mistakes. Run this command with `make lint` to automatically format and lint the code.
+- **lint**: Formats the code according to Rust's style guidelines using `cargo fmt`, and runs Clippy using `cargo clippy`, a linting tool, to catch common mistakes. Run this command with `make lint` to automatically catch formatting warnings and errors in the code. To install `clippy`, run `rustup component add clippy`.
 
 - **cloc**: Counts the total number of lines of code in the specified directories. This command uses the `cloc` tool and can be run with `make cloc`. To install the `cloc` tool on mac, run `brew install cloc`. After installation, you can verify that cloc is successfully installed by running: `cloc --version`.
 
-- **reset**: Resets the project by running `cargo run reset` in the `cli` directory. This directory contains the command line interface of the rusmart tool. Use `make reset` to run this command.
+- **reset**: Resets the project by running `cargo run reset` in the `cli` directory. This directory contains the command line interface of the rusmart tool. `reset` is a customized command. Use `make reset` to run this command.
 
 - **deps**: Forces rebuilding the project dependencies (`Z3 and CVC5`). This command runs the `cargo run deps z3 build --force` and `cargo run deps cvc5 build --force` in the `cli` directory and can be invoked with `make deps`.
 
@@ -46,10 +46,10 @@ components = ["rustfmt", "clippy"]
 - **Channel**: `stable` – This ensures that the project uses the latest stable version of the Rust compiler. To check the configuration of the Rust toolchain in the root directory you can run `rustup show` to verify the correct channel is active.
 
 - **Components**: 
-  - `rustfmt`: A tool that automatically formats Rust code according to standard style guidelines. This improves code readability and reduces the likelihood of stylistic inconsistencies in the sourcecode. Running `cargo fmt` will automatically format the source code. 
-  - `clippy`: A linting tool that catches common bugs, and suggests improvements, helping to maintain robustness in the source code. Running `cargo clippy` will lint the code and identify potential issues.
+  - `rustfmt`: A tool that automatically formats Rust code according to standard style guidelines. Running `cargo fmt` will automatically improve code readability and reduce stylistic inconsistencies in the sourcecode.
+  - `clippy`: A linting tool that catches common bugs, and suggests improvements, helping to maintain robustness in the source code. Running `cargo clippy` will lint the code and identify potential warning and errors.
 
-These processes have been automated by the `make lint` command in the Makefile.
+These processes have been automated by the `make lint` command in the Makefile. Including `components = ["rustfmt", "clippy"]` in the `rust-toolchain` file ensures that anyone that clones the repository will automatically get these components.
 
 ### Git Modules
 
@@ -97,7 +97,7 @@ todo.txt
 2. Install the `cargo-tarpaulin` crate by running `cargo install cargo-tarpaulin`.
 3. Run `cargo tarpaulin --out Lcov` to generate the `lcov.info` file.
 
-Depending on where we run the command `cargo tarpaulin --out Lcov`, the content of the `lcov.info` file will be different. If we have a workspace with multiple crates for example, the `lcov.info` file will always be created in the root of the workspace. However, if the command is run in the root of the workspace, the lcov.info file will contain coverage information for all the crates in the workspace. If the command is run in the directory of a specific crate, the lcov.info file will contain coverage information only for that specific crate. Now if we run the command `cargo tarpaulin --out Lcov --out html`, the coverage information will be generated in both lcov.info and html format. The html file will be named as `tarpaulin-report.html` by default. Note that the html file will always be created in the root of the workspace as well, unless specified by the `--output-dir` flag otherwise. To reiterate, depending on where the command is run, the content of the html file will be specific to that crate if the command is run in the directory of a specific crate; or the entire workspace if the command is run in the root of the workspace. In either way, all the crates will be listed in the html file, but the coverage information will be different. We can also only generate the html file by running `cargo tarpaulin --out html`.
+Depending on where we run the command `cargo tarpaulin --out Lcov`, the content of the `lcov.info` file will be different. If we have a workspace with multiple crates for example, the `lcov.info` file will always be created in the root of the workspace. However, if the command is run in the root of the workspace, the lcov.info file will contain coverage information for all the crates in the workspace. If the command is run in the directory of a specific crate, the lcov.info file will contain coverage information only for that specific crate. Now if we run the command `cargo tarpaulin --out Lcov --out html`, the coverage information will be generated in both lcov.info and html format. The html file will be named as `tarpaulin-report.html` by default. Note that the html file will always be created in the root of the workspace as well, unless specified by the `--output-dir` flag otherwise. To reiterate, depending on where the command is run, the content of the html file will be specific to that crate if the command is run in the directory of a specific crate; or the entire workspace if the command is run in the root of the workspace. In either way, all the crates will be listed in the html file, but the coverage information will be different. We can generate only the html file by running `cargo tarpaulin --out html`.
 
 Now by openning the command pallet (cmd + shift + p in mac) and typing coverage, we can see the commands available from the `coverage gutters` extension. We have two important commands `watch/unwatch coverage`. The watch coverage will show which functions are covered and which are not by the test suite. The covered functions will have a green mark and the uncovered functions will have a red mark (you can customize the viewing in the extension settings. For example adding a show ruler/line/gutter option). Note that as we write new tests (or delete the previous ones), the inline display of the coverage in the editory is not automatically updated. To update the coverage information, we need to run the tarpaulin command again and then toggle the watch coverage command to see the new coverage information. The default version of cargo tarpaulin is `--ignore-tests`, which means that the coverage information will not be generated for the tests.
 
@@ -127,7 +127,7 @@ cargo tarpaulin \
 open target/tarpaulin/tarpaulin-report.html
 ```
 
-The first line is the shebang line, which tells the system which interpreter should be used to execute the script. The script uses [Tarpaulin](https://github.com/xd009642/tarpaulin), a popular code coverage tool for Rust projects. It runs cargo tarpaulin with the `--engine llvm` flag specifying that tarpaulin should use the `LLVM-based coverage` engine. The LLVM engine tends to be more accurate and can handle more complex code constructs than the default engine. The `--exclude-files` flag is used to exclude the rust files under the _smt/testing_ directory from the coverage report. This is because the functions defined in these files are file-driven integration tests. The `--workspace` flag tells tarpaulin to generate coverage information for the entire workspace. The `--out Lcov` and `--out html` flags specify the output format of the coverage report. Finally, the script creates the `Lcov` and `html` files in the `target/tarpaulin` directory, which is defined by the `--output-dir` flag. The html file by default is named `tarpaulin-report.html`, which in the last line is opened. You can run the script by first installing Tarpaulin - if you haven't already - by running the following command: `cargo install cargo-tarpaulin`. Then, make the script executable by running `chmod +x cov.sh`, and finally run it by executing `./cov.sh`. While running the script, `.profraw` files are generated in the `target/tarpaulin/profraws` directory - which is automatically created. These files are created by the LLVM engine to store raw profiling data collected by the tarpaulin to calculate coverage statistics.
+The first line is the shebang line, which tells the system which interpreter should be used to execute the script. The script uses [Tarpaulin](https://github.com/xd009642/tarpaulin), a popular code coverage tool for Rust projects. It runs cargo tarpaulin with the `--engine llvm` flag specifying that tarpaulin should use the `LLVM-based coverage` engine, which tends to be more accurate in handling complex code constructs than the default engine. The `--exclude-files` flag is used to exclude the rust files under the _smt/testing_ directory from the coverage report. This is because the functions defined in these files are file-driven integration tests. The `--workspace` flag tells tarpaulin to generate coverage information for the entire workspace. The `--out Lcov` and `--out html` flags specify the output format of the coverage report. Finally, the script creates the `Lcov` and `html` files in the `target/tarpaulin` directory, which is defined by the `--output-dir` flag. The html file by default is named `tarpaulin-report.html`, which in the last line is opened. You can run the script by first installing Tarpaulin - if you haven't already - by running the following command: `cargo install cargo-tarpaulin`. Then, make the script executable by running `chmod +x cov.sh`, and finally run it by executing `./cov.sh`. While running the script, `.profraw` files are generated in the `target/tarpaulin/profraws` directory - which is automatically created. These files are created by the LLVM engine to store raw profiling data collected by the tarpaulin to calculate coverage statistics.
 
 As you can see each crate has a separate `cov.sh` file as well, which the content of each is the same and includes the following:
 
@@ -145,9 +145,9 @@ After cleaning the project (erasing any `Lcov` file as it was located in the `ta
 
 Last but not least, the `coverage.sh` file in the root of the workspace, utilizes the `grcov` tool to generate a code coverage report for the entire workspace. This is different than the `tarpaulin` tool. We will not go into the details of the differences between the two tools. We have used `tarpaulin` for our project to track the coverage of the unit tests. Note that having multiple `lcov.info` files in the workspace will affect the coverage information displayed by the coverage gutters extension. That is why we place the `lcov.info` file in the `target/tarpaulin` directory and we clean the project at the beginning of each script.
 
-The rusmart project is a `Rust Workspace`, which essentially is a set of packages (crates) that share the same `Cargo.lock` and `output directory`. The `Cargo.toml` file in the root directory configures the entire workspace. This file will start with a `workspace` section that will allow us to add members to the workspace by specifying the path to the packages. The workspace has one `target` directory at the top level that the compiled artifacts will be placed into by running `cargo build`. Even if we were to run `cargo build` from inside an inner crate directory, the compiled artifacts would still end up in the root `target` directory rather than in the `target` directory of the crate. If each crate had its own target directory, each crate would have to recompile each of the other crates in the workspace to place the artifacts in its own target directory. By sharing one target directory, the crates can share the compiled artifacts and avoid recompiling. Notice that the workspace has only one `Cargo.lock` file at the top level, rather than having a Cargo.lock in each crate’s directory. This ensures that all crates are using the same version (`Semantic Versions (SemVars)`) of all dependencies. Note that because the workspace contains multiple binary crates, we cannot run the `cargo run` command directly. Instead, we must specify the binary crate we want to run by using the `--bin` flag. For example, to run the `rusmart-cli` crate, we would run the `cargo run --bin rusmart-cli` command. Lets take a look at the Cargo.toml file in the root directory of the workspace:
-
 ### Cargo.toml
+
+The rusmart project is a `Rust Workspace`, which essentially is a set of packages that share the same `Cargo.lock` and `output directory`. The `Cargo.toml` file in the root directory configures the entire workspace. This file will start with a `workspace` section that will allow us to add members to the workspace by specifying the path to the packages. The workspace has one `target` directory at the top level that the compiled artifacts will be placed into by running `cargo build`. Even if we were to run `cargo build` from inside an inner crate directory, the compiled artifacts would still end up in the root `target` directory rather than in the `target` directory of the crate. If each crate had its own target directory, each crate would have to recompile each of the other crates in the workspace to place the artifacts in its own target directory. By sharing one target directory, the crates can share the compiled artifacts and avoid recompiling. Notice that the workspace has only one `Cargo.lock` file at the top level, rather than having a Cargo.lock in each crate’s directory. This ensures that all crates are using the same version (`Semantic Versions (SemVars)`) of all dependencies. Note that because the workspace contains multiple binary crates, we cannot run the `cargo run` command directly. Instead, we must specify the binary crate we want to run by using the `--bin` flag. For example, to run the `rusmart-cli` _package_, we would run the `cargo run --bin rusmart-cli` command. Lets take a look at the Cargo.toml file in the root directory of the workspace.
 
 The workspace `Tom's Obvious Minimum Language` (TOML) file contains the following content:
 
@@ -175,9 +175,9 @@ resolver = "2"
 anyhow = "1.0.86"
 clap = { version = "4.5.13", features = ["derive"] }
 command-group = "5.0.1"
-datatest-stable = "0.2.9"
+datatest-stable = "0.3.2"
 internment = { version = "0.8.4", features = ["arc"] }
-itertools = "0.13.0"
+itertools = "0.14.0"
 lazy_static = "1.5.0"
 log = "0.4.22"
 num_cpus = "1.16.0"
@@ -185,7 +185,7 @@ num-bigint = "0.4.6"
 num-rational = "0.4.2"
 num-traits = "0.2.19"
 paste = "1.0.15"
-petgraph = "0.6.5"
+petgraph = "0.7.1"
 proc-macro2 = "1.0.86"
 quote = "1.0.36"
 syn = { version = "2.0.72", features = ["full", "extra-traits"] }
@@ -203,7 +203,7 @@ rusmart-smt-remark-derive = { path = "smt/remark/remark_derive" }
 rusmart-smt-derive = { path = "smt/derive" }
 ```
 
-This file indicates that the project is organized as a Rust workspace, comprising multiple packages (rusmart-utils, rusmart-cli, rusmart-smt-stdlib, rusmart-smt-remark, rusmart-smt-remark-derive, rusmart-smt-derive, rusmart-smt-testing, rusmart-lang-demo, rusmart-lang-rego) that are grouped and loosely ordered by their dependency relationships. In short, `loosely ordered` means that the packages downstream in the dependency graph are listed after the packages they depend on, though this is not restricted. Furthermore, the workspace relies on several external crates, which are managed collectively under [workspace.dependencies]. All the crates in the workspace share the same version of these dependencies. The dependecies in short provide the following functionality:
+This file indicates that the project is organized as a Rust workspace, comprising multiple packages (rusmart-utils, rusmart-cli, rusmart-smt-stdlib, rusmart-smt-remark, rusmart-smt-remark-derive, rusmart-smt-derive, rusmart-smt-testing, rusmart-lang-demo, rusmart-lang-rego) that are grouped and loosely ordered by their dependency relationships. In short, `loosely ordered` means that the packages downstream in the dependency graph are listed after the packages they depend on, though this is not restricted. Furthermore, the workspace relies on several external packages, which are managed collectively under [workspace.dependencies]. All the packages in the workspace share the same version of these dependencies. The dependecies in short provide the following functionality:
 
 - **proc-macro2**, **quote**, **syn**: Crates essential for procedural macro development. The `syn` crate parses Rust code from a string into a data structure that we can perform operations on. The `quote` crate turns syn data structures back into Rust code. These crates make it much simpler to parse any sort of Rust code we might want to handle.
 - **anyhow**: Provides flexible error handling.
@@ -222,7 +222,7 @@ This file indicates that the project is organized as a Rust workspace, comprisin
 - **simplelog**: Simplified logging framework.
 - **walkdir**: Efficient directory traversal.
 
-The workspace also includes internal crates and their respective paths.
+The workspace also includes internal packages as dependencies in the last few lines. As these packages are local, their respective paths must be included.
 
 ### Cargo.lock
 

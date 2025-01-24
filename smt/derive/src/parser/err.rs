@@ -16,6 +16,7 @@
 /// It has two patterns:
 /// - `bail_on!(item, "message")` to return an Error instance with a literal message
 /// - `bail_on!(item, "message {}", arg)` to return an Error instance with a formatted message
+#[macro_export]
 macro_rules! bail_on {
     ($item:expr, $msg:literal $(,)?) => { // item is anything that evaluates to a value. When pattern matched, the item is not evaluated. The pattern matching in macros is purely syntactic and happens at compile time without executing any code.
         { // This extra block is optional but it is a good practice to use it to avoid polluting the namespace. In case of defining a function inside the macro for example, it is necessary to use this block if we intend to use the macro multiple times in the same scope. Because the function will be defined multiple times in the same scope; which is not allowed in Rust, leading to an error. Note that Rust declarative macros are only hygienic in terms of local variables, loop labels, and crates. They are not hygienic in terms of functions, types, modules, etc. (proc-macros are always unhygienic).
@@ -40,13 +41,14 @@ macro_rules! bail_on {
         }
     };
 }
-pub(crate) use bail_on;
+// pub(crate) use bail_on;
 
 /// Exit the parsing early with an error and a note
 /// It has two patterns:
 /// - `bail_on_with_note!(loc, "note", item, "message")` to return an Error instance with a literal message for the item and a note for the loc
 /// - `bail_on_with_note!(loc, "note", item, "message {}", arg)` to return an Error instance with a formatted message for the item and a note for the loc
 /// example: bail_on_with_note!(prev.name(), "previously defined here", item.name(), "duplicated axiom name");
+#[macro_export]
 macro_rules! bail_on_with_note {
     ($loc:expr, $note:literal, $item:expr, $msg:literal $(,)?) => {
         return Err({
@@ -81,37 +83,39 @@ macro_rules! bail_on_with_note {
         })
     };
 }
-pub(crate) use bail_on_with_note;
+// pub(crate) use bail_on_with_note;
 
 /// Special case on bail: does not expect a token to exist
 /// This macro is used to check if a token exists and if it does, it returns an error.
 /// It has one pattern:
 /// - `bail_if_exists!(item)` to return an Error instance if the item exists (is Some)
 /// If the item is None, it does nothing.
+#[macro_export]
 macro_rules! bail_if_exists {
     ($item:expr) => {
         match $item {
             None => (),
-            Some(__v) => $crate::parser::err::bail_on!(__v, "unexpected"),
+            Some(__v) => $crate::bail_on!(__v, "unexpected"),
         }
     };
 }
-pub(crate) use bail_if_exists;
+// pub(crate) use bail_if_exists;
 
 /// Special case on bail: expects a token to exist
 /// This macro is used to check if a token is missing and if it is, it returns an error.
 /// It has one pattern:
 /// - `bail_if_missing!(item, parent, "note")` to return an Error instance if the item is missing
 /// If the item is Some, it returns the value.
+#[macro_export]
 macro_rules! bail_if_missing {
     ($item:expr, $par:expr, $note:literal) => {
         match $item {
-            None => $crate::parser::err::bail_on!($par, "expect {}", $note),
+            None => $crate::bail_on!($par, "expect {}", $note),
             Some(__v) => __v,
         }
     };
 }
-pub(crate) use bail_if_missing;
+// pub(crate) use bail_if_missing;
 
 /// Special case on bail: expect a token to be empty
 /// This macro is used to check if a token is empty and if it is not, it returns an error.
@@ -119,15 +123,16 @@ pub(crate) use bail_if_missing;
 /// - `bail_if_non_empty!(item)` to return an Error instance if the item is not empty
 /// is_empty() is a method that checks if the length of the item is zero. The item can be a string, a vector, or any other type that implements the is_empty() method.
 /// If the item is not empty, it returns Err(syn::Error::new_spanned(span_of_item, "unexpected \n {item}")).
+#[macro_export]
 macro_rules! bail_if_non_empty {
     ($item:expr) => {{
         let __v = $item;
         if !__v.is_empty() {
-            $crate::parser::err::bail_on!(__v, "unexpected");
+            $crate::bail_on!(__v, "unexpected");
         }
     }};
 }
-pub(crate) use bail_if_non_empty;
+// pub(crate) use bail_if_non_empty;
 
 /// Special case on bail: expect a token to be non-empty
 /// This macro is used to check if a token is non-empty and if it is empty, it returns an error.
@@ -135,11 +140,12 @@ pub(crate) use bail_if_non_empty;
 /// - `bail_if_empty!(item, parent, "note")` to return an Error instance if the item is empty
 /// If the item is empty, it returns Err(syn::Error::new_spanned(span_of_parent, "expect {note} \n {parent}")).
 /// If the item is not empty, it does nothing.
+#[macro_export]
 macro_rules! bail_if_empty {
     ($item:expr, $parent:expr, $note:literal) => {{
         if $item.is_empty() {
-            $crate::parser::err::bail_on!($parent, "expect {}", $note);
+            $crate::bail_on!($parent, "expect {}", $note);
         }
     }};
 }
-pub(crate) use bail_if_empty;
+// pub(crate) use bail_if_empty;

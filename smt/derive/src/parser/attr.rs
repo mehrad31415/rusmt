@@ -6,7 +6,7 @@
 //! - `SpecMark` struct which represents the marking for an annotated spec function.
 //! - `parse_attrs` is the main method to parse the attributes and extract the marks. This method is used in the `ctxt` module.
 //!
-use crate::parser::err::{bail_if_missing, bail_on};
+use crate::{bail_if_missing, bail_on};
 use crate::parser::name::UsrFuncName;
 use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
 use std::collections::{BTreeMap, BTreeSet};
@@ -245,7 +245,7 @@ impl Mark {
                         // MacroDelimiter is a grouping token that surrounds a macro body: `m!(...)` or `m!{...}` or `m![...]`
                         // If the delimiter is not Parenthesis (it is a brace or bracket), it will return an error.
                         if !matches!(delimiter, MacroDelimiter::Paren(_)) {
-                            bail_on!(attr, "not a parenthesis-enclosed list for {:?}", path);
+                            bail_on!(attr, "not a parenthesis-enclosed list");
                         }
 
                         let mut store = Self::parse_dict(tokens)?;
@@ -323,9 +323,7 @@ impl Mark {
     }
 
     /// Extract a mark, if any, from the list of attributes
-    ///
-    /// This function takes a list of attributes and attempts to extract a mark from them.
-    /// If multiple marks are specified, an error is returned.
+    /// The whole purpose of this function is to return an error if multiple marks are specified.
     ///
     /// # Arguments
     ///
@@ -687,7 +685,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string().as_str(),
-            "unexpected list\n# [smt_type (copy)]"
+            "unexpected list\nfor smt_type and smt_axiom, no attributes are expected\n# [smt_type (copy)]"
         );
     }
 
@@ -701,7 +699,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string().as_str(),
-            "unexpected list\n# [smt_axiom (copy)]"
+            "unexpected list\nfor smt_type and smt_axiom, no attributes are expected\n# [smt_axiom (copy)]"
         );
     }
 

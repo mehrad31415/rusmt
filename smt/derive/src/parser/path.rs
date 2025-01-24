@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use syn::{Expr as Exp, ExprPath, Path, PathArguments, PathSegment, Result};
 
-use crate::parser::err::{bail_if_exists, bail_if_missing, bail_on};
+use crate::{bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::expr::CtxtForExpr;
 use crate::parser::func::{CastFuncName, FuncName, SysFuncName};
 use crate::parser::generics::{Generics, GenericsInstFull, GenericsInstPartial};

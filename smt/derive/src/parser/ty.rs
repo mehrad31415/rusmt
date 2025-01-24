@@ -3,16 +3,15 @@ use std::fmt::{Display, Formatter};
 
 use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string.
 
-use syn::punctuated::Punctuated;
 use syn::{
     AngleBracketedGenericArguments, Field, FieldMutability, Fields, FieldsNamed, FieldsUnnamed,
     GenericArgument, Ident, ItemEnum, ItemStruct, Path, PathArguments, PathSegment, Result, Token,
-    Type, TypePath, TypeTuple as TypePack, Variant,
+    Type, TypePath, TypeTuple as TypePack, Variant, punctuated::Punctuated,
 };
 
 // The ContextWithGenerics are imported to form the TypeDef for each type.
 use crate::parser::ctxt::{ContextWithGenerics, MarkedType};
-use crate::parser::err::{bail_if_empty, bail_if_exists, bail_if_missing, bail_on};
+use crate::{bail_if_empty, bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::generics::Generics;
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};
 
@@ -197,7 +196,7 @@ pub enum TypeTag {
     Map(Box<TypeTag>, Box<TypeTag>),
     /// dynamic error type
     Error,
-    /// user-defined type with type arguments as a list
+    /// user-defined type with type parameters as a list
     User(UsrTypeName, Vec<TypeTag>),
     /// a tuple of types
     Pack(Vec<TypeTag>),
@@ -414,7 +413,7 @@ impl TypeTag {
                 let mut pack = vec![];
                 for elem in elems {
                     // recursively convert each element of the tuple to TypeTag
-                    pack.push(Self::from_type(ctxt, elem)?);
+                    pack.push(Self::from_type(ctxt, elem)?); // allows embedded tuples.
                 }
                 // a tuple is represented as a pack of types
                 Ok(Self::Pack(pack))
@@ -432,7 +431,7 @@ impl TypeTag {
     /// If the arguments are empty, an error is thrown.
     /// If the colon2_token is missing, an error is thrown.
     ///
-    /// This function is used when calling a function with generic arguments. like: MyType::<i32, i32>
+    /// This function is used when calling a function with generic arguments. like: MyType::<i32, i32>. The function is called on the ::<i32,i32> in this case.
     pub fn from_generics<CTX: CtxtForType>(
         ctxt: &CTX,
         generics: &AngleBracketedGenericArguments,
@@ -490,7 +489,7 @@ impl TypeTag {
     ///
     /// This function is used to collect all the type parameters used for the first parameter of a user-defined function.
     /// After doing so, we filter out these type parameters from the generics of the function.
-    /// Th rest are used to declare a method implementation for the type of the first parameter.
+    /// The rest are used to declare a method implementation for the type of the first parameter.
     pub fn type_params_used(&self) -> BTreeSet<TypeParamName> {
         let mut params = BTreeSet::new();
         self.type_params_used_recursive(&mut params);
@@ -529,6 +528,7 @@ impl Display for TypeTag {
 /// Represents a tuple definition
 /// TypeTuple encapsulates a list of types
 /// ADT for a struct with unnamed fields or an enum variant with unnamed fields
+/// for example: struct MyStruct(i32,String); or X in enum MyEnum {X(String,i32),}
 pub struct TypeTuple {
     pub slots: Vec<TypeTag>,
 }
@@ -699,7 +699,7 @@ impl Display for EnumVariant {
 
 #[derive(Debug)]
 /// Represents an ADT definition
-/// TypeEnum encapsulates a map between the variant names and their respective EnumVariant (structure)
+/// TypeEnum encapsulates a map between the variant names and their respective EnumVariant (structure) for a single enum type
 pub struct TypeEnum {
     pub variants: BTreeMap<String, EnumVariant>,
 }
@@ -785,19 +785,19 @@ impl TypeBody {
     /// if marked type is an Enum(ItemEnum), an error will be thrown if no variants exist. enum MyEnum {}
     /// if marked type is a Struct(ItemStruct) - record struct - , an error will be thrown if no fields exist. struct MyStruct {}
     /// if marked type is a Struct(ItemStruct) - tuple struct - , an error will be thrown if no slots exist. struct MyStruct();
-    /// in case of tuple struct, an error will be thrown if a semicolon is missing at the end. struct MyStruct(i32)
-    /// in case of record struct, an error will be thrown if a semicolon exists at the end. struct MyStruct {a:i32};
+    /// in case of tuple struct, an error will be thrown if a semicolon is missing at the end. struct MyStruct(i32). This will be caught by the rust compiler.
+    /// in case of record struct, an error will be thrown if a semicolon exists at the end. struct MyStruct {a:i32}; This will be caught by the rust compiler.
     /// a unit struct is not allowed. struct MyStruct;
     pub fn from_marked(
-        driver: &ContextWithGenerics,
+        ctxt: &ContextWithGenerics,
         generics: &Generics,
         item: &MarkedType,
     ) -> Result<Self> {
         // we encapsulate the `context with generics` and the `generics` themselves
         // A context provider for type parsing
         let ctxt = TypeParseCtxt {
-            ctxt: driver, // the whole context containing all the types
-            generics,     // generics of the current type
+            ctxt, // the whole context containing all the types
+            generics,     // generics of the current type as the from_marked function is used inside a loop in ctxt.rs for each type
         };
 
         // depending on the item type (enum or struct) we have different parsing strategies
@@ -807,9 +807,9 @@ impl TypeBody {
                     attrs: _,
                     vis: _,
                     enum_token: _,
-                    ident: _,    // handled earlier
+                    ident: _,    // handled earlier (the fact that the ident must be unique is checked in the context - in sanity check, etc.)
                     generics: _, // handled earlier (when the conversion from Context to ContextWithGenerics happened in parse_generics)
-                    brace_token: _,
+                    brace_token: _, // enums do not have semicolons at the end
                     variants,
                 } = item;
                 bail_if_empty!(variants, item, "variants"); // expect at least one variant so enum MyEnum {} is not allowed
@@ -827,13 +827,14 @@ impl TypeBody {
                     attrs: _,
                     vis: _,
                     struct_token: _,
-                    ident: _,    // handled earlier
+                    ident: _,    // handled earlier (the fact that the ident must be unique is checked in the context - in sanity check, etc.)
                     generics: _, // handled earlier (when the conversion from Context to ContextWithGenerics happened in parse_generics)
                     fields,
-                    semi_token,
+                    semi_token, // record structs do not have semicolons at the end but tuple structs do. This is enforced by the rust compiler.
                 } = item;
 
                 // exploit the similarity with ADT variant
+                // basically each variant in an enum is either a unit struct, unnamed struct (tuple struct), or named struct (record struct)
                 match EnumVariant::from_fields(&ctxt, fields)? {
                     EnumVariant::Unit => bail_on!(item, "expect fields or slots"), // a unit struct is not allowed so struct MyStruct; is not allowed
                     EnumVariant::Tuple(tuple) => {
@@ -876,6 +877,6 @@ pub struct TypeDef {
 
 impl Display for TypeDef {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.head, self.body)
+        write!(f, "{}{{ {} }}", self.head, self.body)
     }
 }

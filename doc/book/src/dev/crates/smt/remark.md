@@ -14,7 +14,6 @@ Initially, we will start explaining the _Cargo.toml_ file. This file is used to 
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }
-trybuild = { workspace = true }
 ```
 
 The versions used according to the _Cargo.toml_ of the workspace are:
@@ -22,7 +21,6 @@ The versions used according to the _Cargo.toml_ of the workspace are:
 - proc-macro2 = "1.0.86"
 - quote = "1.0.36"
 - syn = { version = "2.0.72", features = ["full", "extra-traits"] }
-- trybuild = "1.0"
 
 The _full_ feature of the _syn_ crate is used to enable _Data structures for representing the syntax tree of all valid Rust source code, including items and expressions_. The _extra-traits_ feature is used to make the _Debug, Eq, PartialEq, Hash impls for all syntax tree types_ available. The syntax tree type is the result of parsing the Rust code. _Trybuild_ is a test harness for invoking rustc on a set of test cases and asserting that any resulting error messages are the ones intended. More information about the _trybuild_ crate can be found [here](https://docs.rs/trybuild/latest/trybuild/).
 
@@ -32,11 +30,11 @@ The _full_ feature of the _syn_ crate is used to enable _Data structures for rep
 
 - __err__ : The _err_ module provides a set of error-handling utilities, specifically designed for use within procedural macros. It includes five macros to simplify compilation error generation or error handling when working with Rust's macro system. The _fail\_on!_ and _fail\_if\_error!_ macros are used to generate compiler errors. The _bail\_on!_, _bail\_if\_exists!_, and _bail\_if\_missing!_ macros return error instances for later use.
 
-- __attr__ : The _attr_ module provides utilities for parsing key-value mappings from token streams, through the _parse\_dict_ function. This function is used in the _derive\_for\_func_ function, which in turn is invoked by the _smt\_impl_ and _smt\_spec_ macros in the lib module of the _rusmart\_smt\_remark\_derive_ crate. The parse_dict function takes a token stream and extracts key-value pairs, for example #[my_attr(method = add)] => Map {method : add}. It returns a map of the parsed keys and their associated values, while also handling errors related to missing keys, invalid syntax, and duplicate entries.
+- __attr__ : The _attr_ module provides utilities for parsing key-value mappings from token streams, through the _parse\_dict_ function. This function is used in the _derive\_for\_func_ function, which is used inside the _derive\_for\_impl_ and _derive\_for\_spec_ functions of the _func_ module; which in turn is invoked by the _smt\_impl_ and _smt\_spec_ macros in the lib module of the _rusmart\_smt\_remark\_derive_ crate. The parse_dict function takes a token stream and extracts key-value pairs, for example #[my_attr(method = add)] => Map {method : add}. It returns a map of the parsed keys and their associated values, while also handling errors related to missing keys, invalid syntax, and duplicate entries.
 
 - __ty__ : The provided module is responsible for generating implementations of the SMT trait for Rust structs and enums using procedural macros. This module includes functions like _derive\_for\_struct_ and _derive\_for\_enum_, which parse and inspect the fields and variants of structs and enums, respectively, to generate trait implementations. To implement the SMT trait, the comparison method (_cmp) is defined. Moreover, for enums, it also derives the Default trait based on the first variant. It also includes error handling utilities to manage unexpected attributes and missing or invalid struct or enum definitions.
 
-_ __generics__ : This module provides utilities for parsing and managing generic type parameters in Rust code. The central structure, _TypeParamGroup_, is responsible for collecting and handling type parameters from generic definitions. It provides methods to parse generic parameters, check for specific parameters, collect type arguments from types, and convert the parameters into syntax suitable for various use cases like definitions, usage, and function invocation. The module ensures that the generics adhere to specific rules, such as requiring the implementation of the SMT trait for each type parameter and preventing invalid constructs like default type parameters or lifetimes.
+- __generics__ : This module provides utilities for parsing and managing generic type parameters in Rust code. The central structure, _TypeParamGroup_, is responsible for collecting and handling type parameters from generic definitions. It provides methods to parse generic parameters, check for specific parameters, collect type arguments from types, and convert the parameters into syntax suitable for various use cases like definitions, usage, and function invocation. The module ensures that the generics adhere to specific rules, such as requiring the implementation of the SMT trait for each type parameter and preventing invalid constructs like default type parameters or lifetimes.
 
 - __func__ : The _func_ module provides functionality for deriving annotations for functions used in procedural macros. It includes two key functions: _derive\_for\_impl_ and _derive\_for\_spec_, which are used by the _smt\_impl_ and _smt\_spec_ macros, respectively. Additionally, the _check_and_derive_ function is called inside the _derive\_for\_impl_ and _derive\_for\_spec_ functions to verify the function's signature and generate the appropriate code - ensuring it complies with certain rules, such as no use of const, async, unsafe, or variadic parameters, and enforcing that all generics implement the SMT trait. The primary purpose of the functions (derive_for_impl and derive_for_spec) is to implement the _provided method as an argument_ for the first parameter of the function argument.
 
@@ -49,6 +47,7 @@ _ __generics__ : This module provides utilities for parsing and managing generic
 #### Testing
 
 We have written unit tests for the _rusmart-smt-remark_ package. The coverage of the tests is _98.80%_. The coverage for modules is as follows:
+
     - The coverage for the _attr_ module is _100%_.
     - The coverage for the _generics_ module is _100%_.
     - The coverage for the _ty__ module is _97.87%_.

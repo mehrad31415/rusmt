@@ -15,8 +15,7 @@ use clap::Parser;
 // Import the `Command` struct from the `rusmart_cli` library crate to handle command management.
 use rusmart_cli::cli::Command;
 // Import the `initialize` function and `WKS` constant from the `rusmart_utils` crate.
-use rusmart_utils::config;
-use rusmart_utils::config::WKS;
+use rusmart_utils::config::{self, WKS};
 // handling the file system operations like creating, deleting, and reading files.
 use std::fs;
 
@@ -26,18 +25,22 @@ use std::fs;
 #[derive(Parser)]
 /// * Semantic SMT CLI
 /// By running the cargo run -- --help command, the following help message is displayed:
+/// 
 /// Tool: semantic-smt-cli
 /// Author: Meng Xu <meng.xu.cs@uwaterloo.ca>
 /// Version: 0.1.0
 /// A command line interface for the Rusmart project
-/// Usage: rusmart-cli <COMMAND>
-/// Commands:
-/// reset  Wipe-clean the entire workspacedksvjdfsjkn
-/// deps   Manage dependencies (subcommand is defined in DepArgs)
-/// help   Print this message or the help of the given subcommand(s)
+/// 
+/// Usage: rusmart-cli <COMMAND> 
+///  Commands:
+///   reset  Run cargo run -- reset to delete the studio directory
+///   deps   Manage dependencies (subcommand is defined in DepArgs) for example> cargo run deps cvc5 build
+///   help   Print this message or the help of the given subcommand(s)
+///
 /// Options:
-/// -h, --help     Print help
-/// -V, --version  Print version
+///   -h, --help     Print help
+///   -V, --version  Print version
+/// 
 /// The about, version, and author attributes are taken from the Cargo.toml file.
 /// The rename_all = "kebab-case" attribute converts the struct field names to kebab-case.
 /// The help_template attribute customizes the help message format.

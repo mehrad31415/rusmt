@@ -91,3 +91,4 @@ mod vc_impl_target_invalid;
 mod vc_pair_incompatible;
 mod vc_spec_target_invalid;
 mod with_generics_impl_ok;
+mod example_ok;

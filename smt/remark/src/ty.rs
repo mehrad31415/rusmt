@@ -46,7 +46,10 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
     } = item;
 
     // Add derive attributes to the struct such as `Debug`, `Clone`, `Copy`, `Default`, and `Hash`.
-    // Note that `Debug` is derived automatically.
+    // every SMT type is copyable (as there are no references in the SMT types). If a type implements Copy, it must also implement Clone.
+    // Implementing Debug is for testing purposes. Ord is not implemented as the SMT trait has a cmp method. Default is implemented for the default method in the expression macros. The Hash trait is implemented for storing in BTreeMaps in the SMT.
+    // Note that `Default` can be derived automatically for structs.
+    // all types in SMT must derive the following traits: Debug, Clone, Copy, Default, and Hash. (also Send and Sync)
     attrs.push(parse_quote!(
         #[derive(Debug, Clone, Copy, Default, Hash)]
     ));
@@ -183,9 +186,6 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 }
 
 /// Derives the `SMT` trait implementation for an enum.
-///
-/// This function takes a mutable reference to an `ItemEnum` and returns a `TokenStream` containing
-/// the generated implementation code.
 ///
 /// # Arguments
 ///
@@ -485,7 +485,7 @@ pub fn derive_for_type(attr: TokenStream, item: TokenStream) -> Result<TokenStre
     }
 
     // Parse the input item.
-    // let mut original = syn::parse::<Item>(Syntax::from(item))?; cannot test becase: procedural macro API is used outside of a procedural macro
+    // let mut original = syn::parse::<Item>(Syntax::from(item))?; cannot test becase: procedural macro API is used outside of a procedural macro. This is revolved by using the proc-macro crate.
     let mut original = syn::parse2::<Item>(item)?;
     let extended = match &mut original {
         Item::Struct(item_struct) => derive_for_struct(item_struct)?,
@@ -495,7 +495,7 @@ pub fn derive_for_type(attr: TokenStream, item: TokenStream) -> Result<TokenStre
 
     // Combine the original item with the generated code.
     let combined = quote! {
-        #original
+        #original // the original item needs to be returned in the output as the [pro_macro_attribute] consumes the original input. So if the original input is not returned, the original item will be lost. Unlike the [pro_macro_derive] which does not consume the original input and only the generated code is returned. #[proc_macro] consumes the passed input as well.
         #extended
     };
     Ok(combined)

@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering; // Imported for comparing type variables.
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter}; // Imported for implementing the Display trait.
+use std::fmt::{Display, Formatter};
 
 use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string for example like args.iter().format(",") will return a string with the elements of args separated by a comma.
 
@@ -54,10 +54,10 @@ macro_rules! ti_unify {
     ($unifier:expr, $lhs:expr, $rhs:expr, $spanned:expr) => {
         match $unifier.unify($lhs, $rhs) {
             Err($crate::parser::infer::TIError::CyclicUnification) => {
-                $crate::parser::err::bail_on!($spanned, "cyclic type unification");
+                $crate::bail_on!($spanned, "cyclic type unification");
             }
             Ok(None) => {
-                $crate::parser::err::bail_on!($spanned, "no viable type");
+                $crate::bail_on!($spanned, "no viable type");
             }
             Ok(Some(__v)) => __v, // __v is of type TypeRef and is the result of the unification.
         }
@@ -369,6 +369,11 @@ impl Typing {
             .expect("equivalence group not found for h in merge_group")
             .clone();
 
+        // Nothing to do if they belong to the same group. This can happen if they have been unified before in the merge_group method (only method to update the index key of the params BTreeMap) => *self.params.get_mut(&h.0).unwrap() = idx_l;
+        if idx_l == idx_h {
+            return Ok(Some(group_l.repr())); // return the representative type of the equivalence group.
+        }
+
         // Check for cyclic unification.
         if !involved.is_disjoint(&group_l.vars) {
             return Err(TIError::CyclicUnification);
@@ -380,11 +385,6 @@ impl Typing {
         // Prevent recursive typing.
         involved.extend(group_l.vars.iter().copied());
         involved.extend(group_h.vars.iter().copied());
-
-        // Nothing to do if they belong to the same group. This can happen if they have been unified before in the merge_group method (only method to update the index key of the params BTreeMap) => *self.params.get_mut(&h.0).unwrap() = idx_l;
-        if idx_l == idx_h {
-            return Ok(Some(group_l.repr())); // return the representative type of the equivalence group.
-        }
 
         // Unify the equivalence set, after a sanity checking.
         if !group_l.vars.is_disjoint(&group_h.vars) {
@@ -490,7 +490,7 @@ impl Typing {
         let inferred = match (lhs, rhs) {
             // Both are type variables.
             (Var(l), Var(r)) => match Ord::cmp(&l.0, &r.0) {
-                // Ord::cmp returns Ordering::Less, Ordering::Equal, or Ordering::Greater. It is used to compare two values and it is part of the standard library (does not need to be imported). &l.0.cmp(&r.0) is the same as Ord::cmp(&l.0, &r.0). Ordering needs to be imported (use std::cmp::Ordering).
+                // Ord::cmp returns Ordering::Less, Ordering::Equal, or Ordering::Greater. It is used to compare two values and it is part of the standard library (does not need to be imported). &l.0.cmp(&r.0) = Ord::cmp(&l.0, &r.0). Ordering needs to be imported (use std::cmp::Ordering).
                 Ordering::Equal => {
                     // if the indexes of the type variables are equal, return the type variable itself. In this case, the type variables are the same. They are the same variable.
                     // no knowledge gain in this case
@@ -549,7 +549,7 @@ impl Typing {
             (Pack(pack_lhs), Pack(pack_rhs)) => {
                 // If tuple sizes differ, cannot unify.
                 if pack_lhs.len() != pack_rhs.len() {
-                    return Ok(None);
+                    panic!("Tuple size mismatch");
                 }
 
                 // Unify each element.
@@ -584,7 +584,10 @@ impl Typing {
     /// self.groups.get(idx).unwrap() returns the equivalence group of the TypeVar.
     /// the repr() method of the TypeEquivGroup struct returns the representative type of the equivalence group (that can be from the sort field of the group and if it is None, it returns the minimum index of the vars field of the group like TypeRef::Var(TypeVar(0usize)) etc.).
     fn retrieve_type(&self, var: &TypeVar) -> TypeRef {
-        let idx = *self.params.get(&var.0).unwrap(); // get the index of the equivalence group of the TypeVar.
+        let idx = *self
+            .params
+            .get(&var.0)
+            .expect("type var should have an equivalence group"); // get the index of the equivalence group of the TypeVar.
         self.groups.get(idx).unwrap().repr()
     }
 }

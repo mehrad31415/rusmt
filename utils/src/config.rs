@@ -2,7 +2,6 @@
 
 use std::env;
 use std::fmt::{Display, Formatter};
-use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -76,9 +75,9 @@ lazy_static! {
     pub static ref WKS: Workspace = {
         let dockerized = matches!(env::var("DOCKER"), Ok(val) if val == "1");
 
-        // grab workspace root path
+        // The env!("CARGO_MANIFEST_DIR") is the directory where the current crate's Cargo.toml file is located.
         let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        assert!(base.pop());
+        assert!(base.pop()); // retrieve the workspace root
 
         // derive other paths
         let studio = base
@@ -130,28 +129,6 @@ pub fn initialize() {
     .expect("logging facility should be initialized");
 }
 
-/// Helper function to find the root of the workspace.
-/// The env!("CARGO_MANIFEST_DIR") is the directory where the current crate's Cargo.toml file is located.
-/// The function goes up the directory tree until it finds a Cargo.toml file that contains a `[workspace]` section.
-/// If no workspace root is found, the function returns None.
-pub fn find_workspace_root() -> Option<PathBuf> {
-    let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-    // Loop until we reach the root directory
-    while dir.pop() {
-        let cargo_toml = dir.join("Cargo.toml");
-        if let Ok(content) = fs::read_to_string(&cargo_toml) {
-            // Check if this Cargo.toml contains a `[workspace]` section
-            if content.contains("[workspace]") {
-                return Some(dir);
-            }
-        }
-    }
-
-    // If no workspace root is found, return None
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,14 +171,5 @@ mod tests {
             _ => unreachable!(),
         };
         assert_eq!(expected_level, LevelFilter::Info);
-    }
-
-    #[test]
-    /// test the find root of work space function
-    fn test_find_workspace_root() {
-        let wk_path = find_workspace_root();
-
-        assert!(wk_path.is_some());
-        assert_eq!(wk_path.expect("should have a value"), WKS.base);
     }
 }

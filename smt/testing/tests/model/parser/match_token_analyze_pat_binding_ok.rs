@@ -8,7 +8,7 @@ fn foo() -> Boolean {
     match MyEnum::<Integer>::A {
         MyEnum::A => Boolean::from(true),
         MyEnum::B(_) => Boolean::from(false),
-        MyEnum::C { x } => x.eq(Integer::from(0)),
+        MyEnum::C { x } => x.eq(&Integer::from(0)).into(),
     }
 }
 

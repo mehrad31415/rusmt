@@ -51,11 +51,11 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
     // Note that `Default` can be derived automatically for structs.
     // all types in SMT must derive the following traits: Debug, Clone, Copy, Default, and Hash. (also Send and Sync)
     attrs.push(parse_quote!(
-        #[derive(Debug, Clone, Copy, Default, Hash)]
+        #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
     ));
 
-    // Generate the `SMT::_cmp` function implementation based on the struct fields.
-    let cmp_fn = match fields {
+    // Generate the `SMT::cmp` function implementation based on the struct fields.
+    match fields {
         // Unit structs are not supported.
         // struct MyUnitStruct; // Unit struct example
         Fields::Unit => bail_on!(item, "unexpected unit fields in struct"),
@@ -63,7 +63,7 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
         // Tuple structs (unnamed fields).
         // struct MyTupleStruct(i32, String); // Tuple struct example
         Fields::Unnamed(defs) => {
-            let mut cmp_exprs = vec![];
+            // let mut cmp_exprs = vec![];
             for (i, field) in defs.unnamed.iter().enumerate() {
                 // struct MyTupleStruct(String); // field example
                 // attrs: [],
@@ -102,32 +102,32 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
                 bail_if_exists!(ident); //unreachable invocation as the rust compiler doesn't allow it.
                 bail_if_exists!(colon_token); //unreachable invocation as the rust compiler doesn't allow it.
 
-                // Generate comparison expressions for each field.
-                let index = Index::from(i);
-                let cmp_expr = quote! {
-                    match self.#index._cmp(rhs.#index) {
-                        std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
-                        std::cmp::Ordering::Equal => (),
-                        std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
-                    };
-                };
+                // // Generate comparison expressions for each field.
+                // let index = Index::from(i);
+                // let cmp_expr = quote! {
+                //     match self.#index.cmp(rhs.#index) {
+                //         std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
+                //         std::cmp::Ordering::Equal => (),
+                //         std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
+                //     };
+                // };
 
-                // Collect the expressions.
-                cmp_exprs.push(cmp_expr);
+                // // Collect the expressions.
+                // cmp_exprs.push(cmp_expr);
             }
 
-            // Build the `_cmp` function.
-            quote! {
-                fn _cmp(self, rhs: Self) -> std::cmp::Ordering {
-                    #(#cmp_exprs)*
-                    std::cmp::Ordering::Equal
-                }
-            }
+            // // Build the `cmp` function.
+            // quote! {
+            //     fn cmp(self, rhs: Self) -> std::cmp::Ordering {
+            //         #(#cmp_exprs)*
+            //         std::cmp::Ordering::Equal
+            //     }
+            // }
         }
 
         // Structs with named fields.
         Fields::Named(defs) => {
-            let mut cmp_exprs = vec![];
+            // let mut cmp_exprs = vec![];
             for field in defs.named.iter() {
                 let Field {
                     attrs: _,
@@ -148,25 +148,25 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
                 bail_if_missing!(colon_token, field, "colon");
 
                 // Generate comparison expressions for each field.
-                let cmp_expr = quote! {
-                    match self.#name._cmp(rhs.#name) {
-                        std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
-                        std::cmp::Ordering::Equal => (),
-                        std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
-                    };
-                };
+                // let cmp_expr = quote! {
+                //     match self.#name.cmp(rhs.#name) {
+                //         std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
+                //         std::cmp::Ordering::Equal => (),
+                //         std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
+                //     };
+                // };
 
                 // Collect the expressions.
-                cmp_exprs.push(cmp_expr);
+                // cmp_exprs.push(cmp_expr);
             }
 
-            // Build the `_cmp` function.
-            quote! {
-                fn _cmp(self, rhs: Self) -> std::cmp::Ordering {
-                    #(#cmp_exprs)*
-                    std::cmp::Ordering::Equal
-                }
-            }
+            // Build the `cmp` function.
+            // quote! {
+            //     fn cmp(self, rhs: Self) -> std::cmp::Ordering {
+            //         #(#cmp_exprs)*
+            //         std::cmp::Ordering::Equal
+            //     }
+            // }
         }
     };
 
@@ -179,7 +179,6 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 
     let extended = quote! {
         impl #tokenized_impl_generics SMT for #struct_name #tokenized_type_ty_insts {
-            #cmp_fn
         }
     };
     Ok(extended)
@@ -225,7 +224,7 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
     // Add derive attributes to the enum such as `Debug`, `Clone`, `Copy`, and `Hash`.
     // Note: `Default` is NOT derived for enums automatically.
     attrs.push(parse_quote!(
-        #[derive(Debug, Clone, Copy, Hash)]
+        #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
     ));
 
     // Generate the `Default::default` function.
@@ -278,7 +277,7 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
         }
     };
 
-    // Holds the match arms for the `SMT::_cmp` function.
+    // Holds the match arms for the `SMT::cmp` function.
     let mut cmp_arms = vec![];
     for (i, variant) in variants.iter().enumerate() {
         let Variant {
@@ -359,7 +358,7 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                     let cmp_lhs_var = format_ident!("l{}", f);
                     let cmp_rhs_var = format_ident!("r{}", f);
                     let cmp_expr = quote! {
-                        match #cmp_lhs_var._cmp(#cmp_rhs_var) {
+                        match #cmp_lhs_var.cmp(#cmp_rhs_var) {
                             std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
                             std::cmp::Ordering::Equal => (),
                             std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
@@ -407,7 +406,7 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                     let cmp_lhs_var = format_ident!("l_{}", field_name);
                     let cmp_rhs_var = format_ident!("r_{}", field_name);
                     let cmp_expr = quote! {
-                        match #cmp_lhs_var._cmp(#cmp_rhs_var) {
+                        match #cmp_lhs_var.cmp(#cmp_rhs_var) {
                             std::cmp::Ordering::Less => return std::cmp::Ordering::Less,
                             std::cmp::Ordering::Equal => (),
                             std::cmp::Ordering::Greater => return std::cmp::Ordering::Greater,
@@ -433,15 +432,15 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
         cmp_arms.push(match_arm);
     }
 
-    // Generate the `_cmp` function.
-    let cmp_fn = quote! {
-        fn _cmp(self, rhs: Self) -> std::cmp::Ordering {
-            match (self, rhs) {
-                #(#cmp_arms)*
-            }
-            std::cmp::Ordering::Equal
-        }
-    };
+    // Generate the `cmp` function.
+    // let cmp_fn = quote! {
+    //     fn cmp(self, rhs: Self) -> std::cmp::Ordering {
+    //         match (self, rhs) {
+    //             #(#cmp_arms)*
+    //         }
+    //         std::cmp::Ordering::Equal
+    //     }
+    // };
 
     // Parse and validate generics.
     let ty_params = TypeParamGroup::parse_generics(generics)?;
@@ -455,9 +454,7 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
             #default_fn
         }
 
-        impl #tokenized_impl_generics SMT for #enum_name #tokenized_type_ty_insts {
-            #cmp_fn
-        }
+        impl #tokenized_impl_generics SMT for #enum_name #tokenized_type_ty_insts {}
     };
     Ok(extended)
 }
@@ -537,7 +534,7 @@ mod tests {
         assert!(res.is_ok());
         let tokens = res.unwrap();
         let generated_code = tokens.to_string();
-        assert_eq!(generated_code, "impl SMT for MyStruct { fn _cmp (self , rhs : Self) -> std :: cmp :: Ordering { match self . 0 . _cmp (rhs . 0) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; match self . 1 . _cmp (rhs . 1) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; std :: cmp :: Ordering :: Equal } }");
+        assert_eq!(generated_code, "impl SMT for MyStruct { }");
     }
 
     // invoke let ty_params = TypeParamGroup::parse_generics(generics)?;
@@ -568,7 +565,7 @@ mod tests {
         assert!(res.is_ok());
         let tokens = res.unwrap();
         let generated_code = tokens.to_string();
-        assert_eq!(generated_code, "impl SMT for MyStruct { fn _cmp (self , rhs : Self) -> std :: cmp :: Ordering { match self . a . _cmp (rhs . a) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; match self . b . _cmp (rhs . b) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; std :: cmp :: Ordering :: Equal } }");
+        assert_eq!(generated_code, "impl SMT for MyStruct { }");
     }
 
     #[test]
@@ -694,7 +691,7 @@ mod tests {
         // }
 
         // impl SMT for TestEnum {
-        //     fn _cmp(self, rhs: Self) -> std::cmp::Ordering {
+        //     fn cmp(self, rhs: Self) -> std::cmp::Ordering {
         //         match (self, rhs) {
         //             (TestEnum::Variant1, TestEnum::Variant2(..)) => {
         //                 return std::cmp::Ordering::Less;
@@ -710,7 +707,7 @@ mod tests {
         //                 return std::cmp::Ordering::Less;
         //             }
         //             (TestEnum::Variant2(l0, l1), TestEnum::Variant2(r0, r1)) => {
-        //                 match l0._cmp(r0) {
+        //                 match l0.cmp(r0) {
         //                     std::cmp::Ordering::Less => {
         //                         return std::cmp::Ordering::Less;
         //                     }
@@ -720,7 +717,7 @@ mod tests {
         //                     }
         //                 }
 
-        //                 match l1._cmp(r1) {
+        //                 match l1.cmp(r1) {
         //                     std::cmp::Ordering::Less => {
         //                         return std::cmp::Ordering::Less;
         //                     }
@@ -737,7 +734,7 @@ mod tests {
         //                 return std::cmp::Ordering::Greater;
         //             }
         //             (TestEnum::Variant3 { a: l_a, b: l_b }, TestEnum::Variant3 { a: r_a, b: r_b }) => {
-        //                 match l_a._cmp(r_a) {
+        //                 match l_a.cmp(r_a) {
         //                     std::cmp::Ordering::Less => {
         //                         return std::cmp::Ordering::Less;
         //                     }
@@ -747,7 +744,7 @@ mod tests {
         //                     }
         //                 }
 
-        //                 match l_b._cmp(r_b) {
+        //                 match l_b.cmp(r_b) {
         //                     std::cmp::Ordering::Less => {
         //                         return std::cmp::Ordering::Less;
         //                     }

@@ -102,7 +102,7 @@ mod test {
     /// testing the first pattern of the forall macro.
     /// All integers are by default zero so var1 = 0.into(); and var2 = 0.into()
     fn test_pattern_one_forall_one() {
-        let v = forall!(|var1: Integer, var2: Integer| var1.eq(var2));
+        let v = forall!(|var1: Integer, var2: Integer| Boolean::from(var1.eq(&var2)));
         assert!(*v);
     }
 
@@ -133,7 +133,7 @@ mod test {
     /// The functionality of the first pattern of the exists macro is similar to the forall macro
     /// The only difference is the use cases.
     fn test_pattern_one_exists() {
-        let v = exists!(|var1: Integer, var2: Integer| var1.eq(var2));
+        let v = exists!(|var1: Integer, var2: Integer| Boolean::from(var1.eq(&var2)));
         assert!(*v);
     }
 
@@ -167,7 +167,7 @@ mod test {
 
     #[test]
     fn test_pattern_one_choose() {
-        let v = choose!(|var1: Integer, var2: Integer| var1.eq(var2));
+        let v = choose!(|var1: Integer, var2: Integer| Boolean::from(var1.eq(&var2)));
         assert_eq!(v, (Integer::from(0), Integer::from(0)));
     }
 
@@ -212,7 +212,7 @@ mod test {
     /// }
     fn test_set_min() {
         let s = set!(Integer::from(1), Integer::from(2), Integer::from(3));
-        let v = choose!(v in s => forall!(e in s => v.eq(e).or(v.lt(e))));
+        let v = choose!(v in s => forall!(e in s => Boolean::from(v.eq(&e)).or(v.lt(e))));
         assert_eq!(v, Integer::from(1));
     }
 
@@ -227,7 +227,7 @@ mod test {
             (Integer::from(2), Text::from("two")),
             (Integer::from(3), Text::from("three"))
         );
-        let v = choose!(v in m => forall!(e in m => v.eq(e).or(v.lt(e))));
+        let v = choose!(v in m => forall!(e in m => Boolean::from(v.eq(&e)).or(v.lt(e))));
         assert_eq!(v, Integer::from(1));
     }
 }

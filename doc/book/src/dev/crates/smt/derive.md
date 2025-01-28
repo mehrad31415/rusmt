@@ -63,3 +63,13 @@ pub mod intrinsics;
 ```
 
 The _parser_ module contains 13 submodules. Instead of analyzing all the modules, we will provide a high level description of what the parser module is doing. The main logic and flow can be found in the _ctxt_ module. The path to the file containing the _Rusmart_ code is taken as input. The Context::new (input) function is called to create a new context object. The way this is done is by storing annotated functions, struct, and enums of the rust source code. To emphasize, only the structs and enums that are annotated with an _#\[smt\_type\]_ attribute are stored in the context object. The functions that are annotated with _#\[smt\_impl\]_, _#\[smt\_axiom\]_, and _#\[smt\_spec\]_ are also stored. Also note that code stored in local modules are stored in the context object. Some sanity checks are performed on the stored data. The context object is then returned.
+
+Some important facts about the rusmart files are:
+- Every function annotated by _#\[smt\_impl\]_, _#\[smt\_axiom\]_, or _#\[smt\_spec\]_ must have a return type.
+- The return type of a function annotated by _#\[smt\_axiom\]_ must be a _Boolean_ type.
+- The function signature of a function annotated by _#\[smt\_impl\]_ must be the same as the function signature of the corresponding function annotated by _#\[smt\_spec\]_. By corresponding we mean that if func X1 was annotated by _#\[smt\_impl(specs = \[X2\])\]_, then func X2 must be have a compatible signature with func X1.
+- Functions annotated by _#\[smt\_spec\]_ may have or not have a body. In case, the body is not provided, the function is considered is uninterpreted and has the macro call _unimplemented!()_. To reiterate, the function signature of an uninterpreted function must be the same as the function signature of the corresponding function annotated by _#\[smt\_impl\]_.
+- Functions annotated by _#\[smt\_impl\]_ or _#\[smt\_axiom\]_ must have a body.
+- Every function body has some optional local let-binding statements and a mandatory sole expression (which is the return value of the function).
+- The typed version of _forall_, _exists_, and _choose_ macros are only allowed in the body of a function annotated by _#\[smt\_spec\]_ and _#\[smt\_axiom\]_. In other words, these macros are not allowed in the body of a function annotated by _#\[smt\_impl\]_. However, the iteration version of these macros are allowed in any function body.
+- 

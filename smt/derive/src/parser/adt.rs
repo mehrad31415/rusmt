@@ -238,8 +238,8 @@ impl MatchAnalyzer {
     }
 
     /// Analyze a pattern for: match arm -> head
-    /// For example, in match (1, 2) { (some, thing) => ... } the head is (1, 2) and the case for the first arm is (some, thing)
-    /// for each arm in the match body, the pattern is taken (for example (some, thing)). Each of the (some, 1) and (thing, 2) are made and passed to the analyze_pat_match_head one by one
+    /// For example, in match (some, thing) { (1, 2) => ... } the head is (some, thing) and the case for the first arm is (1, 2)
+    /// for each arm in the match body, the pattern is taken (for example (1, 2)). Each of the (1, some) and (2, thing) are made and passed to the analyze_pat_match_head one by one
     /// ctxt: is the ExprParserRoot (this will always remain the same because we are parsing only inside one function - so the context, the kind, and the signature will remain the same)
     pub fn analyze_pat_match_head<T: CtxtForExpr>(
         ctxt: &T,

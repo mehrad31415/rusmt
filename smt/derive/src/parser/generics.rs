@@ -221,6 +221,16 @@ impl Display for Generics {
 }
 
 /// Partial instantiation of generics
+/// In BTreeMap<TypeParamName, (usize, Option<TypeTag>)>, the key is the type parameter name, which is the generics used in the type definition. The value is a tuple of the index of the type parameter in the generics and an optional type tag. The type tag is None if the type parameter is not assigned in the argument call, otherwise it is Some(TypeTag). For example:
+/// ```
+/// enum Option<T> {
+///    Some(T),
+///   None,
+/// }
+/// let x = Option::<i32>::Some(3);
+/// ```
+/// In the above example, the type parameter T is assigned to i32, so the partial instantiation is {T: (0, Some(Integer))}. 
+/// If the type parameter is not assigned, then the partial instantiation is {T: (0, None)}: let x = Option::Some(3);
 pub struct GenericsInstPartial {
     args: BTreeMap<TypeParamName, (usize, Option<TypeTag>)>,
 }
@@ -331,7 +341,7 @@ impl GenericsInstPartial {
                                 // when using _ explicitly used in a type position in Rust, it corresponds to a type inference placeholder, represented as Type::Infer in the Rust Abstract Syntax Tree (AST).
                                 // in this case, the type argument is set to None
                                 Type::Infer(_) => None,
-                                _ => Some(TypeTag::from_type(ctxt, ty)?), // otherwise, the type argument is parsed
+                                _ => Some(TypeTag::from_type(ctxt, ty)?), // otherwise, the type argument is parsed (which only allows Type::Path and Type::Tuple)
                             };
                             ty_args.push(elem); // add the parsed type argument to the list
                         }

@@ -245,7 +245,7 @@ impl Display for TypeRef {
 /// The `vars` field contains the indices of the type variables in the group.
 /// The `sort` field contains the reference type assigned to the group which is the inferred type (if any).
 /// This struct is not public because it is only used internally by the Typing struct.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct TypeEquivGroup {
     /// Set of type variable indices that are equivalent.
     vars: BTreeSet<usize>,
@@ -375,6 +375,7 @@ impl Typing {
         }
 
         // Check for cyclic unification.
+        // a new involved will be created for every expression.
         if !involved.is_disjoint(&group_l.vars) {
             return Err(TIError::CyclicUnification);
         }
@@ -625,8 +626,8 @@ impl TypeUnifier {
     /// Unifies two types and returns the unified type.
     ///
     /// # Parameters
-    /// - `lhs`: The left-hand side type marking the returned type.
-    /// - `rhs`: The right-hand side type marking the expected type.
+    /// - `lhs`: The left-hand side type marking the returned type for example right-hand side of the assignment.
+    /// - `rhs`: The right-hand side type marking the expected type for example left hand side of the assignment.
     ///
     /// # Returns
     /// A `TIResult` containing the unified type or `None` if unification fails.

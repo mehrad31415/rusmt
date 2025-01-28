@@ -1,27 +1,72 @@
+use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
-
-use itertools::Itertools;
 use syn::{
     Arm, Block, Expr as Exp, ExprBlock, ExprCall, ExprField, ExprIf, ExprMatch, ExprMethodCall,
     ExprParen, ExprStruct, ExprTuple, ExprUnary, FieldValue, Local, LocalInit, Member, Pat,
     PatTuple, PatType, Result, Stmt, UnOp,
 };
 
-use crate::parser::adt::{MatchAnalyzer, MatchOrganizer};
-use crate::parser::apply::{Kind, TypeFn};
-use crate::parser::ctxt::ContextWithSig;
-use crate::parser::dsl::{Quantifier, SysMacroName};
-use crate::{bail_if_exists, bail_if_missing, bail_if_non_empty, bail_on};
-use crate::parser::func::{CastFuncName, FuncName, FuncSig, SysFuncName};
-use crate::parser::generics::Generics;
-use crate::parser::infer::{ti_unify, TypeRef, TypeUnifier};
-use crate::parser::intrinsics::Intrinsic;
-use crate::parser::name::{UsrFuncName, UsrTypeName, VarName};
-use crate::parser::path::{
-    ADTBranch, ExprPathAsCallee, ExprPathAsRecord, ExprPathAsTarget, QualifiedPath,
+use crate::parser::{
+    adt::{MatchAnalyzer, MatchOrganizer},
+    apply::{Kind, TypeFn},
+    ctxt::ContextWithSig,
+    dsl::{Quantifier, SysMacroName},
+    func::{CastFuncName, FuncName, FuncSig, SysFuncName},
+    generics::Generics,
+    infer::{ti_unify, TypeRef, TypeUnifier},
+    intrinsics::Intrinsic,
+    name::{UsrFuncName, UsrTypeName, VarName},
+    path::{ADTBranch, ExprPathAsCallee, ExprPathAsRecord, ExprPathAsTarget, QualifiedPath},
+    ty::{CtxtForType, EnumVariant, SysTypeName, TypeBody, TypeDef, TypeTag},
 };
-use crate::parser::ty::{CtxtForType, EnumVariant, SysTypeName, TypeBody, TypeDef, TypeTag};
+use crate::{bail_if_exists, bail_if_missing, bail_if_non_empty, bail_on};
+
+/// Marks a declaration of variable(s)
+#[derive(Clone, Debug)]
+pub enum VarDecl {
+    One(VarName, TypeRef), // for identifiers with types for example `let x: i32 = 42;` stores the (x, i32) pair
+    Pack(Vec<VarDecl>), // for tuples with types for example `let (x, y): (i32, i32) = (1, 2);` stores the [(x, i32), (y, i32)] pair
+}
+
+impl VarDecl {
+    /// Derive the type of this decl
+    pub fn ty(&self) -> TypeRef {
+        match self {
+            Self::One(_, t) => t.clone(),
+            Self::Pack(elems) => TypeRef::Pack(elems.iter().map(|d| d.ty()).collect()),
+        }
+    }
+
+    /// Visitor with ty traversal function
+    /// Only used in the Expr::visit function
+    /// Basically traverses all the VarDecls in the VarDecl and applies the ty function to the TypeRef in the VarDecl
+    pub fn visit<TY>(&mut self, ty: &mut TY) -> Result<()>
+    where
+        TY: FnMut(&mut TypeRef) -> Result<()>,
+    {
+        match self {
+            Self::One(_, t) => ty(t)?, // early return the error
+            Self::Pack(elems) => {
+                for decl in elems {
+                    decl.visit(ty)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Display for VarDecl {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::One(name, ty) => write!(f, "{}:{}", name, ty),
+            Self::Pack(decls) => {
+                write!(f, "({})", decls.iter().format(","))
+            }
+        }
+    }
+}
 
 /// Variable Declaration
 /// For example, `let x: i32 = 42;`, this only encapsulates the left-hand side of the let binding that is `x: i32`
@@ -117,7 +162,7 @@ impl LetDecl {
     /// Creates the AST for a let binding statement by parsing the pattern and potentially the type
     /// This only encapsulates the left-hand side of the let binding for example `let x: i32 = 42;` where `x: i32` is the pattern
     /// Used for each Local statement in the convert_stmts function to convert the statement to an expression
-    /// ctxt: ExprParserRoot implements the CtxtForType trait, providing the generics and get_type_generics functions
+    /// ctxt: ExprParserRoot implements the CtxtForType trait, providing the generics (retrieves the generics of the current function under analysis) and get_type_generics (retrieves the generics of the given user defined type from the whole context) functions
     /// The ctxt is used in the conversion of the Type to TypeTag
     /// unifier: the type unifier used to unify the types
     /// pat: the pattern to be parsed for the declaration for example `let x: i32 = 42;` where `x: i32` is the pattern
@@ -139,55 +184,9 @@ impl LetDecl {
         };
 
         // parse them recursively
-        let mut vars = BTreeMap::new(); // vars is only to prevent duplicate declarations of the same variable inside one let statement. Also the vars is added to the overall vars to prevent duplicate declarations of the same variable in the whole function. At the start of parsing the sole let statement, vars is empty.
+        let mut vars = BTreeMap::new(); // vars is only to prevent duplicate declarations of the same variable inside ONE let statement. Also the vars is added to the overall vars to prevent duplicate declarations of the same variable in the whole function. At the start of parsing the sole let statement, vars is empty.
         let decl = Self::parse_decl(&mut vars, unifier, pat_res, ty_opt.as_ref())?; // parse_decl creates the VarDecl for the pattern
         Ok(Self { vars, decl })
-    }
-}
-
-/// Marks a declaration of variable(s)
-#[derive(Clone, Debug)]
-pub enum VarDecl {
-    One(VarName, TypeRef), // for identifiers with types for example `let x: i32 = 42;` stores the (x, i32) pair
-    Pack(Vec<VarDecl>), // for tuples with types for example `let (x, y): (i32, i32) = (1, 2);` stores the [(x, i32), (y, i32)] pair
-}
-
-impl VarDecl {
-    /// Derive the type of this decl
-    pub fn ty(&self) -> TypeRef {
-        match self {
-            Self::One(_, t) => t.clone(),
-            Self::Pack(elems) => TypeRef::Pack(elems.iter().map(|d| d.ty()).collect()),
-        }
-    }
-
-    /// Visitor with ty traversal function
-    /// Only used in the Expr::visit function
-    /// Basically traverses all the VarDecls in the VarDecl and applies the ty function to the TypeRef in the VarDecl
-    pub fn visit<TY>(&mut self, ty: &mut TY) -> Result<()>
-    where
-        TY: FnMut(&mut TypeRef) -> Result<()>,
-    {
-        match self {
-            Self::One(_, t) => ty(t)?, // early return the error
-            Self::Pack(elems) => {
-                for decl in elems {
-                    decl.visit(ty)?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Display for VarDecl {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::One(name, ty) => write!(f, "{}:{}", name, ty),
-            Self::Pack(decls) => {
-                write!(f, "({})", decls.iter().format(","))
-            }
-        }
     }
 }
 
@@ -237,14 +236,14 @@ pub trait CtxtForExpr: CtxtForType {
     /// Retrieve the signature of a user-defined function
     fn lookup_unqualified(&self, name: &UsrFuncName) -> Option<&TypeFn>;
 
-    /// Retrieve the function type for a user function on a system type (a.k.a., an intrinsic)
+    /// Retrieve the signature for a user function on a system type (a.k.a., an intrinsic)
     fn lookup_usr_func_on_sys_type(
         &self,
         ty_name: &SysTypeName,
         fn_name: &UsrFuncName,
     ) -> Option<&TypeFn>;
 
-    /// Retrieve the function type for a user function on a user type (entirely user-defined method)
+    /// Retrieve the signature for a user function on a user type (entirely user-defined method)
     fn lookup_usr_func_on_usr_type(
         &self,
         ty_name: &UsrTypeName,
@@ -877,8 +876,8 @@ impl Display for Expr {
 
 #[derive(Clone, Debug)]
 /// Root expression parser for each function as a whole
-/// ctxt: contains all the marked types, impls, specs, and axioms
-/// kind: whether the function is an spec or impl - an axiom is represented as a spec
+/// ctxt: contains all the marked types, impls, specs, and axioms of the whole file
+/// kind: whether the current function under analysis is a spec or impl - an axiom is represented as a spec
 /// generics, params, and ret_ty: function generics, parameters, and return type derived from the function signature
 pub struct ExprParserRoot<'ctx> {
     /// context provider
@@ -908,7 +907,7 @@ struct ExprParserCursor<'r, 'ctx: 'r> {
 
 impl<'ctx> ExprParserRoot<'ctx> {
     /// Creating a new context for parsing a single function body
-    /// For each separate function (whether impl or spec), a new ExprParserRoot is created
+    /// For each separate function (whether impl or spec or axiom), a new ExprParserRoot is created
     pub fn new(ctxt: &'ctx ContextWithSig, kind: Kind, sig: &FuncSig) -> Self {
         Self {
             ctxt, // the whole context of the rust file containing all the types, impls, specs, and axioms
@@ -938,7 +937,7 @@ impl<'ctx> ExprParserRoot<'ctx> {
         //     groups: Vec<TypeEquivGroup>,
         // }
         // When TypeUnifier::new() is called, it creates a new Typing with empty params and groups
-        let mut unifier = TypeUnifier::new();
+        let mut unifier = TypeUnifier::new(); // for each separate function body, a new unifier is created (so unification process cannot happen across different functions)
 
         // derive a parser
         // ExprParserCursor is used to parse the current expression
@@ -1095,6 +1094,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
 
                     // if the init is missing, bail (the init is the right-hand side of the let-binding)
                     // for example, in let x = 5, = 5 is the init
+                    // all let declarations must have an initializer
                     let body = bail_if_missing!(
                         init,
                         binding,
@@ -1154,8 +1154,42 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     // any statement after this will not be parsed because it is not executable
                     break;
                 }
-                // inside the function you can't have items (like structs, enums, etc.) or macros
-                Stmt::Item(_) | Stmt::Macro(_) => bail_on!(stmt, "unexpected item"),
+                // inside the function you can't have items (like structs, enums, etc.)
+                Stmt::Item(_) => bail_on!(stmt, "unexpected item"),
+                // inside the function you can't have macros unless it is unimplemented! and the function type is a spec
+                Stmt::Macro(macro_stmt) => {
+                    // Extract the macro's identifier
+                    let syn::StmtMacro {
+                        attrs: _,
+                        mac,
+                        semi_token: _,
+                    } = macro_stmt;
+
+                    // Extract the macro's name
+                    let syn::Macro {
+                        path,
+                        bang_token: _,
+                        delimiter,
+                        tokens,
+                    } = mac;
+
+                    // Checks if the path is an ident (only has one segment, no arguments, no leading colon) and whether it is `unimplemented`
+                    if !path.is_ident("unimplemented") {
+                        // Reject any other macro
+                        bail_on!(stmt, "unexpected macro invocation");
+                    }
+
+                    // sanity check: the delimiter must be parentheses & no tokens are allowed
+                    if !matches!(delimiter, syn::MacroDelimiter::Paren(_)) {
+                        bail_on!(mac, "invalid delimiter");
+                    }
+                    bail_if_non_empty!(tokens);
+
+                    if self.root.kind != Kind::Spec {
+                        bail_on!(stmt, "unimplemented macro is only allowed in a spec");
+                    }
+                    bail_on!(stmt, "unimplemented macro what to do?");
+                }
             }
         }
 
@@ -1219,11 +1253,12 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     // let x: syn::Expr = syn::parse_quote! { MyEnum::<i32>::Variant2(1)}; // i32 is optional here
                     // The above is Expr::Call (...).
                     // This is a path with two segments: let x: syn::Expr = syn::parse_quote! { MyEnum::<i32>::Variant1}; // here if <i32> is removed, an error will occur
+                    // i32 is not a segment of the path. It is a type argument to the enum.
                     ExprPathAsTarget::EnumUnit(adt) => {
                         // ADTPath encapsulates the enum type name, the variant name, plus the type arguments (if any). The type arguments of the enum are matched with the generics of the enum definition to form the GenericsInstPartial.
                         // The GenericsInstPartial originally contains the matching TypeTag taken from the argument to the Type Parameter taken from the definition
                         // ADTBranch is a struct encapsulating the enum type name and the variant name
-                        // Through calling the complete function on the ADTPath, the GenericsInstPartial is converted to GenericsInstFull
+                        // Through calling the complete function on the ADTPath, the GenericsInstPartial is converted to GenericsInstFull and the ADTBranch is derived
                         // The difference is that each TypeTag is converted to TypeRef, if there is no TypeTag (None), it is converted to TypeRef::Var
                         let (branch, inst) = adt.complete(unifier);
                         // self.root is ExprParserRoot which contains the whole context of the rust file, the kind of the function and signature of the function
@@ -1246,17 +1281,18 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
 
                         // the last argument is the target expression so that if an error occurs defines the span of the error
                         // ti_unify! is a macro that unifies the two types using the unifier
-                        // let a : MyEnum<i32> = MyEnum::<i32>::Variant1; // unifies MyEnum<i32> on the left with MyEnum<i32> on the right (in this case, they are compatible)
-                        let _ = ti_unify!(unifier, &ret_ty, &self.exp_ty, target);
+                        // let a : MyEnum<i32> = MyEnum::<i32>::Variant1; // unifies MyEnum<i32> on the left with MyEnum on the right (in this case, they are compatible)
+                        ti_unify!(unifier, &ret_ty, &self.exp_ty, target);
 
                         // build the opcode
                         Op::EnumUnit {
                             branch,           // the enum type name and the variant name
-                            inst: inst.vec(), // the corresponding typerefs for each type parameter in the GenericsInstFull (this is a list of TypeRef). This still contains TypeRef::Var. So what happens with the result of the unification? (ti_unify!). basically the ti_unify! updates the unifier. In the ExprParserRoot::parse function after converting the statements to an expression, the unifier is used to check if there are any TypeRef::Var left. If there are, it receives the unified type and if still incomplete, it bails.
+                            inst: inst.vec(), // the corresponding typerefs for each type parameter in the GenericsInstFull (this is a list of TypeRef arguments in the call). This may still contain TypeRef::Var. So what happens with the result of the unification? (ti_unify!). basically the ti_unify! updates the unifier. In the ExprParserRoot::parse function after converting the statements to an expression, the unifier is used to check if there are any TypeRef::Var left. If there are, it receives the unified type and if still incomplete, it bails.
                         }
                     }
                 }
             }
+            // A tuple expression: `(a, b, c, d)`.
             Exp::Tuple(expr_tuple) => {
                 let ExprTuple {
                     attrs: _,
@@ -1288,6 +1324,10 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 }
             }
             // if the expression is a struct expression
+            // A struct literal expression: `Point { x: 1, y: 1 }`.
+            //
+            // The `rest` provides the value of the remaining fields as in `S { a:
+            // 1, b: 1, ..rest }`.
             Exp::Struct(expr_struct) => {
                 // unpacking the struct expression (the fields are ignored)
                 let ExprStruct {
@@ -1321,7 +1361,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             None => bail_on!(expr_struct, "[invariant] no such type"), // if the type is not found in the context, bail (this will never happen because it is checked in match ctxt.get_type_def(&ty_name) in the RecordPath::from_path function)
                             Some(def) => match &def.body {
                                 // def.head has the generics and the def.body has the type body
-                                // a struct is a record type (tuple structs fall under Expr::Call and unit structs cannot exist)
+                                // a struct is a record type (tuple structs fall under Expr::Call and unit structs cannot exist and even if they did they will be Expr::Path)
                                 // record_def is a TypeRecord type that encapsulates the fields of the record (map of field name to type tag)
                                 TypeBody::Record(record_def) => {
                                     let mut fields_instantiated = BTreeMap::new();
@@ -1358,7 +1398,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         let field_vals = self.parse_record_fields(unifier, &fields, expr_struct)?;
 
                         // unity the return type on the right hand side (ret_ty) with the expected type annotation on the left hand side (self.exp_ty)
-                        // expr_struct is the target expression so that if an error occurs defines the span of the error. Note that in ret_ty there are no type parameters.
+                        // expr_struct is the target expression so that if an error occurs defines the span of the error.
                         ti_unify!(unifier, &ret_ty, &self.exp_ty, expr_struct);
 
                         // build the opcode
@@ -1435,7 +1475,9 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     member, // the field name or index (field name for record and index for tuple struct)
                 } = expr_field;
 
-                // parse the receiver without assuming its type (convert the base expression to Expr ADT)
+                // tentatively parse the receiver without assuming its type
+                // convert the base expression to Expr ADT
+                // the base may fall under the Exp::Path for example
                 let parsed_base = self
                     .fork(TypeRef::Var(unifier.mk_var()))
                     .convert_expr(unifier, base)?;
@@ -1550,7 +1592,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
 
                     // convert the condition (only unary expressions are allowed)
                     // so this is not allowed: if x && y { do_then } else { do_else }
-                    // instead it should be written as: if x { if y { do_then } else { do_else } }
+                    // instead it should be written as: if x { if y { do_then } else { do_else } } else { do_else }
                     // the new_cond is the conversion of the condition Exp to Expr ADT
                     let new_cond = match cond.as_ref() {
                         // A unary operation: `!x`, `*x`, `-x`.
@@ -1574,12 +1616,13 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         // for example if 1+2==3 { do_then } else { do_else } should be written as:
                         // x = 1+2==3; if *x { do_then } else { do_else }
                         // because our operations are not like x+y (they are not binary) but are like x.add(y) … so they are always unary
-                        _ => bail_on!(cond, "not a Boolean deref"),
+                        _ => bail_on!(cond, "not a Unary expression"),
                     };
 
                     // convert the then block
                     // the result of the then block should match the expected type on the left side or the function return type
                     // the nested if conditions in the then block are analyzed in here
+                    // TODO enable shadowing in rusmart
                     let new_then = self
                         .fork(self.exp_ty.clone())
                         .convert_stmts(unifier, &then_branch.stmts)?;
@@ -1604,26 +1647,13 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         Exp::If(elseif_expr) => {
                             cursor = elseif_expr;
                         }
-                        Exp::Block(else_block) => {
-                            let ExprBlock {
-                                attrs: _,
-                                label,
-                                block:
-                                    Block {
-                                        brace_token: _,
-                                        stmts,
-                                    },
-                            } = else_block;
-
-                            // if the block has a label, bail (labels are not allowed)
-                            bail_if_exists!(label);
-                            // break and return the last block
+                        Exp::Block(_) => {
                             break self
                                 .fork(self.exp_ty.clone())
-                                .convert_stmts(unifier, stmts)?;
+                                .convert_expr(unifier, else_expr)?; // the result of the else block should match the expected type on the left side or the function return type
                         }
                         // the else branch should be an if expression or a block expression
-                        _ => bail_on!(else_expr, "expect if or block"),
+                        _ => bail_on!(else_expr, "expect if or block expressions in else branch"),
                     }
                 };
 
@@ -1668,7 +1698,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 // the originals are solely used to define the span of the error if an error occurs
                 let mut heads = vec![];
                 for elem in head_exprs {
-                    // parser the headers by tentatively marking their types as variables
+                    // parse the headers by tentatively marking their types as variables
                     let converted = self
                         .fork(TypeRef::Var(unifier.mk_var()))
                         .convert_expr(unifier, elem)?;
@@ -1729,7 +1759,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     let mut atoms = vec![];
                     let mut bindings = BTreeMap::new();
                     // elem_pats.iter().zip(heads.iter()) matches the patterns with the head expression
-                    // for example match (1, 2) { (x, y) => 1 }. We first take each arm one by one. Now here, the zip makes [(x, 1), (y, 2)] (roughly speaking)
+                    // for example match (x, y) { (1, 2) => 1 }. We first take each arm one by one. Now here, the zip makes [(1, x), (2, y)] (roughly speaking)
                     for (elem, (head, _)) in elem_pats.iter().zip(heads.iter()) {
                         let (atom, partial) =
                             MatchAnalyzer::analyze_pat_match_head(self.root, unifier, elem, head)?;
@@ -2012,6 +2042,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     }
                 }
             }
+            // A method call expression: `x.foo::<T>(a, b)`.
             Exp::MethodCall(expr_method) => {
                 let ExprMethodCall {
                     attrs: _,
@@ -2024,6 +2055,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 } = expr_method;
 
                 match FuncName::try_from(method)? {
+                    // from and into are cast functions
                     FuncName::Cast(name) => {
                         // none of the cast functions take path arguments
                         bail_if_exists!(turbofish);
@@ -2031,13 +2063,16 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         match name {
                             CastFuncName::Into => {
                                 bail_if_non_empty!(args);
+                                // The expression receiver must be a literal otherwise bail in Intrinsics::parse_literal_into
                                 let (intrinsic, ty) = Intrinsic::parse_literal_into(receiver)?;
                                 ti_unify!(unifier, &ty, &self.exp_ty, target);
                                 Op::Intrinsic(intrinsic)
                             }
+                            // from cannot be a method call
                             CastFuncName::From => bail_on!(expr_method, "unexpected"),
                         }
                     }
+                    // eq and ne are system functions
                     FuncName::Sys(name) => {
                         // none of the system functions take path arguments
                         bail_if_exists!(turbofish);
@@ -2108,21 +2143,27 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             Err(e) => bail_on!(expr_method, "{}", e),
                         }
                     }
-                    FuncName::Reserved(_) => bail_on!(method, "reserved method"),
+                    // reserved methods (clone & default) are not allowed
+                    FuncName::Reserved(_) => bail_on!(method, "reserved method (clone & default)"),
                 }
             }
             // SMT-specific macro (i.e., DSL)
+            // A macro invocation expression: `format!("{}", q)`.
             Exp::Macro(expr_macro) => {
                 let quant = Quantifier::parse(self.root, expr_macro)?;
                 match quant {
                     Quantifier::Typed { name, vars, body } => {
                         // early filtering
+                        // so typed quantifiers are only allowed in spec context
+                        // that is in functions marked with #[smt_spec] or #[smt_axiom] not in #[smt_impl]
                         if !matches!(self.root.kind, Kind::Spec) {
                             bail_on!(expr_macro, "only allowed in spec context");
                         }
 
                         // parse body
+                        // the return type of the body must be a Boolean
                         let mut new_ctxt = self.fork(TypeRef::Boolean);
+                        // TODO enable shadowing in rusmart (tighter binding)
                         for (var, ty) in &vars {
                             if new_ctxt.vars.insert(var.clone(), ty.into()).is_some() {
                                 bail_on!(expr_macro, "duplicated variable binding");
@@ -2148,7 +2189,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             ),
                             SysMacroName::Choose => {
                                 let rty = if vars.len() == 1 {
-                                    let (_, ty) = vars.first().unwrap();
+                                    let (_, ty) = vars.first().expect("[invariant] non-empty");
                                     ty.into()
                                 } else {
                                     TypeRef::Pack(vars.iter().map(|(_, t)| t.into()).collect())
@@ -2171,12 +2212,17 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     }
                     Quantifier::Iterated { name, vars, body } => {
                         // context for body parsing
+                        // new_ctxt is a new context for parsing the body where the return type must be a Boolean
                         let mut new_ctxt = self.fork(TypeRef::Boolean);
+                        // holds the types of the collection expressions for example xs and ys in
+                        // forall x in xs, y in ys => x + y == 0
                         let mut var_tys = vec![];
+                        // holds the (x, xs) and (y, ys) pairs... but the difference between var_exprs and vars is that the expressions in vars are the original expressions in rust syntax and the expressions in var_exprs are the converted expressions in rusmart
                         let mut var_exprs = vec![];
 
                         // parse collection expressions
                         for (var, collection) in vars {
+                            // tentatively mark the type of the collection as a type variable
                             let sub_ctxt = self.fork(TypeRef::Var(unifier.mk_var()));
                             let sub_expr = sub_ctxt.convert_expr(unifier, &collection)?;
                             let var_ty = match sub_expr.ty() {
@@ -2186,6 +2232,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                 TypeRef::Var(_) => {
                                     bail_on!(&collection, "unable to infer collection type")
                                 }
+                                // only Seq, Set, and Map are allowed
                                 _ => bail_on!(&collection, "not a collection type"),
                             };
 
@@ -2200,6 +2247,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         }
 
                         // parse the constraint
+                        // the return type of the body must be a Boolean
                         let quant_body = new_ctxt.convert_expr(unifier, &body)?;
 
                         // decide return type and opcode
@@ -2249,10 +2297,14 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
         // build the instruction which encapsulates the expression and the type of the operation
         let inst = Inst {
             op: op.into(), // the `op` that is constructed above and abstracts the expression (Exp), is wrapped as an Box<Op>.
-            ty: unifier.refresh_type(&self.exp_ty), // refresh_type is a method of TypeUnifier that replaces any type variables with their inferred types. For the sole expression, the type is never a type variable (because the return type of the function is explicitly mentioned), so it is returned as is. For other expressions (right hand side of a local let declaration) with explicit types, the type is also never a type variable, so it is returned as is. But for expressions (right hand side of a local let declaration) without any type annotations, the type is a type variable, so it is replaced with the inferred type. For other inner expressions, the type may be a type variable, if so, it is replaced with the inferred type. Otherwise, it is returned as is.
+            ty: unifier.refresh_type(&self.exp_ty), // refresh_type is a method of TypeUnifier that replaces any type variables with their inferred types. For the sole expression at the end of a function, the type is never a type variable (because the return type of the function is explicitly mentioned), so it is returned as is. For other expressions (right hand side of a local let declaration) with explicit types, the type is also never a type variable, so it is returned as is. But for expressions (right hand side of a local let declaration) without any type annotations, the type is a type variable, so it is replaced with the inferred type. For other inner expressions, the type may be a type variable, if so, it is replaced with the inferred type. Otherwise, it is returned as is (or in details it is returned with a smaller index inside the same type equivalence group).
         };
 
         // decide to go with a unit instruction or a block instruction
+        // for the right hand side of let declarations, the expression is always a unit instruction
+        // for the sole expression at the end of a function, the expression is:
+        // - a unit instruction if there are no local let declarations
+        // - a block instruction if there are local let declarations
         // finalize the expression tree of the body
         let converted = if self.bindings.is_empty() {
             Expr::Unit(inst)
@@ -2262,7 +2314,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 body: inst,
             }
         };
-        Ok(converted)
+        Ok(converted) // the final expression tree of the body
     }
 
     /// Parse arguments of a function call
@@ -2325,7 +2377,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
             // a struct record must have named fields unlike tuple structs
             let field_name = match member {
                 Member::Named(ident) => ident.to_string(),
-                Member::Unnamed(_) => bail_on!(member, "unnamed field member"),
+                Member::Unnamed(_) => bail_on!(member, "unnamed field member"), // Expr::Struct should have named fields unline Expr::Call which is for struct tuples
             };
 
             // check if the field name that is used in the struct call is present in the struct definition
@@ -2379,5 +2431,25 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
             }),
         };
         Ok(op)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_display_vardecl() {
+        use super::*;
+        use syn::Ident;
+
+        let ident: Ident = Ident::new("x", proc_macro2::Span::call_site());
+        let var: VarName = (&ident).try_into().unwrap();
+        let decl = VarDecl::One(var.clone(), TypeRef::Integer);
+        assert_eq!(decl.to_string(), "x:Integer");
+
+        let decl = VarDecl::Pack(vec![
+            VarDecl::One(var.clone(), TypeRef::Integer),
+            VarDecl::One(var, TypeRef::Integer),
+        ]);
+        assert_eq!(decl.to_string(), "(x:Integer,x:Integer)");
     }
 }

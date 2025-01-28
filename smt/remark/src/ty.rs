@@ -3,7 +3,7 @@ use crate::{bail_if_exists, bail_if_missing, bail_on}; // import the error macro
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    parse_quote, Field, FieldMutability, Fields, Index, Item, ItemEnum, ItemStruct, Result, Variant,
+    parse_quote, Field, FieldMutability, Fields, Item, ItemEnum, ItemStruct, Result, Variant,
 };
 
 /// Derives the `SMT` trait implementation for a struct.
@@ -64,7 +64,7 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
         // struct MyTupleStruct(i32, String); // Tuple struct example
         Fields::Unnamed(defs) => {
             // let mut cmp_exprs = vec![];
-            for (i, field) in defs.unnamed.iter().enumerate() {
+            for (_, field) in defs.unnamed.iter().enumerate() {
                 // struct MyTupleStruct(String); // field example
                 // attrs: [],
                 // vis: Visibility::Inherited,
@@ -144,7 +144,7 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
                     // unreachable code
                     bail_on!(field, "unexpected field mutability declaration");
                 }
-                let name = bail_if_missing!(ident, field, "name");
+                bail_if_missing!(ident, field, "name");
                 bail_if_missing!(colon_token, field, "colon");
 
                 // Generate comparison expressions for each field.

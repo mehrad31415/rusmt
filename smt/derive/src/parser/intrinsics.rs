@@ -306,6 +306,7 @@ impl Intrinsic {
     /// Convert an expression to a literal
     pub fn parse_literal_into(receiver: &Exp) -> Result<(Self, TypeRef)> {
         let (intrinsic, ty) = match receiver {
+            // A literal in place of an expression: `1`, `"foo"`.
             Exp::Lit(expr_lit) => {
                 let ExprLit { attrs: _, lit } = expr_lit;
                 match lit {

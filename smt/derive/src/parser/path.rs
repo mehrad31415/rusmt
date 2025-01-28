@@ -1,13 +1,13 @@
 use std::fmt::{Display, Formatter};
 use syn::{Expr as Exp, ExprPath, Path, PathArguments, PathSegment, Result};
 
-use crate::{bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::expr::CtxtForExpr;
 use crate::parser::func::{CastFuncName, FuncName, SysFuncName};
 use crate::parser::generics::{Generics, GenericsInstFull, GenericsInstPartial};
 use crate::parser::infer::TypeUnifier;
 use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName, VarName};
 use crate::parser::ty::{SysTypeName, TypeBody, TypeName};
+use crate::{bail_if_exists, bail_if_missing, bail_on};
 
 /// An identifier for a ADT variant
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -139,10 +139,10 @@ impl ADTPath {
         let ty_name = ident.try_into()?; // if the ident is not a reserved keyword and not an underscore, it is converted to a UsrTypeName
         let (generics, variants) = match ctxt.get_type_def(&ty_name) {
             // get the type definition from the context for the user type name
-            None => bail_on!(ident, "no such type"), // if the type name is not found in the context, return an error (so the type should be marked as #[smt_type]). This means that no built in type from rust can be used (or no enums/structs which are not marked with #[smt_type]). Instead a wrapper enum marked as #[smt_type] should be created to use the built in type.
+            None => bail_on!(ident, "no such type"), // if the type name is not found in the context, return an error (so the type should be marked as #[smt_type]). This means that no built in type from rust can be used (or no enums/structs which are not marked with #[smt_type]). Instead a wrapper enum marked as #[smt_type] should be created to use the built in type. This is so that the rusmart is closed and no external types can be used.
             Some(def) => match &def.body {
-                TypeBody::Enum(details) => (&def.head, &details.variants), // if the type is an enum type, return the generics and variants (BTreeMap<String, EnumVariant>). details is a wrapper around the enum variants.
-                _ => bail_on!(ident, "not an enum type"), // if the type is defined but not an enum type (it is a struct), return an error. A struct is an Expr::Struct and not an Expr::Path.
+                TypeBody::Enum(details) => (&def.head, &details.variants), // if the type is an enum type, return the generics of the definition and variants (BTreeMap<String, EnumVariant>). details is a wrapper around the enum variants.
+                _ => bail_on!(ident, "not an enum type"), // if the type is defined but not an enum type (it is a struct), return an error. A struct is an Expr::Struct and not an Expr::Path. However, a unit struct is Expr::Path. But in rusmart a unit struct is not allowed to be used as a type.
             },
         };
 
@@ -285,7 +285,8 @@ impl QualifiedPath {
 
         // type
         let PathSegment { ident, arguments } = bail_if_missing!(iter.next(), path, "type name"); // first segment is the type name
-                                                                                                 // ctxt.generics() retrieves the generics of the current function in the signature
+
+        // ctxt.generics() retrieves the generics of the current function in the signature
         let ty_name = TypeName::try_from(ctxt.generics(), ident)?;
         let ty_generics = match &ty_name {
             TypeName::Sys(name) => name.generics(),
@@ -384,6 +385,7 @@ impl ExprPathAsTarget {
         // no qself (short for Qualified Self) allowed, for example this is not allowed:
         // <Type as Trait>::x::y ... qself specifies the part before the as (e.g., Type).
         // Trait, x, and y are the path segments.
+        // <Type as Trait>::x::y becomes handy when a Type implements different traits with the same function name for example. Writing Type::function_name would be ambiguous in this case.
         bail_if_exists!(qself.as_ref().map(|q| q.ty.as_ref()));
 
         // case by number of path segments
@@ -392,7 +394,7 @@ impl ExprPathAsTarget {
             1 => Self::Var(path.try_into()?), // this gives an error if the path has a leading colon or has more than 1 segment or if the path has a type argument (like Vec<T>), otherwise it extracts the identifier. Should it not be a reserved keyword or underscore, then it is converted to a VarName
             // if there are 2 segments, then it is a ExprPathAsTarget::EnumUnit(ADTPath)
             2 => Self::EnumUnit(ADTPath::from_path(ctxt, path)?), // ADTPath::from_path is a function that extracts the ADTPath from the Path
-            _ => bail_on!(path, "unrecognized path"), // if there are more than 2 segments, it is not recognized for example: Vec<T>::push::<T> has 3 segments
+            _ => bail_on!(path, "unrecognized path"), // if there are more than 2 segments, it is not recognized for example: Vec<T>::push::<T> has 3 segments. So everything should be defined in the context to be recognized. So for example, bringing use syn; and then using syn::Expr::Path will not be recognized.
         };
         Ok(parsed)
     }

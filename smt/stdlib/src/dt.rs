@@ -22,7 +22,6 @@
 
 //----------------------------------------DEPENDENCIES----------------------------------------------------//
 
-use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::ops::{Add, Deref, Div, Mul, Rem, Sub};
@@ -33,7 +32,6 @@ use internment::Intern;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::cast::ToPrimitive;
-use paste::paste;
 
 //------------------------------------------MACROS-------------------------------------------------------//
 
@@ -262,9 +260,11 @@ macro_rules! map {
 //------------------------------------------SMT----------------------------------------------------------//
 /// A type that implements the SMT trait must implement the following methods:
 ///
-/// * `_cmp` - Compare two values of the same type
+/// * `cmp` - Compare two values of the same type
 /// * `eq` - Check if two values of the same type are equal
 /// * `ne` - Check if two values of the same type are not equal
+/// 
+/// These methods are automatically provided by the Ord, Eq, PartialEq, and PartialOrd (super) traits.
 ///
 /// The first method does not have a default implementation and must be implemented by the type.
 /// The second and third methods have default implementations that use the `_cmp` method.
@@ -275,7 +275,9 @@ macro_rules! map {
 /// * `Hash` - The type must be hashable
 /// * `Send` - The type must be able to be sent between threads
 /// * `Sync` - The type must be able to be access from multiple threads
-pub trait SMT: 'static + Copy + Default + Hash + Send + Sync + Ord + Eq + PartialEq + PartialOrd {
+pub trait SMT:
+    'static + Copy + Default + Hash + Send + Sync + Ord + Eq + PartialEq + PartialOrd
+{
     // /// SMT values of the same type are totally ordered
     // fn cmp(&self, rhs: Self) -> Ordering;
 
@@ -699,19 +701,13 @@ impl<T: SMT> Set<T> {
     /// operation: `s.remove(e)`
     pub fn remove(self, e: T) -> Self {
         Self {
-            inner: Intern::new(
-                self.inner
-                    .iter()
-                    .filter(|i| i.0.ne(& &e))
-                    .copied()
-                    .collect(),
-            ),
+            inner: Intern::new(self.inner.iter().filter(|i| i.0.ne(&&e)).copied().collect()),
         }
     }
 
     /// operation: `v.contains(e)`
     pub fn contains(self, e: T) -> Boolean {
-        self.inner.iter().any(|i| i.0.eq(& &e)).into()
+        self.inner.iter().any(|i| i.0.eq(&&e)).into()
     }
 
     /// iterator
@@ -816,6 +812,7 @@ impl<K: SMT, V: SMT> Map<K, V> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::cmp::Ordering;
 
     #[test]
     /// This test is for checking the implementation of the the arith_operator macro on Integer types

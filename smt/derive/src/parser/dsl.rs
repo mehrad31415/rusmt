@@ -8,7 +8,6 @@ use syn::{
     parse::{Parse, ParseStream},
     parse2,
     punctuated::Punctuated,
-    token::Paren,
     Expr,
     ExprClosure,
     ExprMacro,
@@ -172,7 +171,7 @@ impl Quantifier {
         } = expr;
 
         // Ensure that the macro is invoked with parentheses
-        if !matches!(delimiter, MacroDelimiter::Paren(Paren { .. })) {
+        if !matches!(delimiter, MacroDelimiter::Paren(..)) {
             bail_on!(expr, "expect macro invocation with parenthesis");
         }
 

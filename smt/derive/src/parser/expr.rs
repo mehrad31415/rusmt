@@ -1154,42 +1154,8 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     // any statement after this will not be parsed because it is not executable
                     break;
                 }
-                // inside the function you can't have items (like structs, enums, etc.)
-                Stmt::Item(_) => bail_on!(stmt, "unexpected item"),
-                // inside the function you can't have macros unless it is unimplemented! and the function type is a spec
-                Stmt::Macro(macro_stmt) => {
-                    // Extract the macro's identifier
-                    let syn::StmtMacro {
-                        attrs: _,
-                        mac,
-                        semi_token: _,
-                    } = macro_stmt;
-
-                    // Extract the macro's name
-                    let syn::Macro {
-                        path,
-                        bang_token: _,
-                        delimiter,
-                        tokens,
-                    } = mac;
-
-                    // Checks if the path is an ident (only has one segment, no arguments, no leading colon) and whether it is `unimplemented`
-                    if !path.is_ident("unimplemented") {
-                        // Reject any other macro
-                        bail_on!(stmt, "unexpected macro invocation");
-                    }
-
-                    // sanity check: the delimiter must be parentheses & no tokens are allowed
-                    if !matches!(delimiter, syn::MacroDelimiter::Paren(_)) {
-                        bail_on!(mac, "invalid delimiter");
-                    }
-                    bail_if_non_empty!(tokens);
-
-                    if self.root.kind != Kind::Spec {
-                        bail_on!(stmt, "unimplemented macro is only allowed in a spec");
-                    }
-                    bail_on!(stmt, "unimplemented macro what to do?");
-                }
+                // inside the function you can't have items (like structs, enums, etc.) or macros
+                Stmt::Item(_) | Stmt::Macro(_) => bail_on!(stmt, "unexpected item"),
             }
         }
 

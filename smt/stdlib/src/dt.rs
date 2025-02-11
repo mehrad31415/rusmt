@@ -13,7 +13,7 @@
 //! * `Cloak<T>` - SMT cloak - A wrapper over T to allow recursive data types to be defined.
 //!
 //! * `Seq<T>` - SMT sequence - A sequence (list) of SMT values of type T
-//!
+//!  
 //! * `Set<T>` - SMT set - A set of SMT values of type T.
 //!
 //! * `Map<K,V>` - SMT map - SMT array of key type K and value type V.
@@ -22,6 +22,7 @@
 
 //----------------------------------------DEPENDENCIES----------------------------------------------------//
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::ops::{Add, Deref, Div, Mul, Rem, Sub};
@@ -32,6 +33,7 @@ use internment::Intern;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::cast::ToPrimitive;
+use paste::paste;
 
 //------------------------------------------MACROS-------------------------------------------------------//
 
@@ -70,39 +72,41 @@ macro_rules! arith_operator {
 /// Example: smt_impl!(Integer);
 macro_rules! smt_impl {
     ($l:ty) => {
+        // any type in SMT can only be compared with the same type (so float cannot be compared with integer)
         impl SMT for $l {
-            // fn cmp(&self, rhs: Self) -> Ordering {
-            //     self.inner.cmp(&rhs.inner)
-            // }
+            fn _cmp(self, rhs: Self) -> Ordering {
+                self.inner.cmp(&rhs.inner)
+            }
         }
     };
+    // generic types
     ($l:ident, $t0:ident $(, $tn:ident)*) => {
         impl<$t0: SMT $(, $tn: SMT)*> SMT for $l<$t0 $(, $tn)*> {
-            // fn cmp(&self, rhs: Self) -> Ordering {
-            //     self.inner.cmp(&rhs.inner)
-            // }
+            fn _cmp(self, rhs: Self) -> Ordering {
+                self.inner.cmp(&rhs.inner)
+            }
         }
     };
     ( $n0:ident $($nx:ident)+ ) => {
         impl<$n0: SMT $(, $nx: SMT)+> SMT for ($n0 $(, $nx)+) {
-            // paste!{
-            //     #[allow(non_snake_case)]
-            //     fn cmp(&self, rhs: Self) -> Ordering {
-            //         let ([<l_ $n0>] $(, [<l_ $nx>])+) = self;
-            //         let ([<r_ $n0>] $(, [<r_ $nx>])+) = rhs;
-            //         match $n0::cmp(&[<l_ $n0>], [<r_ $n0>]) {
-            //             Ordering::Less => return Ordering::Less,
-            //             Ordering::Greater => return Ordering::Greater,
-            //             Ordering::Equal => {},
-            //         };
-            //         $(match $nx::cmp(&[<l_ $nx>], [<r_ $nx>]) {
-            //             Ordering::Less => return Ordering::Less,
-            //             Ordering::Greater => return Ordering::Greater,
-            //             Ordering::Equal => {},
-            //         };)+
-            //         Ordering::Equal
-            //     }
-            // }
+            paste!{
+                #[allow(non_snake_case)]
+                fn _cmp(self, rhs: Self) -> Ordering {
+                    let ([<l_ $n0>] $(, [<l_ $nx>])+) = self;
+                    let ([<r_ $n0>] $(, [<r_ $nx>])+) = rhs;
+                    match $n0::_cmp([<l_ $n0>], [<r_ $n0>]) {
+                        Ordering::Less => return Ordering::Less,
+                        Ordering::Greater => return Ordering::Greater,
+                        Ordering::Equal => {},
+                    };
+                    $(match $nx::_cmp([<l_ $nx>], [<r_ $nx>]) {
+                        Ordering::Less => return Ordering::Less,
+                        Ordering::Greater => return Ordering::Greater,
+                        Ordering::Equal => {},
+                    };)+
+                    Ordering::Equal
+                }
+            }
         }
     };
 }
@@ -260,7 +264,7 @@ macro_rules! map {
 //------------------------------------------SMT----------------------------------------------------------//
 /// A type that implements the SMT trait must implement the following methods:
 ///
-/// * `cmp` - Compare two values of the same type
+/// * `_cmp` - Compare two values of the same type
 /// * `eq` - Check if two values of the same type are equal
 /// * `ne` - Check if two values of the same type are not equal
 /// 
@@ -275,21 +279,19 @@ macro_rules! map {
 /// * `Hash` - The type must be hashable
 /// * `Send` - The type must be able to be sent between threads
 /// * `Sync` - The type must be able to be access from multiple threads
-pub trait SMT:
-    'static + Copy + Default + Hash + Send + Sync + Ord + Eq + PartialEq + PartialOrd
-{
-    // /// SMT values of the same type are totally ordered
-    // fn cmp(&self, rhs: Self) -> Ordering;
+pub trait SMT: 'static + Copy + Default + Hash + Send + Sync {
+    /// SMT values of the same type are totally ordered
+    fn _cmp(self, rhs: Self) -> Ordering;
 
-    // /// SMT values of the same type are subject to equality testing
-    // fn eq(&self, rhs: Self) -> Boolean {
-    //     (Self::cmp(&self, rhs) == Ordering::Equal).into()
-    // }
+    /// SMT values of the same type are subject to equality testing
+    fn eq(self, rhs: Self) -> Boolean {
+        (Self::_cmp(self, rhs) == Ordering::Equal).into()
+    }
 
-    // /// SMT values of the same type are subject to inequality testing
-    // fn ne(&self, rhs: Self) -> Boolean {
-    //     (Self::cmp(&self, rhs) != Ordering::Equal).into()
-    // }
+    /// SMT values of the same type are subject to inequality testing
+    fn ne(self, rhs: Self) -> Boolean {
+        (Self::_cmp(self, rhs) != Ordering::Equal).into()
+    }
 }
 
 /// This trait allows the methods of the SMT trait to be used between Integer and Rational types.
@@ -309,7 +311,7 @@ pub trait SMT:
 /// The Clone trait is implemented because it is required by the Copy trait.
 /// The Deref trait is implemented to allow for dereferencing the inner boolean value.
 /// The From trait is implemented to allow for converting a Rust boolean value to the SMT boolean type.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Boolean {
     inner: bool,
 }
@@ -370,7 +372,9 @@ impl Boolean {
 /// For example, we can write a.add(b) or Integer::add(a,b) to add two Integer values a and b.
 /// The order_operator! macro is used to implement the order operators for the Integer type.
 /// For example, we can write a.lt(b) or Integer::lt(a,b) to check if a is less than b.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+// The Nums trait is implemented for the Integer type to allow for the conversion of Integer values to Rational values.
+// The implementation for Integer has been added for the comparison between Rationals and Integers.
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Integer {
     inner: Intern<BigInt>,
 }
@@ -387,27 +391,27 @@ order_operator!(Integer, lt, le, ge, gt);
 // The implementation for Integer has been added for the comparison between Rationals and Integers.
 // impl Nums for Integer {
 //     fn into_rational(self) -> Rational {
-//         let num = self.inner.as_ref().clone(&).to_i64().expect("Failed to convert BigInt to i64");
+//         let num = self.inner.as_ref().clone().to_i64().expect("Failed to convert BigInt to i64");
 //         Rational::from(num)
 //     }
 // }
 
 // impl Integer {
 //     fn _cmp<T: Nums>(self, rhs: T) -> Ordering {
-//         SMT::cmp(&self.into_rational(), rhs.into_rational())
+//         SMT::_cmp(self.into_rational(), rhs.into_rational())
 //     }
 
 //     fn eq<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::eq(&self.into_rational(), rhs.into_rational())
+//         SMT::eq(self.into_rational(), rhs.into_rational())
 //     }
 
 //     fn ne<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::ne(&self.into_rational(), rhs.into_rational())
+//         SMT::ne(self.into_rational(), rhs.into_rational())
 //     }
 // }
 
 /// ** 3) Arbitrary precision rational number (SMT rational)
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Rational {
     inner: Intern<BigRational>,
 }
@@ -448,20 +452,20 @@ impl From<f64> for Rational {
 
 // impl Rational {
 //     fn _cmp<T: SMT + Nums>(self, rhs: T) -> Ordering {
-//         SMT::cmp(&self.into_rational(), rhs.into_rational())
+//         SMT::_cmp(self.into_rational(), rhs.into_rational())
 //     }
 //     fn eq<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::eq(&self.into_rational(), rhs.into_rational())
+//         SMT::eq(self.into_rational(), rhs.into_rational())
 //     }
 //     fn ne<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::ne(&self.into_rational(), rhs.into_rational())
+//         SMT::ne(self.into_rational(), rhs.into_rational())
 //     }
 // }
 
 /// ** 4) SMT string
 /// The String inside the interns are compared in a lexicographical order when calling the cmp method.
 /// For example, "a" < "b" and "aa" < "ab" and "a" < "aa" etc.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Text {
     inner: Intern<String>,
 }
@@ -488,7 +492,7 @@ order_operator!(Text, lt, le, ge, gt);
 /// let a = Error::fresh(); // a is of type Error with an inner value of 1
 /// let b = Error::fresh(); // b is of type Error with an inner value of 2
 /// let c = a.merge(b); // c is of type Error with an inner value of 1, 2
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Error {
     inner: Intern<BTreeSet<usize>>,
 }
@@ -520,56 +524,56 @@ impl Error {
 /// The SMTWrap is a tuple struct that wraps an SMT type.
 // In SMTWrap, instead of using #[derive(Eq)] we implement the trait manually to avoid imposing the T: Eq constraint.
 
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default)]
 struct SMTWrap<T: SMT>(T);
 
-// impl<T: SMT> PartialEq for SMTWrap<T> {
-//     fn eq(&&self, other: &Self) -> bool {
-//         self.0.eq(&other.0).inner
-//     }
-// }
+impl<T: SMT> PartialEq for SMTWrap<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(other.0).inner
+    }
+}
 
 // because we manually implement the PartialEq for SMTWrap
 // we need to manually implement the Hash trait as well
 // see https://rust-lang.github.io/rust-clippy/master/index.html#derived_hash_with_manual_eq
-// impl<T: SMT> Hash for SMTWrap<T> {
-//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-//         self.0.hash(state);
-//     }
-// }
+impl<T: SMT> Hash for SMTWrap<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
 
 // implementation for SMTWrap<Rational> for equality between Rationals and integers inside wrappers.
 // impl PartialEq<SMTWrap<Integer>> for SMTWrap<Rational> {
-//     fn eq(&&self, other: &SMTWrap<Integer>) -> bool {
-//         self.0.into_rational().eq(&other.0.into_rational()).inner
+//     fn eq(&self, other: &SMTWrap<Integer>) -> bool {
+//         self.0.into_rational().eq(other.0.into_rational()).inner
 //     }
 // }
 
 // implementation for SMTWrap<Integer> for equality between Rationals and integers inside wrappers.
 // impl PartialEq<SMTWrap<Rational>> for SMTWrap<Integer> {
-//     fn eq(&&self, other: &SMTWrap<Rational>) -> bool {
-//         self.0.into_rational().eq(&other.0.into_rational()).inner
+//     fn eq(&self, other: &SMTWrap<Rational>) -> bool {
+//         self.0.into_rational().eq(other.0.into_rational()).inner
 //     }
 // }
 
-// impl<T: SMT> Eq for SMTWrap<T> {}
+impl<T: SMT> Eq for SMTWrap<T> {}
 
-// impl<T: SMT> PartialOrd for SMTWrap<T> {
-//     fn partialcmp(&&self, other: &Self) -> Option<Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
+impl<T: SMT> PartialOrd for SMTWrap<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
-// impl<T: SMT> Ord for SMTWrap<T> {
-//     fn cmp(&self, other: &Self) -> Ordering {
-//         self.0.cmp(&other.0)
-//     }
-// }
+impl<T: SMT> Ord for SMTWrap<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0._cmp(other.0)
+    }
+}
 
 /// ** 6) `Cloak` is used to prevent cyclic dependencies in Abstract Data Types (ADTs).
 /// Cyclic dependencies lead to issues like infinite recursion (stack overflow) or memory leaks.
 /// They act as a wrapper around the SMT type T.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Cloak<T: SMT> {
     inner: Intern<SMTWrap<T>>,
 }
@@ -590,7 +594,7 @@ impl<T: SMT> Cloak<T> {
 
 /// ** 7) SMT sequence
 /// This is a sequence (list) of SMT values of type T where T is a type that implements the SMT trait.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Seq<T: SMT> {
     inner: Intern<Vec<SMTWrap<T>>>,
 }
@@ -644,7 +648,7 @@ impl<T: SMT> Seq<T> {
 
     /// operation: `v.includes(e)`
     pub fn includes(self, e: T) -> Boolean {
-        self.inner.iter().any(|i| i.0.eq(&&e)).into()
+        self.inner.iter().any(|i| *T::eq(i.0, e)).into()
     }
 
     /// iterator
@@ -662,7 +666,7 @@ impl<T: SMT> Seq<T> {
 /// ** 8) SMT set
 /// This is a set of SMT values of type T where T is a type that implements the SMT trait.
 /// The methods defined in the SMT Set type correspond to the operations performed on a set data structure.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Set<T: SMT> {
     inner: Intern<BTreeSet<SMTWrap<T>>>,
 }
@@ -701,13 +705,19 @@ impl<T: SMT> Set<T> {
     /// operation: `s.remove(e)`
     pub fn remove(self, e: T) -> Self {
         Self {
-            inner: Intern::new(self.inner.iter().filter(|i| i.0.ne(&&e)).copied().collect()),
+            inner: Intern::new(
+                self.inner
+                    .iter()
+                    .filter(|i| *T::ne(i.0, e))
+                    .copied()
+                    .collect(),
+            ),
         }
     }
 
     /// operation: `v.contains(e)`
     pub fn contains(self, e: T) -> Boolean {
-        self.inner.iter().any(|i| i.0.eq(&&e)).into()
+        self.inner.iter().any(|i| *T::eq(i.0, e)).into()
     }
 
     /// iterator
@@ -725,7 +735,7 @@ impl<T: SMT> Set<T> {
 
 /// ** 9) SMT array
 /// This is an array of key type K and value type V where K and V are types that implement the SMT trait.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
 pub struct Map<K: SMT, V: SMT> {
     inner: Intern<BTreeMap<SMTWrap<K>, SMTWrap<V>>>,
 }
@@ -783,7 +793,7 @@ impl<K: SMT, V: SMT> Map<K, V> {
             inner: Intern::new(
                 self.inner
                     .iter()
-                    .filter_map(|(i, v)| if i.0.eq(&&k) { None } else { Some((*i, *v)) })
+                    .filter_map(|(i, v)| if *K::eq(i.0, k) { None } else { Some((*i, *v)) })
                     .collect(),
             ),
         }
@@ -812,7 +822,6 @@ impl<K: SMT, V: SMT> Map<K, V> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::cmp::Ordering;
 
     #[test]
     /// This test is for checking the implementation of the the arith_operator macro on Integer types
@@ -864,7 +873,7 @@ mod test {
         let var1 = Boolean::from(true);
         let var2 = Boolean::from(false);
 
-        let res = var1.cmp(&var2); // true > false
+        let res = var1._cmp(var2); // true > false
         assert_eq!(res, Ordering::Greater);
     }
 
@@ -875,7 +884,7 @@ mod test {
         let var1 = Integer::from(1);
         let var2 = Integer::from(3);
 
-        let res = var1.cmp(&var2); // 1 < 3
+        let res = var1._cmp(var2); // 1 < 3
         assert_eq!(res, Ordering::Less);
     }
 
@@ -886,7 +895,7 @@ mod test {
         let var1 = Rational::from(1.75);
         let var2 = Rational::from(3);
 
-        let res = var1.cmp(&var2); // 1.75 < 3
+        let res = var1._cmp(var2); // 1.75 < 3
         assert_eq!(res, Ordering::Less);
     }
 
@@ -898,7 +907,7 @@ mod test {
         let var1 = Text::from("more");
         let var2 = Text::from("less");
 
-        let res = var1.cmp(&var2); // "more" > "less"
+        let res = var1._cmp(var2); // "more" > "less"
         assert_eq!(res, Ordering::Greater);
     }
 
@@ -910,9 +919,9 @@ mod test {
         let var2 = Error::fresh(); // 1
         let var3 = Error::fresh(); // 2
 
-        let res1 = var1.cmp(&var2); // 0 < 1
-        let res2 = var2.cmp(&var3); // 1 < 2
-        let res3 = var1.cmp(&var3); // 0 < 2
+        let res1 = var1._cmp(var2); // 0 < 1
+        let res2 = var2._cmp(var3); // 1 < 2
+        let res3 = var1._cmp(var3); // 0 < 2
 
         assert_eq!(res1, Ordering::Less);
         assert_eq!(res2, Ordering::Less);
@@ -926,7 +935,7 @@ mod test {
         let var1 = Cloak::shield(Integer::from(2));
         let var2 = Cloak::shield(Integer::from(3));
 
-        let res = var1.cmp(&var2); // 2 < 3
+        let res = var1._cmp(var2); // 2 < 3
 
         assert_eq!(res, Ordering::Less);
     }
@@ -945,7 +954,7 @@ mod test {
         let mut var2: Seq<Integer> = Seq::new();
         var2 = var2.append(Integer::from(10));
 
-        let res1 = var1.cmp(&var2); // 1 < 10 (first element comparison)
+        let res1 = var1._cmp(var2); // 1 < 10 (first element comparison)
         assert_eq!(res1, Ordering::Less);
     }
 
@@ -960,7 +969,7 @@ mod test {
         let mut var2 = Set::new();
         var2 = var2.insert(Text::from("mehrad"));
 
-        let res = var1.cmp(&var2); // "hello" > "mehrad"
+        let res = var1._cmp(var2); // "hello" > "mehrad"
         assert_eq!(res, Ordering::Less);
     }
 
@@ -977,7 +986,7 @@ mod test {
         let mut var2 = Map::new();
         var2 = var2.put_unchecked(Integer::from(0), Text::from("zero"));
 
-        let res = var1.cmp(&var2); // 1 > 0
+        let res = var1._cmp(var2); // 1 > 0
         assert_eq!(res, Ordering::Greater);
     }
 
@@ -1064,11 +1073,11 @@ mod test {
         let var3 = (Integer::from(1), Integer::from(3));
         let var4 = (Integer::from(10), Integer::from(1));
 
-        let res1 = var1.cmp(&var2); // (1, 2) == (1, 2)
-        let res2 = var1.cmp(&var3); // (1, 2) < (1, 3)
-        let res3 = var3.cmp(&var2); // (1, 3) > (1, 2)
-        let res4 = var1.cmp(&var4); // (1, 2) < (10, 1)
-        let res5 = var4.cmp(&var3); // (10, 1) > (1, 3)
+        let res1 = var1._cmp(var2); // (1, 2) == (1, 2)
+        let res2 = var1._cmp(var3); // (1, 2) < (1, 3)
+        let res3 = var3._cmp(var2); // (1, 3) > (1, 2)
+        let res4 = var1._cmp(var4); // (1, 2) < (10, 1)
+        let res5 = var4._cmp(var3); // (10, 1) > (1, 3)
 
         assert_eq!(res1, Ordering::Equal);
         assert_eq!(res2, Ordering::Less);
@@ -1136,9 +1145,9 @@ mod test {
         let var1 = Integer::from(1);
         let var2 = Integer::from(3);
 
-        assert!(var1.cmp(&var2) == Ordering::Less);
-        assert!(var1.eq(&&var2) == false.into());
-        assert!(var1.ne(&&var2) == true.into());
+        assert!(var1._cmp(var2) == Ordering::Less);
+        assert!(var1.eq(var2) == false.into());
+        assert!(var1.ne(var2) == true.into());
     }
 
     #[test]
@@ -1146,12 +1155,12 @@ mod test {
         let var1 = Text::from("a");
         let mut var2 = Text::from("b");
 
-        assert!(var1.cmp(&var2) == Ordering::Less);
-        assert!(var1.eq(&var2) == false.into());
-        assert!(var1.ne(&var2) == true.into());
+        assert!(var1._cmp(var2) == Ordering::Less);
+        assert!(var1.eq(var2) == false.into());
+        assert!(var1.ne(var2) == true.into());
 
         var2 = var1; // after this var1 and var2 should be equal
-        assert!(var1.eq(&var2) == true.into());
+        assert!(var1.eq(var2) == true.into());
     }
 
     /// testing the deref function of boolean
@@ -1227,7 +1236,7 @@ mod test {
 
     //     // If this passes, var2 is of type Rational
     //     let _: Rational = var2;
-    //     assert_eq!(var1.eq(&var2), true.into()); // 1 == 1
+    //     assert_eq!(var1.eq(var2), true.into()); // 1 == 1
     // }
 
     /// testing the cmp method for comparison between rationals and integers
@@ -1238,10 +1247,10 @@ mod test {
     //     let var3 = Rational::from(1);
     //     let var4 = Rational::from(0.8);
 
-    //     assert_eq!(var1.cmp(&var1), Ordering::Equal); // 1 == 1
-    //     assert_eq!(var1.cmp(&var2), Ordering::Less); // 1 < 1.2
-    //     assert_eq!(var3.cmp(&var1), Ordering::Equal); // 1 == 1
-    //     assert_eq!(var1.cmp(&var4), Ordering::Greater); // 1 > 0.8
+    //     assert_eq!(var1._cmp(var1), Ordering::Equal); // 1 == 1
+    //     assert_eq!(var1._cmp(var2), Ordering::Less); // 1 < 1.2
+    //     assert_eq!(var3._cmp(var1), Ordering::Equal); // 1 == 1
+    //     assert_eq!(var1._cmp(var4), Ordering::Greater); // 1 > 0.8
     // }
     /// testing the eq method for integers and rational
     // #[test]
@@ -1251,10 +1260,10 @@ mod test {
     //     let var3 = Rational::from(1);
     //     let var4 = Rational::from(0.8);
 
-    //     assert_eq!(var1.eq(&var1), true.into()); // 1 == 1
-    //     assert_eq!(var1.eq(&var2), false.into()); // 1 != 1.2
-    //     assert_eq!(var3.eq(&var1), true.into()); // 1 == 1
-    //     assert_eq!(var1.eq(&var4), false.into()); // 1 != 0.8
+    //     assert_eq!(var1.eq(var1), true.into()); // 1 == 1
+    //     assert_eq!(var1.eq(var2), false.into()); // 1 != 1.2
+    //     assert_eq!(var3.eq(var1), true.into()); // 1 == 1
+    //     assert_eq!(var1.eq(var4), false.into()); // 1 != 0.8
     // }
 
     /// testing the ne method for integers and rational
@@ -1265,10 +1274,10 @@ mod test {
     //     let var3 = Rational::from(1);
     //     let var4 = Rational::from(0.8);
 
-    //     assert_eq!(var1.ne(&var1), false.into()); // 1 == 1
-    //     assert_eq!(var1.ne(&var2), true.into()); // 1 != 1.2
-    //     assert_eq!(var3.ne(&var1), false.into()); // 1 == 1
-    //     assert_eq!(var4.ne(&var1), true.into()); // 1 != 0.8
+    //     assert_eq!(var1.ne(var1), false.into()); // 1 == 1
+    //     assert_eq!(var1.ne(var2), true.into()); // 1 != 1.2
+    //     assert_eq!(var3.ne(var1), false.into()); // 1 == 1
+    //     assert_eq!(var4.ne(var1), true.into()); // 1 != 0.8
     // }
 
     /// testing the from method of Rational
@@ -1311,21 +1320,21 @@ mod test {
         let var1 = Rational::from(1);
         let var2 = Rational::from(243.3);
 
-        assert_eq!(var1.cmp(&var2), Ordering::Less);
+        assert_eq!(var1._cmp(var2), Ordering::Less);
     }
     #[test]
     fn test_eq_rational() {
         let var1 = Rational::from(1);
         let var2 = Rational::from(243.3);
 
-        assert_eq!(var1.eq(&var2), false.into());
+        assert_eq!(var1.eq(var2), false.into());
     }
     #[test]
     fn test_ne_rational() {
         let var1 = Rational::from(1);
         let var2 = Rational::from(243.3);
 
-        assert_eq!(var1.ne(&var2), true.into());
+        assert_eq!(var1.ne(var2), true.into());
     }
 
     #[test]
@@ -1380,8 +1389,8 @@ mod test {
         let var1 = SMTWrap(Integer::from(1));
         let var2 = SMTWrap(Integer::from(15));
 
-        assert!(!var1.eq(&&var2));
-        assert!(var1.ne(&&var2));
+        assert!(!var1.eq(&var2));
+        assert!(var1.ne(&var2));
     }
 
     #[test]
@@ -1391,7 +1400,7 @@ mod test {
         let var2 = SMTWrap(cloak!(Integer::from(10)));
 
         assert_eq!(
-            var2.partial_cmp(&&var1).expect("Failed to compare"),
+            var2.partial_cmp(&var1).expect("Failed to compare"),
             Ordering::Greater
         );
     }

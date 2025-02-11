@@ -24,9 +24,9 @@ pub enum State {
 
 #[smt_impl]
 fn seq_lt_recursive(l: Seq<Value>, r: Seq<Value>, i: Integer) -> Boolean {
-    if l.length().eq(&i) {
-        r.length().ne(&i).into()
-    } else if r.length().eq(&i) {
+    if *l.length().eq(i) {
+        r.length().ne(i)
+    } else if *r.length().eq(i) {
         false.into()
     } else {
         let v_l = l.at_unchecked(i);
@@ -48,7 +48,7 @@ fn seq_lt(l: Seq<Value>, r: Seq<Value>) -> Boolean {
 
 #[smt_impl]
 fn set_min(set: Set<Value>) -> Value {
-    choose!(v in set => forall!(e in set => Boolean::from(v.eq(&e)).or(v.lt(e))))
+    choose!(v in set => forall!(e in set => v.eq(e).or(v.lt(e))))
 }
 
 #[smt_type]
@@ -59,9 +59,9 @@ enum SetCmpResult {
 
 #[smt_impl]
 fn set_lt_recursive(l: Set<Value>, r: Set<Value>) -> SetCmpResult {
-    if l.length().eq(&0.into()) {
-        SetCmpResult::Done(r.length().ne(&0.into()).into())
-    } else if r.length().eq(&0.into()) {
+    if *l.length().eq(0.into()) {
+        SetCmpResult::Done(r.length().ne(0.into()))
+    } else if *r.length().eq(0.into()) {
         SetCmpResult::Done(false.into())
     } else {
         let min_l = set_min(l);
@@ -86,7 +86,7 @@ fn set_lt(l: Set<Value>, r: Set<Value>) -> Boolean {
 
 #[smt_impl]
 fn map_key_min(map: Map<Value, Value>) -> Value {
-    choose!(v in map => forall!(e in map => Boolean::from(v.eq(&e)).or(v.lt(e))))
+    choose!(v in map => forall!(e in map => v.eq(e).or(v.lt(e))))
 }
 
 #[smt_type]
@@ -97,9 +97,9 @@ enum MapCmpResult {
 
 #[smt_impl]
 fn map_lt_recursive(l: Map<Value, Value>, r: Map<Value, Value>) -> MapCmpResult {
-    if l.length().eq(&0.into()) {
-        MapCmpResult::Done(r.length().ne(&0.into()).into())
-    } else if r.length().eq(&0.into()) {
+    if *l.length().eq(0.into()) {
+        MapCmpResult::Done(r.length().ne(0.into()))
+    } else if *r.length().eq(0.into()) {
         MapCmpResult::Done(false.into())
     } else {
         let min_key_l = map_key_min(l);
@@ -205,5 +205,5 @@ pub fn axiom_lt_transitive(v1: Value, v2: Value, v3: Value) -> Boolean {
 // - rule 4: connected
 #[smt_axiom]
 pub fn axiom_lt_connected(v1: Value, v2: Value) -> Boolean {
-    Boolean::from(v1.ne(&v2)).implies(spec_lt(v1, v2).or(spec_lt(v2, v1)))
+    v1.ne(v2).implies(spec_lt(v1, v2).or(spec_lt(v2, v1)))
 }

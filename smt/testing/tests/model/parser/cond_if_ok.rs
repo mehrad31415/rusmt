@@ -5,7 +5,7 @@ use rusmart_smt_stdlib::{Boolean, Integer};
 
 #[smt_impl]
 fn foo() -> Boolean {
-    if Integer::from(1).add(Integer::from(1)).eq(&Integer::from(2)) {
+    if *Integer::from(1).add(Integer::from(1)).eq(Integer::from(2)) {
         Boolean::from(true)
     } else {
         Boolean::from(false)

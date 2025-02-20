@@ -391,9 +391,9 @@ impl ApplyDatabase {
     /// If we are looking for a function of kind `Spec`, we can only get the type of the function if it is a `Spec`. If it is an `Impl`, we cannot get the type.
     fn filter_by_kind(ty: &TypeFn, kind: Kind) -> Option<&TypeFn> {
         match (kind, ty.kind) {
-            (Kind::Impl, Kind::Impl) => Some(ty), // Implementation matches implementation.
-            (Kind::Impl, Kind::Spec) => None,     // Specification does not match implementation.
-            (Kind::Spec, Kind::Impl | Kind::Spec) => Some(ty), // Specification and implementation both match specification.
+            (Kind::Impl, Kind::Impl) => Some(ty),
+            (Kind::Impl, Kind::Spec) => None,
+            (Kind::Spec, Kind::Impl | Kind::Spec) => Some(ty),
         }
     }
 
@@ -478,6 +478,7 @@ impl ApplyDatabase {
     /// This method attempts to find a function that matches the provided name and arguments,
     /// performing type inference to resolve generics and ensure type compatibility.
     ///
+    /// This function is used for x.<some user defined function>(args) calls. The name is the name of the function, inst is the type arguments, args is the receiver (x) and the arguments of the function converted to ADT Exprs, and rval is the expected return type. rval is the return type of the function call.
     /// # Arguments
     ///
     /// * `unifier` - The type unifier used for type inference.
@@ -500,14 +501,17 @@ impl ApplyDatabase {
         rval: &TypeRef,
     ) -> Result<Op> {
         // Collect candidate functions matching the name and kind.
-        let kind = ctxt.kind();
+        // we first collect all the functions that have the same name as the function we are looking for. We collect all the functions that have the same name as the function we are looking for, because the function we are looking for can be implemented on multiple types. So we need to check all the types that the function is implemented on. It is also possible that the function we are looking for is either a system function or a user-defined function. It cannot be a standalone function because we are looking for method calls. The kind of the method call needs to be the same as the kind of the function the method call is happening inside of. So if the function is a spec, the method call needs to be a spec. If the function is an impl, the method call needs to be an impl. The function we are looking for can be implemented on a system type or a user-defined type. So we need to check both.
+        let kind = ctxt.kind(); // if the kind is an impl, and the function we find is a spec, we cannot use it and we can only use it if the function we find is an impl. If the kind is a spec, we can use the function we find if it is a spec or an impl.
         let mut candidates = vec![];
+        // first look at methods defined on the system types.
         match self.on_sys_type.get(name) {
             None => (),
             Some(options) => candidates.extend(options.iter().filter_map(|(n, t)| {
-                Self::filter_by_kind(t, kind).map(|t| (TypeName::Sys(*n), t))
+                Self::filter_by_kind(t, kind).map(|t: &TypeFn| (TypeName::Sys(*n), t)) // TypeName::Sys(*n) is the type the function is defined on. t is the function signature along with kind.
             })),
         }
+        // then look at methods defined on the user-defined types.
         match self.on_usr_type.get(name) {
             None => (),
             Some(options) => candidates.extend(options.iter().filter_map(|(n, (_, t))| {
@@ -517,13 +521,17 @@ impl ApplyDatabase {
 
         // Variable to hold a suitable candidate if found.
         let mut suitable = None;
+        // ty_name is the type the method is defined on
+        // fty is the function signature
         for (ty_name, fty) in candidates {
             // Early filter by number of parameters.
+            // the length of the parameters of the function signature should be the same as the length of the arguments. If they are not the same, we move to the next candidate.
             if fty.params.len() != args.len() {
                 continue;
             }
 
             // Instantiate type parameters for the type name.
+            // ty_inst is the generics of the type the method is defined on. This is only created so to check that the generics of the function signature and the generics of the type the method is defined on do not have any conflicting type parameter names.
             let ty_inst = match &ty_name {
                 TypeName::Sys(sys_name) => {
                     GenericsInstPartial::new_without_args(&sys_name.generics())
@@ -534,8 +542,9 @@ impl ApplyDatabase {
                 TypeName::Param(_) => panic!("unexpected type parameter in type name"),
             };
             // Instantiate function generics, possibly using provided type arguments.
-            let fn_inst = match inst {
-                None => GenericsInstPartial::new_without_args(&fty.generics),
+            // fn_inst is the generics of the function signature.
+            let fn_inst = match inst { // inst is the turbufish type arguments provided to the function call.
+                None => GenericsInstPartial::new_without_args(&fty.generics), // the turbofish is for the function arguments.
                 Some(tags) => match GenericsInstPartial::try_with_args(&fty.generics, tags) {
                     None => continue, // Type arguments don't match.
                     Some(inst) => inst,
@@ -546,6 +555,7 @@ impl ApplyDatabase {
             let mut probing = unifier.clone();
 
             // Merge type and function instantiations.
+            // here we merge the type and function instantiations. If there are any conflicting type parameter names, we bail.
             let inst_full = match ty_inst
                 .complete(&mut probing)
                 .merge(&fn_inst.complete(&mut probing))
@@ -555,6 +565,7 @@ impl ApplyDatabase {
             };
 
             // Instantiate the function parameters and return type.
+            // we convert the parameters and return type of the function signature to the actual types. If there are any type parameters in the function signature, we replace them with the actual types taken from the type arguments provided to the function call.
             let (params, ret_ty) = match fty.instantiate(&inst_full) {
                 None => bail!("no such type parameter"),
                 Some(instantiated) => instantiated,
@@ -563,6 +574,7 @@ impl ApplyDatabase {
             // Attempt to unify each argument type with the corresponding parameter type.
             let mut unified = true;
             for (param_ty, arg) in params.iter().zip(args.iter()) {
+                // updates the probing unifier with the unification of the parameter type and the argument type. Note that the arguments were all tentatively converted to ADT Exprs with type variables.
                 match probing.unify(param_ty, arg.ty()) {
                     Ok(Some(_)) => {
                         // Successfully unified.

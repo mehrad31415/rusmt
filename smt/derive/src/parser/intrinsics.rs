@@ -149,10 +149,16 @@ macro_rules! mk0 {
     }};
 }
 
+// mk1!(BoolNot, ty_args, args) //no type arguments expected for this function.
+// the above expands to:
+// {
+//     Intrinsic::unpack_ty_arg_0(ty_args)?;
+//     let e1 = Intrinsic::unpack_expr_1(args)?;
+//     Intrinsic::BoolNot { val: e1 }
 macro_rules! mk1 {
     ($op:ident, $ty_args:expr, $args:expr) => {{
         Intrinsic::unpack_ty_arg_0($ty_args)?;
-        let e1 = Intrinsic::unpack_expr_1($args)?;
+        let e1 = Intrinsic::unpack_expr_1($args)?; // a.not() expects 1 argument including the receiver
         Intrinsic::$op { val: e1 }
     }};
 }
@@ -309,26 +315,30 @@ impl Intrinsic {
             // A literal in place of an expression: `1`, `"foo"`.
             Exp::Lit(expr_lit) => {
                 let ExprLit { attrs: _, lit } = expr_lit;
+                // lit is a Rust literal such as a string or integer or boolean.
+                // In rustmart we only have boolean, integer, float, and string literals. So we only need to check for these.
                 match lit {
                     Lit::Bool(val) => (Self::BoolVal(val.value), TypeRef::Boolean),
                     Lit::Int(val) => {
                         let parsed = match val.token().to_string().parse() {
                             Ok(v) => v,
-                            Err(_) => bail_on!(val, "unable to parse"),
+                            Err(_) => bail_on!(val, "unable to parse literal integer"),
                         };
                         (Self::IntVal(parsed), TypeRef::Integer)
                     }
                     Lit::Float(val) => {
                         let parsed = match val.token().to_string().parse() {
                             Ok(v) => v,
-                            Err(_) => bail_on!(val, "unable to parse"),
+                            Err(_) => bail_on!(val, "unable to parse literal float"),
                         };
                         (Self::NumVal(parsed), TypeRef::Rational)
                     }
                     Lit::Str(val) => (Self::StrVal(val.token().to_string()), TypeRef::Text),
+                    // if not a boolean, integer, float, or string, bail
                     _ => bail_on!(lit, "not an expected literal"),
                 }
             }
+            // if not a literal, bail
             _ => bail_on!(receiver, "not a literal"),
         };
         Ok((intrinsic, ty))

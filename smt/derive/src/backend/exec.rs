@@ -8,19 +8,17 @@ use std::{fs, thread};
 use command_group::CommandGroup;
 use log::{debug, warn};
 
-use rusmart_utils::config::{Mode, MODE};
-
 use crate::backend::codegen::CodeGen;
 use crate::backend::error::BackendResult;
 use crate::ir::ctxt::IRContext;
 
-/// Execution timeout
-const MAIN_EXECUTABLE: &str = "main";
+/// This defines the name of the <file>.smt2
+const FILE: &str = "main";
 
-/// Execution timeout
+/// Execution timeout for the backend in seconds: by default 10 minutes (600 seconds).
 const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
 
-/// Solving result
+/// The response returned by the solver or other backend.
 pub enum Response {
     /// solver does not return anything
     Timeout,
@@ -44,66 +42,39 @@ impl Display for Response {
     }
 }
 
-/// Unified backend generation and execution service
+/// Entrypoint for generating code via the `backend` and executing it in an external process.
+///
+/// # Arguments
+///
+/// * `ir` - A reference to the intermediate representation to be translated into backend code.
+/// * `backend` - A trait object that knows how to generate code for a specific solver.
+/// * `path_wks` - The working directory in which the code and build files will be placed.
+///
+/// # Returns
+///
+/// A `BackendResult<Response>` indicating the outcome: `sat`, `unsat`, `unknown`, or `timeout`.
 pub fn invoke_backend(
     ir: &IRContext,
     backend: &dyn CodeGen,
     path_wks: &Path,
 ) -> BackendResult<Response> {
-    // generate code
+    // 1. Generate SMTLIB2 source code from the IR using the backend's process method.
     let code = backend.process(ir)?;
 
-    // save source code to designated file
-    let path_src = path_wks.join(format!("{}.{}", MAIN_EXECUTABLE, backend.flavor()));
+    // 2. save source code to a file named `main.smt2`.
+    let path_src = path_wks.join(format!("{}.{}", FILE, backend.flavor()));
     if path_src.exists() {
         panic!("source file already exists");
     }
     fs::write(&path_src, code).unwrap_or_else(|e| panic!("IO error on source file: {}", e));
 
-    // generate and save cmake file
-    let path_cmake = path_wks.join("CMakeLists.txt");
-    fs::write(path_cmake, backend.cmake())
-        .unwrap_or_else(|e| panic!("IO error on cmake file: {}", e));
+    // 3. Invoke Z3 directly on the generated SMTLIB2 file.
+    let mut cmd = Command::new("z3");
+    cmd.arg("-smt2")
+        .arg(&path_src)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    // config
-    let path_build = path_wks.join("build");
-    fs::create_dir(&path_build).expect("create fresh build directory");
-
-    let mut cmd = Command::new("cmake");
-    cmd.arg("-G")
-        .arg("Ninja")
-        .arg(path_wks)
-        .current_dir(&path_build);
-    if matches!(*MODE, Mode::Prod | Mode::Dev) {
-        cmd.stdout(Stdio::null());
-        cmd.stderr(Stdio::null());
-    }
-
-    let status = cmd
-        .status()
-        .unwrap_or_else(|e| panic!("unexpected error in command invocation: {}", e));
-    if !status.success() {
-        panic!("setup failed, check output for details");
-    }
-
-    // compile
-    let mut cmd = Command::new("cmake");
-    cmd.arg("--build").arg(&path_build);
-    if matches!(*MODE, Mode::Prod | Mode::Dev) {
-        cmd.stdout(Stdio::null());
-        cmd.stderr(Stdio::null());
-    }
-
-    let status = cmd
-        .status()
-        .unwrap_or_else(|e| panic!("unexpected error in command invocation: {}", e));
-    if !status.success() {
-        panic!("build failed, check output for details");
-    }
-
-    // execute
-    let mut cmd = Command::new(path_build.join(MAIN_EXECUTABLE));
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.group_spawn().expect("spawning for execution");
 
     let mut stdout = child.inner().stdout.take().expect("piped stdout");
@@ -147,11 +118,11 @@ pub fn invoke_backend(
     // wait for thread to finish
     let status = thread.join().expect("monitoring thread completed");
 
-    // read stdout first
+    // 5. Read Z3's output.
     let mut output = String::new();
     stdout.read_to_string(&mut output).expect("reading stdout");
 
-    // resolve the final response
+    // 6. Interpret the output.
     let response = match status {
         None => {
             if !output.is_empty() {
@@ -166,11 +137,11 @@ pub fn invoke_backend(
                 }
                 panic!("backend execution crashed with status {}", e);
             }
-            match output.as_str() {
+            match output.trim() {
                 "unknown" => Response::Unknown,
                 "sat" => Response::Sat,
                 "unsat" => Response::Unsat,
-                _ => panic!("invalid response: {}", output),
+                other => panic!("invalid response: {}", other),
             }
         }
     };

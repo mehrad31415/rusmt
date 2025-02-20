@@ -15,8 +15,15 @@ macro_rules! index {
     };
 }
 
+// this is equivalent to the following code:
+// #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+// pub struct UsrSortId {
+//     pub index: usize,
+// }
+// let a = UsrSortId { index: 0 };
+// println!("{}", a); // 0
 index! {
-    /// A unique identifier for user-defined sort
+    /// A unique identifier for user-defined type
     UsrSortId
 }
 

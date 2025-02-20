@@ -156,9 +156,9 @@ pub enum Expression {
 #[derive(Default, Debug)]
 pub struct ExpRegistry {
     /// a map from variable id to variables
-    vars: BTreeMap<VarId, Variable>,
+    pub vars: BTreeMap<VarId, Variable>,
     /// a map from expression id to expressions
-    exps: BTreeMap<ExpId, Expression>,
+    pub exps: BTreeMap<ExpId, Expression>,
 }
 
 impl ExpRegistry {
@@ -545,7 +545,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     }
 
     /// Process an expression
-    pub fn resolve(&mut self, expr: &Expr, exp_ty: Option<&Sort>) -> ExpId {
+    fn resolve(&mut self, expr: &Expr, exp_ty: Option<&Sort>) -> ExpId {
         // save the namespace
         let old_namespace = self.namespace.clone();
 

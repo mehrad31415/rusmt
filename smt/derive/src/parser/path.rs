@@ -36,7 +36,7 @@ impl TuplePath {
             segments,
         } = path;
         bail_if_exists!(leading_colon);
-        let mut iter = segments.iter().rev();
+        let mut iter = segments.iter();
 
         // type
         let PathSegment { ident, arguments } = bail_if_missing!(iter.next(), path, "type name");
@@ -44,15 +44,17 @@ impl TuplePath {
         let generics = match ctxt.get_type_def(&ty_name) {
             None => bail_on!(ident, "no such type"),
             Some(def) => {
+                // it needs to be a tuple type
                 if !matches!(def.body, TypeBody::Tuple(_)) {
                     bail_on!(ident, "not a tuple type");
                 }
                 &def.head
             }
         };
+        // match the type arguments with the generics
         let ty_args = GenericsInstPartial::from_args(ctxt, generics, arguments)?;
 
-        // ensure that there are no more tokens
+        // ensure that there are no more tokens (there is only one segment allowed)
         bail_if_exists!(iter.next());
         Ok(Self { ty_name, ty_args })
     }
@@ -124,6 +126,7 @@ pub struct ADTPath {
 
 impl ADTPath {
     /// Extract a reference to an ADT variant from a path (converts the path into an ADTPath)
+    /// This basically just parses a enum variant which is a unit struct for example: MyEnum::MyVariant and this can have type arguments like MyEnum::<T>::MyVariant
     /// As ExprParserRoot is the only type that implements the CtxtForExpr trait, ctxt is a reference to an ExprParserRoot
     pub fn from_path<T: CtxtForExpr>(ctxt: &T, path: &Path) -> Result<Self> {
         let Path {
@@ -340,6 +343,7 @@ impl QualifiedPath {
                     Some(fty) => {
                         let inst_for_fn =
                             GenericsInstPartial::from_args(ctxt, &fty.generics, arguments)?;
+                        // the first parameter is like Integer, the second parameter is the mappping of the type arguments, the third is like add, the fourth is the mapping of the function arguments for example in Integer::<U>::add::<V>(x, y) the first parameter is Integer, the second is U, the third is add, the fourth is V
                         Self::UsrFuncOnSysType(ty_name, inst_for_ty, name.clone(), inst_for_fn)
                     }
                 },
@@ -450,7 +454,7 @@ impl ExprPathAsCallee {
                 ) {
                     (Ok(_), Ok(_)) => bail_on!(path, "ambiguous callee"),
                     (Ok(adt), Err(_)) => Self::CtorEnum(adt), // like let a = MyEnum::MyVariant(13) where enum MyEnum { MyVariant(i32) }
-                    (Err(_), Ok(qualified)) => Self::FuncWithType(qualified), // like let a = MyType::my_func() where fn my_func() -> i32 { 1 }
+                    (Err(_), Ok(qualified)) => Self::FuncWithType(qualified), // like let a = MyType::my_func() where fn my_func() -> i32 { 1 } in this case my)func is either a function on a system type or a method in the smt of a user type (becaue impl blocks are not read into the context)
                     (Err(_), Err(e2)) => return Err(e2),
                 }
             }

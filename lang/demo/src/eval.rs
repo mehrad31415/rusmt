@@ -19,6 +19,12 @@ pub enum Expr {
     Error(Error),
 }
 
+// no need to take into account impl bodies as impl bodies are implicitly generated with the method = ... attribute
+// so if we had a defined type struct Foo; and we wanted to define impl Foo { fn bar() -> Foo { Foo } }
+// we would just need to write:
+// #[smt_impl(method = bar)]
+// fn another_bar(Foo) -> Foo { Foo }
+// but in rusmart we cannot define impl Trait for a type ... 
 #[smt_impl(method = lt)]
 fn lt_value(lhs: Value, rhs: Value) -> Expr {
     match (lhs, rhs) {
@@ -254,7 +260,7 @@ pub fn evaluate_program(prog: Program) -> (State, Expr) {
 
 #[smt_spec(impls = [evaluate_program])]
 pub fn spec_evaluate_program(_prog: Program) -> (State, Expr) {
-    unimplemented!()
+    unimplemented!() 
 }
 
 #[smt_axiom]
@@ -263,7 +269,7 @@ pub fn axiom1(p1: Program, p2: Program) -> Boolean {
         .implies(spec_evaluate_program(p1).eq(spec_evaluate_program(p2)))
 }
 
-// DCE
+// DCE (dead code elimination).
 // linting
 // error patterns (based on data)
 // K-framework for operation semantics correctness (maybe some test suites)

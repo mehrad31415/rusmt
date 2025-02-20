@@ -36,17 +36,7 @@ impl<T: BackendCVC5> CodeGen for CodeGenCVC5<T> {
     fn name(&self) -> String {
         self.backend.name()
     }
-
-    fn cmake(&self) -> String {
-        include_str!("template.cmake")
-            .replace("{:NAME:}", &self.name())
-            .replace("{:ARTIFACT:}", ARTIFACT.to_str().expect("ascii path"))
-    }
-
-    fn flavor(&self) -> &'static str {
-        "cpp"
-    }
-
+    
     fn process(&self, ir: &IRContext) -> BackendResult<String> {
         self.backend.process(ir)
     }

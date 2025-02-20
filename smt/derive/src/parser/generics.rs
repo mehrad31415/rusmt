@@ -350,6 +350,8 @@ impl GenericsInstPartial {
                 }
 
                 // construct partial instantiation
+                // first element is the type parameter name in the definition
+                // second element is a tuple of the index of the type parameter in the generics and the parsed type argument
                 ty_params
                     .iter()
                     .zip(ty_args)

@@ -6,7 +6,7 @@ use crate::backend::z3::common::BackendZ3;
 use crate::backend::z3::session::Session;
 use crate::ir::ctxt::IRContext;
 
-/// CHC engine
+/// BackendZ3CHC is a backend designed for Z3's CHC (Constrained Horn Clause) engine.
 pub struct BackendZ3CHC {}
 
 impl BackendZ3CHC {
@@ -20,6 +20,7 @@ impl BackendZ3 for BackendZ3CHC {
         "z3_chc".to_string()
     }
 
+    /// Generate backend SMT-LIB code for the CHC engine based on the given `IRContext`.
     fn process(&self, ir: &IRContext) -> BackendResult<String> {
         let mut x = ContentBuilder::new();
 

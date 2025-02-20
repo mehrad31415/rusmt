@@ -376,6 +376,7 @@ impl Context {
         }
 
         // impl and spec pairs
+        // the specs used in the impls must be defined as a function marked with #[smt_spec(method = ..., impls = [...])]
         for marked in self.impls.values() {
             let MarkedImpl { item, mark } = marked;
             for target in &mark.specs {
@@ -384,6 +385,7 @@ impl Context {
                 }
             }
         }
+        // the impls used in the specs must be defined as a function marked with #[smt_impl(method = ..., specs = [...])]
         for marked in self.specs.values() {
             let MarkedSpec { item, mark } = marked;
             for target in &mark.impls {
@@ -900,7 +902,7 @@ impl ASTContext {
     /// This function is only used in IRBuilder::build in the ir/ctxt.rs file.
     /// IRBuilder::build takes the ASTContext and the refinement relation between an impl and a spec.
     /// For each refinement relation, IRBuilder::build builds the IRContext.
-    /// IRBuilder::build is only used in lib.rs in the pipeline function.
+    /// This function finds the relevant axioms for each function name.
     pub fn probe_related_axioms(
         &self,
         name: &UsrFuncName,
@@ -956,7 +958,7 @@ impl ASTContext {
                 // prepare type variables
                 let mut unifier = TypeUnifier::new();
                 let generics = GenericsInstPartial::new_without_args(&axiom.head.generics)
-                    .complete(&mut unifier);
+                    .complete(&mut unifier); // all of them are typevar
 
                 // refresh the candidates by replacing type parameters as type variables
                 let mut parametric = vec![];

@@ -9,6 +9,11 @@ use crate::parser::name::UsrTypeName;
 use crate::parser::ty::{EnumVariant, TypeBody, TypeTag};
 
 /// A unique and complete reference to an SMT sort
+/// In the IR, types have been fully resolved (e.g. type variables should have been unified and substituted with its representation).
+/// This is basically the IR representation of a typetag in the parser
+/// The cloak is unwrapped and the type is resolved to a sort that is why Sort does not have a Cloak variant
+/// Also tuple types have been treated as user-defined types with no name so they fall under the Sort::User variant (so there is no Pack variant)
+/// The TypeRef::Parameter variant is converted to Sort::Uninterpreted
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum Sort {
     /// boolean
@@ -29,8 +34,8 @@ pub enum Sort {
     Error,
     /// user-defined type (including pack-defined type tuple)
     User(UsrSortId),
-    /// uninterpreted
-    Uninterpreted(SmtSortName),
+    /// uninterpreted (used for type parameters that implement the SMT trait)
+    Uninterpreted(SmtSortName), // SmtSortName is the name of a type parameter that implements the SMT trait
 }
 
 impl Display for Sort {
@@ -51,11 +56,11 @@ impl Display for Sort {
 }
 
 #[derive(Debug)]
-/// A helper enum to represent a variant definition in an ADT type
+/// A helper enum representing a variant definition for algebraic data types (ADTs).
 pub enum Variant {
-    Unit,
-    Tuple(Vec<Sort>),
-    Record(BTreeMap<String, Sort>),
+    Unit, // A unit variant like MyEnum::MyVariant
+    Tuple(Vec<Sort>), //MyEnum::MyVariant(1,2,3)
+    Record(BTreeMap<String, Sort>), // MyEnum::MyVariant{x:1,y:2,z:3}
 }
 
 impl Display for Variant {
@@ -75,7 +80,8 @@ impl Display for Variant {
 }
 
 #[derive(Debug)]
-/// Complete definition of a sort
+/// Complete definition of a user-defined data type.
+/// It can be a tuple type, a record type, or an enum (ADT) with multiple variants.
 pub enum DataType {
     Tuple(Vec<Sort>),
     Record(BTreeMap<String, Sort>),
@@ -104,10 +110,15 @@ impl Display for DataType {
     }
 }
 
-/// A registry of data types involved
+/// A registry that tracks all data types (sorts) in the IR context.
+///
+/// It maintains two kinds of indices:
+/// - **Named types:** user-defined types that have a name.
+/// - **Unnamed tuple types:** tuple types that do not have an explicit name.
+/// It also stores the complete definitions (DataType) associated with each unique sort.
 #[derive(Default, Debug)]
 pub struct TypeRegistry {
-    /// a map from user-defined type and instantiations to sort id
+    /// a map from user-defined type and type parameters to sort id
     idx_named: BTreeMap<UsrSortName, BTreeMap<Vec<Sort>, UsrSortId>>,
     /// a map from unnamed type tuple (still user-defined) to sort id
     idx_tuple: BTreeMap<Vec<Sort>, UsrSortId>,
@@ -125,7 +136,10 @@ impl TypeRegistry {
         }
     }
 
-    /// Get the index given an optional sort name and instantiation
+    /// Get the unique sort identifier given an optional type name and its instantiation.
+    ///
+    /// If `name` is `None`, the lookup is done in the anonymous tuple mapping and inst is the type of tuple elements.
+    /// If `name` is provided, the lookup is done in the named types mapping and inst is the type parameters (generics).
     fn get_index(&self, name: Option<&UsrSortName>, inst: &[Sort]) -> Option<UsrSortId> {
         let idx = match name {
             None => self.idx_tuple.get(inst)?,
@@ -134,17 +148,31 @@ impl TypeRegistry {
         Some(*idx)
     }
 
-    /// Create a signature in the registry, panic if already registered
+    /// Create a new type signature (i.e. register a type instance) in the registry.
+    ///
+    /// If a type with the same name and instantiation is already registered, the function panics.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - An optional user-defined type name.
+    /// * `inst` - A vector of sorts representing the instantiation.
+    ///
+    /// # Returns
+    ///
+    /// * A unique `UsrSortId` for the new type instance.
     fn create(&mut self, name: Option<UsrSortName>, inst: Vec<Sort>) -> UsrSortId {
+        // random number depending on both tuple and named types (so if we had 15 registered types, the idx will be 15 (it starts from 0)).
+        // it is the sum of the length of the idx_tuple and the sum of the length of the values of idx_named
         let idx = UsrSortId {
             index: self.idx_tuple.len() + self.idx_named.values().map(|v| v.len()).sum::<usize>(),
         };
+        // existing is the UsrSortId that is already registered
         let existing = match name {
-            None => self.idx_tuple.insert(inst, idx),
+            None => self.idx_tuple.insert(inst, idx), //? Doesnt this give an error for tuples with the same elements?
             Some(n) => self.idx_named.entry(n).or_default().insert(inst, idx),
         };
         if existing.is_some() {
-            panic!("type instance already registered");
+            panic!("type instance already registered {:#?}", existing);
         }
         idx
     }
@@ -166,8 +194,8 @@ impl TypeRegistry {
     pub fn reverse_lookup(&self, idx: UsrSortId) -> (Option<&UsrSortName>, &[Sort]) {
         for (name, val) in &self.idx_named {
             for (inst, sid) in val {
-                if *sid == idx {
-                    return (Some(name), inst);
+                if *sid == idx { 
+                    return (Some(name), inst); // all ids are unique so we can return the first one we find knowing that the id is not present in the idx_tuple
                 }
             }
         }
@@ -187,10 +215,21 @@ impl TypeRegistry {
 
 /// Sort-related functions in the IR builder
 impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
-    /// Resolve a type ref to the builder and pull its dependencies into the builder if needed
+    /// Resolve a parser-level type reference into an IR-level sort.
+    ///
+    /// This function “unwraps” cloaked types, ensures that no type variables remain, and
+    /// registers any user-defined types with the type registry if needed.
+    ///
+    /// # Arguments
+    ///
+    /// * `ty` - A reference to the parser-level type.
+    ///
+    /// # Returns
+    ///
+    /// * The corresponding IR-level `Sort`.
     pub fn resolve_type(&mut self, ty: &TypeRef) -> Sort {
         let sort = match ty {
-            TypeRef::Var(_) => panic!("incomplete type inference"),
+            TypeRef::Var(_) => panic!("incomplete type inference"), // you cannot have type variables in the IR so all types should be resolved at the parser level that is why the unification is done.
             TypeRef::Boolean => Sort::Boolean,
             TypeRef::Integer => Sort::Integer,
             TypeRef::Rational => Sort::Rational,
@@ -206,11 +245,14 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                 self.resolve_type(val.as_ref()).into(),
             ),
             TypeRef::Error => Sort::Error,
+            // For user-defined types, register the type and get its unique sort id. inst is the type parameters
             TypeRef::User(name, inst) => Sort::User(self.register_type(Some(name), inst)),
+            // For pack-defined types (anonymous tuple types), register them without a name.
             TypeRef::Pack(elems) => Sort::User(self.register_type(None, elems)),
+            // basically for a TypeRef::Parameter(TypeParamName { ident : name.clone()}), it is Sort::Uninterpreted(SmtSortName { ident: name.clone() })
             TypeRef::Parameter(name) => self
                 .ty_inst
-                .get(name)
+                .get(name) // name is the type parameter from the definition (generics). This gives the corresponding type argument in the call in the Sort IR representation.
                 .unwrap_or_else(|| panic!("no such type parameter {}", name))
                 .clone(),
         };
@@ -222,14 +264,14 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         tys.iter().map(|e| self.resolve_type(e)).collect()
     }
 
-    /// Utility: resolve a map of type refs
+    /// Utility: Resolve a mapping from strings to parser-level type references into a mapping to IR-level sorts.
     fn resolve_type_ref_map(&mut self, tys: &BTreeMap<String, TypeRef>) -> BTreeMap<String, Sort> {
         tys.iter()
             .map(|(key, val)| (key.clone(), self.resolve_type(val)))
             .collect()
     }
 
-    /// Utility: resolve a vec of type tags
+    /// Utility: resolve a vec of type tags (first the type tags are converted to type refs and then to sorts)
     fn resolve_type_tag_vec(&mut self, tys: &[TypeTag]) -> Vec<Sort> {
         tys.iter().map(|e| self.resolve_type(&e.into())).collect()
     }
@@ -241,12 +283,25 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             .collect()
     }
 
-    /// Register an instantiated type definition and its dependencies (if not previously registered)
+    /// Register a user-defined type in the IR.
+    ///
+    /// This function resolves the type arguments, checks if the type is already registered,
+    /// creates a new type instance if needed, and then processes the type definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `ty_name` - An optional reference to the user-defined type name.
+    /// * `ty_args` - A slice of type references for the type parameters.
+    ///
+    /// # Returns
+    ///
+    /// * The unique `UsrSortId` corresponding to the registered type.
     pub fn register_type(
         &mut self,
         ty_name: Option<&UsrTypeName>,
-        ty_args: &[TypeRef],
+        ty_args: &[TypeRef], // for tuples these are the elements of the tuple and for user-defined types these are the type parameters (both in the definition)
     ) -> UsrSortId {
+        // UsrSortName is the name of a user-defined type in the IR
         let name = ty_name.map(|n| n.into());
         let ty_args = self.resolve_type_ref_vec(ty_args);
 
@@ -266,9 +321,11 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                 DataType::Tuple(ty_args)
             }
             Some(n) => {
+                // get the type definition from the ASTContext
                 let def = self.ctxt.get_type(n);
 
                 // prepare the builder for definition processing
+                // create a mapping from the generics in the definition to the arguments
                 let mut builder = self.derive(&def.head, ty_args);
 
                 // parse the definition with the newly contextualized holder

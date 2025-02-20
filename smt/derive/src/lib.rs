@@ -7,7 +7,7 @@ use rusmart_utils::config::initialize; // initialize all configs
 
 use crate::backend::error::BackendError; // An error for backend generator (e.g., not supported)
 use crate::backend::exec::invoke_backend; // Unified backend generation and execution service
-use crate::backend::solvers; // Available list of backend solvers (z3 and cvc5)
+use crate::backend::codegen::solvers; // Available list of backend solvers (z3 and cvc5)
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context; // Context manager for holding marked items
 
@@ -132,7 +132,7 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
 ///
 /// # Arguments
 ///
-/// * `input` - The path to the input file to be processed.
+/// * `input` - The path to the input directory or file to be processed.
 /// * `output` - The path to the output directory where results will be stored.
 ///
 /// # Returns
@@ -143,10 +143,14 @@ pub fn derive<P1: AsRef<Path>, P2: AsRef<Path>>(input: P1, output: P2) -> Result
     initialize();
 
     // Run the pipeline to parse the input and generate models (IRContexts).
+    debug!("deriving models");
     let models = model(input)?;
     debug!("derivation completed");
+    
     // Solve the models using available solvers and write outputs.
+    debug!("solving models");
     solve(&models, output);
+    debug!("solving completed");
 
     Ok(())
 }

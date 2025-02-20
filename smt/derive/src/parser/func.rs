@@ -164,13 +164,13 @@ impl FuncName {
     /// A `Result` containing the `FuncName` if successful, or a `syn::Error` if the identifier is a reserved keyword.
     pub fn try_from(ident: &Ident) -> Result<Self> {
         let name = ident.to_string();
-        let parsed = match ReservedFuncName::from_str(&name) {
+        let parsed = match ReservedFuncName::from_str(&name) { // clone and default are reserved keywords
             Some(n) => Self::Reserved(n),
-            None => match CastFuncName::from_str(&name) {
+            None => match CastFuncName::from_str(&name) { // from and into are reserved keywords
                 Some(n) => Self::Cast(n),
-                None => match SysFuncName::from_str(&name) {
+                None => match SysFuncName::from_str(&name) { // eq and ne are reserved keywords
                     Some(n) => Self::Sys(n),
-                    None => Self::Usr(ident.try_into()?), // returns an error if ident is a reserved keyword or an underscore. Invokes method `fn try_from(value: &Ident) -> Result<Self> { validate_user_ident(value).map(|ident| Self { ident }) } from the name module`
+                    None => Self::Usr(ident.try_into()?), // returns an error if ident is a reserved keyword or an underscore. Invokes method `fn try_from(value: &Ident) -> Result<Self> { validate_user_ident(value).map(|ident| Self { ident }) } from the name module`. Returns UsrFuncName if the ident is a valid user-defined function name.
                 },
             },
         };
@@ -360,8 +360,8 @@ impl FuncSig {
 
         let mut self_generics = self.generics.params.clone();
         let mut sig_generics = sig.generics.params.clone();
-        self_generics.sort();
-        sig_generics.sort();
+        self_generics.sort(); //? is the sort a correct decision?
+        sig_generics.sort(); //? is the sort a correct decision?
 
         let gens: BTreeMap<TypeParamName, TypeParamName> =
             self_generics.into_iter().zip(sig_generics).collect();
@@ -369,7 +369,7 @@ impl FuncSig {
         // Compare parameter types
         let lhs_params: Vec<TypeTag> = self.params.clone().into_iter().map(|(_, t)| t).collect();
         let lhs_params = unify(lhs_params, &gens).expect("unification failed in params");
-        let rhs_params: BTreeSet<TypeTag> =
+        let rhs_params: Vec<TypeTag> =
             sig.params.clone().into_iter().map(|(_, t)| t).collect();
         if lhs_params != rhs_params {
             return false;
@@ -405,11 +405,11 @@ impl FuncSig {
 ///
 /// The function handles nested types (like `Cloak`, `Seq`, `Set`, `Map`, `User`, and `Pack`) by calling `unify` recursively for the inner type(s).
 /// It ensures that all nested type parameters are also unified.
-fn unify(
+pub fn unify(
     params: Vec<TypeTag>,
     gens: &BTreeMap<TypeParamName, TypeParamName>,
-) -> Result<BTreeSet<TypeTag>> {
-    let mut res: BTreeSet<TypeTag> = BTreeSet::new();
+) -> Result<Vec<TypeTag>> {
+    let mut res: Vec<TypeTag> = vec![];
     // Iterate over each type in the `params` vector
     for i in params {
         match i {
@@ -417,7 +417,7 @@ fn unify(
             TypeTag::Parameter(p) => {
                 if let Some(t) = gens.get(&p.clone()) {
                     // If the generic parameter exists in `gens`, insert the unified type
-                    res.insert(TypeTag::Parameter(t.clone()));
+                    res.push(TypeTag::Parameter(t.clone()));
                 } else {
                     // If the generic parameter is not found in `gens`, return an error
                     bail_on!(p.ident, "unbound type parameter");
@@ -425,7 +425,7 @@ fn unify(
             }
             // Handle the `Cloak` type tag (recursively unify the inner type)
             TypeTag::Cloak(t) => {
-                res.insert(TypeTag::Cloak(Box::new(
+                res.push(TypeTag::Cloak(Box::new(
                     unify(vec![*t.clone()], gens)
                         .expect("unification failed in cloak")
                         .into_iter()
@@ -435,7 +435,7 @@ fn unify(
             }
             // Handle the `Seq` type tag (recursively unify the inner type)
             TypeTag::Seq(t) => {
-                res.insert(TypeTag::Seq(Box::new(
+                res.push(TypeTag::Seq(Box::new(
                     unify(vec![*t.clone()], gens)
                         .expect("unification failed in seq")
                         .into_iter()
@@ -445,7 +445,7 @@ fn unify(
             }
             // Handle the `Set` type tag (recursively unify the inner type)
             TypeTag::Set(t) => {
-                res.insert(TypeTag::Set(Box::new(
+                res.push(TypeTag::Set(Box::new(
                     unify(vec![*t.clone()], gens)
                         .expect("unification failed in set")
                         .into_iter()
@@ -455,7 +455,7 @@ fn unify(
             }
             // Handle the `Map` type tag (recursively unify both key and value types)
             TypeTag::Map(k, v) => {
-                res.insert(TypeTag::Map(
+                res.push(TypeTag::Map(
                     Box::new(
                         unify(vec![*k.clone()], gens)
                             .expect("unification failed in map")
@@ -474,18 +474,21 @@ fn unify(
             }
             // Handle the `User` type tag (recursively unify each argument)
             TypeTag::User(name, args) => {
-                res.insert(TypeTag::User(
+                res.push(TypeTag::User(
                     name,
                     unify(args, gens)?.into_iter().collect(),
                 ));
             }
             // Handle the `Pack` type tag (recursively unify each element in the pack)
             TypeTag::Pack(t) => {
-                res.insert(TypeTag::Pack(unify(t, gens)?.into_iter().collect()));
+                // println!("{:?}", t);
+                // println!("{:?}", unify(t.clone(), gens));
+                res.push(TypeTag::Pack(unify(t, gens)?.into_iter().collect()));
+                // println!("{:?}", res);
             }
             // Handle other type tags (Boolean, Integer, Rational, Text, Error)
             _ => {
-                res.insert(i);
+                res.push(i);
             }
         }
     }

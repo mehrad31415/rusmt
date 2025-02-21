@@ -58,8 +58,8 @@ impl Display for Sort {
 #[derive(Debug)]
 /// A helper enum representing a variant definition for algebraic data types (ADTs).
 pub enum Variant {
-    Unit, // A unit variant like MyEnum::MyVariant
-    Tuple(Vec<Sort>), //MyEnum::MyVariant(1,2,3)
+    Unit,                           // A unit variant like MyEnum::MyVariant
+    Tuple(Vec<Sort>),               //MyEnum::MyVariant(1,2,3)
     Record(BTreeMap<String, Sort>), // MyEnum::MyVariant{x:1,y:2,z:3}
 }
 
@@ -119,9 +119,9 @@ impl Display for DataType {
 #[derive(Default, Debug)]
 pub struct TypeRegistry {
     /// a map from user-defined type and type parameters to sort id
-    idx_named: BTreeMap<UsrSortName, BTreeMap<Vec<Sort>, UsrSortId>>,
+    pub idx_named: BTreeMap<UsrSortName, BTreeMap<Vec<Sort>, UsrSortId>>,
     /// a map from unnamed type tuple (still user-defined) to sort id
-    idx_tuple: BTreeMap<Vec<Sort>, UsrSortId>,
+    pub idx_tuple: BTreeMap<Vec<Sort>, UsrSortId>,
     /// the actual type definitions
     defs: BTreeMap<UsrSortId, DataType>,
 }
@@ -194,7 +194,7 @@ impl TypeRegistry {
     pub fn reverse_lookup(&self, idx: UsrSortId) -> (Option<&UsrSortName>, &[Sort]) {
         for (name, val) in &self.idx_named {
             for (inst, sid) in val {
-                if *sid == idx { 
+                if *sid == idx {
                     return (Some(name), inst); // all ids are unique so we can return the first one we find knowing that the id is not present in the idx_tuple
                 }
             }
@@ -262,13 +262,6 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// Utility: resolve a vec of type refs
     pub fn resolve_type_ref_vec(&mut self, tys: &[TypeRef]) -> Vec<Sort> {
         tys.iter().map(|e| self.resolve_type(e)).collect()
-    }
-
-    /// Utility: Resolve a mapping from strings to parser-level type references into a mapping to IR-level sorts.
-    fn resolve_type_ref_map(&mut self, tys: &BTreeMap<String, TypeRef>) -> BTreeMap<String, Sort> {
-        tys.iter()
-            .map(|(key, val)| (key.clone(), self.resolve_type(val)))
-            .collect()
     }
 
     /// Utility: resolve a vec of type tags (first the type tags are converted to type refs and then to sorts)

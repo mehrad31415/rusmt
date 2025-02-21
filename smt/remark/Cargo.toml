@@ -10,3 +10,4 @@ license = "GPL-3.0"
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }
+log = { workspace = true }

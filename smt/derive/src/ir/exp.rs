@@ -281,6 +281,10 @@ impl ExpRegistry {
     fn lookup_exp(&self, idx: ExpId) -> &Expression {
         self.exps.get(&idx).expect("no such exp id")
     }
+
+    pub fn expr_to_smt(&self, idx: ExpId) -> String {
+        String::from(format!("todo! {}", idx))
+    }
 }
 
 /// A context builder originated from a refinement relation

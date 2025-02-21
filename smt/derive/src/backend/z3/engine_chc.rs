@@ -1,11 +1,11 @@
-use crate::analysis::sort::{sort_in_topological_order, SortSCC};
 use crate::backend::codegen::{l, ContentBuilder};
 use crate::backend::error::BackendResult;
-use crate::backend::exec::Response;
 use crate::backend::z3::common::BackendZ3;
-use crate::backend::z3::session::Session;
+use crate::backend::z3::session::to_smt_sort_func_sig;
+use crate::backend::z3::session::user_defined_types;
+use crate::ir::axiom::Predicate;
 use crate::ir::ctxt::IRContext;
-
+use crate::ir::fun::FunDef;
 /// BackendZ3CHC is a backend designed for Z3's CHC (Constrained Horn Clause) engine.
 pub struct BackendZ3CHC {}
 
@@ -24,41 +24,126 @@ impl BackendZ3 for BackendZ3CHC {
     fn process(&self, ir: &IRContext) -> BackendResult<String> {
         let mut x = ContentBuilder::new();
 
-        // includes
-        l!(x, "#include <stdio.h>");
-        l!(x, "#include <z3.h>");
-        l!(x);
+        l!(
+            x,
+            "; verification of the following impl-spec pair: {}",
+            ir.desc
+        );
+        l!(x); // add new line
 
-        // main function
-        l!(x, "// modeling for relation: {}", ir.desc);
-        l!(x, "int main() {");
-        x.scope(|x| {
-            let mut session = Session::prologue(x);
+        for sort in &ir.undef_sorts {
+            l!(x, "(declare-sort {} 0)", sort);
+        }
 
-            // define uninterpreted sorts
-            for sort_name in &ir.undef_sorts {
-                session.def_uninterpreted_sort(x, sort_name);
-            }
+        for sid in ir.ty_registry.data_types().keys() {
+            let s = user_defined_types(*sid, ir);
+            l!(x, "{}", s);
+            l!(x);
+        }
 
-            // define user-defined data types
-            for scc in sort_in_topological_order(&ir.ty_registry) {
-                match scc {
-                    SortSCC::Simple(sid) => {
-                        session.def_adt_single(x, sid, &ir.ty_registry);
+        // write the functions
+        for (name, generics_id) in &ir.fn_registry.lookup {
+            for (_, id) in generics_id {
+                let sig = ir.fn_registry.retrieve_sig(*id);
+                let def = ir.fn_registry.retrieve_def(*id);
+
+                match def {
+                    FunDef::Defined(reg, id) => {
+                        // Extract argument types from (name, sort) pairs
+                        // println!("{:?}", sig);
+                        let params: Vec<String> = sig
+                            .params
+                            .iter()
+                            .map(|(var, sort)| {
+                                format!("({} {})", var, to_smt_sort_func_sig(sort, ir))
+                            })
+                            .collect();
+
+                        let return_type = to_smt_sort_func_sig(&sig.ret_ty, ir);
+
+                        let body_expr = reg.expr_to_smt(*id);
+
+                        l!(
+                            x,
+                            "(define-fun {} ({}) {} {})",
+                            name,
+                            params.join(" "),
+                            return_type,
+                            body_expr
+                        );
+                        l!(x);
                     }
-                    SortSCC::Inductive(group) => {
-                        session.def_adt_group(x, &group, &ir.ty_registry);
+                    FunDef::Uninterpreted => {
+                        // Extract argument types from (name, sort) pairs
+                        let arg_types: Vec<String> = sig
+                            .params
+                            .iter()
+                            .map(|(_, sort)| to_smt_sort_func_sig(sort, ir))
+                            .collect();
+                        let return_type = to_smt_sort_func_sig(&sig.ret_ty, ir);
+
+                        // Generate SMT function declaration (the generics of the function have already been defined)
+                        l!(
+                            x,
+                            "(declare-fun {} ({}) {})",
+                            name,
+                            arg_types.join(" "),
+                            return_type
+                        );
+                        l!(x);
                     }
                 }
             }
+        }
 
-            // TODO: content
-            l!(x, "printf(\"{}\");", Response::Unknown);
+        l!(x);
 
-            session.epilogue(x);
-            l!(x, "return 0;");
-        });
-        l!(x, "}");
+        // println!("axioms: {:?}", ir.axiom_registry.lookup);
+        // write the axioms
+        for (name, generics_id) in &ir.axiom_registry.lookup {
+            for (_, id) in generics_id {
+                // generics are already registered
+                let predicate = ir.axiom_registry.retrieve(*id);
+
+                let Predicate {
+                    params,
+                    body_reg,
+                    body_exp,
+                } = predicate;
+
+                let param_list: Vec<String> = params
+                    .iter()
+                    .map(|(_, sort)| {
+                        format!("{}", to_smt_sort_func_sig(sort, ir))
+                    })
+                    .collect();
+
+                let param_names: Vec<String> = params
+                    .iter()
+                    .map(|(symbol, _)| symbol.to_string())
+                    .collect();
+
+                let body_expr = body_reg.expr_to_smt(*body_exp);
+
+                // Declare the axiom function
+                l!(
+                    x,
+                    "(declare-fun {} ({} Bool))",
+                    name,
+                    param_list.join(" ")
+                );
+                l!(x);
+                l!(
+                    x,
+                    "(assert (forall ({}) (= ({} {}) {})))",
+                    param_list.join(" "),
+                    name,
+                    param_names.join(" "),
+                    body_expr
+                );
+                l!(x);
+            }
+        }
 
         // done
         Ok(x.build())

@@ -6,7 +6,6 @@ mod adt_struct_ok;
 mod adt_tuple_no_slots;
 mod adt_tuple_ok;
 mod attr_ok;
-mod axiom_not_boolean_return;
 mod axiom_ok;
 mod bind_arg_plain_ok;
 mod bind_arg_ty_param_ok;

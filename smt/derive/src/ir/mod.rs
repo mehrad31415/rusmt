@@ -9,7 +9,7 @@ pub mod sort;
 
 mod mono;
 
-mod axiom;
+pub mod axiom;
 mod exp;
 pub mod fun;
 mod intrinsics;

@@ -38,6 +38,7 @@ fn pipeline(ctxt: Context) -> Result<Vec<IRContext>> {
     let mut models = vec![];
     // Iterate over all refinements obtained from the parsed context.
     for item in parsed.refinements() {
+        println!("processing verification condition for {}", item);
         debug!("processing verification condition for {}", item);
         // Build the intermediate representation (IR) for each refinement item.
         let ir = IRBuilder::build(&parsed, item);
@@ -111,7 +112,7 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
                         count, ir.desc, name, response
                     );
                 }
-                Err(BackendError::NotSupported) => {
+                Err(BackendError) => {
                     // Log if the solver does not support this IR or operation.
                     info!(
                         "[{}] solving {} with {}: not supported",
@@ -146,7 +147,7 @@ pub fn derive<P1: AsRef<Path>, P2: AsRef<Path>>(input: P1, output: P2) -> Result
     debug!("deriving models");
     let models = model(input)?;
     debug!("derivation completed");
-    
+
     // Solve the models using available solvers and write outputs.
     debug!("solving models");
     solve(&models, output);

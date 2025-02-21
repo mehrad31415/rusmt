@@ -1,8 +1,6 @@
 use proc_macro::TokenStream as Syntax;
 use proc_macro2::TokenStream;
-use syn::{parse_macro_input, Item};
-
-use rusmart_smt_remark::{fail_if_error, fail_on};
+use rusmart_smt_remark::fail_if_error;
 use rusmart_smt_remark::{func, ty};
 /// Annotation over a Rust type (can only be applied on a Rust type definition i.e., struct and enum)
 /// Attributes will not be accepted. i.e., #[smt_type(<...attrs...>)] will cause an error
@@ -47,23 +45,9 @@ pub fn smt_spec(attr: Syntax, item: Syntax) -> Syntax {
 #[proc_macro_attribute]
 #[cfg(not(tarpaulin_include))]
 #[inline]
+// #[smt_axiom(relations = {(impl1, spec1), (impl2, spec2)})]
 pub fn smt_axiom(attr: Syntax, item: Syntax) -> Syntax {
-    // check attributes
     let attr: TokenStream = TokenStream::from(attr);
-    if !attr.is_empty() {
-        fail_on!(attr, "unexpected"); // no attributes allowed for smt_axiom
-    }
-
-    // produce the output
-    let output = item.clone();
-
-    // ensure that the underlying item is a type
-    let target: Item = parse_macro_input!(item as Item);
-    if !matches!(target, Item::Fn(_)) {
-        // only functions are allowed for smt_axiom
-        fail_on!(target, "expect fn");
-    }
-
-    // do nothing with the axiom definition
-    output
+    let item: TokenStream = TokenStream::from(item);
+    fail_if_error!(func::derive_for_axiom(attr, item))
 }

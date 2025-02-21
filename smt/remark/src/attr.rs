@@ -32,6 +32,8 @@ pub enum MetaValue {
     One(Ident),
     /// A set of identifier values.
     Set(BTreeSet<Ident>),
+    /// A set of impl-spec pairs
+    Map(Vec<(Ident, Ident)>),
 }
 
 /// Parses a key-value mapping from a token stream.
@@ -140,7 +142,86 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
 
                 MetaValue::Set(set)
             }
-            _ => bail_on!(token, "expect value as identifier or set of identifiers"),
+            // Set of identifiers enclosed in braces key = {value1, value2} where each value_i is a tuple
+            TokenTree::Group(group) if matches!(group.delimiter(), Delimiter::Brace) => {
+                let mut map = Vec::new();
+
+                let sub = group.stream(); // creates a TokenStream
+                let mut sub_iter = sub.into_iter(); // Iterator over the sub-stream
+
+                // sub_cursor will be a None value if we have #[my_attr(key = {})]
+                let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
+
+                if sub_cursor.is_none() {
+                    bail_on!(group, "expect at least one item in set");
+                }
+
+                while sub_cursor.is_some() {
+                    // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
+                    let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
+                    // Extract the item as an identifier.
+                    let item: (Ident, Ident) = match token {
+                        TokenTree::Group(inner_group)
+                            if matches!(inner_group.delimiter(), Delimiter::Parenthesis) =>
+                        {
+                            let inner_sub = inner_group.stream(); // creates a TokenStream
+                            let mut inner_sub_iter = inner_sub.into_iter(); // Iterator over the sub-stream
+
+                            let mut inner_sub_cursor = inner_sub_iter.next();
+                            if inner_sub_cursor.is_none() {
+                                bail_on!(group, "expect a tuple");
+                            }
+
+                            let impl_token = bail_if_missing!(inner_sub_cursor, group, "item");
+
+                            let impl_key = match impl_token {
+                                TokenTree::Ident(ident) => ident,
+                                _ => bail_on!(token, "impl not an identifier"), // return an error if the token is not an identifier
+                            };
+
+                            inner_sub_cursor = inner_sub_iter.next();
+                            if matches!(inner_sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
+                            {
+                                inner_sub_cursor = inner_sub_iter.next();
+                            } else {
+                                // Return an error if a comma is missing between items
+                                bail_on!(inner_sub_cursor, "expect comma between items");
+                            }
+
+                            let spec_token =
+                                bail_if_missing!(inner_sub_cursor.as_ref(), inner_group, "item");
+
+                            let spec_key = match spec_token {
+                                TokenTree::Ident(ident) => ident,
+                                _ => bail_on!(token, "spec not an identifier"), // return an error if the token is not an identifier
+                            };
+                            (impl_key.clone(), spec_key.clone())
+                        }
+                        _ => bail_on!(token, "item not a tuple of identifiers"), // return an error if the token is not a tuple of identifiers
+                    };
+
+                    // Check for duplicated items and return an error if found
+                    // for example #[my_attr(key = {(value1, value2), (value1, value2)})] leads to an error
+                    if map.contains(&item) {
+                        bail_on!(group, "duplicated item");
+                    }
+
+                    map.push(item.clone());
+
+                    // Advance the cursor
+                    sub_cursor = sub_iter.next();
+                    // Skip commas between items
+                    if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
+                    {
+                        sub_cursor = sub_iter.next();
+                    } else if sub_cursor.is_some() {
+                        // Return an error if a comma is missing between items
+                        bail_on!(sub_cursor, "expect comma between items");
+                    }
+                }
+                MetaValue::Map(map)
+            }
+            _ => bail_on!(token, "expect value as identifier or set of identifiers or a set of tuples"),
         };
 
         // Add to the key-value store
@@ -291,7 +372,7 @@ mod tests {
 
     #[test]
     // #[my_attr(key = [])] testing the case when there is no item in the set
-    fn test_one_item_in_set () {
+    fn test_one_item_in_set() {
         let tokens: proc_macro2::TokenStream = quote! { key = [] };
         let result = parse_dict(&tokens);
 

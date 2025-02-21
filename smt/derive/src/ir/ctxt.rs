@@ -24,7 +24,8 @@ pub struct IRContext {
     pub desc: String,
     /// uninterpreted sorts
     /// A type parameter is converted to a smt sort name in the ir (intermediate representation).
-    /// These are the type parameters of the impl function (the impl and spec function must have the same generic names or at least be unifiable).
+    /// These are the type parameters of the impl function in the definition
+    /// (the impl and spec function must have the same generic names or at least be unifiable).
     pub undef_sorts: BTreeSet<SmtSortName>,
     /// type registry (idx_named, idx_tuple, defs). The named types are user-defined types. The tuple types are stored as types that are not named. The defs are the definitions of the types.
     pub ty_registry: TypeRegistry,
@@ -160,7 +161,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         let mut ty_args = vec![]; // just stores the type parameters of the impl as typerefs
 
         // type arguments for IR builder context
-        let mut ty_inst = BTreeMap::new(); // stores the type parameters mapped to their respective sorts
+        let mut ty_inst = BTreeMap::new(); // stores the type parameters mapped to their respective Smt sorts
 
         // for each type parameter in the function signature of the implementation
         for ty_param in generics_impl {
@@ -210,7 +211,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         // The register type is done in the parsing of the body of the function.
         builder.register_func(&rel.fn_impl, &ty_args); // the user function name and the type parameters of the impl
         builder.register_func(&rel.fn_spec, &ty_args); // the user function name and the type parameters of the spec
-
+        // TODO MAKE THE ty_args FOR THE SPEC AND IMPL the same
         // pull in all relevant axioms
         let mut relevant_axioms = BTreeMap::new();
         let mut uninterpreted_axiom_params = BTreeMap::new();
@@ -223,10 +224,11 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             // consolidate all related axioms and their instantiations
             let mut batch = BTreeMap::new();
             // For every function instance registered in the IR, get related axioms.
+            // basically ir.reverse_function_instances() for any implementation and specification or function calls inside their bodies, it returns a vector of (function name, type tag for generics) pairs
             for (func_name, func_inst) in ir.reverse_function_instances() {
                 // probe_related_axioms returns a mapping from an axiom name to a set of instantiations.
                 for (axiom_name, mut axiom_insts) in
-                    ctxt.probe_related_axioms(&func_name, &func_inst)
+                    ctxt.probe_related_axioms(&func_name, &func_inst) // we get the related axioms for each function instance
                 {
                     batch
                         .entry(axiom_name)
@@ -238,6 +240,8 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             // self-interference (for more mono instances) and register each axiom mono instance
             for (name, insts) in batch {
                 let axiom = ctxt.get_axiom(&name);
+                // if the relevant axiom is not already in the relevant axioms, insert it
+                // existing_insts is a mutable set of instantiations for the axiom
                 let existing_insts = relevant_axioms
                     .entry(name.clone())
                     .or_insert_with(BTreeSet::new);

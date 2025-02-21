@@ -4,7 +4,8 @@ use crate::analysis::sort::probe_optionals_for_datatype;
 use crate::backend::codegen::{l, ContentBuilder};
 use crate::ir::index::UsrSortId;
 use crate::ir::name::SmtSortName;
-use crate::ir::sort::{DataType, Sort, TypeRegistry};
+use crate::ir::sort::{DataType, Sort, TypeRegistry, Variant};
+use crate::IRContext;
 
 /// Variable of the config holder
 const CFG: &str = "cfg";
@@ -360,5 +361,282 @@ impl Session {
         // define the recursive ADT group
 
         todo!()
+    }
+}
+
+pub fn user_defined_types(sid: UsrSortId, ir: &IRContext) -> String {
+    let ret;
+
+    // get the data type
+    let (type_name, gen_or_elem, dt) = {
+        let dt = ir.ty_registry.retrieve(sid);
+        let (type_name, gen_or_elem) = ir.ty_registry.reverse_lookup(sid);
+        (type_name, gen_or_elem, dt)
+    };
+
+    if type_name.is_none() {
+        // then it is a tuple like (a, b, c)
+        if let DataType::Tuple(_) = dt {
+            // unique name for tuple
+            let tuple_name = format!(
+                "Tuple_{}",
+                gen_or_elem // for tuples it is the elements list
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join("_")
+            );
+
+            // Generate field names: field1_, field2_, etc.
+            let field_names: Vec<String> = (0..gen_or_elem.len())
+                .map(|i| format!("field{}_", i + 1))
+                .collect();
+
+            // Combine fields with their respective sorts
+            let field_defs: Vec<String> = gen_or_elem
+                .iter()
+                .zip(field_names.iter())
+                .map(|(sort, field_name)| format!("({} {})", field_name, to_smt_sort(sort, ir)))
+                .collect();
+
+            // formulate the declaration
+            ret = format!(
+                "(declare-datatypes () (({} (mk-{} {}))))",
+                tuple_name,
+                tuple_name,
+                field_defs.join(" ")
+            );
+            return ret;
+        } else {
+            panic!("not a tuple: {}", sid);
+        }
+    }
+
+    // now it has a name
+    let type_name = type_name.unwrap();
+    match dt {
+        DataType::Tuple(elems) => {
+            // Generate field names
+            let field_names: Vec<String> = (0..elems.len())
+                .map(|i| format!("field{}_", i + 1))
+                .collect();
+
+            // Combine field names with their respective sorts
+            let field_defs: Vec<String> = elems
+                .iter()
+                .zip(field_names.iter())
+                .map(|(sort, field_name)| format!("({} {})", field_name, to_smt_sort(sort, ir)))
+                .collect();
+
+            // here gen_or_elem is the generics
+            if !gen_or_elem.is_empty() {
+                let generic_params: Vec<String> =
+                    gen_or_elem.iter().map(|g| g.to_string()).collect();
+
+                ret = format!(
+                    "(declare-datatypes (({} 0)) (({} (mk-{} {}))))",
+                    generic_params.join(" "),
+                    type_name,
+                    type_name,
+                    field_defs.join(" ")
+                );
+
+                return ret;
+            } else {
+                // No generics, just declare the struct
+                ret = format!(
+                    "(declare-datatypes () (({} (mk-{} {}))))",
+                    type_name,
+                    type_name,
+                    field_defs.join(" ")
+                );
+                return ret;
+            }
+        }
+        DataType::Record(recs) => {
+            let field_defs: Vec<String> = recs
+                .iter()
+                .map(|(field_name, sort)| format!("({} {})", field_name, to_smt_sort(sort, ir)))
+                .collect();
+
+            // If the struct has generics, declare them
+            if !gen_or_elem.is_empty() {
+                let generic_params: Vec<String> =
+                    gen_or_elem.iter().map(|g| g.to_string()).collect();
+                ret = format!(
+                    "(declare-datatypes (({} 0)) (({} (mk-{} {}))))",
+                    generic_params.join(" "),
+                    type_name,
+                    type_name,
+                    field_defs.join(" ")
+                );
+                return ret;
+            } else {
+                // No generics, declare without parameters
+                ret = format!(
+                    "(declare-datatypes () (({} (mk-{} {}))))",
+                    type_name,
+                    type_name,
+                    field_defs.join(" ")
+                );
+                return ret;
+            }
+        }
+        DataType::Enum(enums) => {
+            let mut variants = Vec::new();
+            for (variant_name, variant_df) in enums {
+                match variant_df {
+                    Variant::Unit => {
+                        variants.push(variant_name.clone());
+                    }
+                    Variant::Tuple(t) => {
+                        if t.is_empty() {
+                            panic!("slots in tuple is empty");
+                        }
+                        let field_names: Vec<String> =
+                            (0..t.len()).map(|i| format!("field{}_", i + 1)).collect();
+
+                        let field_defs: Vec<String> = t
+                            .iter()
+                            .zip(field_names.iter())
+                            .map(|(sort, field_name)| {
+                                format!("({} {})", field_name, to_smt_sort(sort, ir))
+                            })
+                            .collect();
+
+                        variants.push(format!("({} {})", variant_name, field_defs.join(" ")));
+                    }
+                    Variant::Record(r) => {
+                        let field_defs: Vec<String> = r
+                            .iter()
+                            .map(|(field_name, sort)| {
+                                format!("({} {})", field_name, to_smt_sort(sort, ir))
+                            })
+                            .collect();
+
+                        variants.push(format!("({} {})", variant_name, field_defs.join(" ")));
+                    }
+                }
+            }
+
+            // If the struct has generics, declare them
+            if !gen_or_elem.is_empty() {
+                let generic_params: Vec<String> =
+                    gen_or_elem.iter().map(|g| g.to_string()).collect();
+                ret = format!(
+                    "(declare-datatypes (({} 0)) (({} (mk-{} {}))))",
+                    generic_params.join(" "),
+                    type_name,
+                    type_name,
+                    variants.join(" ")
+                );
+                return ret;
+            } else {
+                // No generics, declare without parameters
+                ret = format!(
+                    "(declare-datatypes () (({} (mk-{} {}))))",
+                    type_name,
+                    type_name,
+                    variants.join(" ")
+                );
+                return ret;
+            }
+        }
+    }
+}
+
+/// Converts a Rust `Sort` into the corresponding SMT-LIB sort as a `String`
+pub fn to_smt_sort(s: &Sort, ir: &IRContext) -> String {
+    match s {
+        Sort::Boolean => "Bool".to_string(),
+        Sort::Integer => "Int".to_string(),
+        Sort::Rational => "Real".to_string(),
+        Sort::Text => "String".to_string(),
+        Sort::Seq(inner) => format!("(Seq {})", to_smt_sort(inner, ir)),
+        Sort::Set(inner) => format!("(Set {})", to_smt_sort(inner, ir)),
+        Sort::Map(key, value) => {
+            format!(
+                "(Array {} {})",
+                to_smt_sort(key, ir),
+                to_smt_sort(value, ir)
+            )
+        }
+        Sort::Error => "false".to_string(), //? is this correct
+        Sort::User(usr_sort_id) => user_defined_types(*usr_sort_id, ir),
+        Sort::Uninterpreted(name) => format!("{}", name),
+    }
+}
+
+pub fn user_defined_func_sig(sid: UsrSortId, ir: &IRContext) -> String {
+    let ret;
+
+    // get the data type
+    let (type_name, gen_or_elem, dt) = {
+        let dt = ir.ty_registry.retrieve(sid);
+        let (type_name, gen_or_elem) = ir.ty_registry.reverse_lookup(sid);
+        (type_name, gen_or_elem, dt)
+    };
+
+    if type_name.is_none() {
+        // then it is a tuple like (a, b, c)
+        if let DataType::Tuple(_) = dt {
+            // Combine fields with their respective sorts
+            let elems: Vec<String> = gen_or_elem
+                .iter()
+                .map(|sort| format!("{}", to_smt_sort_func_sig(sort, ir)))
+                .collect();
+
+            // formulate the usage in func signature
+            ret = format!("({})", elems.join(" "));
+            return ret;
+        } else {
+            panic!("not a tuple: {}", sid);
+        }
+    }
+
+    // now it has a name
+    let type_name = type_name.unwrap();
+    match dt {
+        DataType::Tuple(elems) => {
+            // Combine field names with their respective sorts
+            let field_defs: Vec<String> = elems
+                .iter()
+                .map(|sort| format!("({})", to_smt_sort_func_sig(sort, ir)))
+                .collect();
+
+            ret = format!("({}{})", type_name, field_defs.join(" "));
+
+            return ret;
+        }
+        DataType::Record(_) => {
+            ret = format!("({})", type_name,);
+            return ret;
+        }
+        DataType::Enum(_) => {
+            ret = format!("({})", type_name,);
+            return ret;
+        }
+    }
+}
+
+/// Converts a Rust `Sort` into the corresponding SMT-LIB sort as a `String`
+pub fn to_smt_sort_func_sig(s: &Sort, ir: &IRContext) -> String {
+    match s {
+        Sort::Boolean => "Bool".to_string(),
+        Sort::Integer => "Int".to_string(),
+        Sort::Rational => "Real".to_string(),
+        Sort::Text => "String".to_string(),
+        Sort::Seq(inner) => format!("(Seq {})", to_smt_sort(inner, ir)),
+        Sort::Set(inner) => format!("(Set {})", to_smt_sort(inner, ir)),
+        Sort::Map(key, value) => {
+            format!(
+                "(Array {} {})",
+                to_smt_sort(key, ir),
+                to_smt_sort(value, ir)
+            )
+        }
+        Sort::Error => "false".to_string(), //? is this correct
+        Sort::User(usr_sort_id) => user_defined_func_sig(*usr_sort_id, ir),
+        Sort::Uninterpreted(name) => format!("{}", name),
     }
 }

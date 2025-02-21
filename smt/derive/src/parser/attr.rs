@@ -6,8 +6,8 @@
 //! - `SpecMark` struct which represents the marking for an annotated spec function.
 //! - `parse_attrs` is the main method to parse the attributes and extract the marks. This method is used in the `ctxt` module.
 //!
-use crate::{bail_if_missing, bail_on};
 use crate::parser::name::UsrFuncName;
+use crate::{bail_if_missing, bail_on};
 use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{AttrStyle, Attribute, MacroDelimiter, Meta, MetaList, MetaNameValue, Path, Result};
@@ -47,6 +47,7 @@ impl Annotation {
 enum MetaValue {
     One(Ident),
     Set(BTreeSet<Ident>),
+    Map(BTreeSet<(Ident, Ident)>),
 }
 
 #[derive(Debug)]
@@ -67,12 +68,19 @@ pub struct SpecMark {
     pub impls: BTreeSet<UsrFuncName>,
 }
 
+#[derive(Debug)]
+/// A mark for an annotated axiom function
+pub struct SpecAxiom {
+    /// Relation between impl and spec functions
+    pub relations: BTreeSet<(UsrFuncName, UsrFuncName)>,
+}
+
 /// SMT-related marking
 pub enum Mark {
     Type,
     Impl(ImplMark),
     Spec(SpecMark),
-    Axiom,
+    Axiom(SpecAxiom),
 }
 
 impl Mark {
@@ -175,6 +183,89 @@ impl Mark {
 
                     MetaValue::Set(set)
                 }
+                // Set of identifiers enclosed in braces key = {value1, value2} where each value_i is a tuple
+                TokenTree::Group(group) if matches!(group.delimiter(), Delimiter::Brace) => {
+                    let mut map = BTreeSet::new(); // Stores the set of tuples in the value
+
+                    let sub = group.stream(); // creates a TokenStream
+                    let mut sub_iter = sub.into_iter(); // Iterator over the sub-stream
+
+                    // sub_cursor will be a None value if we have #[my_attr(key = {})]
+                    let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
+
+                    if sub_cursor.is_none() {
+                        bail_on!(group, "expect at least one item in set");
+                    }
+
+                    while sub_cursor.is_some() {
+                        // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
+                        let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
+                        // Extract the item as an identifier.
+                        let item: (Ident, Ident) = match token {
+                            TokenTree::Group(inner_group)
+                                if matches!(inner_group.delimiter(), Delimiter::Parenthesis) =>
+                            {
+                                let inner_sub = inner_group.stream(); // creates a TokenStream
+                                let mut inner_sub_iter = inner_sub.into_iter(); // Iterator over the sub-stream
+
+                                let mut inner_sub_cursor = inner_sub_iter.next();
+                                if inner_sub_cursor.is_none() {
+                                    bail_on!(group, "expect a tuple");
+                                }
+
+                                let impl_token =
+                                    bail_if_missing!(inner_sub_cursor, inner_group, "item");
+
+                                let impl_key = match impl_token {
+                                    TokenTree::Ident(ident) => ident,
+                                    _ => bail_on!(token, "impl not an identifier"), // return an error if the token is not an identifier
+                                };
+
+                                // advance the cursor
+                                inner_sub_cursor = inner_sub_iter.next();
+
+                                if matches!(inner_sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
+                                {
+                                    inner_sub_cursor = inner_sub_iter.next();
+                                } else {
+                                    // Return an error if a comma is missing between items
+                                    bail_on!(inner_sub_cursor, "expect comma between items");
+                                }
+
+                                let spec_token = bail_if_missing!(
+                                    inner_sub_cursor.as_ref(),
+                                    inner_group,
+                                    "item"
+                                );
+
+                                let spec_key = match spec_token {
+                                    TokenTree::Ident(ident) => ident,
+                                    _ => bail_on!(token, "spec not an identifier"), // return an error if the token is not an identifier
+                                };
+                                (impl_key.clone(), spec_key.clone())
+                            }
+                            _ => bail_on!(token, "item not a tuple of identifiers"), // return an error if the token is not a tuple of identifiers
+                        };
+
+                        // Check for duplicated items and return an error if found
+                        // for example #[my_attr(key = {(value1, value2), (value1, value2)})] leads to an error
+                        if !map.insert(item.clone()) {
+                            bail_on!(group, "duplicated item");
+                        }
+
+                        // Advance the cursor
+                        sub_cursor = sub_iter.next();
+                        // Skip commas between items
+                        if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
+                        {
+                            sub_cursor = sub_iter.next();
+                        } else if sub_cursor.is_some() {
+                            // Return an error if a comma is missing between items
+                            bail_on!(sub_cursor, "expect comma between items");
+                        }
+                    }
+                    MetaValue::Map(map)
+                }
                 _ => bail_on!(token, "expect identifier or set of identifiers as value"),
             };
 
@@ -228,7 +319,9 @@ impl Mark {
                     method: None,
                     impls: BTreeSet::new(),
                 }),
-                Some(Annotation::Axiom) => Self::Axiom,
+                Some(Annotation::Axiom) => Self::Axiom(SpecAxiom {
+                    relations: BTreeSet::new(),
+                }),
             },
             // A meta list is like the `derive(Copy)` in `#[derive(Copy)]`
             Meta::List(MetaList {
@@ -238,8 +331,36 @@ impl Mark {
             }) => {
                 match Annotation::parse_path(path) {
                     None => return Ok(None),
-                    Some(Annotation::Type) | Some(Annotation::Axiom) => {
-                        bail_on!(attr, "unexpected list\nfor smt_type and smt_axiom, no attributes are expected")
+                    Some(Annotation::Type) => {
+                        bail_on!(
+                            attr,
+                            "unexpected list\nfor smt_type, no attributes are expected"
+                        )
+                    }
+                    Some(Annotation::Axiom) => {
+                        if !matches!(delimiter, MacroDelimiter::Paren(_)) {
+                            bail_on!(attr, "not a parenthesis-enclosed list");
+                        }
+
+                        let mut store = Self::parse_dict(tokens)?;
+                        let mut relations = BTreeSet::new();
+                        match store.remove("relations") {
+                            None => (),
+                            Some(MetaValue::Map(items)) => {
+                                for (impl_key, spec_key) in items.iter() {
+                                    relations.insert((
+                                        UsrFuncName::try_from(impl_key)?,
+                                        UsrFuncName::try_from(spec_key)?,
+                                    ));
+                                }
+                            }
+                            Some(_) => bail_on!(tokens, "invalid relations"),
+                        };
+
+                        if !store.is_empty() {
+                            bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `relations`
+                        }
+                        Self::Axiom(SpecAxiom { relations })
                     }
                     Some(Annotation::Impl) => {
                         // MacroDelimiter is a grouping token that surrounds a macro body: `m!(...)` or `m!{...}` or `m![...]`
@@ -269,6 +390,7 @@ impl Mark {
                                     specs.insert(UsrFuncName::try_from(item)?);
                                 }
                             }
+                            Some(_) => bail_on!(tokens, "invalid specs"),
                         };
 
                         if !store.is_empty() {
@@ -299,6 +421,7 @@ impl Mark {
                                     impls.insert(UsrFuncName::try_from(item)?);
                                 }
                             }
+                            Some(_) => bail_on!(tokens, "invalid impls"),
                         };
 
                         if !store.is_empty() {
@@ -662,7 +785,7 @@ mod tests {
         let attr: Attribute = parse_quote! { #[smt_axiom] };
 
         let res = Mark::parse_attr(&attr);
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(e, Mark::Axiom))));
+        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(e, Mark::Axiom(_)))));
     }
 
     #[test]

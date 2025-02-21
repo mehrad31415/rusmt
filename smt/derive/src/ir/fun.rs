@@ -184,6 +184,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// # Returns
     ///
     /// The unique function ID (`UsrFunId`) for the registered function.
+    /// This is called for the specification, implementation, and any function calls in the body of the implementation or specification.
     pub fn register_func(&mut self, fn_name: &UsrFuncName, ty_args: &[TypeRef]) -> UsrFunId {
         // Convert the parser-level function name into its IR-level UsrFunName (UsrFunName is the IR of UsrFuncName)
         let name = fn_name.into();

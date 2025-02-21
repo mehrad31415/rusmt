@@ -1,2 +1,0 @@
-expect Boolean as axiom return type
-fn axiom1 () -> Integer

@@ -48,7 +48,7 @@ impl Display for Response {
 ///
 /// * `ir` - A reference to the intermediate representation to be translated into backend code.
 /// * `backend` - A trait object that knows how to generate code for a specific solver.
-/// * `path_wks` - The working directory in which the code and build files will be placed.
+/// * `path_wks` - The working directory in which the output file will be saved.
 ///
 /// # Returns
 ///

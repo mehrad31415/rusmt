@@ -15,15 +15,21 @@ use crate::parser::ty::TypeTag;
 #[derive(Debug)]
 /// The origin of a variable
 pub enum VarKind {
-    /// function parameter
+    /// function parameter (x in fn f(x: i32) -> i32 { x + 1 })
     Param,
-    /// free variable used in a quantifier
+    /// free variable used in a quantifier (forall, exists, choose) 
+    /// x in  ∀x. P(x)
     Quant,
     /// axiomatized (through a list of predicates)
+    /// x in  ∀x. P(x) ∧ Q(x) ∧ R(x)
     Axiom,
     /// let-binding to an expression
+    /// let x = e in e'
     Bound { bind: ExpId },
     /// match-introduced
+    /// match (e1,e2....) { (a1,a2,...) => e1 } where head is (e1,e2,...) and sort defines the type of the match
+    /// and branch is the name of the enum variant
+    /// and selector is how to destruct the enum variant
     Match {
         head: ExpId,
         sort: UsrSortId,
@@ -75,8 +81,8 @@ pub struct MatchAtom {
 #[derive(Debug)]
 /// One match case
 pub struct MatchCase {
-    atoms: Vec<MatchAtom>,
-    body: ExpId,
+    pub atoms: Vec<MatchAtom>,
+    pub body: ExpId,
 }
 
 #[derive(Debug)]
@@ -280,10 +286,6 @@ impl ExpRegistry {
     /// Retrieve the expression
     fn lookup_exp(&self, idx: ExpId) -> &Expression {
         self.exps.get(&idx).expect("no such exp id")
-    }
-
-    pub fn expr_to_smt(&self, idx: ExpId) -> String {
-        String::from(format!("todo! {}", idx))
     }
 }
 

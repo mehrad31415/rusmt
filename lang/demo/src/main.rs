@@ -8,7 +8,7 @@ fn main() {
     // get current working directory
     let p = std::env::current_dir().unwrap();
     // join it with lang/demo/src/temp
-    let path = p.join("lang/demo/src/temp");
+    let path = p.join("src/temp");
     println!("{}", path.display());
     match derive(path, WKS.studio.join("demo")) {
         Ok(()) => {

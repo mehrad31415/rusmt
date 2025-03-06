@@ -1,7 +1,7 @@
 use crate::backend::error::BackendResult;
 use crate::ir::ctxt::IRContext;
-use crate::backend::cvc5::common::CodeGenCVC5;
-use crate::backend::cvc5::engine_smt::BackendCVC5SMT;
+// use crate::backend::cvc5::common::CodeGenCVC5;
+// use crate::backend::cvc5::engine_smt::BackendCVC5SMT;
 use crate::backend::z3::common::CodeGenZ3;
 use crate::backend::z3::engine_chc::BackendZ3CHC;
 
@@ -103,6 +103,6 @@ pub(crate) use l;
 pub fn solvers() -> Vec<Box<dyn CodeGen>> {
     vec![
         Box::new(CodeGenZ3::new(BackendZ3CHC::new())),
-        Box::new(CodeGenCVC5::new(BackendCVC5SMT::new())),
+        // Box::new(CodeGenCVC5::new(BackendCVC5SMT::new())), //? uncomment this!
     ]
 }

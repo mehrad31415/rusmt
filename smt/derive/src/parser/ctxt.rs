@@ -967,7 +967,7 @@ impl ASTContext {
 
             // traverse the whole expression tree
             // visit with a post-order traversal function
-            body.visit(&mut |_| Ok(()), &mut |_| Ok(()), &mut |e| {
+            body.visit(&mut |_| Ok(()), &mut |_| Ok(()), &mut |e| { //? do we need to traverse given the definition of visit
                 // check whether this expr involves the target procedure call
 
                 // first retrieve the operation of the expression
@@ -985,6 +985,7 @@ impl ASTContext {
                 {
                     // if the procedure name is the same as the target function name, then add the instantiation to the candidates
                     if proc_name == name {
+                        println!("found candidate: {}", key);
                         inst_candidates.push(
                             proc_inst
                                 .iter()
@@ -999,12 +1000,14 @@ impl ASTContext {
 
             // check relevance of their instantiations
             let inst_ref: Vec<TypeRef> = inst.iter().map(|t| t.into()).collect();
+            // here for each axiom and each candidate
             for candidate in inst_candidates {
                 // if the number of type arguments in the call (candidate) and the number of type arguments in the definition of the function (inst_ref) do not match, then panic
                 if candidate.len() != inst_ref.len() {
                     panic!("number of type arguments mismatch: {}", name);
                 }
 
+                println!("len: {}", candidate.len());
                 // prepare type variables
                 let mut unifier = TypeUnifier::new();
                 // generics encapsulates args: BTreeMap<TypeParamName, (usize, TypeRef)>,
@@ -1035,6 +1038,7 @@ impl ASTContext {
                         }
                     }
                 }
+                println!("unifies: {}", unifies);
                 if !unifies {
                     continue;
                 }

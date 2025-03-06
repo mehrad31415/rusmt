@@ -10,6 +10,6 @@ pub mod sort;
 mod mono;
 
 pub mod axiom;
-mod exp;
+pub mod exp;
 pub mod fun;
 mod intrinsics;

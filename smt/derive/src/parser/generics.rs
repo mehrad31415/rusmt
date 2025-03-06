@@ -469,7 +469,7 @@ impl GenericsInstFull {
 }
 
 /// Generic unification result for one type parameter
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum PartialInst {
     Assigned(TypeTag),
     Unassigned(TypeParamName),
@@ -485,7 +485,7 @@ impl Display for PartialInst {
 }
 
 /// Monomorphization result for the whole generics
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct Monomorphization {
     pub args: Vec<PartialInst>,
 }

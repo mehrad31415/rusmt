@@ -164,11 +164,14 @@ impl FuncName {
     /// A `Result` containing the `FuncName` if successful, or a `syn::Error` if the identifier is a reserved keyword.
     pub fn try_from(ident: &Ident) -> Result<Self> {
         let name = ident.to_string();
-        let parsed = match ReservedFuncName::from_str(&name) { // clone and default are reserved keywords
+        let parsed = match ReservedFuncName::from_str(&name) {
+            // clone and default are reserved keywords
             Some(n) => Self::Reserved(n),
-            None => match CastFuncName::from_str(&name) { // from and into are reserved keywords
+            None => match CastFuncName::from_str(&name) {
+                // from and into are reserved keywords
                 Some(n) => Self::Cast(n),
-                None => match SysFuncName::from_str(&name) { // eq and ne are reserved keywords
+                None => match SysFuncName::from_str(&name) {
+                    // eq and ne are reserved keywords
                     Some(n) => Self::Sys(n),
                     None => Self::Usr(ident.try_into()?), // returns an error if ident is a reserved keyword or an underscore. Invokes method `fn try_from(value: &Ident) -> Result<Self> { validate_user_ident(value).map(|ident| Self { ident }) } from the name module`. Returns UsrFuncName if the ident is a valid user-defined function name.
                 },
@@ -341,8 +344,6 @@ impl FuncSig {
 
     /// Tests whether two function signatures are type-compatible.
     ///
-    /// This method checks if the generics, parameter types, and return types are the same.
-    ///
     /// # Arguments
     ///
     /// * `sig` - The other `FuncSig` to compare with.
@@ -353,148 +354,155 @@ impl FuncSig {
     ///
     /// This function is used in ctxt.rs to check that the implementation and the corresponding specification have compatible function signatures.
     pub fn is_compatible(&self, sig: &FuncSig) -> bool {
+        let FuncSig {
+            generics: impl_gens,
+            params: impl_params,
+            ret_ty: impl_ret_ty,
+        } = self;
+        let FuncSig {
+            generics: spec_gens,
+            params: spec_params,
+            ret_ty: spec_ret_ty,
+        } = sig;
+
+        // check if the length of the parameter lists are different, they are not compatible
+        if impl_params.len() != spec_params.len() {
+            return false;
+        }
+
         // if the length of the type parameter lists are different, they are not compatible
-        if self.generics.params.len() != sig.generics.params.len() {
+        if impl_gens.params.len() != spec_gens.params.len() {
             return false;
         }
 
-        let mut self_generics = self.generics.params.clone();
-        let mut sig_generics = sig.generics.params.clone();
-        self_generics.sort(); //? is the sort a correct decision?
-        sig_generics.sort(); //? is the sort a correct decision?
+        // parameters and return types must be compatible
+        let impl_types = impl_params
+            .iter()
+            .map(|(_, t)| t.clone())
+            .chain(std::iter::once(impl_ret_ty.clone()))
+            .collect::<Vec<TypeTag>>();
+        let spec_types = spec_params
+            .iter()
+            .map(|(_, t)| t.clone())
+            .chain(std::iter::once(spec_ret_ty.clone()))
+            .collect::<Vec<TypeTag>>();
 
-        let gens: BTreeMap<TypeParamName, TypeParamName> =
-            self_generics.into_iter().zip(sig_generics).collect();
-
-        // Compare parameter types
-        let lhs_params: Vec<TypeTag> = self.params.clone().into_iter().map(|(_, t)| t).collect();
-        let lhs_params = unify(lhs_params, &gens).expect("unification failed in params");
-        let rhs_params: Vec<TypeTag> =
-            sig.params.clone().into_iter().map(|(_, t)| t).collect();
-        if lhs_params != rhs_params {
-            return false;
+        let mut zip_gens = BTreeSet::new();
+        for (impl_ty, spec_ty) in impl_types.iter().zip(spec_types.iter()) {
+            unify(&impl_ty, &spec_ty, &mut zip_gens);
         }
 
-        // Compare return types
-        let ret_ty = vec![self.ret_ty.clone()];
-        let ret_ty = unify(ret_ty, &gens)
-            .expect("unification failed in return type")
-            .first()
-            .expect("function must have a return type")
-            .clone();
-        ret_ty == sig.ret_ty
+        // in zip_gens there needs to be a one-to-one mapping between the type parameters of the impl and the spec (check this!)
+        let mut set_impl = BTreeSet::new();
+        let mut set_spec = BTreeSet::new();
+        for (impl_ty, spec_ty) in zip_gens {
+            if !set_impl.insert(impl_ty) {
+                return false;
+            }
+            if !set_spec.insert(spec_ty) {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
-/// This function traverses the given `params` (a vector of `TypeTag` values) and tries to unify type parameters based on the provided `gens` map, which is a `BTreeMap` mapping from `TypeParamName` to `TypeParamName`. If a type parameter in the `params` is found in `gens`, it replaces it with the corresponding type from `gens`.
-///
-/// # Arguments
-///
-/// * `params` - A vector of `TypeTag` values that need to be unified.
-/// * `gens` - A reference to a `BTreeMap` that maps `TypeParamName` to `TypeParamName`.
-///
-/// # Returns
-///
-/// Returns a `Result` containing a `BTreeSet<TypeTag>` of unified types, or an error if the unification process encounters an unbound type parameter.
-///
-/// # Errors
-///
-/// Returns an error using the `bail_on!` macro if a `TypeTag::Parameter` is found in `params` but is not defined in the `gens` map (an unbound type parameter).
-///
-/// # Recursive Unification
-///
-/// The function handles nested types (like `Cloak`, `Seq`, `Set`, `Map`, `User`, and `Pack`) by calling `unify` recursively for the inner type(s).
-/// It ensures that all nested type parameters are also unified.
+/// Given two `TypeTag` values, this function attempts to unify them.
 pub fn unify(
-    params: Vec<TypeTag>,
-    gens: &BTreeMap<TypeParamName, TypeParamName>,
-) -> Result<Vec<TypeTag>> {
-    let mut res: Vec<TypeTag> = vec![];
-    // Iterate over each type in the `params` vector
-    for i in params {
-        match i {
-            // Handle type parameters
-            TypeTag::Parameter(p) => {
-                if let Some(t) = gens.get(&p.clone()) {
-                    // If the generic parameter exists in `gens`, insert the unified type
-                    res.push(TypeTag::Parameter(t.clone()));
-                } else {
-                    // If the generic parameter is not found in `gens`, return an error
-                    bail_on!(p.ident, "unbound type parameter");
+    impl_params: &TypeTag,
+    spec_params: &TypeTag,
+    zip_gens: &mut BTreeSet<(TypeParamName, TypeParamName)>,
+) {
+    match impl_params {
+        TypeTag::Boolean => {
+            if !matches!(spec_params, TypeTag::Boolean) {
+                panic!("unification failed as the types are not compatible on Boolean");
+            }
+        }
+        TypeTag::Integer => {
+            if !matches!(spec_params, TypeTag::Integer) {
+                panic!("unification failed as the types are not compatible on Integer");
+            }
+        }
+        TypeTag::Rational => {
+            if !matches!(spec_params, TypeTag::Rational) {
+                panic!("unification failed as the types are not compatible on Rational");
+            }
+        }
+        TypeTag::Text => {
+            if !matches!(spec_params, TypeTag::Text) {
+                panic!("unification failed as the types are not compatible on Text");
+            }
+        }
+        TypeTag::Cloak(inside) => {
+            if let TypeTag::Cloak(inside_spec) = spec_params {
+                unify(inside, inside_spec, zip_gens);
+            } else {
+                panic!("unification failed as the types are not compatible on Cloak");
+            }
+        }
+        TypeTag::Seq(inside) => {
+            if let TypeTag::Seq(inside_spec) = spec_params {
+                unify(inside, inside_spec, zip_gens);
+            } else {
+                panic!("unification failed as the types are not compatible on Seq");
+            }
+        }
+        TypeTag::Set(inside) => {
+            if let TypeTag::Set(inside_spec) = spec_params {
+                unify(inside, inside_spec, zip_gens);
+            } else {
+                panic!("unification failed as the types are not compatible on Set");
+            }
+        }
+        TypeTag::Map(key, value) => {
+            if let TypeTag::Map(key_spec, value_spec) = spec_params {
+                unify(key, key_spec, zip_gens);
+                unify(value, value_spec, zip_gens);
+            } else {
+                panic!("unification failed as the types are not compatible on Map");
+            }
+        }
+        TypeTag::Error => {
+            if !matches!(spec_params, TypeTag::Error) {
+                panic!("unification failed as the types are not compatible on Error");
+            }
+        }
+        TypeTag::User(name, args) => {
+            if let TypeTag::User(name_spec, args_spec) = spec_params {
+                if name != name_spec {
+                    panic!("unification failed as the types are not compatible on User");
                 }
+                if args.len() != args_spec.len() {
+                    panic!("unification failed as the types are not compatible on User");
+                }
+                for (arg, arg_spec) in args.iter().zip(args_spec.iter()) {
+                    unify(arg, arg_spec, zip_gens);
+                }
+            } else {
+                panic!("unification failed as the types are not compatible on User");
             }
-            // Handle the `Cloak` type tag (recursively unify the inner type)
-            TypeTag::Cloak(t) => {
-                res.push(TypeTag::Cloak(Box::new(
-                    unify(vec![*t.clone()], gens)
-                        .expect("unification failed in cloak")
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-                )));
+        }
+        TypeTag::Pack(elems) => {
+            if let TypeTag::Pack(elems_spec) = spec_params {
+                if elems.len() != elems_spec.len() {
+                    panic!("unification failed as the types are not compatible on Pack");
+                }
+                for (elem, elem_spec) in elems.iter().zip(elems_spec.iter()) {
+                    unify(elem, elem_spec, zip_gens);
+                }
+            } else {
+                panic!("unification failed as the types are not compatible on Pack");
             }
-            // Handle the `Seq` type tag (recursively unify the inner type)
-            TypeTag::Seq(t) => {
-                res.push(TypeTag::Seq(Box::new(
-                    unify(vec![*t.clone()], gens)
-                        .expect("unification failed in seq")
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-                )));
-            }
-            // Handle the `Set` type tag (recursively unify the inner type)
-            TypeTag::Set(t) => {
-                res.push(TypeTag::Set(Box::new(
-                    unify(vec![*t.clone()], gens)
-                        .expect("unification failed in set")
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-                )));
-            }
-            // Handle the `Map` type tag (recursively unify both key and value types)
-            TypeTag::Map(k, v) => {
-                res.push(TypeTag::Map(
-                    Box::new(
-                        unify(vec![*k.clone()], gens)
-                            .expect("unification failed in map")
-                            .into_iter()
-                            .next()
-                            .unwrap(),
-                    ),
-                    Box::new(
-                        unify(vec![*v.clone()], gens)
-                            .expect("unification failed in map")
-                            .into_iter()
-                            .next()
-                            .unwrap(),
-                    ),
-                ));
-            }
-            // Handle the `User` type tag (recursively unify each argument)
-            TypeTag::User(name, args) => {
-                res.push(TypeTag::User(
-                    name,
-                    unify(args, gens)?.into_iter().collect(),
-                ));
-            }
-            // Handle the `Pack` type tag (recursively unify each element in the pack)
-            TypeTag::Pack(t) => {
-                // println!("{:?}", t);
-                // println!("{:?}", unify(t.clone(), gens));
-                res.push(TypeTag::Pack(unify(t, gens)?.into_iter().collect()));
-                // println!("{:?}", res);
-            }
-            // Handle other type tags (Boolean, Integer, Rational, Text, Error)
-            _ => {
-                res.push(i);
+        }
+        TypeTag::Parameter(x) => {
+            if let TypeTag::Parameter(y) = spec_params {
+                zip_gens.insert((x.clone(), y.clone()));
+            } else {
+                panic!("unification failed as the types are not compatible on Parameter");
             }
         }
     }
-
-    // done
-    Ok(res)
 }
 
 /// Function definition for implementation.

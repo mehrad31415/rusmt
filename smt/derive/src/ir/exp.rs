@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::ir::ctxt::IRBuilder;
 use crate::ir::fun::FunSig;
 use crate::ir::index::{ExpId, UsrFunId, UsrSortId, VarId};
@@ -11,20 +9,20 @@ use crate::parser::intrinsics::Intrinsic as Native;
 use crate::parser::name::VarName;
 use crate::parser::path::ADTBranch;
 use crate::parser::ty::TypeTag;
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 /// The origin of a variable
 pub enum VarKind {
     /// function parameter (x in fn f(x: i32) -> i32 { x + 1 })
     Param,
-    /// free variable used in a quantifier (forall, exists, choose) 
+    /// bounded variable used in a quantifier (forall, exists, choose)
     /// x in  ∀x. P(x)
     Quant,
     /// axiomatized (through a list of predicates)
-    /// x in  ∀x. P(x) ∧ Q(x) ∧ R(x)
     Axiom,
     /// let-binding to an expression
-    /// let x = e in e'
+    /// let x = e where x is assigned to e
     Bound { bind: ExpId },
     /// match-introduced
     /// match (e1,e2....) { (a1,a2,...) => e1 } where head is (e1,e2,...) and sort defines the type of the match
@@ -41,9 +39,9 @@ pub enum VarKind {
 #[derive(Debug)]
 /// Information about a variable
 pub struct Variable {
-    pub name: Symbol,
-    pub kind: VarKind,
-    pub sort: Sort,
+    pub name: Symbol, // the name of the variable (in the Intermediate Representation a variable is represented by a Symbol)
+    pub kind: VarKind, // the kind of the variable
+    pub sort: Sort, // the type of the variable (in the Intermediate Representation a type is represented by a Sort)
 }
 
 #[derive(Debug)]
@@ -93,68 +91,77 @@ pub struct PhiCase {
 }
 
 #[derive(Debug)]
-/// An expression
+/// An expression (which is the intermediate representation of the Op in the parser)
 pub enum Expression {
-    /// `<var>`
-    Var(VarId),
-    /// `(v1, v2, ...)`
+    /// `<var>` - Var(VarName) in the parser
+    Var(VarId), // VarId is a unique identifier for a variable
+    /// `(v1, v2, ...)` - Pack { elems: Vec<Expr> } in the parser
+    // UsrSortId is a unique identifier for a user-defined type (a tuple is represented as a user-defined type without a name in the IR)
+    // ExpId is a unique identifier for an expression
     Pack { sort: UsrSortId, elems: Vec<ExpId> },
-    /// `<tuple-name>(<inst>?)(v1, v2. ...)`
+    /// `<tuple-name>(<inst>?)(v1, v2. ...)` -     Tuple { name: UsrTypeName, inst: Vec<TypeRef>, slots: Vec<Expr>} in the parser
+    // UsrSortId is a unique identifier for a user-defined type (a struct tuple is represented as a user-defined type without a name in the IR)
+    // the name and the inst are stored in the TypeRegistry where using the UsrSortId we can retrieve the name and the inst
     Tuple { sort: UsrSortId, slots: Vec<ExpId> },
-    /// `<record-name>(<inst>?){ f1: v1, f2: v2, ... }`
+    /// `<record-name>(<inst>?){ f1: v1, f2: v2, ... }`  - Record { name: UsrTypeName, inst: Vec<TypeRef>, fields: BTreeMap<String, Expr>} in the parser
+    // UsrSortId is a unique identifier for a user-defined type (a struct record is represented as a user-defined type without a name in the IR)
+    // the name and the inst are stored in the TypeRegistry where using the UsrSortId we can retrieve the name and the inst
     Record {
         sort: UsrSortId,
         fields: BTreeMap<String, ExpId>,
     },
-    /// `<adt-name>(<inst>?)::<branch>(<ctor>)`
+    /// `<adt-name>(<inst>?)::<branch>(<ctor>)` - Op has three different variants EnumUnit, EnumTuple, EnumRecord where they are all represented as Enum in the IR
+    /// An Enum is a user-defined type (UserSortId)
     Enum {
-        sort: UsrSortId,
-        branch: String,
-        variant: VariantCtor,
+        sort: UsrSortId, // the name and the inst are stored in the TypeRegistry where using the UsrSortId we can retrieve the name and the inst
+        branch: String, // the name of the enum variant
+        variant: VariantCtor, // the call to the constructor of the enum variant (can be unit, tuple or record)
     },
-    /// `<base>.<index>`
+    /// `<base>.<index>` - AccessSlot { base: Expr, slot: usize } in the parser
     AccessSlot { base: ExpId, slot: usize },
-    /// `<base>.<field>`
+    /// `<base>.<field>` - AccessField { base: Expr, field: String } in the parser
     AccessField { base: ExpId, field: String },
-    /// `match (v1, v2, ...) { (a1, a2, ...) => <body1> } ...`
+    /// `match (v1, v2, ...) { (a1, a2, ...) => <body1> } ...` - Match { heads: Vec<Expr>, combo: Vec<MatchCombo> } in the parser
     Match { cases: Vec<MatchCase> },
-    /// `if (<c1>) { <v1> } else if (<c2>) { <v2> } ... else { <default> }`
+    /// `if (<c1>) { <v1> } else if (<c2>) { <v2> } ... else { <default> }` - Phi { nodes: Vec<PhiNode>, default: Expr } in the parser
+    // basically the name just the Expr is replaced by the ExpId
     Phi { cases: Vec<PhiCase>, default: ExpId },
-    /// `forall!(|<v>: <t>| {<expr>})`
+    /// `forall!(|<v>: <t>| {<expr>})` - Forall { vars: Vec<(VarName, TypeTag)>, body: Expr } in the parser
     Forall {
         vars: BTreeMap<VarId, Sort>,
         body: ExpId,
     },
-    /// `exists!(|<v>: <t>| {<expr>})`
+    /// `exists!(|<v>: <t>| {<expr>})` - Exists { vars: Vec<(VarName, TypeTag)>, body: Expr } in the parser
     Exists {
         vars: BTreeMap<VarId, Sort>,
         body: ExpId,
     },
-    /// `choose!(|<v>: <t>| {<expr>})`
+    /// `choose!(|<v>: <t>| {<expr>})` - Choose { vars: Vec<(VarName, TypeTag)>, body: Expr } in the parser
     Choose {
         vars: BTreeMap<VarId, Sort>,
         body: ExpId,
         rets: Vec<VarId>,
     },
-    /// `forall!(<v> in <c> ... => <expr>)`
+    /// `forall!(<v> in <c> ... => <expr>)` - IterForall { vars: Vec<(VarName, Expr)>, body: Expr } in the parser
     IterForall {
         vars: BTreeMap<VarId, ExpId>,
         body: ExpId,
     },
-    /// `exists!(<v> in <c> ... => <expr>)`
+    /// `exists!(<v> in <c> ... => <expr>)` - IterExists { vars: Vec<(VarName, Expr)>, body: Expr } in the parser
     IterExists {
         vars: BTreeMap<VarId, ExpId>,
         body: ExpId,
     },
-    /// `choose!(<v> in <c> ... => <expr>)`
+    /// `choose!(<v> in <c> ... => <expr>)` - IterChoose { vars: Vec<(VarName, Expr)>, body: Expr } in the parser
     IterChoose {
         vars: BTreeMap<VarId, ExpId>,
         body: ExpId,
         rets: Vec<VarId>,
     },
-    /// `<class>::<method>(<a1>, <a2>, ...)`
+    /// `<class>::<method>(<a1>, <a2>, ...)` - Intrinsic(Intrinsic) in the parser (the definition of the intrinsic is in the IR)
     Intrinsic(Intrinsic),
-    /// `<function>(<a1>, <a2>, ...)`
+    /// `<function>(<a1>, <a2>, ...)` - Procedure { name: UsrFuncName, inst: Vec<TypeRef>, args: Vec<Expr>} in the parser
+    // in the FunRegistry, the name, inst, signature and the body are stored where using the UsrFunId they can be retrieved
     Procedure { callee: UsrFunId, args: Vec<ExpId> },
 }
 
@@ -179,7 +186,7 @@ impl ExpRegistry {
     /// Add a new parameter to the registry
     fn add_param(&mut self, name: Symbol, sort: Sort) -> VarId {
         let id = VarId {
-            index: self.vars.len(),
+            index: self.vars.len(), // create a unique id for the variable
         };
         self.vars.insert(
             id,
@@ -272,7 +279,7 @@ impl ExpRegistry {
     /// Register an expression
     fn register(&mut self, exp: Expression) -> ExpId {
         let id = ExpId {
-            index: self.exps.len(),
+            index: self.exps.len(), // create a unique id for the expression
         };
         self.exps.insert(id, exp);
         id
@@ -441,6 +448,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     }
 
     /// Bind a variable declaration to an expression
+    // sort is the rhs type and exp is the rhs expression
     fn bind_decl(&mut self, decl: &VarDecl, ety: Sort, exp: ExpId) {
         match decl {
             VarDecl::One(name, ty) => {
@@ -1426,10 +1434,11 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         body: &Expr,
     ) -> (ExpRegistry, ExpId) {
         // initialize the registry and builder
-        let mut registry = ExpRegistry::new();
-        let mut builder = ExpBuilder::new(&mut parent, &mut registry, &sig.params);
+        let mut registry = ExpRegistry::new(); // the registry is empty at the beginning
+        let mut builder = ExpBuilder::new(&mut parent, &mut registry, &sig.params); // the namespace is the signature parameters at the beginning
 
         // build the expression
+        // resolve takes an expression and the expected return type and returns the expression id which corresponds to the expression
         let id = builder.resolve(body, Some(&sig.ret_ty));
 
         // done

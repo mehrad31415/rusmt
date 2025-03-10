@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 use std::{fs, thread};
@@ -42,6 +42,19 @@ impl Display for Response {
     }
 }
 
+pub fn process(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -> PathBuf {
+    // 1. Generate SMTLIB2 source code from the IR using the backend's process method.
+    let code = backend.process(ir).expect("smt2 code generation failed");
+
+    // 2. save source code to a file named `main.smt2`.
+    let path_src = path_wks.join(format!("{}.{}", FILE, backend.flavor()));
+    if path_src.exists() {
+        panic!("source file already exists");
+    }
+    fs::write(&path_src, code).unwrap_or_else(|e| panic!("IO error on source file: {}", e));
+
+    path_src
+}
 /// Entrypoint for generating code via the `backend` and executing it in an external process.
 ///
 /// # Arguments
@@ -58,15 +71,8 @@ pub fn invoke_backend(
     backend: &dyn CodeGen,
     path_wks: &Path,
 ) -> BackendResult<Response> {
-    // 1. Generate SMTLIB2 source code from the IR using the backend's process method.
-    let code = backend.process(ir)?;
 
-    // 2. save source code to a file named `main.smt2`.
-    let path_src = path_wks.join(format!("{}.{}", FILE, backend.flavor()));
-    if path_src.exists() {
-        panic!("source file already exists");
-    }
-    fs::write(&path_src, code).unwrap_or_else(|e| panic!("IO error on source file: {}", e));
+    let path_src = process(ir, backend, path_wks);
 
     // 3. Invoke Z3 directly on the generated SMTLIB2 file.
     let mut cmd = Command::new("z3");

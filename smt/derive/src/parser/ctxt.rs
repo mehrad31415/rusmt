@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter}; // for implementing the Display trait on `Refinement` and `NamedItem` enums
 
-use log::trace; // For logging very fine-grained information
+use log::trace;
 use std::fs; // for filesystem operations; for reading a single file in process_file(&mut self, path: &Path) -> Result<()> method
 use std::path::Path; // for path handling
 
@@ -103,7 +103,7 @@ impl Display for NamedItem {
 }
 
 /// A refinement relation
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
 pub struct Refinement {
     pub fn_impl: UsrFuncName,
     pub fn_spec: UsrFuncName,
@@ -400,7 +400,11 @@ impl Context {
         // in the axiom relations, the impls and specs must be defined
         for marked in self.axioms.values() {
             let MarkedAxiom { item, mark } = marked;
-            for (impl_name, spec_name) in &mark.relations {
+            for refine in &mark.relations {
+                let Refinement {
+                    fn_impl: impl_name,
+                    fn_spec: spec_name,
+                } = refine;
                 if !self.impls.contains_key(impl_name) {
                     bail_on!(item, "invalid impl target: {}", impl_name);
                 }
@@ -570,8 +574,7 @@ impl ContextWithType {
 
         // axiom (extracting the function signature and body)
         let mut unpacked_axioms: BTreeMap<AxiomName, (FuncSig, Vec<Stmt>)> = BTreeMap::new();
-        let mut probe_axioms: BTreeMap<AxiomName, BTreeSet<(UsrFuncName, UsrFuncName)>> =
-            BTreeMap::new();
+        let mut probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>> = BTreeMap::new();
         for (name, marked) in &self.axioms {
             let ItemFn {
                 attrs: _,
@@ -594,9 +597,15 @@ impl ContextWithType {
             let relations = &marked.mark.relations;
 
             // check if the relations are valid (that is the spec and impl pairs are defined and are compatible)
-            for (impl_name, spec_name) in relations {
+            for refine in relations {
+                let Refinement {
+                    fn_impl: impl_name,
+                    fn_spec: spec_name,
+                } = refine;
                 let (impl_sig, impl_raw) = sig_impls.get(impl_name).expect("impl");
                 let (spec_sig, spec_raw) = sig_specs.get(spec_name).expect("spec");
+
+                // first the signature of the impl and spec must be compatible
                 if !impl_sig.is_compatible(spec_sig) {
                     bail_on_with_note!(
                         impl_raw,
@@ -604,6 +613,28 @@ impl ContextWithType {
                         spec_raw,
                         "spec signature here in axiom {}",
                         name
+                    );
+                }
+
+                // second the impl must have the spec as a target
+                let sp = self.impls.get(impl_name).expect("impl").mark.specs.clone();
+                if !sp.contains(spec_name) {
+                    bail_on!(
+                        &sig,
+                        "spec {} is not a target of impl {}",
+                        spec_name,
+                        impl_name
+                    );
+                }
+
+                // third the spec must have the impl as a target
+                let im = self.specs.get(spec_name).expect("spec").mark.impls.clone();
+                if !im.contains(impl_name) {
+                    bail_on!(
+                        &sig,
+                        "impl {} is not a target of spec {}",
+                        impl_name,
+                        spec_name
                     );
                 }
             }
@@ -737,7 +768,7 @@ pub struct ContextWithSig {
     /// a database for all the marked functions (impl, spec). These can be standalone user-defined functions, system functions, and methods.
     pub fn_db: ApplyDatabase,
     // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
-    probe_axioms: BTreeMap<AxiomName, BTreeSet<(UsrFuncName, UsrFuncName)>>,
+    probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>>,
 }
 
 impl ContextWithSig {
@@ -858,7 +889,7 @@ pub struct ContextWithFunc {
     specs: BTreeMap<UsrFuncName, SpecFuncDef>,
     axioms: BTreeMap<AxiomName, Axiom>,
     vc_db: BTreeSet<Refinement>, // a database for verification conditions
-    probe_axioms: BTreeMap<AxiomName, BTreeSet<(UsrFuncName, UsrFuncName)>>, // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
+    probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>>, // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
 }
 
 impl ContextWithFunc {
@@ -910,7 +941,7 @@ pub struct ASTContext {
     funcs: BTreeMap<UsrFuncName, FuncDef>,
     axioms: BTreeMap<AxiomName, Axiom>,
     vc_db: BTreeSet<Refinement>,
-    pub probe_axioms: BTreeMap<AxiomName, BTreeSet<(UsrFuncName, UsrFuncName)>>, // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
+    pub probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>>, // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
 }
 
 impl ASTContext {
@@ -944,14 +975,11 @@ impl ASTContext {
     }
 
     /// Check whether this axiom is relevant
-    /// This function is only used in IRBuilder::build in the ir/ctxt.rs file.
-    /// IRBuilder::build takes the ASTContext and the refinement relation between an impl and a spec.
-    /// For each refinement relation, IRBuilder::build builds the IRContext.
-    /// This function finds the relevant axioms for each function name.
+    /// For each refinement relation, the specification, implementation, and any function calls inside them are collected. For each of these functions, the relevant axioms are collected by calling this function.
     pub fn probe_related_axioms(
         &self,
-        name: &UsrFuncName, // the name of the function we want to find the relevant axioms for
-        inst: &[TypeTag], // the type arguments of the function like TypeTag::Parameter(TypeParamName { ident: "T" } )
+        name: &UsrFuncName, // the name of the function
+        inst: &[TypeTag], // the type arguments of the function definition
     ) -> BTreeMap<AxiomName, BTreeSet<Monomorphization>> {
         // instantiate the axioms
         let mut related: BTreeMap<AxiomName, BTreeSet<Monomorphization>> = BTreeMap::new();
@@ -967,7 +995,7 @@ impl ASTContext {
 
             // traverse the whole expression tree
             // visit with a post-order traversal function
-            body.visit(&mut |_| Ok(()), &mut |_| Ok(()), &mut |e| { //? do we need to traverse given the definition of visit
+            body.visit(&mut |_| Ok(()), &mut |_| Ok(()), &mut |e| {
                 // check whether this expr involves the target procedure call
 
                 // first retrieve the operation of the expression
@@ -985,7 +1013,6 @@ impl ASTContext {
                 {
                     // if the procedure name is the same as the target function name, then add the instantiation to the candidates
                     if proc_name == name {
-                        println!("found candidate: {}", key);
                         inst_candidates.push(
                             proc_inst
                                 .iter()
@@ -1007,13 +1034,12 @@ impl ASTContext {
                     panic!("number of type arguments mismatch: {}", name);
                 }
 
-                println!("len: {}", candidate.len());
                 // prepare type variables
                 let mut unifier = TypeUnifier::new();
                 // generics encapsulates args: BTreeMap<TypeParamName, (usize, TypeRef)>,
                 // where each of the type parameter names of the definition is mapped to a tuple of a number and TypeVar because the unifier is initialized as empty.
                 let generics = GenericsInstPartial::new_without_args(&axiom.head.generics)
-                    .complete(&mut unifier); // all of them are typevar
+                    .complete(&mut unifier); // tentatively mark all as type variables
 
                 // refresh the candidates by replacing type parameters as type variables
                 let mut parametric = vec![];
@@ -1038,7 +1064,6 @@ impl ASTContext {
                         }
                     }
                 }
-                println!("unifies: {}", unifies);
                 if !unifies {
                     continue;
                 }
@@ -1075,18 +1100,7 @@ impl ASTContext {
             }
         }
 
-        // the axioms are related to the impl and spec pairs and ,must be explicitly defined
-        let mut final_related: BTreeMap<AxiomName, BTreeSet<Monomorphization>> = BTreeMap::new();
-        for (key, value) in related {
-            let axiom = self.probe_axioms.get(&key).expect("axiom");
-            for (impl_name, spec_name) in axiom {
-                if impl_name == name || spec_name == name {
-                    final_related.insert(key.clone(), value.clone());
-                }
-            }
-        }
-
         // done
-        final_related
+        related
     }
 }

@@ -1,13 +1,13 @@
 use log::{debug, info}; // Log messages at different levels (e.g., debug, info)
 use std::fs; // File system operations
-use std::path::Path; // Path manipulation
+use std::path::{Path, PathBuf}; // Path manipulation
 use syn::Result; // 'syn' is a parsing library for Rust code, 'Result' is an alias for std::result::Result
 
 use rusmart_utils::config::initialize; // initialize all configs
 
-use crate::backend::error::BackendError; // An error for backend generator (e.g., not supported)
-use crate::backend::exec::invoke_backend; // Unified backend generation and execution service
 use crate::backend::codegen::solvers; // Available list of backend solvers (z3 and cvc5)
+use crate::backend::error::BackendError; // An error for backend generator (e.g., not supported)
+use crate::backend::exec::{invoke_backend, process}; // Unified backend generation and execution service
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context; // Context manager for holding marked items
 
@@ -34,6 +34,7 @@ fn pipeline(ctxt: Context) -> Result<Vec<IRContext>> {
         .parse_func_sigs()?
         .parse_func_body()?
         .finalize();
+    // println!("parsed context: {:?}", parsed.types);
 
     let mut models = vec![];
     // Iterate over all refinements obtained from the parsed context.
@@ -42,8 +43,14 @@ fn pipeline(ctxt: Context) -> Result<Vec<IRContext>> {
         debug!("processing verification condition for {}", item);
         // Build the intermediate representation (IR) for each refinement item.
         let ir = IRBuilder::build(&parsed, item);
+        println!("IR: {:?}", ir.axiom_registry);
         models.push(ir);
     }
+    println!("models: {:?}", models);
+    println!(
+        "len_refinements: {}",
+        parsed.refinements().collect::<Vec<_>>().len()
+    );
     Ok(models)
 }
 
@@ -91,9 +98,13 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
     // Initialize a counter for naming subdirectories or tracking progress.
     let mut count = 0;
     // Iterate over each model (IRContext).
+    println!("model_len: {}", models.len());
+
+    let mut paths: Vec<(&IRContext, Box<_>, PathBuf)> = Vec::new();
     for ir in models {
         // For each model, iterate over all available solvers (z3 and cvc5).
         for solver in solvers() {
+            println!("count: {}", count);
             count += 1;
 
             let name = solver.name();
@@ -102,23 +113,38 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
             // Create a workspace directory for this specific solver run.
             let path_wks = output.join(count.to_string());
             fs::create_dir(&path_wks).expect("workspace freshly created"); // Use create_dir for a single directory when parent directories exist.
+            paths.push((ir, solver, path_wks.clone()));
+        }
+    }
 
-            // Invoke the backend solver with the IR, solver, and workspace path.
-            match invoke_backend(ir, solver.as_ref(), &path_wks) {
-                Ok(response) => {
-                    // Log the successful response from the solver.
-                    debug!(
-                        "[{}] solving {} with {}: {}",
-                        count, ir.desc, name, response
-                    );
-                }
-                Err(BackendError) => {
-                    // Log if the solver does not support this IR or operation.
-                    info!(
-                        "[{}] solving {} with {}: not supported",
-                        count, ir.desc, name
-                    );
-                }
+    // first create all the directories and smt2 files
+    for (ir, solver, path_wks) in paths.iter() {
+        process(ir, solver.as_ref(), &path_wks);
+        println!("path_wks: {:?}", path_wks);
+    }
+
+    // then invoke the backend solvers
+    for (ir, solver, path_wks) in paths.iter() {
+        // Invoke the backend solver with the IR, solver, and workspace path.
+        match invoke_backend(ir, solver.as_ref(), &path_wks) {
+            Ok(response) => {
+                // Log the successful response from the solver.
+                debug!(
+                    "[{}] solving {} with {}: {}",
+                    count,
+                    ir.desc,
+                    solver.name(),
+                    response
+                );
+            }
+            Err(BackendError) => {
+                // Log if the solver does not support this IR or operation.
+                info!(
+                    "[{}] solving {} with {}: not supported",
+                    count,
+                    ir.desc,
+                    solver.name()
+                );
             }
         }
     }

@@ -11,6 +11,7 @@ use crate::{bail_if_missing, bail_on};
 use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{AttrStyle, Attribute, MacroDelimiter, Meta, MetaList, MetaNameValue, Path, Result};
+use super::ctxt::Refinement;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Allowed annotation
@@ -72,7 +73,7 @@ pub struct SpecMark {
 /// A mark for an annotated axiom function
 pub struct SpecAxiom {
     /// Relation between impl and spec functions
-    pub relations: BTreeSet<(UsrFuncName, UsrFuncName)>,
+    pub relations: BTreeSet<Refinement>,
 }
 
 /// SMT-related marking
@@ -348,10 +349,10 @@ impl Mark {
                             None => (),
                             Some(MetaValue::Map(items)) => {
                                 for (impl_key, spec_key) in items.iter() {
-                                    relations.insert((
-                                        UsrFuncName::try_from(impl_key)?,
-                                        UsrFuncName::try_from(spec_key)?,
-                                    ));
+                                    relations.insert(Refinement {
+                                        fn_impl: UsrFuncName::try_from(impl_key)?,
+                                        fn_spec: UsrFuncName::try_from(spec_key)?,
+                                    });
                                 }
                             }
                             Some(_) => bail_on!(tokens, "invalid relations"),

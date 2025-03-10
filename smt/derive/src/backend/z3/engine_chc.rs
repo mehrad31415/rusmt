@@ -9,6 +9,7 @@ use crate::ir::name::{UsrAxiomName, UsrFunName};
 use crate::ir::sort::{DataType, Sort, Variant};
 use crate::IRContext;
 use crate::ir::exp::Expression;
+use crate::ir::exp::VariantCtor;
 
 /// BackendZ3CHC is a backend designed for Z3's CHC (Constrained Horn Clause) engine.
 pub struct BackendZ3CHC {}
@@ -29,50 +30,52 @@ impl BackendZ3 for BackendZ3CHC {
         let mut x = ContentBuilder::new();
 
         l!(x, "; verification of impl-spec pair: {}", ir.desc);
-        l!(x, "; finding satisfiability of {}", ir.desc);
         l!(x, "(set-option :print-success false)");
         l!(x, "(set-option :produce-models true)");
         l!(x, "(set-logic ALL)");
         l!(x); // add new line
 
         // write the type parameters
-        l!(x, "; Define uninterpreted sort (Type parameters):");
+        l!(x, "; Define Type Parameters:");
         for sort in &ir.undef_sorts {
             l!(x, "(declare-sort {} 0)", sort);
         }
-        l!(x);
+        l!(x); // add new line
 
         // write the user-defined types
         l!(x, "; Define user-defined types:");
         for sid in ir.ty_registry.data_types().keys() {
+            println!("sort: {}", sid);
             let s = user_defined_types(*sid, ir, false);
             l!(x, "{}", s);
         }
         l!(x);
 
-        // write the functions
-        for (name, generics_id) in &ir.fn_registry.lookup {
-            println!("name: {}", name);
-            for (_, id) in generics_id {
-                let sig = ir.fn_registry.retrieve_sig(*id);
-                let def = ir.fn_registry.retrieve_def(*id);
-                let s = user_defined_functions(name.clone(), sig, def, ir);
-                l!(x, "{}", s);
-            }
-        }
-        l!(x);
+        // // write the functions
+        // for (name, generics_id) in &ir.fn_registry.lookup {
+        //     println!("name: {}", name);
+        //     for (_, id) in generics_id {
+        //         let sig = ir.fn_registry.retrieve_sig(*id);
+        //         let def = ir.fn_registry.retrieve_def(*id);
+        //         let s = user_defined_functions(name.clone(), sig, def, ir);
+        //         l!(x, "{}", s);
+        //     }
+        // }
+        // l!(x);
 
-        // write the axioms
-        for (name, generics_id) in &ir.axiom_registry.lookup {
-            for (_, id) in generics_id {
-                // generics are already registered
-                let predicate = ir.axiom_registry.retrieve(*id);
-                let s = user_defined_axioms(name.clone(), predicate, ir);
-                l!(x, "{}", s);
-            }
-        }
-        l!(x);
+        // // write the axioms
+        // for (name, generics_id) in &ir.axiom_registry.lookup {
+        //     for (_, id) in generics_id {
+        //         // generics are already registered
+        //         let predicate = ir.axiom_registry.retrieve(*id);
+        //         let s = user_defined_axioms(name.clone(), predicate, ir);
+        //         l!(x, "{}", s);
+        //     }
+        // }
+        // l!(x);
 
+        // exit
+        l!(x, "(exit)");
         // done
         Ok(x.build())
     }
@@ -94,7 +97,7 @@ pub fn user_defined_types(sid: UsrSortId, ir: &IRContext, call: bool) -> String 
             // unique name for tuple
             let tuple_name = format!(
                 "Tuple_{}",
-                gen_or_elem // for tuples it is the elements list
+                gen_or_elem // for tuples it is the elements list type
                     .iter()
                     .map(|t| t.to_string())
                     .collect::<Vec<_>>()
@@ -102,7 +105,7 @@ pub fn user_defined_types(sid: UsrSortId, ir: &IRContext, call: bool) -> String 
             );
             let constructor_name = format!("mk-{}", tuple_name);
 
-            // Generate field names: field1_, field2_, etc.
+            // Generate field names: field1_, field2_, ...
             let field_names: Vec<String> = (0..gen_or_elem.len())
                 .map(|i| format!("field{}_", i + 1))
                 .collect();
@@ -115,10 +118,13 @@ pub fn user_defined_types(sid: UsrSortId, ir: &IRContext, call: bool) -> String 
                 .collect();
 
             // formulate the declaration
-            //? what if the elements are generics?
             if call {
+                // for tuple (Integer, Bool):
+                // Tuple_Integer_Bool, basically gives the sort name
                 ret = format!("{}", tuple_name);
             } else {
+                // for tuple (Integer, Bool):
+                // (declare-datatypes () ((Tuple_Integer_Bool (mk-Tuple_Integer_Bool (field1_ Int) (field2_ Bool)))))
                 ret = format!(
                     "(declare-datatypes () (({} ({} {}))))",
                     tuple_name,
@@ -149,6 +155,7 @@ pub fn user_defined_types(sid: UsrSortId, ir: &IRContext, call: bool) -> String 
                 .map(|(sort, field_name)| format!("({} {})", field_name, to_smt_sort(sort, ir)))
                 .collect();
             if call {
+                // use the type name: MyStruct
                 ret = format!("{}", type_name);
             } else {
                 if gen_or_elem.is_empty() {
@@ -233,6 +240,10 @@ pub fn user_defined_types(sid: UsrSortId, ir: &IRContext, call: bool) -> String 
                         variants.push(format!("({} {})", variant_name, field_defs.join(" ")));
                     }
                     Variant::Record(r) => {
+                        if r.is_empty() {
+                            panic!("slots in record is empty");
+                        }
+
                         let field_defs: Vec<String> = r
                             .iter()
                             .map(|(field_name, sort)| {
@@ -288,7 +299,7 @@ pub fn to_smt_sort(s: &Sort, ir: &IRContext) -> String {
                 to_smt_sort(value, ir)
             )
         }
-        Sort::Error => "false".to_string(), //? is this correct
+        Sort::Error => "(undefined_function)".to_string(), // triggers an undefined function which leads to a crash assuming the function is not defined!
         Sort::User(usr_sort_id) => user_defined_types(*usr_sort_id, ir, true),
         Sort::Uninterpreted(name) => format!("{}", name),
     }
@@ -381,8 +392,7 @@ pub fn user_defined_axioms(name: UsrAxiomName, predicate: &Predicate, ir: &IRCon
         
     return ret;
 }
-use crate::ir::exp::VariantCtor;
-use crate::ir::exp::MatchCase;
+
 pub fn expr_to_smt(exp_registry: &ExpRegistry, id: &ExpId, ir: &IRContext) -> String {
     // destruct ExpRegistry
     let ExpRegistry {

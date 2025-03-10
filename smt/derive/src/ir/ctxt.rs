@@ -8,8 +8,6 @@ use crate::ir::mono::add_instantiation;
 use crate::ir::name::SmtSortName;
 use crate::ir::sort::{Sort, TypeRegistry};
 use crate::parser::ctxt::{ASTContext, Refinement};
-use crate::parser::func::unify;
-use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::generics::{Generics, PartialInst};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::{TypeParamName, UsrFuncName};
@@ -136,7 +134,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
     /// ASTContext is the context of the rusmart file being processed
     /// The `refinement` is the relation between the spec and the impl and contains the spec and impl function names
-    /// So this function is called for each refinement (spec-impl pair) in the rusmart file and constructs the IR for each refinement
+    /// this function is called for each refinement (spec-impl pair) and constructs the IR for each refinement
     pub fn build(ctxt: &'ctx ASTContext, rel: &'ctx Refinement) -> IRContext {
         // ir is an empty IRContext with the description of the refinement
         // this line just basically creates a new IRContext with the description of the refinement like the following:
@@ -153,15 +151,22 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         let fn_impl = ctxt.get_func(&rel.fn_impl); // get the function signature and body of the implementation
         let fn_spec = ctxt.get_func(&rel.fn_spec); // get the function signature and body of the specification
 
-        is_compatible(fn_impl, fn_spec);
+        if !fn_impl.head.is_compatible(&fn_spec.head) {
+            panic!("function signature mismatch in ir");
+        }
         // assign uninterpreted sorts as type arguments for function type parameters
         let generics_impl = &fn_impl.head.generics.params;
+        let generics_spec = &fn_spec.head.generics.params;
 
         // type instantiation for both spec and impl
-        let mut ty_args = vec![]; // just stores the type parameters of the impl as typerefs
+        // (stores the type parameters of the impl and spec)
+        let mut ty_args_impl = vec![];
+        let mut ty_args_spec = vec![];
 
         // type arguments for IR builder context
-        let mut ty_inst = BTreeMap::new(); // stores the type parameters mapped to their respective Smt sorts
+        // (stores the type parameters mapped to their respective Smt sorts)
+        let mut ty_inst_impl = BTreeMap::new();
+        let mut ty_inst_spec = BTreeMap::new();
 
         // for each type parameter in the function signature of the implementation
         for ty_param in generics_impl {
@@ -169,21 +174,48 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             // for function impl and parameter T, the uninterpreted sort name would be SmtSortName { ident: "impl_T" }
             let smt_name = SmtSortName::new_func_param(&rel.fn_impl, ty_param);
             // insert the uninterpreted sort name into the set of uninterpreted sorts in the ir
-            ir.undef_sorts.insert(smt_name.clone()); // so undef_sorts just basically contains all the generics of the function impl (spec is the same?!)
+            ir.undef_sorts.insert(smt_name.clone()); // so undef_sorts just basically contains all the generics of the function impl + spec
 
             // create a new uninterpreted sort for the type parameter
             let smt_sort = Sort::Uninterpreted(smt_name);
-            // ty_inst is a map from type parameter name to sort
-            match ty_inst.insert(ty_param.clone(), smt_sort) {
+            // ty_inst_impl is a map from type parameter name to sort
+            match ty_inst_impl.insert(ty_param.clone(), smt_sort) {
                 None => (),
                 Some(_) => panic!("duplicated type parameter {}", ty_param), // can't have duplicate type parameters for a function
             }
-            // ty_args is a list of types for the function
-            ty_args.push(TypeRef::Parameter(ty_param.clone()));
+            // ty_args_impl is a list of types for the function
+            ty_args_impl.push(TypeRef::Parameter(ty_param.clone()));
         }
         trace!(
-            "top-level type parameters: <{}>",
-            ty_args
+            "top-level type parameters impl: <{}>",
+            ty_args_impl
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+
+        // for each type parameter in the function signature of the specification
+        for ty_param in generics_spec {
+            // create a new uninterpreted sort name for the type parameter
+            // for function spec and parameter T, the uninterpreted sort name would be SmtSortName { ident: "spec_T" }
+            let smt_name = SmtSortName::new_func_param(&rel.fn_spec, ty_param);
+            // insert the uninterpreted sort name into the set of uninterpreted sorts in the ir
+            ir.undef_sorts.insert(smt_name.clone());
+
+            // create a new uninterpreted sort for the type parameter
+            let smt_sort = Sort::Uninterpreted(smt_name);
+            // ty_inst_spec is a map from type parameter name to sort
+            match ty_inst_spec.insert(ty_param.clone(), smt_sort) {
+                None => (),
+                Some(_) => panic!("duplicated type parameter {}", ty_param),
+            }
+            // ty_args_spec is a list of types for the function
+            ty_args_spec.push(TypeRef::Parameter(ty_param.clone()));
+        }
+        trace!(
+            "top-level type parameters spec: <{}>",
+            ty_args_spec
                 .iter()
                 .map(|t| t.to_string())
                 .collect::<Vec<_>>()
@@ -197,200 +229,216 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         //     undef_sorts: {
         //         SmtSortName { ident: "impl_T" },
         //         SmtSortName { ident: "impl_U" },
-        //         ... for any number of type parameters for the respective impl
+        //         SmtSortName { ident: "spec_T" },
+        //         SmtSortName { ident: "spec_U" },
+        //         ... for any number of type parameters for the respective impl and spec
         //     },
         //     ty_registry: TypeRegistry::new(),
         //     fn_registry: FunRegistry::new(),
         //     axiom_registry: AxiomRegistry::new(),
         // }
-        // ty_inst is a map from type parameter name to sort for the respective impl
+
+        // ty_inst_impl is a map from type parameter name to sort for the respective impl
         // for example for T, it would be TypeParamName {ident: "T"} -> Sort::Uninterpreted(SmtSortName { ident: "impl_T" })
-        let mut builder = IRBuilder::new(ctxt, ty_inst.clone(), &mut ir);
-
-        // process the impl and spec pair (updates the fn_registry).
+        let mut builder_impl = IRBuilder::new(ctxt, ty_inst_impl.clone(), &mut ir);
+        // process the impl and updates the fn_registry
         // The register type is done in the parsing of the body of the function.
-        builder.register_func(&rel.fn_impl, &ty_args); // the user function name and the type parameters of the impl
-        builder.register_func(&rel.fn_spec, &ty_args); // the user function name and the type parameters of the spec
-        // TODO MAKE THE ty_args FOR THE SPEC AND IMPL the same
-        // pull in all relevant axioms
-        let mut relevant_axioms = BTreeMap::new();
-        let mut uninterpreted_axiom_params = BTreeMap::new();
+        builder_impl.register_func(&rel.fn_impl, &ty_args_impl); // the user function name and the type parameters of the impl
 
-        let mut fixedpoint;
-        loop {
-            // always assume that we don't have more to analyze at the beginning
-            fixedpoint = true;
+        // ty_inst_spec is a map from type parameter name to sort for the respective spec
+        // for example for T, it would be TypeParamName {ident: "T"} -> Sort::Uninterpreted(SmtSortName { ident: "spec_T" })
+        let mut builder_spec = IRBuilder::new(ctxt, ty_inst_spec.clone(), &mut ir);
+        // process the spec and updates the fn_registry
+        builder_spec.register_func(&rel.fn_spec, &ty_args_spec); // the user function name and the type parameters of the spec
 
-            // consolidate all related axioms and their instantiations
-            let mut batch = BTreeMap::new();
-            // For every function instance registered in the IR, get related axioms.
-            // basically ir.reverse_function_instances() for any implementation and specification or function calls inside their bodies, it returns a vector of (function name, type tag for generics) pairs
-            for (func_name, func_inst) in ir.reverse_function_instances() {
-                // probe_related_axioms returns a mapping from an axiom name to a set of instantiations.
-                for (axiom_name, mut axiom_insts) in
-                    ctxt.probe_related_axioms(&func_name, &func_inst) // we get the related axioms for each function instance
-                {
-                    batch
-                        .entry(axiom_name)
-                        .or_insert_with(BTreeSet::new)
-                        .append(&mut axiom_insts);
+        // at this point only the axiom_registry is unchanged
+        for (annotated_axiom, refinements) in ctxt.probe_axioms.iter() {
+            if !refinements.is_empty() {
+                let mut ty_inst_axiom = BTreeMap::new();
+                let mut ty_args_axiom = vec![];
+                let generics_axiom = &ctxt.get_axiom(annotated_axiom).head.generics;
+
+                // for each type parameter in the function signature of the axiom
+                for ty_param in generics_axiom.params.iter() {
+                    // create a new uninterpreted sort name for the type parameter
+                    // for function spec and parameter T, the uninterpreted sort name would be SmtSortName { ident: "axiom_T" }
+                    let smt_name = SmtSortName::new_axiom_param(&annotated_axiom, ty_param);
+                    // insert the uninterpreted sort name into the set of uninterpreted sorts in the ir
+                    ir.undef_sorts.insert(smt_name.clone());
+
+                    // create a new uninterpreted sort for the type parameter
+                    let smt_sort = Sort::Uninterpreted(smt_name);
+                    match ty_inst_axiom.insert(ty_param.clone(), smt_sort) {
+                        None => (),
+                        Some(_) => panic!("duplicated type parameter {}", ty_param),
+                    }
+                    ty_args_axiom.push(TypeRef::Parameter(ty_param.clone()));
                 }
-            }
+                // this axiom is related to the current refinement
+                // register the axiom in the IR
+                let mut builder_axiom = IRBuilder::new(ctxt, ty_inst_axiom.clone(), &mut ir);
 
-            // self-interference (for more mono instances) and register each axiom mono instance
-            for (name, insts) in batch {
-                let axiom = ctxt.get_axiom(&name);
-                // if the relevant axiom is not already in the relevant axioms, insert it
-                // existing_insts is a mutable set of instantiations for the axiom
-                let existing_insts = relevant_axioms
-                    .entry(name.clone())
-                    .or_insert_with(BTreeSet::new);
+                for refine in refinements {
+                    let Refinement { fn_impl, fn_spec } = refine;
 
-                let mut all_new_insts = vec![];
-                for inst in insts {
-                    trace!("axiom {}{} is relevant", name, inst);
-                    let additions = add_instantiation(&axiom.head.generics, existing_insts, inst);
-                    all_new_insts.extend(additions.into_iter());
+                    if fn_impl == &rel.fn_impl && fn_spec == &rel.fn_spec {
+                        builder_axiom.register_axiom(annotated_axiom, &ty_args_axiom);
+                    }
                 }
-                trace!(
-                    "monomorphization yields {} new instantiation(s) for axiom {}",
-                    all_new_insts.len(),
-                    name
-                );
+            } else {
+                // pull in all relevant axioms
+                let mut relevant_axioms = BTreeMap::new();
+                let mut uninterpreted_axiom_params = BTreeMap::new();
 
-                // register axiom under each new instantiation
-                for inst in all_new_insts {
-                    trace!("processing axiom {}{}", name, inst);
+                let mut fixedpoint;
+                loop {
+                    // always assume that we don't have more to analyze at the beginning
+                    fixedpoint = true;
 
-                    // first collect unspecified type parameters
-                    for ty_arg_inst in &inst.args {
-                        match ty_arg_inst {
-                            PartialInst::Assigned(_) => (),
-                            PartialInst::Unassigned(n) => {
-                                let axiom_params_map = uninterpreted_axiom_params
-                                    .entry(name.clone())
-                                    .or_insert_with(BTreeMap::new);
-                                if !axiom_params_map.contains_key(n) {
-                                    let smt_name = SmtSortName::new_axiom_param(&name, n);
-                                    ir.undef_sorts.insert(smt_name.clone());
+                    // consolidate all related axioms and their instantiations
+                    let mut batch = BTreeMap::new();
+                    // For every function instance registered in the IR, get related axioms.
+                    // basically ir.reverse_function_instances() for any implementation and specification or function calls inside their bodies, it returns a vector of (function name, type tag for generics) pairs
+                    for (func_name, func_inst) in ir.reverse_function_instances() {
+                        // probe_related_axioms returns a mapping from an axiom name to a set of instantiations.
+                        for (axiom_name, mut axiom_insts) in
+                            ctxt.probe_related_axioms(&func_name, &func_inst)
+                        // we get the related axioms for each function instance
+                        {
+                            batch
+                                .entry(axiom_name)
+                                .or_insert_with(BTreeSet::new)
+                                .append(&mut axiom_insts);
+                        }
+                    }
 
-                                    let smt_sort = Sort::Uninterpreted(smt_name);
-                                    axiom_params_map.insert(n.clone(), smt_sort);
+                    // self-interference (for more mono instances) and register each axiom mono instance
+                    for (name, insts) in batch {
+                        let axiom = ctxt.get_axiom(&name);
+                        // if the relevant axiom is not already in the relevant axioms, insert it
+                        // existing_insts is a mutable set of instantiations for the axiom
+                        let existing_insts = relevant_axioms
+                            .entry(name.clone())
+                            .or_insert_with(BTreeSet::new);
+
+                        let mut all_new_insts = vec![];
+                        for inst in insts {
+                            trace!("axiom {}{} is relevant", name, inst);
+                            let additions =
+                                add_instantiation(&axiom.head.generics, existing_insts, inst);
+                            all_new_insts.extend(additions.into_iter());
+                        }
+                        trace!(
+                            "monomorphization yields {} new instantiation(s) for axiom {}",
+                            all_new_insts.len(),
+                            name
+                        );
+
+                        // register axiom under each new instantiation
+                        for inst in all_new_insts {
+                            trace!("processing axiom {}{}", name, inst);
+
+                            // first collect unspecified type parameters
+                            for ty_arg_inst in &inst.args {
+                                match ty_arg_inst {
+                                    PartialInst::Assigned(_) => (),
+                                    PartialInst::Unassigned(n) => {
+                                        let axiom_params_map = uninterpreted_axiom_params
+                                            .entry(name.clone())
+                                            .or_insert_with(BTreeMap::new);
+                                        if !axiom_params_map.contains_key(n) {
+                                            let smt_name = SmtSortName::new_axiom_param(&name, n);
+                                            ir.undef_sorts.insert(smt_name.clone());
+
+                                            let smt_sort = Sort::Uninterpreted(smt_name);
+                                            axiom_params_map.insert(n.clone(), smt_sort);
+                                        }
+                                    }
                                 }
                             }
+
+                            // specialized builder just for axiom type arguments
+                            let mut axiom_ty_builder_impl =
+                                IRBuilder::new(ctxt, ty_inst_impl.clone(), &mut ir);
+
+                            // type instantiation for axiom
+                            let mut axiom_ty_args = vec![];
+                            // type arguments for IR builder context
+                            let mut axiom_ty_inst = BTreeMap::new();
+
+                            for (ty_param, ty_arg_inst) in
+                                axiom.head.generics.params.iter().zip(inst.args.iter())
+                            {
+                                let (ty_arg_ref, ty_arg_sort) = match ty_arg_inst {
+                                    PartialInst::Assigned(t) => {
+                                        let tref = t.into();
+                                        let sort = axiom_ty_builder_impl.resolve_type(&tref);
+                                        (tref, sort)
+                                    }
+                                    PartialInst::Unassigned(n) => {
+                                        let tref = TypeRef::Parameter(n.clone());
+                                        let sort = uninterpreted_axiom_params
+                                            .get(&name)
+                                            .and_then(|v| v.get(n))
+                                            .expect("axiom type parameter variable created")
+                                            .clone();
+                                        (tref, sort)
+                                    }
+                                };
+                                match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
+                                    None => (),
+                                    Some(_) => panic!("duplicated type parameter {}", ty_param),
+                                }
+                                axiom_ty_args.push(ty_arg_ref);
+                            }
+
+                            let mut axiom_ty_builder_spec =
+                                IRBuilder::new(ctxt, ty_inst_spec.clone(), &mut ir);
+
+                            for (ty_param, ty_arg_inst) in
+                                axiom.head.generics.params.iter().zip(inst.args.iter())
+                            {
+                                let (ty_arg_ref, ty_arg_sort) = match ty_arg_inst {
+                                    PartialInst::Assigned(t) => {
+                                        let tref = t.into();
+                                        let sort = axiom_ty_builder_spec.resolve_type(&tref);
+                                        (tref, sort)
+                                    }
+                                    PartialInst::Unassigned(n) => {
+                                        let tref = TypeRef::Parameter(n.clone());
+                                        let sort = uninterpreted_axiom_params
+                                            .get(&name)
+                                            .and_then(|v| v.get(n))
+                                            .expect("axiom type parameter variable created")
+                                            .clone();
+                                        (tref, sort)
+                                    }
+                                };
+                                match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
+                                    None => (),
+                                    Some(_) => panic!("duplicated type parameter {}", ty_param),
+                                }
+                                axiom_ty_args.push(ty_arg_ref);
+                            }
+
+                            // specialized builder for axiom body
+                            let mut axiom_ty_builder = IRBuilder::new(ctxt, axiom_ty_inst, &mut ir);
+                            axiom_ty_builder.register_axiom(&name, &axiom_ty_args);
+
+                            // not reaching fixedpoint yet as long as we find a new monomorphization instance
+                            fixedpoint = false;
                         }
                     }
 
-                    // specialized builder just for axiom type arguments
-                    let mut axiom_ty_builder = IRBuilder::new(ctxt, ty_inst.clone(), &mut ir);
-
-                    // type instantiation for axiom
-                    let mut axiom_ty_args = vec![];
-                    // type arguments for IR builder context
-                    let mut axiom_ty_inst = BTreeMap::new();
-
-                    for (ty_param, ty_arg_inst) in
-                        axiom.head.generics.params.iter().zip(inst.args.iter())
-                    {
-                        let (ty_arg_ref, ty_arg_sort) = match ty_arg_inst {
-                            PartialInst::Assigned(t) => {
-                                let tref = t.into();
-                                let sort = axiom_ty_builder.resolve_type(&tref);
-                                (tref, sort)
-                            }
-                            PartialInst::Unassigned(n) => {
-                                let tref = TypeRef::Parameter(n.clone());
-                                let sort = uninterpreted_axiom_params
-                                    .get(&name)
-                                    .and_then(|v| v.get(n))
-                                    .expect("axiom type parameter variable created")
-                                    .clone();
-                                (tref, sort)
-                            }
-                        };
-                        match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
-                            None => (),
-                            Some(_) => panic!("duplicated type parameter {}", ty_param),
-                        }
-                        axiom_ty_args.push(ty_arg_ref);
+                    // exit the loop if we have reached a fixedpoint
+                    if fixedpoint {
+                        break;
                     }
-
-                    // specialized builder for axiom body
-                    let mut axiom_ty_builder = IRBuilder::new(ctxt, axiom_ty_inst, &mut ir);
-                    axiom_ty_builder.register_axiom(&name, &axiom_ty_args);
-
-                    // not reaching fixedpoint yet as long as we find a new monomorphization instance
-                    fixedpoint = false;
                 }
-            }
-
-            // exit the loop if we have reached a fixedpoint
-            if fixedpoint {
-                break;
             }
         }
 
         // done
         ir
-    }
-}
-
-fn is_compatible<'a>(impl_def: &'a FuncDef, spec_def: &'a FuncDef) {
-    // destruct the function definitions
-    let FuncDef {
-        head: impl_head,
-        body: _,
-    } = impl_def;
-    let FuncDef {
-        head: spec_head,
-        body: _,
-    } = spec_def;
-
-    // destruct the function signatures
-    let FuncSig {
-        generics: impl_generics,
-        params: impl_params,
-        ret_ty: impl_ret,
-    } = impl_head;
-    let FuncSig {
-        generics: spec_generics,
-        params: spec_params,
-        ret_ty: spec_ret,
-    } = spec_head;
-
-    // if the number of parameters in the implementation and specification don't match, panic
-    if impl_params.len() != spec_params.len() {
-        panic!("parameter mismatch");
-    }
-
-    // get the generics of the impl and spec
-    let mut impl_generics2 = impl_generics.params.clone();
-    let mut spec_generics2 = spec_generics.params.clone();
-    impl_generics2.sort(); //? is the sort a correct decision?
-    spec_generics2.sort(); //? is the sort a correct decision?
-
-    // match them
-    let gens: BTreeMap<TypeParamName, TypeParamName> =
-        impl_generics2.into_iter().zip(spec_generics2).collect();
-
-    // Compare parameter types
-    let spec_params2: Vec<TypeTag> = spec_params.clone().into_iter().map(|(_, t)| t).collect();
-    let spec_params2 = unify(spec_params2, &gens).expect("unification failed in params");
-    let impl_params2: Vec<TypeTag> = impl_params.clone().into_iter().map(|(_, t)| t).collect();
-    for (i, j) in impl_params2.into_iter().zip(spec_params2) {
-        if i != j {
-            panic!("parameter ({} | {}) type mismatch", i, j);
-        }
-    }
-
-    // the return type of the implementation and specification should match
-    let spec_ret2 = vec![spec_ret.clone()];
-    let spec_ret2 = unify(spec_ret2, &gens)
-        .expect("unification failed in return type")
-        .first()
-        .expect("function must have a return type")
-        .clone();
-    if impl_ret.clone() != spec_ret2 {
-        panic!("the return types of the impl and spec do not match!");
     }
 }

@@ -1,0 +1,18 @@
+Are these compatible? for now they are not!
+
+fn m<T:SMT>(x:T) -> Boolean {
+    T::from(false)
+}
+fn n(x:Boolean) -> Boolean {
+    Boolean::from(false)
+}
+
+or are these compatible? for now they are not!
+
+fn m<T:SMT>(x:T, y:T) -> Boolean {
+    x.and(y)
+}
+
+fn n<U:SMT, T:SMT>(x:U, y:T) -> Boolean {
+    x.and(y)
+}

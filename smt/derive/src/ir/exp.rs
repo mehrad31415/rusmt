@@ -70,10 +70,10 @@ pub enum VariantDtor {
 #[derive(Debug)]
 /// One atom in the match case to unpack
 pub struct MatchAtom {
-    head: ExpId,
-    sort: UsrSortId,
-    branch: String,
-    variant: VariantDtor,
+    pub head: ExpId,
+    pub sort: UsrSortId,
+    pub branch: String,
+    pub variant: VariantDtor,
 }
 
 #[derive(Debug)]
@@ -86,8 +86,8 @@ pub struct MatchCase {
 #[derive(Debug)]
 /// One phi case (i.e., conditional branch)
 pub struct PhiCase {
-    cond: ExpId,
-    body: ExpId,
+    pub cond: ExpId,
+    pub body: ExpId,
 }
 
 #[derive(Debug)]

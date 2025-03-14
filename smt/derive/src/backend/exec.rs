@@ -42,13 +42,15 @@ impl Display for Response {
     }
 }
 
-pub fn process(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -> PathBuf {
+pub fn create_smt_file(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -> PathBuf {
+    // println!("calling process");
     // 1. Generate SMTLIB2 source code from the IR using the backend's process method.
     let code = backend.process(ir).expect("smt2 code generation failed");
 
     // 2. save source code to a file named `main.smt2`.
     let path_src = path_wks.join(format!("{}.{}", FILE, backend.flavor()));
     if path_src.exists() {
+        // println!("source file already exists: {}", path_src.display());
         panic!("source file already exists");
     }
     fs::write(&path_src, code).unwrap_or_else(|e| panic!("IO error on source file: {}", e));
@@ -66,14 +68,7 @@ pub fn process(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -> PathBu
 /// # Returns
 ///
 /// A `BackendResult<Response>` indicating the outcome: `sat`, `unsat`, `unknown`, or `timeout`.
-pub fn invoke_backend(
-    ir: &IRContext,
-    backend: &dyn CodeGen,
-    path_wks: &Path,
-) -> BackendResult<Response> {
-
-    let path_src = process(ir, backend, path_wks);
-
+pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
     // 3. Invoke Z3 directly on the generated SMTLIB2 file.
     let mut cmd = Command::new("z3");
     cmd.arg("-smt2")

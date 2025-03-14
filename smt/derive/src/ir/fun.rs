@@ -87,7 +87,7 @@ impl FunRegistry {
     ///
     /// * A newly created unique `UsrFunId` for the created function instance.
     fn create(&mut self, name: UsrFunName, inst: Vec<Sort>) -> UsrFunId {
-        // the new index is the sum of all the lengths of the values in the lookup table. 
+        // the new index is the sum of all the lengths of the values in the lookup table.
         // So if we had 15 functions already defined it will be 16.
         let idx = UsrFunId {
             index: self.lookup.values().map(|v| v.len()).sum::<usize>(),
@@ -171,11 +171,22 @@ impl FunRegistry {
             .get(&idx)
             .expect("no such function id in retrieve_def")
     }
+
+    pub fn get_name(&self, idx: &UsrFunId) -> UsrFunName {
+        for (name, inst) in self.lookup.iter() {
+            for (_, id) in inst.iter() {
+                if id == idx {
+                    return name.clone();
+                }
+            }
+        }
+        panic!("no such function id in get_name")
+    }
 }
 
 impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// Registers a function with the IR and returns its unique function ID.
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `fn_name` - The user-defined function name.
@@ -198,7 +209,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             None => (),
             Some(idx) => return idx, // if the function is already processed, return the index
         }
-        
+
         // If not registered, create a new entry in the registry.
         let idx = self.ir.fn_registry.create(name, ty_args.clone());
 

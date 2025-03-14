@@ -12,5 +12,5 @@
 # Z3 trace files
 .z3-trace
 
-# todo list
-todo.txt
+# dump files
+/dump_smt/

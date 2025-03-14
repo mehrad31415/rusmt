@@ -5,7 +5,7 @@ use rusmart_smt_stdlib::{Boolean, Integer, SMT};
 
 // tuple struct
 #[smt_type]
-struct AAA(Integer);
+struct Start(Integer);
 
 // record struct
 #[smt_type]
@@ -15,18 +15,18 @@ struct End {
 
 
 #[smt_impl(specs = start_spec)]
-fn start(x: AAA, y : (Integer, Boolean)) -> End {
+fn start(x: Start, y : (Integer, Boolean)) -> End {
     End { x: x.0 }
 }
 
 #[smt_spec(impls = start)]
-fn start_spec(x: AAA, y : (Integer, Boolean)) -> End {
+fn start_spec(x: Start, y : (Integer, Boolean)) -> End {
     unimplemented!()
 }
 
 // #[smt_axiom(relations = {(start, start_spec)})]
 #[smt_axiom]
-fn start_axiom(x: AAA) -> Boolean {
+fn start_axiom(x: Start) -> Boolean {
     start_spec(x, (0.into(), false.into())).eq(End { x: x.0 })
 }
 

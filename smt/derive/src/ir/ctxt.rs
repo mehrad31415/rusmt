@@ -251,194 +251,155 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         // process the spec and updates the fn_registry
         builder_spec.register_func(&rel.fn_spec, &ty_args_spec); // the user function name and the type parameters of the spec
 
-        // at this point only the axiom_registry is unchanged
-        for (annotated_axiom, refinements) in ctxt.probe_axioms.iter() {
-            if !refinements.is_empty() {
-                let mut ty_inst_axiom = BTreeMap::new();
-                let mut ty_args_axiom = vec![];
-                let generics_axiom = &ctxt.get_axiom(annotated_axiom).head.generics;
+        // pull in all relevant axioms
+        let mut relevant_axioms = BTreeMap::new();
+        let mut uninterpreted_axiom_params = BTreeMap::new();
 
-                // for each type parameter in the function signature of the axiom
-                for ty_param in generics_axiom.params.iter() {
-                    // create a new uninterpreted sort name for the type parameter
-                    // for function spec and parameter T, the uninterpreted sort name would be SmtSortName { ident: "axiom_T" }
-                    let smt_name = SmtSortName::new_axiom_param(&annotated_axiom, ty_param);
-                    // insert the uninterpreted sort name into the set of uninterpreted sorts in the ir
-                    ir.undef_sorts.insert(smt_name.clone());
+        let mut fixedpoint;
+        loop {
+            // always assume that we don't have more to analyze at the beginning
+            fixedpoint = true;
 
-                    // create a new uninterpreted sort for the type parameter
-                    let smt_sort = Sort::Uninterpreted(smt_name);
-                    match ty_inst_axiom.insert(ty_param.clone(), smt_sort) {
-                        None => (),
-                        Some(_) => panic!("duplicated type parameter {}", ty_param),
-                    }
-                    ty_args_axiom.push(TypeRef::Parameter(ty_param.clone()));
-                }
-                // this axiom is related to the current refinement
-                // register the axiom in the IR
-                let mut builder_axiom = IRBuilder::new(ctxt, ty_inst_axiom.clone(), &mut ir);
-
-                for refine in refinements {
-                    let Refinement { fn_impl, fn_spec } = refine;
-
-                    if fn_impl == &rel.fn_impl && fn_spec == &rel.fn_spec {
-                        builder_axiom.register_axiom(annotated_axiom, &ty_args_axiom);
-                    }
-                }
-            } else {
-                // pull in all relevant axioms
-                let mut relevant_axioms = BTreeMap::new();
-                let mut uninterpreted_axiom_params = BTreeMap::new();
-
-                let mut fixedpoint;
-                loop {
-                    // always assume that we don't have more to analyze at the beginning
-                    fixedpoint = true;
-
-                    // consolidate all related axioms and their instantiations
-                    let mut batch = BTreeMap::new();
-                    // For every function instance registered in the IR, get related axioms.
-                    // basically ir.reverse_function_instances() for any implementation and specification or function calls inside their bodies, it returns a vector of (function name, type tag for generics) pairs
-                    for (func_name, func_inst) in ir.reverse_function_instances() {
-                        // probe_related_axioms returns a mapping from an axiom name to a set of instantiations.
-                        for (axiom_name, mut axiom_insts) in
-                            ctxt.probe_related_axioms(&func_name, &func_inst)
-                        // we get the related axioms for each function instance
-                        {
-                            batch
-                                .entry(axiom_name)
-                                .or_insert_with(BTreeSet::new)
-                                .append(&mut axiom_insts);
-                        }
-                    }
-
-                    // self-interference (for more mono instances) and register each axiom mono instance
-                    for (name, insts) in batch {
-                        let axiom = ctxt.get_axiom(&name);
-                        // if the relevant axiom is not already in the relevant axioms, insert it
-                        // existing_insts is a mutable set of instantiations for the axiom
-                        let existing_insts = relevant_axioms
-                            .entry(name.clone())
-                            .or_insert_with(BTreeSet::new);
-
-                        let mut all_new_insts = vec![];
-                        for inst in insts {
-                            trace!("axiom {}{} is relevant", name, inst);
-                            let additions =
-                                add_instantiation(&axiom.head.generics, existing_insts, inst);
-                            all_new_insts.extend(additions.into_iter());
-                        }
-                        trace!(
-                            "monomorphization yields {} new instantiation(s) for axiom {}",
-                            all_new_insts.len(),
-                            name
-                        );
-
-                        // register axiom under each new instantiation
-                        for inst in all_new_insts {
-                            trace!("processing axiom {}{}", name, inst);
-
-                            // first collect unspecified type parameters
-                            for ty_arg_inst in &inst.args {
-                                match ty_arg_inst {
-                                    PartialInst::Assigned(_) => (),
-                                    PartialInst::Unassigned(n) => {
-                                        let axiom_params_map = uninterpreted_axiom_params
-                                            .entry(name.clone())
-                                            .or_insert_with(BTreeMap::new);
-                                        if !axiom_params_map.contains_key(n) {
-                                            let smt_name = SmtSortName::new_axiom_param(&name, n);
-                                            ir.undef_sorts.insert(smt_name.clone());
-
-                                            let smt_sort = Sort::Uninterpreted(smt_name);
-                                            axiom_params_map.insert(n.clone(), smt_sort);
-                                        }
-                                    }
-                                }
-                            }
-
-                            // specialized builder just for axiom type arguments
-                            let mut axiom_ty_builder_impl =
-                                IRBuilder::new(ctxt, ty_inst_impl.clone(), &mut ir);
-
-                            // type instantiation for axiom
-                            let mut axiom_ty_args = vec![];
-                            // type arguments for IR builder context
-                            let mut axiom_ty_inst = BTreeMap::new();
-
-                            for (ty_param, ty_arg_inst) in
-                                axiom.head.generics.params.iter().zip(inst.args.iter())
-                            {
-                                let (ty_arg_ref, ty_arg_sort) = match ty_arg_inst {
-                                    PartialInst::Assigned(t) => {
-                                        let tref = t.into();
-                                        let sort = axiom_ty_builder_impl.resolve_type(&tref);
-                                        (tref, sort)
-                                    }
-                                    PartialInst::Unassigned(n) => {
-                                        let tref = TypeRef::Parameter(n.clone());
-                                        let sort = uninterpreted_axiom_params
-                                            .get(&name)
-                                            .and_then(|v| v.get(n))
-                                            .expect("axiom type parameter variable created")
-                                            .clone();
-                                        (tref, sort)
-                                    }
-                                };
-                                match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
-                                    None => (),
-                                    Some(_) => panic!("duplicated type parameter {}", ty_param),
-                                }
-                                axiom_ty_args.push(ty_arg_ref);
-                            }
-
-                            let mut axiom_ty_builder_spec =
-                                IRBuilder::new(ctxt, ty_inst_spec.clone(), &mut ir);
-
-                            for (ty_param, ty_arg_inst) in
-                                axiom.head.generics.params.iter().zip(inst.args.iter())
-                            {
-                                let (ty_arg_ref, ty_arg_sort) = match ty_arg_inst {
-                                    PartialInst::Assigned(t) => {
-                                        let tref = t.into();
-                                        let sort = axiom_ty_builder_spec.resolve_type(&tref);
-                                        (tref, sort)
-                                    }
-                                    PartialInst::Unassigned(n) => {
-                                        let tref = TypeRef::Parameter(n.clone());
-                                        let sort = uninterpreted_axiom_params
-                                            .get(&name)
-                                            .and_then(|v| v.get(n))
-                                            .expect("axiom type parameter variable created")
-                                            .clone();
-                                        (tref, sort)
-                                    }
-                                };
-                                match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
-                                    None => (),
-                                    Some(_) => panic!("duplicated type parameter {}", ty_param),
-                                }
-                                axiom_ty_args.push(ty_arg_ref);
-                            }
-
-                            // specialized builder for axiom body
-                            let mut axiom_ty_builder = IRBuilder::new(ctxt, axiom_ty_inst, &mut ir);
-                            axiom_ty_builder.register_axiom(&name, &axiom_ty_args);
-
-                            // not reaching fixedpoint yet as long as we find a new monomorphization instance
-                            fixedpoint = false;
-                        }
-                    }
-
-                    // exit the loop if we have reached a fixedpoint
-                    if fixedpoint {
-                        break;
-                    }
+            // consolidate all related axioms and their instantiations
+            let mut batch = BTreeMap::new();
+            // For every function instance registered in the IR, get related axioms.
+            // basically ir.reverse_function_instances() for any implementation and specification or function calls inside their bodies, it returns a vector of (function name, type tag for generics) pairs
+            for (func_name, func_inst) in ir.reverse_function_instances() {
+                // probe_related_axioms returns a mapping from an axiom name to a set of instantiations.
+                for (axiom_name, mut axiom_insts) in
+                    ctxt.probe_related_axioms(&func_name, &func_inst)
+                // we get the related axioms for each function instance
+                {
+                    batch
+                        .entry(axiom_name)
+                        .or_insert_with(BTreeSet::new)
+                        .append(&mut axiom_insts);
                 }
             }
-        }
 
-        // done
+            // self-interference (for more mono instances) and register each axiom mono instance
+            for (name, insts) in batch {
+                let axiom = ctxt.get_axiom(&name);
+                // if the relevant axiom is not already in the relevant axioms, insert it
+                // existing_insts is a mutable set of instantiations for the axiom
+                let existing_insts = relevant_axioms
+                    .entry(name.clone())
+                    .or_insert_with(BTreeSet::new);
+
+                let mut all_new_insts = vec![];
+                for inst in insts {
+                    trace!("axiom {}{} is relevant", name, inst);
+                    let additions = add_instantiation(&axiom.head.generics, existing_insts, inst);
+                    all_new_insts.extend(additions.into_iter());
+                }
+                trace!(
+                    "monomorphization yields {} new instantiation(s) for axiom {}",
+                    all_new_insts.len(),
+                    name
+                );
+
+                // register axiom under each new instantiation
+                for inst in all_new_insts {
+                    trace!("processing axiom {}{}", name, inst);
+
+                    // first collect unspecified type parameters
+                    for ty_arg_inst in &inst.args {
+                        match ty_arg_inst {
+                            PartialInst::Assigned(_) => (),
+                            PartialInst::Unassigned(n) => {
+                                let axiom_params_map = uninterpreted_axiom_params
+                                    .entry(name.clone())
+                                    .or_insert_with(BTreeMap::new);
+                                if !axiom_params_map.contains_key(n) {
+                                    let smt_name = SmtSortName::new_axiom_param(&name, n);
+                                    ir.undef_sorts.insert(smt_name.clone());
+
+                                    let smt_sort = Sort::Uninterpreted(smt_name);
+                                    axiom_params_map.insert(n.clone(), smt_sort);
+                                }
+                            }
+                        }
+                    }
+
+                    // specialized builder just for axiom type arguments
+                    let mut axiom_ty_builder_impl =
+                        IRBuilder::new(ctxt, ty_inst_impl.clone(), &mut ir);
+
+                    // type instantiation for axiom
+                    let mut axiom_ty_args = vec![];
+                    // type arguments for IR builder context
+                    let mut axiom_ty_inst = BTreeMap::new();
+
+                    for (ty_param, ty_arg_inst) in
+                        axiom.head.generics.params.iter().zip(inst.args.iter())
+                    {
+                        let (ty_arg_ref, ty_arg_sort) = match ty_arg_inst {
+                            PartialInst::Assigned(t) => {
+                                let tref = t.into();
+                                let sort = axiom_ty_builder_impl.resolve_type(&tref);
+                                (tref, sort)
+                            }
+                            PartialInst::Unassigned(n) => {
+                                let tref = TypeRef::Parameter(n.clone());
+                                let sort = uninterpreted_axiom_params
+                                    .get(&name)
+                                    .and_then(|v| v.get(n))
+                                    .expect("axiom type parameter variable created")
+                                    .clone();
+                                (tref, sort)
+                            }
+                        };
+                        match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
+                            None => (),
+                            Some(_) => panic!("duplicated type parameter {}", ty_param),
+                        }
+                        axiom_ty_args.push(ty_arg_ref);
+                    }
+
+                    let mut axiom_ty_builder_spec =
+                        IRBuilder::new(ctxt, ty_inst_spec.clone(), &mut ir);
+
+                    for (ty_param, ty_arg_inst) in
+                        axiom.head.generics.params.iter().zip(inst.args.iter())
+                    {
+                        let (ty_arg_ref, ty_arg_sort) = match ty_arg_inst {
+                            PartialInst::Assigned(t) => {
+                                let tref = t.into();
+                                let sort = axiom_ty_builder_spec.resolve_type(&tref);
+                                (tref, sort)
+                            }
+                            PartialInst::Unassigned(n) => {
+                                let tref = TypeRef::Parameter(n.clone());
+                                let sort = uninterpreted_axiom_params
+                                    .get(&name)
+                                    .and_then(|v| v.get(n))
+                                    .expect("axiom type parameter variable created")
+                                    .clone();
+                                (tref, sort)
+                            }
+                        };
+                        match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
+                            None => (),
+                            Some(_) => panic!("duplicated type parameter {}", ty_param),
+                        }
+                        axiom_ty_args.push(ty_arg_ref);
+                    }
+
+                    // specialized builder for axiom body
+                    let mut axiom_ty_builder: IRBuilder<'_, '_> =
+                        IRBuilder::new(ctxt, axiom_ty_inst, &mut ir);
+                    axiom_ty_builder.register_axiom(&name, &axiom_ty_args);
+
+                    // not reaching fixedpoint yet as long as we find a new monomorphization instance
+                    fixedpoint = false;
+                }
+            }
+
+            // exit the loop if we have reached a fixedpoint
+            if fixedpoint {
+                break;
+            }
+        }
         ir
     }
 }

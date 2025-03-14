@@ -1,11 +1,9 @@
 use crate::backend::error::BackendResult;
-use crate::ir::ctxt::IRContext;
-// use crate::backend::cvc5::common::CodeGenCVC5;
-// use crate::backend::cvc5::engine_smt::BackendCVC5SMT;
 use crate::backend::z3::common::CodeGenZ3;
 use crate::backend::z3::engine_chc::BackendZ3CHC;
+use crate::ir::ctxt::IRContext;
 
-/// A generic trait for backend code generators. 
+/// A generic trait for backend code generators.
 ///
 /// CodeGenCVC5 and CodeGenZ3 implement this trait.
 pub trait CodeGen {
@@ -17,7 +15,7 @@ pub trait CodeGen {
         "smt2"
     }
 
-    /// Given an IRContext, generate the backend source code. 
+    /// Given an IRContext, generate the backend source code.
     ///
     /// Returns a `BackendResult<String>` containing either the full source code or a BackendError::NotSupported error.
     fn process(&self, ir: &IRContext) -> BackendResult<String>;
@@ -52,9 +50,9 @@ impl ContentBuilder {
         self.buffer.push('\n');
     }
 
-    /// Runs a closure in an incremented indentation scope. 
+    /// Runs a closure in an incremented indentation scope.
     ///
-    /// Anything inserted via `.line()` inside the closure will have +1 indentation level 
+    /// Anything inserted via `.line()` inside the closure will have +1 indentation level
     /// compared to the outer scope. After the closure finishes, indentation reverts.
     ///
     /// let mut builder = ContentBuilder::new();
@@ -98,11 +96,10 @@ macro_rules! l {
 }
 pub(crate) use l;
 
-
 /// Available list of backend solvers
 pub fn solvers() -> Vec<Box<dyn CodeGen>> {
     vec![
         Box::new(CodeGenZ3::new(BackendZ3CHC::new())),
-        // Box::new(CodeGenCVC5::new(BackendCVC5SMT::new())), //? uncomment this!
+        // Box::new(CodeGenCVC5::new(BackendCVC5SMT::new())), uncomment this line to enable CVC5
     ]
 }

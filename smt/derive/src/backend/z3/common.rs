@@ -9,7 +9,7 @@ use crate::backend::error::BackendResult;
 use crate::ir::ctxt::IRContext;
 
 // `lazy_static!` ensures that a static, thread-safe value is initialized only once
-// and reused across the program. 
+// and reused across the program.
 // This is ideal for configurations or artifacts that are expensive to compute or fetch.
 //
 // `ARTIFACT` holds the path to the Z3 binary or artifact (located via `expect_z3`).

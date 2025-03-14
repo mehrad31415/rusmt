@@ -12,4 +12,4 @@ mod mono;
 pub mod axiom;
 pub mod exp;
 pub mod fun;
-mod intrinsics;
+pub mod intrinsics;

@@ -1,15 +1,12 @@
 use rusmart_smt_derive::derive;
 use rusmart_utils::config::WKS;
+use std::path::PathBuf;
 
 fn main() {
-    // println!("{}", env!("CARGO_MANIFEST_DIR"));
-    // The input file is ../.....lang/demo
-    // the output file is ..../studio/native/demo
-    // get current working directory
-    let p = std::env::current_dir().unwrap();
-    // join it with lang/demo/src/temp
-    let path = p.join("src/temp");
-    println!("{}", path.display());
+    // The input file is lang/demo and the output file is studio/native/demo from the root workspace of the project.
+    let path = env!("CARGO_MANIFEST_DIR");
+    let path = PathBuf::from(path).join("src/temp"); // comment this line out at the end
+
     match derive(path, WKS.studio.join("demo")) {
         Ok(()) => {
             println!("ok");

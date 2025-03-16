@@ -7,7 +7,7 @@ use crate::backend::z3::common::BackendZ3;
 use crate::backend::z3::fun::fundef_in_smt;
 use crate::backend::z3::sort::sort_to_smt;
 use crate::backend::z3::ty::tydef_in_smt;
-use crate::ir::name::UsrFunName;
+use crate::ir::name::{Symbol, UsrFunName};
 use crate::parser::name::UsrFuncName;
 use crate::IRContext;
 use proc_macro2::Ident;
@@ -53,42 +53,50 @@ impl BackendZ3 for BackendZ3CHC {
         l!(x); // add new line
 
         // write the type parameters
-        l!(x, "; Define Type Parameters of Function Signatures:");
-        for sort in &ir.undef_sorts {
-            l!(x, "(declare-sort {} 0)", sort);
+        if !&ir.undef_sorts.is_empty() {
+            l!(x, "; Define Type Parameters of Function Signatures:");
+            for sort in &ir.undef_sorts {
+                l!(x, "(declare-sort {} 0)", sort);
+            }
+            l!(x); // add new line
         }
-        l!(x); // add new line
 
         // write the user-defined types
-        l!(x, "; Define user-defined types:");
-        for sid in ir.ty_registry.data_types().keys() {
-            l!(x, "{}", tydef_in_smt(*sid, ir));
+        if !ir.ty_registry.data_types().is_empty() {
+            l!(x, "; Define user-defined types:");
+            for sid in ir.ty_registry.data_types().keys() {
+                l!(x, "{}", tydef_in_smt(*sid, ir));
+            }
+            l!(x); // add new line
         }
-        l!(x); // add new line
 
         // write the functions
-        l!(x, "; Define user functions:");
-        for (name, generics_id) in &ir.fn_registry.lookup {
-            // generics are already registered in undef_sorts
-            for (_generics, id) in generics_id {
-                let sig = ir.fn_registry.retrieve_sig(*id);
-                let def = ir.fn_registry.retrieve_def(*id);
-                l!(x, "{}", fundef_in_smt(name.clone(), sig, def, ir));
+        if !&ir.fn_registry.lookup.is_empty() {
+            l!(x, "; Define user functions:");
+            for (name, generics_id) in &ir.fn_registry.lookup {
+                // generics are already registered in undef_sorts
+                for (_generics, id) in generics_id {
+                    let sig = ir.fn_registry.retrieve_sig(*id);
+                    let def = ir.fn_registry.retrieve_def(*id);
+                    l!(x, "{}", fundef_in_smt(name.clone(), sig, def, ir));
+                }
             }
+            l!(x); // add new line
         }
-        l!(x); // add new line
 
         // write the axioms
-        l!(x, "; Define axioms:");
-        // we don't need to write the name. The axiom is registered as forall<axiom params> {axiom body}
-        for (_name, generics_id) in &ir.axiom_registry.lookup {
-            // generics are already registered in undef_sorts
-            for (_generics, id) in generics_id {
-                let predicate = ir.axiom_registry.retrieve(*id);
-                l!(x, "{}", axiom_in_smt(predicate, ir));
+        if !&ir.axiom_registry.lookup.is_empty() {
+            l!(x, "; Define axioms:");
+            // we don't need to write the name. The axiom is registered as forall<axiom params> {axiom body}
+            for (_name, generics_id) in &ir.axiom_registry.lookup {
+                // generics are already registered in undef_sorts
+                for (_generics, id) in generics_id {
+                    let predicate = ir.axiom_registry.retrieve(*id);
+                    l!(x, "{}", axiom_in_smt(predicate, ir));
+                }
             }
+            l!(x); // add new line
         }
-        l!(x); // add new line
 
         // prove the `validity` of the fact that the operational (smt_impl) and denotational semantics (smt_spec) are equivalent
         // To prove: negate the equivalence and check for unsatisfiability
@@ -96,12 +104,11 @@ impl BackendZ3 for BackendZ3CHC {
             x,
             "; Prove the equivalence of the operational and denotational semantics:"
         );
-        let impl_name = ir.desc.split_once(" ~> ").expect("Invalid description").0;
+        let (impl_name, spec_name) = ir.desc.split_once(" ~> ").expect("Invalid description");
         let impl_name = Ident::new(impl_name, Span::call_site());
-        let spec_name = ir.desc.split_once(" ~> ").expect("Invalid description").1;
         let spec_name = Ident::new(spec_name, Span::call_site());
 
-        // get the signature of the impl
+        // get the id of the spec and the impl
         let impl_id = ir
             .fn_registry
             .lookup
@@ -123,9 +130,11 @@ impl BackendZ3 for BackendZ3CHC {
             .expect("Function not found")
             .1;
 
+        // get the signature of the impl and spec
         let impl_sig = ir.fn_registry.retrieve_sig(*impl_id);
         let spec_sig = ir.fn_registry.retrieve_sig(*spec_id);
 
+        // get the symbols for the spec and impl
         let impl_syms = impl_sig
             .params
             .iter()
@@ -137,6 +146,7 @@ impl BackendZ3 for BackendZ3CHC {
             .map(|(sym, _)| sym.clone())
             .collect::<BTreeSet<_>>();
 
+        // get the var + sort pair
         let set1 = impl_sig
             .params
             .iter()
@@ -149,15 +159,16 @@ impl BackendZ3 for BackendZ3CHC {
             .collect::<BTreeSet<_>>();
         let all_sym_sort = set1.union(&set2).clone().collect::<BTreeSet<_>>();
 
-        // forall (lhs Point) (rhs Point) (= (add_spec lhs rhs) (add lhs rhs))
+        // ; forall (lhs Point) (rhs Point) (= (add_spec lhs rhs) (add lhs rhs))
         l!(
             x,
-            "; (assert (forall ({}) (= ({} {}) ({} {}))))",
+            "; (assert (forall ({}) (=> {} (= ({} {}) ({} {})))))",
             all_sym_sort
                 .iter()
                 .map(|s| format!("({})", s.as_str()))
                 .collect::<Vec<_>>()
                 .join(" "),
+            create_comment(impl_syms.clone(), spec_syms.clone()),
             impl_name,
             impl_syms
                 .iter()
@@ -172,9 +183,12 @@ impl BackendZ3 for BackendZ3CHC {
                 .join(" ")
         );
 
-        // (declare-var lhs Point) (declare-var rhs Point)
+        // (declare-const lhs Point) (declare-const rhs Point)
         for s in all_sym_sort {
             l!(x, "(declare-const {})", s)
+        }
+        for (i, s) in impl_syms.iter().zip(&spec_syms) {
+            l!(x, "(assert (= {} {}))", i, s)
         }
 
         // (assert (!= (add_spec lhs rhs) (add lhs rhs)))
@@ -203,4 +217,24 @@ impl BackendZ3 for BackendZ3CHC {
         // done
         Ok(x.build())
     }
+}
+
+pub fn create_comment(impl_syms: BTreeSet<Symbol>, spec_syms: BTreeSet<Symbol>) -> String {
+    // sanity check
+    if impl_syms.len() != spec_syms.len() {
+        panic!("specification and implementation must have the same number of params")
+    }
+    if impl_syms.is_empty() {
+        return "".to_string();
+    }
+    let is = impl_syms.first().expect("impl must have one element");
+    let ss = spec_syms.first().expect("impl must have one element");
+    let new_impl = impl_syms.iter().skip(1).cloned().collect();
+    let new_spec = spec_syms.iter().skip(1).cloned().collect();
+    format!(
+        "(and (= {} {}) {})",
+        is,
+        ss,
+        create_comment(new_impl, new_spec)
+    )
 }

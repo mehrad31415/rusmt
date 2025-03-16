@@ -34,6 +34,11 @@ pub fn fundef_in_smt(name: UsrFunName, sig: &FunSig, def: &FunDef, ir: &IRContex
 
             // define the function with define-fun-rec
             let mut ret = String::new();
+            // add the dependencies
+            for dep in dependencies.iter() {
+                ret += dep.as_str();
+                ret += "\n";
+            }
             ret += format!(
                 "(define-fun-rec {} ({}) {} {})",
                 name,
@@ -42,11 +47,6 @@ pub fn fundef_in_smt(name: UsrFunName, sig: &FunSig, def: &FunDef, ir: &IRContex
                 body_expr
             )
             .as_str();
-            // add the dependencies
-            for dep in dependencies.iter() {
-                ret += "\n";
-                ret += dep.as_str();
-            }
             ret
         }
         FunDef::Uninterpreted => {

@@ -34,22 +34,14 @@ pub fn axiom_in_smt(predicate: &Predicate, ir: &IRContext) -> String {
         .map(|(field_name, sort)| format!("({} {})", field_name, sort_to_smt(sort, ir)))
         .collect();
 
+    // add the dependencies
+    for dep in dependencies.iter() {
+        ret += dep.as_str();
+        ret += "\n";
+    }
     // (assert <expr>)
     // (forall ( (<symbol> <sort>)+ ) <expr>)
-    ret += format!(
-        "(assert (forall ({}) {}))\n",
-        field_defs.join(" "),
-        body_expr
-    )
-    .as_str();
-
-    // add the dependencies
-    ret += dependencies
-        .iter()
-        .cloned()
-        .collect::<Vec<_>>()
-        .join("\n")
-        .as_str();
+    ret += format!("(assert (forall ({}) {}))", field_defs.join(" "), body_expr).as_str();
 
     // done
     ret

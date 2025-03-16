@@ -144,11 +144,11 @@ pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
                     Response::Unknown
                 }
                 "sat" => {
-                    println!("the specification correctly defines the implementation");
+                    println!("the specification does not correctly define the implementation");
                     Response::Sat
                 }
                 "unsat" => {
-                    println!("the specification does not correctly define the implementation");
+                    println!("the specification correctly defines the implementation");
                     Response::Unsat
                 }
                 other => panic!("invalid response: {}", other),

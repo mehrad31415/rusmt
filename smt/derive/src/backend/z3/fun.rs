@@ -7,6 +7,7 @@ use crate::backend::z3::sort::sort_to_smt;
 use crate::ir::fun::{FunDef, FunSig};
 use crate::ir::name::UsrFunName;
 use crate::IRContext;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Converts a function definition into the corresponding SMT-LIB function definition as a `String`.
 /// The function definition can be either a defined function or an uninterpreted function.
@@ -14,6 +15,8 @@ use crate::IRContext;
 /// The function definition is used to determine the body of the function.
 /// The Generics are already registered in `undef_sorts`.
 pub fn fundef_in_smt(name: UsrFunName, sig: &FunSig, def: &FunDef, ir: &IRContext) -> String {
+    let mut dependencies = BTreeSet::new();
+    let mut mapping_vars = BTreeMap::new();
     // depending on whether the function is defined or uninterpreted, the function signature is different
     let FunSig { params, ret_ty } = sig;
 
@@ -22,7 +25,7 @@ pub fn fundef_in_smt(name: UsrFunName, sig: &FunSig, def: &FunDef, ir: &IRContex
     match def {
         FunDef::Defined(reg, id) => {
             // convert the function body to SMT-LIB
-            let body_expr = expr_to_smt(reg, id, ir);
+            let body_expr = expr_to_smt(reg, id, ir, &mut dependencies, &mut mapping_vars);
 
             let field_defs: Vec<String> = params
                 .iter()
@@ -30,13 +33,21 @@ pub fn fundef_in_smt(name: UsrFunName, sig: &FunSig, def: &FunDef, ir: &IRContex
                 .collect();
 
             // define the function with define-fun-rec
-            return format!(
+            let mut ret = String::new();
+            ret += format!(
                 "(define-fun-rec {} ({}) {} {})",
                 name,
                 field_defs.join(" "),
                 return_type,
                 body_expr
-            );
+            )
+            .as_str();
+            // add the dependencies
+            for dep in dependencies.iter() {
+                ret += "\n";
+                ret += dep.as_str();
+            }
+            ret
         }
         FunDef::Uninterpreted => {
             let field_defs: Vec<String> = params
@@ -45,12 +56,12 @@ pub fn fundef_in_smt(name: UsrFunName, sig: &FunSig, def: &FunDef, ir: &IRContex
                 .collect();
 
             // declare the function with declare-fun
-            return format!(
+            format!(
                 "(declare-fun {} ({}) {})",
                 name,
                 field_defs.join(" "),
                 return_type
-            );
+            )
         }
     }
 }

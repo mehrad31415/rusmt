@@ -1,299 +1,427 @@
 //! This module contains the conversion of Rusmart intrinsics to SMT-LIB format.
 
 use crate::backend::z3::exp::expr_to_smt;
+use crate::backend::z3::sort::sort_not_present;
 use crate::ir::exp::ExpRegistry;
+use crate::ir::exp::VarKind;
+use crate::ir::index::ExpId;
+use crate::ir::index::VarId;
 use crate::ir::intrinsics::Intrinsic;
 use crate::IRContext;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// counter for unique names in SMT-LIB
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Converts an system default function in Rusmart into the corresponding SMT-LIB as a `String`.
 pub fn intrinsics_to_smt(
     intrinsic: &Intrinsic,
     exp_registry: &ExpRegistry,
+    id: &ExpId,
     ir: &IRContext,
+    dependencies: &mut BTreeSet<String>,
+    mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
+    use crate::ir::intrinsics::Intrinsic::*;
+
     match intrinsic {
         // --- Boolean ---
-        Intrinsic::BoolVal(b) => {
+        // `Boolean::from`
+        BoolVal(b) => {
             if *b {
                 "true".to_string()
             } else {
                 "false".to_string()
             }
         }
-        Intrinsic::BoolNot { val } => {
-            let v = expr_to_smt(exp_registry, val, ir);
+        // `Boolean::not`
+        BoolNot { val } => {
+            let v = expr_to_smt(exp_registry, val, ir, dependencies, mapping_vars);
             format!("(not {})", v)
         }
-        Intrinsic::BoolAnd { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Boolean::and`
+        BoolAnd { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(and {} {})", l, r)
         }
-        Intrinsic::BoolOr { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Boolean::or`
+        BoolOr { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(or {} {})", l, r)
         }
-        Intrinsic::BoolXor { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
-            //? is xor implemented in all solvers?
+        // `Boolean::xor`
+        BoolXor { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(or (and (not {}) {}) (and {} (not {})))", l, r, l, r)
         }
-        Intrinsic::BoolImplies { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Boolean::implies`
+        BoolImplies { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(=> {} {})", l, r)
         }
 
         // --- Integer ---
-        Intrinsic::IntVal(i) => {
+        // `Integer::from`
+        IntVal(i) => {
             format!("{}", i)
         }
-        Intrinsic::IntLt { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::lt`
+        IntLt { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(< {} {})", l, r)
         }
-        Intrinsic::IntLe { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::le`
+        IntLe { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(<= {} {})", l, r)
         }
-        Intrinsic::IntGe { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::ge`
+        IntGe { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(>= {} {})", l, r)
         }
-        Intrinsic::IntGt { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::gt`
+        IntGt { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(> {} {})", l, r)
         }
-        Intrinsic::IntAdd { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::add`
+        IntAdd { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(+ {} {})", l, r)
         }
-        Intrinsic::IntSub { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::sub`
+        IntSub { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(- {} {})", l, r)
         }
-        Intrinsic::IntMul { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::mul`
+        IntMul { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("( {} {})", l, r)
         }
-        Intrinsic::IntDiv { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::div` - integer division
+        IntDiv { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(div {} {})", l, r)
         }
-        Intrinsic::IntRem { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Integer::rem` - integer remainder
+        IntRem { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(mod {} {})", l, r)
         }
-
         // --- Rational ---
-        Intrinsic::NumVal(i) => {
+        // `Rational::from`
+        NumVal(i) => {
             format!("(to_real {})", i)
         }
-        Intrinsic::NumLt { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::lt`
+        NumLt { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(< {} {})", l, r)
         }
-        Intrinsic::NumLe { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::le`
+        NumLe { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(<= {} {})", l, r)
         }
-        Intrinsic::NumGe { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::ge`
+        NumGe { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(>= {} {})", l, r)
         }
-        Intrinsic::NumGt { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::gt`
+        NumGt { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(> {} {})", l, r)
         }
-        Intrinsic::NumAdd { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::add`
+        NumAdd { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(+ {} {})", l, r)
         }
-        Intrinsic::NumSub { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::sub`
+        NumSub { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(- {} {})", l, r)
         }
-        Intrinsic::NumMul { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::mul`
+        NumMul { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("( {} {})", l, r)
         }
-        Intrinsic::NumDiv { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        // `Rational::div` - rational division
+        NumDiv { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(/ {} {})", l, r)
         }
-
         // --- Text ---
-        Intrinsic::StrVal(s) => {
+        // `Text::from`
+        StrVal(s) => {
             format!("\"{}\"", s)
         }
-        Intrinsic::StrLt { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
-            // There's no standard "string <" in SMT-LIB
-            format!("(strLT {} {})", l, r)
+        // `Text::lt` - lexicographic string comparison
+        StrLt { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
+            format!("(simplify (str.< {} {}))", l, r) // simplify is needed for Z3 otherwise unsupported error
         }
-        Intrinsic::StrLe { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
-            format!("(strLE {} {})", l, r)
+        // `Text::le`
+        StrLe { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
+            format!("(simplify (str.<= {} {}))", l, r)
         }
-        Intrinsic::StrGe { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
-            format!("(strGE {} {})", l, r)
+        // `Text::ge`
+        StrGe { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
+            format!("(simplify (str.<= {} {}))", r, l)
         }
-        Intrinsic::StrGt { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
-            format!("(strGT {} {})", l, r)
+        // `Text::gt`
+        StrGt { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
+            format!("(simplify (str.< {} {}))", r, l)
         }
-
         // --- Cloak (box) ---
-        Intrinsic::BoxShield { t, val } => {
-            // Custom function:
-            let s = expr_to_smt(exp_registry, val, ir);
-            panic!("BoxShield not implemented yet, please use a custom function",);
+        // `Cloak::shield`
+        BoxShield { t, val } => {
+            let v = expr_to_smt(exp_registry, val, ir, dependencies, mapping_vars);
+            dependencies.insert(format!("(declare-sort Cloak 1) ; Cloak<T>"));
+            dependencies.insert(format!("(declare-fun shield ({}) (Cloak {}))", t, t));
+            dependencies.insert(format!("(declare-fun reveal ((Cloak {})) {})", t, t));
+            dependencies.insert(format!("(assert (forall ((x (Cloak {}))) (= (shield (reveal x)) x))) ; shield(reveal(x)) = x", t));
+            dependencies.insert(format!(
+                "(assert (forall ((x {})) (= (reveal (shield x)) x))) ; reveal(shield(x)) = x",
+                t
+            ));
+            format!("(shield {})", v) // shield(x) - needs to be the same function as in the assert
         }
-        Intrinsic::BoxReveal { t: _, val } => {
-            let r = expr_to_smt(exp_registry, val, ir);
-            panic!("BoxReveal not implemented yet, please use a custom function",);
+        // `Cloak::reveal`
+        BoxReveal { t, val } => {
+            let v = expr_to_smt(exp_registry, val, ir, dependencies, mapping_vars);
+            dependencies.insert(format!("(declare-sort Cloak 1) ; Cloak<T>"));
+            dependencies.insert(format!("(declare-fun shield ({}) (Cloak {}))", t, t));
+            dependencies.insert(format!("(declare-fun reveal ((Cloak {})) {})", t, t));
+            dependencies.insert(format!("(assert (forall ((x (Cloak {}))) (= (shield (reveal x)) x))) ; shield(reveal(x)) = x", t));
+            dependencies.insert(format!(
+                "(assert (forall ((x {})) (= (reveal (shield x)) x))) ; reveal(shield(x)) = x",
+                t
+            ));
+            format!("(reveal {})", v) // reveal(x) - needs to be the same function as in the assert
         }
-
         // --- Sequence ---
-        Intrinsic::SeqEmpty { t } => {
-            format!("(declare-const {}_{} (Seq {}))", "seq_empty", t, t)
+        // `Seq::empty` - (declare-const <name> (Seq <type>))
+        SeqEmpty { t } => {
+            for (varid, var) in exp_registry.vars.iter() {
+                if let VarKind::Bound { bind: expid } = var.kind {
+                    if id == &expid {
+                        // because the asssertions go on the top level, there might be the case where variables with the same names are defined in different functions (for example let a = Seq::new())
+                        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                        dependencies.insert(format!("(declare-const seq_{} (Seq {}))", id, t));
+                        dependencies.insert(format!(
+                            "(assert (= seq_{} (as seq.empty (Seq {})))) ; seq.empty",
+                            id, t
+                        ));
+                        mapping_vars.insert(*varid, format!("seq_{}", id));
+                        break;
+                    }
+                }
+            }
+            format!("")
         }
-        Intrinsic::SeqLength { t: _, seq } => {
-            let s = expr_to_smt(exp_registry, seq, ir);
-            format!("(seqLength {})", s)
+        // `Seq::length`
+        SeqLength { t: _, seq } => {
+            let s = expr_to_smt(exp_registry, seq, ir, dependencies, mapping_vars);
+            format!("(seq.len {})", s)
         }
-        Intrinsic::SeqAppend { t: _, seq, item } => {
-            let s = expr_to_smt(exp_registry, seq, ir);
-            let i = expr_to_smt(exp_registry, item, ir);
-            format!("(seqAppend {} {})", s, i)
+        // `Seq::append`
+        SeqAppend { t: _, seq, item } => {
+            let s = expr_to_smt(exp_registry, seq, ir, dependencies, mapping_vars);
+            let i = expr_to_smt(exp_registry, item, ir, dependencies, mapping_vars);
+            format!("(seq.++ {} (seq.unit {}))", s, i)
         }
-        Intrinsic::SeqAt { t: _, seq, idx } => {
-            let s = expr_to_smt(exp_registry, seq, ir);
-            let i = expr_to_smt(exp_registry, idx, ir);
-            format!("(seqAt {} {})", s, i)
+        // `Seq::at_unchecked`
+        SeqAt { t: _, seq, idx } => {
+            let s = expr_to_smt(exp_registry, seq, ir, dependencies, mapping_vars);
+            let i = expr_to_smt(exp_registry, idx, ir, dependencies, mapping_vars);
+            dependencies.insert(format!(
+                "(assert (and (<= 0 {}) (< {} (seq.len {}))))",
+                i, i, s
+            ));
+            format!("(seq.nth {} {})", s, i)
         }
-        Intrinsic::SeqIncludes { t: _, seq, item } => {
-            let s = expr_to_smt(exp_registry, seq, ir);
-            let i = expr_to_smt(exp_registry, item, ir);
-            format!("(seqIncludes {} {})", s, i)
+        // `Seq::includes`
+        SeqIncludes { t: _, seq, item } => {
+            let s = expr_to_smt(exp_registry, seq, ir, dependencies, mapping_vars);
+            let i = expr_to_smt(exp_registry, item, ir, dependencies, mapping_vars);
+            format!("(seq.contains {} (seq.unit {}))", s, i)
         }
-
         // --- Set ---
-        Intrinsic::SetEmpty { t: _ } => "(setEmpty)".to_string(),
-        Intrinsic::SetLength { t: _, set } => {
-            let s = expr_to_smt(exp_registry, set, ir);
-            format!("(setLength {})", s)
+        // `Set::empty` - The type constructor (Set T) is a macro for (Array T Bool).
+        SetEmpty { t } => {
+            for (varid, var) in exp_registry.vars.iter() {
+                if let VarKind::Bound { bind: expid } = var.kind {
+                    if id == &expid {
+                        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                        dependencies.insert(format!("(declare-const set_{} (Set {}))", id, t));
+                        dependencies.insert(format!(
+                            "(assert (forall ((x {})) (= (select set_{} x) false))) ; set.empty",
+                            t, id
+                        ));
+                        mapping_vars.insert(*varid, format!("set_{}", id));
+                        // sets do not have a length in SMT-LIB, so we need a function
+                        dependencies.insert(format!("(declare-fun len ((Set {})) Int)", t));
+                        dependencies.insert(format!(
+                            "(assert (= (len set_{}) 0)) ; length of empty set is 0",
+                            id
+                        ));
+                        break;
+                    }
+                }
+            }
+            format!("")
         }
-        Intrinsic::SetInsert { t: _, set, item } => {
-            let s = expr_to_smt(exp_registry, set, ir);
-            let i = expr_to_smt(exp_registry, item, ir);
-            format!("(setInsert {} {})", s, i)
+        // `Set::length`
+        SetLength { t, set } => {
+            let s = expr_to_smt(exp_registry, set, ir, dependencies, mapping_vars);
+            // the definition should already be made but just to be sure
+            dependencies.insert(format!("(declare-fun len ((Set {})) Int)", t));
+            format!("(len {})", s)
         }
-        Intrinsic::SetRemove { t: _, set, item } => {
-            let s = expr_to_smt(exp_registry, set, ir);
-            let i = expr_to_smt(exp_registry, item, ir);
-            format!("(setRemove {} {})", s, i)
+        SetInsert { t: _, set, item } => {
+            let s = expr_to_smt(exp_registry, set, ir, dependencies, mapping_vars);
+            let i = expr_to_smt(exp_registry, item, ir, dependencies, mapping_vars);
+            format!("(store {} {} true)", s, i)
         }
-        Intrinsic::SetContains { t: _, set, item } => {
-            let s = expr_to_smt(exp_registry, set, ir);
-            let i = expr_to_smt(exp_registry, item, ir);
-            format!("(setContains {} {})", s, i)
+        SetRemove { t: _, set, item } => {
+            let s = expr_to_smt(exp_registry, set, ir, dependencies, mapping_vars);
+            let i = expr_to_smt(exp_registry, item, ir, dependencies, mapping_vars);
+            format!("(store {} {} false)", s, i)
         }
-
+        SetContains { t: _, set, item } => {
+            let s = expr_to_smt(exp_registry, set, ir, dependencies, mapping_vars);
+            let i = expr_to_smt(exp_registry, item, ir, dependencies, mapping_vars);
+            format!("select {} {}", s, i)
+        }
         // --- Map ---
-        Intrinsic::MapEmpty { k: _, v: _ } => "(mapEmpty)".to_string(),
-        Intrinsic::MapLength { k: _, v: _, map } => {
-            let m = expr_to_smt(exp_registry, map, ir);
-            format!("(mapLength {})", m)
+        MapEmpty { k, v } => {
+            for (varid, var) in exp_registry.vars.iter() {
+                if let VarKind::Bound { bind: expid } = var.kind {
+                    if id == &expid {
+                        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                        dependencies
+                            .insert(format!("(declare-const map_{} (Array {} {}))", id, k, v));
+                        dependencies.insert(sort_not_present(v, ir));
+                        dependencies.insert(format!(
+                            "(assert (forall ((x {})) (= (select map_{} x) not_present_{}))) ; array.empty",
+                            k,
+                            id,
+                            v
+                        ));
+                        mapping_vars.insert(*varid, format!("map_{}", id));
+                        // sets do not have a length in SMT-LIB, so we need a function
+                        dependencies
+                            .insert(format!("(declare-fun len_map ((Array {} {})) Int)", k, v));
+                        dependencies.insert(format!(
+                            "(assert (= (len_map map_{}) 0)) ; length of empty map is 0",
+                            id
+                        ));
+                        break;
+                    }
+                }
+            }
+            format!("")
         }
-        Intrinsic::MapPut {
+        MapLength { k, v, map } => {
+            let s = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
+            // the definition should already be made but just to be sure
+            dependencies.insert(format!("(declare-fun len_map ((Array {} {})) Int)", k, v));
+            format!("(len_map {})", s)
+        }
+        MapPut {
             k: _,
             v: _,
             map,
             key,
             val,
         } => {
-            let m = expr_to_smt(exp_registry, map, ir);
-            let k = expr_to_smt(exp_registry, key, ir);
-            let v = expr_to_smt(exp_registry, val, ir);
-            format!("(mapPut {} {} {})", m, k, v)
+            let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
+            let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
+            let v = expr_to_smt(exp_registry, val, ir, dependencies, mapping_vars);
+            format!("(store {} {} {})", m, k, v)
         }
-        Intrinsic::MapGet {
+        MapGet {
             k: _,
             v: _,
             map,
             key,
         } => {
-            let m = expr_to_smt(exp_registry, map, ir);
-            let k = expr_to_smt(exp_registry, key, ir);
-            format!("(mapGet {} {})", m, k)
+            let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
+            let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
+            format!("(select {} {})", m, k)
         }
-        Intrinsic::MapDel {
+        MapDel { k: _, v, map, key } => {
+            let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
+            let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
+            format!("(store {} {} not_present_{})", m, k, v)
+        }
+        MapContainsKey {
             k: _,
             v: _,
             map,
             key,
         } => {
-            let m = expr_to_smt(exp_registry, map, ir);
-            let k = expr_to_smt(exp_registry, key, ir);
-            format!("(mapDel {} {})", m, k)
+            let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
+            let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
+            format!("(select {} {})", m, k)
         }
-        Intrinsic::MapContainsKey {
-            k: _,
-            v: _,
-            map,
-            key,
-        } => {
-            let m = expr_to_smt(exp_registry, map, ir);
-            let k = expr_to_smt(exp_registry, key, ir);
-            format!("(mapContainsKey {} {})", m, k)
-        }
-
         // --- Error ---
-        Intrinsic::ErrFresh => {
-            // Something custom, e.g. a fresh error symbol
-            "(errFresh)".to_string()
+        ErrFresh => {
+            format!("(error \"something went wrong in error fresh\")")
         }
-        Intrinsic::ErrMerge { lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
-            format!("(errMerge {} {})", l, r)
+        ErrMerge { lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
+            format!(
+                "(error \"something went wrong in error merge between {} {}\")",
+                l, r
+            )
         }
-
         // --- Generic eq/ne ---
-        Intrinsic::SmtEq { t: _, lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
+        SmtEq { t: _, lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
             format!("(= {} {})", l, r)
         }
-        Intrinsic::SmtNe { t: _, lhs, rhs } => {
-            let l = expr_to_smt(exp_registry, lhs, ir);
-            let r = expr_to_smt(exp_registry, rhs, ir);
-            // (distinct ...) is a common way to express != in SMT
+        SmtNe { t: _, lhs, rhs } => {
+            let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
+            let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
+            // (distinct ...) is equivalent to != in SMT but distinct can have more than two args
+            // distinct a b c means that all three are mutually different
             format!("(distinct {} {})", l, r)
         }
     }

@@ -11,7 +11,7 @@ use crate::parser::path::ADTBranch;
 use crate::parser::ty::TypeTag;
 use std::collections::BTreeMap;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 /// The origin of a variable
 pub enum VarKind {
     /// function parameter (x in fn f(x: i32) -> i32 { x + 1 })
@@ -44,7 +44,7 @@ pub struct Variable {
     pub sort: Sort, // the type of the variable (in the Intermediate Representation a type is represented by a Sort)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 /// Denotes how a variable gets match-bounded
 pub enum EnumSelector {
     Tuple(usize),
@@ -59,7 +59,7 @@ pub enum VariantCtor {
     Record(BTreeMap<String, ExpId>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Denotes how to destruct an enum variant and bind variables
 pub enum VariantDtor {
     Unit,
@@ -67,7 +67,7 @@ pub enum VariantDtor {
     Record(BTreeMap<String, Option<VarId>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// One atom in the match case to unpack
 pub struct MatchAtom {
     pub head: ExpId,
@@ -76,7 +76,7 @@ pub struct MatchAtom {
     pub variant: VariantDtor,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// One match case
 pub struct MatchCase {
     pub atoms: Vec<MatchAtom>,

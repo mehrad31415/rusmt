@@ -34,6 +34,14 @@ impl BackendZ3 for BackendZ3CHC {
             x,
             "(set-option :produce-models true) ; enable model generation"
         );
+        l!(
+            x,
+            "(set-option :smt.string_solver z3str3) ; set the string solver to be the z3str3 solver"
+        );
+        l!(
+            x,
+            "(set-option :smt.string_solver seq)    ; set the string solver to be the seq solver (default)"
+        );
         l!(x, "(set-logic ALL)");
         l!(x); // add new line
 

@@ -1,8 +1,8 @@
 //! This module contains the conversion functions for converting Rusmart types to SMT-LIB types
 
+use crate::backend::z3::ty::tyuse_in_smt;
 use crate::ir::sort::Sort;
 use crate::IRContext;
-use crate::backend::z3::ty::tyuse_in_smt;
 
 /// Converts a Rust `Sort` into the corresponding SMT-LIB sort as a `String`
 pub fn sort_to_smt(s: &Sort, ir: &IRContext) -> String {
@@ -24,4 +24,9 @@ pub fn sort_to_smt(s: &Sort, ir: &IRContext) -> String {
         Sort::User(usr_sort_id) => tyuse_in_smt(*usr_sort_id, ir),
         Sort::Uninterpreted(name) => format!("{}", name),
     }
+}
+
+/// This function gives the value no present for sorts
+pub fn sort_not_present(s: &Sort, ir: &IRContext) -> String {
+    format!("(declare-const not_present_{} {})", s, sort_to_smt(s, ir))
 }

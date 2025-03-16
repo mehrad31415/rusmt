@@ -180,7 +180,7 @@ pub fn expr_to_smt_inner(
                 
             }
             format!(
-                "ite ({}) ({}) ({})",
+                "(ite {} {} {})",
                 cond_smt,
                 body_smt,
                 expr_to_smt_inner(
@@ -206,7 +206,7 @@ pub fn expr_to_smt_inner(
             let cond_smt = expr_to_smt(exp_registry, &cond, ir, dependencies, mapping_vars);
             let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
             let default = expr_to_smt(exp_registry, default, ir, dependencies, mapping_vars);
-            format!("ite ({}) ({}) ({})", cond_smt, body_smt, default)
+            format!("(ite {} {} {})", cond_smt, body_smt, default)
         }
         Expression::Intrinsic(intrinsic) => {
             intrinsics_to_smt(intrinsic, exp_registry, id, ir, dependencies, mapping_vars)

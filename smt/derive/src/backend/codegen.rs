@@ -61,11 +61,11 @@ impl ContentBuilder {
     ///     b.line("println!(\"Inside scope\");");
     /// });
     /// builder.line("}");
-    pub fn scope<F: Fn(&mut Self)>(&mut self, f: F) {
-        self.indent += 1;
-        f(self);
-        self.indent -= 1;
-    }
+    // pub fn scope<F: Fn(&mut Self)>(&mut self, f: F) {
+    //     self.indent += 1;
+    //     f(self);
+    //     self.indent -= 1;
+    // }
 
     /// Consumes this builder, returning the final accumulated string of code.
     pub fn build(self) -> String {

@@ -139,9 +139,18 @@ pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
                 panic!("backend execution crashed with status {}", e);
             }
             match output.trim() {
-                "unknown" => Response::Unknown,
-                "sat" => Response::Sat,
-                "unsat" => Response::Unsat,
+                "unknown" => {
+                    println!("solver z3 cannot define whether the specification matches the implementation");
+                    Response::Unknown
+                }
+                "sat" => {
+                    println!("the specification correctly defines the implementation");
+                    Response::Sat
+                }
+                "unsat" => {
+                    println!("the specification does not correctly define the implementation");
+                    Response::Unsat
+                }
                 other => panic!("invalid response: {}", other),
             }
         }

@@ -1,10 +1,17 @@
+use std::collections::BTreeSet;
+
 use crate::backend::codegen::{l, ContentBuilder};
 use crate::backend::error::BackendResult;
 use crate::backend::z3::axiom::axiom_in_smt;
 use crate::backend::z3::common::BackendZ3;
 use crate::backend::z3::fun::fundef_in_smt;
+use crate::backend::z3::sort::sort_to_smt;
 use crate::backend::z3::ty::tydef_in_smt;
+use crate::ir::name::UsrFunName;
+use crate::parser::name::UsrFuncName;
 use crate::IRContext;
+use proc_macro2::Ident;
+use proc_macro2::Span;
 
 /// BackendZ3CHC is a backend designed for Z3's CHC (Constrained Horn Clause) engine.
 pub struct BackendZ3CHC {}
@@ -89,9 +96,108 @@ impl BackendZ3 for BackendZ3CHC {
             x,
             "; Prove the equivalence of the operational and denotational semantics:"
         );
+        let impl_name = ir.desc.split_once(" ~> ").expect("Invalid description").0;
+        let impl_name = Ident::new(impl_name, Span::call_site());
+        let spec_name = ir.desc.split_once(" ~> ").expect("Invalid description").1;
+        let spec_name = Ident::new(spec_name, Span::call_site());
 
-        // first parse the description to get the name of the functions:
+        // get the signature of the impl
+        let impl_id = ir
+            .fn_registry
+            .lookup
+            .get(&UsrFunName::from(
+                UsrFuncName::try_from(&impl_name).expect("impl name invalid"),
+            ))
+            .expect("Function not found")
+            .first_key_value()
+            .expect("Function not found")
+            .1;
+        let spec_id = ir
+            .fn_registry
+            .lookup
+            .get(&UsrFunName::from(
+                UsrFuncName::try_from(&spec_name).expect("spec name invalid"),
+            ))
+            .expect("Function not found")
+            .first_key_value()
+            .expect("Function not found")
+            .1;
 
+        let impl_sig = ir.fn_registry.retrieve_sig(*impl_id);
+        let spec_sig = ir.fn_registry.retrieve_sig(*spec_id);
+
+        let impl_syms = impl_sig
+            .params
+            .iter()
+            .map(|(sym, _)| sym.clone())
+            .collect::<BTreeSet<_>>();
+        let spec_syms = spec_sig
+            .params
+            .iter()
+            .map(|(sym, _)| sym.clone())
+            .collect::<BTreeSet<_>>();
+
+        let set1 = impl_sig
+            .params
+            .iter()
+            .map(|(sym, sort)| format!("{} {}", sym, sort_to_smt(sort, ir)))
+            .collect::<BTreeSet<_>>();
+        let set2 = spec_sig
+            .params
+            .iter()
+            .map(|(sym, sort)| format!("{} {}", sym, sort_to_smt(sort, ir)))
+            .collect::<BTreeSet<_>>();
+        let all_sym_sort = set1.union(&set2).clone().collect::<BTreeSet<_>>();
+
+        // forall (lhs Point) (rhs Point) (= (add_spec lhs rhs) (add lhs rhs))
+        l!(
+            x,
+            "; (assert (forall ({}) (= ({} {}) ({} {}))))",
+            all_sym_sort
+                .iter()
+                .map(|s| format!("({})", s.as_str()))
+                .collect::<Vec<_>>()
+                .join(" "),
+            impl_name,
+            impl_syms
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+            spec_name,
+            spec_syms
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+
+        // (declare-var lhs Point) (declare-var rhs Point)
+        for s in all_sym_sort {
+            l!(x, "(declare-const {})", s)
+        }
+
+        // (assert (!= (add_spec lhs rhs) (add lhs rhs)))
+        l!(
+            x,
+            "(assert (not (= ({} {}) ({} {}))))",
+            impl_name,
+            impl_syms
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+            spec_name,
+            spec_syms
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+        l!(x); // add new line
+
+        // check for satisfiability
+        l!(x, "(check-sat)");
         // exit
         l!(x, "(exit)");
         // done

@@ -267,7 +267,7 @@ macro_rules! map {
 /// * `_cmp` - Compare two values of the same type
 /// * `eq` - Check if two values of the same type are equal
 /// * `ne` - Check if two values of the same type are not equal
-/// 
+///
 /// These methods are automatically provided by the Ord, Eq, PartialEq, and PartialOrd (super) traits.
 ///
 /// The first method does not have a default implementation and must be implemented by the type.
@@ -304,14 +304,13 @@ pub trait SMT: 'static + Copy + Default + Hash + Send + Sync {
 /// ** 1) SMT boolean: A wrapper around the Rust boolean type
 ///
 /// This type implements the SMT trait.
-/// This SMT type implements the PartialEq and Eq traits to allow equality comparison for assertions.
 /// The debug trait is implemented to allow for printing the assertion results.
 /// This SMT type must implement the Copy, Hash, and Default traits as the supertraits of the SMT trait.
 /// The Send and Sync are automatically implemented for the SMT boolean type.
 /// The Clone trait is implemented because it is required by the Copy trait.
 /// The Deref trait is implemented to allow for dereferencing the inner boolean value.
 /// The From trait is implemented to allow for converting a Rust boolean value to the SMT boolean type.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Boolean {
     inner: bool,
 }
@@ -374,7 +373,7 @@ impl Boolean {
 /// For example, we can write a.lt(b) or Integer::lt(a,b) to check if a is less than b.
 // The Nums trait is implemented for the Integer type to allow for the conversion of Integer values to Rational values.
 // The implementation for Integer has been added for the comparison between Rationals and Integers.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Integer {
     inner: Intern<BigInt>,
 }
@@ -411,7 +410,7 @@ order_operator!(Integer, lt, le, ge, gt);
 // }
 
 /// ** 3) Arbitrary precision rational number (SMT rational)
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Rational {
     inner: Intern<BigRational>,
 }
@@ -465,7 +464,7 @@ impl From<f64> for Rational {
 /// ** 4) SMT string
 /// The String inside the interns are compared in a lexicographical order when calling the cmp method.
 /// For example, "a" < "b" and "aa" < "ab" and "a" < "aa" etc.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Text {
     inner: Intern<String>,
 }
@@ -492,7 +491,7 @@ order_operator!(Text, lt, le, ge, gt);
 /// let a = Error::fresh(); // a is of type Error with an inner value of 1
 /// let b = Error::fresh(); // b is of type Error with an inner value of 2
 /// let c = a.merge(b); // c is of type Error with an inner value of 1, 2
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Error {
     inner: Intern<BTreeSet<usize>>,
 }
@@ -573,7 +572,7 @@ impl<T: SMT> Ord for SMTWrap<T> {
 /// ** 6) `Cloak` is used to prevent cyclic dependencies in Abstract Data Types (ADTs).
 /// Cyclic dependencies lead to issues like infinite recursion (stack overflow) or memory leaks.
 /// They act as a wrapper around the SMT type T.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Cloak<T: SMT> {
     inner: Intern<SMTWrap<T>>,
 }
@@ -594,7 +593,7 @@ impl<T: SMT> Cloak<T> {
 
 /// ** 7) SMT sequence
 /// This is a sequence (list) of SMT values of type T where T is a type that implements the SMT trait.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Seq<T: SMT> {
     inner: Intern<Vec<SMTWrap<T>>>,
 }
@@ -666,7 +665,7 @@ impl<T: SMT> Seq<T> {
 /// ** 8) SMT set
 /// This is a set of SMT values of type T where T is a type that implements the SMT trait.
 /// The methods defined in the SMT Set type correspond to the operations performed on a set data structure.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Set<T: SMT> {
     inner: Intern<BTreeSet<SMTWrap<T>>>,
 }
@@ -735,7 +734,7 @@ impl<T: SMT> Set<T> {
 
 /// ** 9) SMT array
 /// This is an array of key type K and value type V where K and V are types that implement the SMT trait.
-#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Map<K: SMT, V: SMT> {
     inner: Intern<BTreeMap<SMTWrap<K>, SMTWrap<V>>>,
 }
@@ -831,19 +830,19 @@ mod test {
         let num2 = Integer::from(2);
 
         let res = num1.add(num2);
-        assert_eq!(res, Integer::from(9)); // 7 + 2 = 9
+        assert!(*res.eq(Integer::from(9))); // 7 + 2 = 9
 
         let res = num1.div(num2);
-        assert_eq!(res, Integer::from(3)); // 7 / 2 = 3
+        assert!(*res.eq(Integer::from(3))); // 7 / 2 = 3
 
         let res = num1.mul(num2);
-        assert_eq!(res, Integer::from(14)); // 7 * 2 = 14
+        assert!(*res.eq(Integer::from(14))); // 7 * 2 = 14
 
         let res = num1.rem(num2);
-        assert_eq!(res, Integer::from(1)); // 7 % 2 = 1
+        assert!(*res.eq(Integer::from(1))); // 7 % 2 = 1
 
         let res = num1.sub(num2);
-        assert_eq!(res, Integer::from(5)); // 7 - 2 = 5
+        assert!(*res.eq(Integer::from(5))); // 7 - 2 = 5
     }
 
     #[test]
@@ -854,16 +853,16 @@ mod test {
         let num2 = Rational::from(2);
 
         let res = num1.add(num2);
-        assert_eq!(res, Rational::from(9.5)); // 7.5 + 2 = 9.5
+        assert!(*res.eq(Rational::from(9.5))); // 7.5 + 2 = 9.5
 
         let res = num1.div(num2);
-        assert_eq!(res, Rational::from(3.75)); // 7.5 / 2 = 3.75
+        assert!(*res.eq(Rational::from(3.75))); // 7.5 / 2 = 3.75
 
         let res = num1.mul(num2);
-        assert_eq!(res, Rational::from(15)); // 7.5 * 2 = 15
+        assert!(*res.eq(Rational::from(15))); // 7.5 * 2 = 15
 
         let res = num1.sub(num2);
-        assert_eq!(res, Rational::from(5.5)); // 7.5 - 2 = 5.5
+        assert!(*res.eq(Rational::from(5.5))); // 7.5 - 2 = 5.5
     }
 
     #[test]
@@ -1002,10 +1001,10 @@ mod test {
         let res3 = var1.ge(var2); // 1 >= 3 (false)
         let res4 = Integer::from(3).gt(Integer::from(1).add(Integer::from(1))); // 3 > 1 + 1
 
-        assert_eq!(res1, Boolean::from(true));
-        assert_eq!(res2, Boolean::from(true));
-        assert_eq!(res3, false.into());
-        assert_eq!(res4, true.into());
+        assert!(*res1);
+        assert!(*res2);
+        assert!(!*res3);
+        assert!(*res4);
     }
 
     #[test]
@@ -1018,8 +1017,8 @@ mod test {
         let res1 = var1.lt(var2); // 1.5 < 3
         let res2 = var1.le(var2); // 1.5 <= 3
 
-        assert_eq!(res1, Boolean::from(true));
-        assert_eq!(res2, Boolean::from(true));
+        assert!(*res1);
+        assert!(*res2);
     }
 
     #[test]
@@ -1034,9 +1033,9 @@ mod test {
         let res2 = var1.le(var2); // "1.5" <= "9a"
         let res3 = var3.gt(var2); // "apple" > "9a"
 
-        assert_eq!(res1, Boolean::from(true));
-        assert_eq!(res2, Boolean::from(true));
-        assert_eq!(res3, Boolean::from(true));
+        assert!(*res1);
+        assert!(*res2);
+        assert!(*res3);
     }
 
     #[test]
@@ -1061,7 +1060,9 @@ mod test {
         let f = Rational::from(1isize);
         let g = Rational::from(1f32);
 
-        assert!(a == b && b == c && c == d && d == e && e == f && f == g);
+        assert!(*a
+            .eq(b)
+            .and(b.eq(c).and(c.eq(d).and(d.eq(e).and(e.eq(f).and(f.eq(g)))))));
     }
 
     #[test]
@@ -1095,8 +1096,8 @@ mod test {
         let var2 = Cloak::shield(Integer::from(3));
         let var3 = Cloak::shield(Integer::from(0));
 
-        assert_eq!(var1, var2); // 3 == 3
-        assert_ne!(var1, var3); // 3 != 0
+        assert!(*var1.eq(var2)); // 3 == 3
+        assert!(*var1.ne(var3)); // 3 != 0
     }
 
     /// This tests the seq! macro
@@ -1109,7 +1110,7 @@ mod test {
         var2 = var2.append(Integer::from(1));
         var2 = var2.append(Integer::from(0));
 
-        assert_eq!(var1, var2); // [1, 0] == [1, 0]
+        assert!(*var1.eq(var2)); // [1, 0] == [1, 0]
     }
 
     /// This tests the set! macro
@@ -1121,7 +1122,7 @@ mod test {
         var2 = var2.insert(Integer::from(0));
         var2 = var2.insert(Integer::from(1));
 
-        assert_eq!(var1, var2); // {0, 1} == {0, 1}
+        assert!(*var1.eq(var2)); // {0, 1} == {0, 1}
     }
 
     /// This tests the map! macro
@@ -1136,7 +1137,7 @@ mod test {
         var2 = var2.put_unchecked(Integer::from(1), Text::from("Value 1"));
         var2 = var2.put_unchecked(Integer::from(2), Text::from("Value 2"));
 
-        assert_eq!(var1, var2); // {1: "Value 1", 2: "Value 2"} == {1: "Value 1", 2: "Value 2"}
+        assert!(*var1.eq(var2)); // {1: "Value 1", 2: "Value 2"} == {1: "Value 1", 2: "Value 2"}
     }
 
     /// testing the three methods (_cmp, eq, ne) of the SMT trait
@@ -1146,8 +1147,8 @@ mod test {
         let var2 = Integer::from(3);
 
         assert!(var1._cmp(var2) == Ordering::Less);
-        assert!(var1.eq(var2) == false.into());
-        assert!(var1.ne(var2) == true.into());
+        assert!(*Boolean::not(var1.eq(var2))); // equivalent to *var1.ne(var2) or !*var1.eq(var2)
+        assert!(*var1.ne(var2));
     }
 
     #[test]
@@ -1156,11 +1157,11 @@ mod test {
         let mut var2 = Text::from("b");
 
         assert!(var1._cmp(var2) == Ordering::Less);
-        assert!(var1.eq(var2) == false.into());
-        assert!(var1.ne(var2) == true.into());
+        assert!(!*var1.eq(var2));
+        assert!(*var1.ne(var2));
 
         var2 = var1; // after this var1 and var2 should be equal
-        assert!(var1.eq(var2) == true.into());
+        assert!(*var1.eq(var2));
     }
 
     /// testing the deref function of boolean
@@ -1175,7 +1176,7 @@ mod test {
     fn test_from_boolean() {
         let var1 = Boolean::from(false);
 
-        assert_eq!(var1, Boolean { inner: false });
+        assert!(!*var1);
     }
     /// testing the boolean operators
     #[test]
@@ -1236,7 +1237,7 @@ mod test {
 
     //     // If this passes, var2 is of type Rational
     //     let _: Rational = var2;
-    //     assert_eq!(var1.eq(var2), true.into()); // 1 == 1
+    //     assert!(*var1.eq(var2), true.into()); // 1 == 1
     // }
 
     /// testing the cmp method for comparison between rationals and integers
@@ -1247,10 +1248,10 @@ mod test {
     //     let var3 = Rational::from(1);
     //     let var4 = Rational::from(0.8);
 
-    //     assert_eq!(var1._cmp(var1), Ordering::Equal); // 1 == 1
-    //     assert_eq!(var1._cmp(var2), Ordering::Less); // 1 < 1.2
-    //     assert_eq!(var3._cmp(var1), Ordering::Equal); // 1 == 1
-    //     assert_eq!(var1._cmp(var4), Ordering::Greater); // 1 > 0.8
+    //     assert!(*var1._cmp(var1), Ordering::Equal); // 1 == 1
+    //     assert!(*var1._cmp(var2), Ordering::Less); // 1 < 1.2
+    //     assert!(*var3._cmp(var1), Ordering::Equal); // 1 == 1
+    //     assert!(*var1._cmp(var4), Ordering::Greater); // 1 > 0.8
     // }
     /// testing the eq method for integers and rational
     // #[test]
@@ -1260,10 +1261,10 @@ mod test {
     //     let var3 = Rational::from(1);
     //     let var4 = Rational::from(0.8);
 
-    //     assert_eq!(var1.eq(var1), true.into()); // 1 == 1
-    //     assert_eq!(var1.eq(var2), false.into()); // 1 != 1.2
-    //     assert_eq!(var3.eq(var1), true.into()); // 1 == 1
-    //     assert_eq!(var1.eq(var4), false.into()); // 1 != 0.8
+    //     assert!(*var1.eq(var1), true.into()); // 1 == 1
+    //     assert!(*var1.eq(var2), false.into()); // 1 != 1.2
+    //     assert!(*var3.eq(var1), true.into()); // 1 == 1
+    //     assert!(*var1.eq(var4), false.into()); // 1 != 0.8
     // }
 
     /// testing the ne method for integers and rational
@@ -1274,10 +1275,10 @@ mod test {
     //     let var3 = Rational::from(1);
     //     let var4 = Rational::from(0.8);
 
-    //     assert_eq!(var1.ne(var1), false.into()); // 1 == 1
-    //     assert_eq!(var1.ne(var2), true.into()); // 1 != 1.2
-    //     assert_eq!(var3.ne(var1), false.into()); // 1 == 1
-    //     assert_eq!(var4.ne(var1), true.into()); // 1 != 0.8
+    //     assert!(*var1.ne(var1), false.into()); // 1 == 1
+    //     assert!(*var1.ne(var2), true.into()); // 1 != 1.2
+    //     assert!(*var3.ne(var1), false.into()); // 1 == 1
+    //     assert!(*var4.ne(var1), true.into()); // 1 != 0.8
     // }
 
     /// testing the from method of Rational
@@ -1286,22 +1287,16 @@ mod test {
         let var1 = Rational::from(1.5f32);
         let var2 = Rational::from(1.6f64);
 
-        assert_eq!(
-            var1,
-            Rational {
-                inner: Intern::new(
-                    BigRational::from_float(1.5).expect("Failed to convert float to BigRational")
-                )
-            }
-        );
-        assert_eq!(
-            var2,
-            Rational {
-                inner: Intern::new(
-                    BigRational::from_float(1.6).expect("Failed to convert float to BigRational")
-                )
-            }
-        );
+        assert!(*var1.eq(Rational {
+            inner: Intern::new(
+                BigRational::from_float(1.5).expect("Failed to convert float to BigRational")
+            )
+        }));
+        assert!(*var2.eq(Rational {
+            inner: Intern::new(
+                BigRational::from_float(1.6).expect("Failed to convert float to BigRational")
+            )
+        }));
     }
     /// testing the into_rational method of rational
     // #[test]
@@ -1327,26 +1322,23 @@ mod test {
         let var1 = Rational::from(1);
         let var2 = Rational::from(243.3);
 
-        assert_eq!(var1.eq(var2), false.into());
+        assert!(*var1.eq(var2).eq(false.into())); // equivalent to *var1.ne(var2)
     }
     #[test]
     fn test_ne_rational() {
         let var1 = Rational::from(1);
         let var2 = Rational::from(243.3);
 
-        assert_eq!(var1.ne(var2), true.into());
+        assert!(*var1.ne(var2));
     }
 
     #[test]
     /// testing the from method of Text
     fn test_from_text() {
         let var1 = Text::from("value");
-        assert_eq!(
-            var1,
-            Text {
-                inner: Intern::new(String::from("value"))
-            }
-        );
+        assert!(*var1.eq(Text {
+            inner: Intern::new(String::from("value"))
+        }));
     }
 
     #[test]
@@ -1436,7 +1428,7 @@ mod test {
     fn test_shield_reveal_cloak() {
         let var1 = Cloak::shield(Integer::from(1));
         let var2 = var1.reveal();
-        assert_eq!(var2, 1.into());
+        assert!(*var2.eq(1.into()));
     }
 
     #[test]
@@ -1444,7 +1436,7 @@ mod test {
     /// A new sequence has an initial length of 0
     fn test_new_seq() {
         let seq: Seq<Integer> = Seq::new();
-        assert_eq!(seq.length(), Integer::from(0));
+        assert!(*seq.length().eq(Integer::from(0)));
     }
 
     #[test]
@@ -1454,7 +1446,7 @@ mod test {
         let seq = seq.append(Integer::from(1));
         let seq = seq.append(Integer::from(2));
         let seq = seq.append(Integer::from(1));
-        assert_eq!(seq.length(), Integer::from(3));
+        assert!(*seq.length().eq(Integer::from(3)));
     }
 
     #[test]
@@ -1464,7 +1456,7 @@ mod test {
         let seq = seq.append(Integer::from(1));
         let seq = seq.append(Integer::from(2));
         let seq = seq.append(Integer::from(3));
-        assert_eq!(seq.at_unchecked(Integer::from(1)), Integer::from(2));
+        assert!(*seq.at_unchecked(Integer::from(1)).eq(Integer::from(2)));
     }
 
     #[test]
@@ -1486,8 +1478,8 @@ mod test {
         let seq = seq.append(Integer::from(1));
         let seq = seq.append(Integer::from(2));
         let seq = seq.append(Integer::from(3));
-        assert_eq!(seq.includes(Integer::from(2)), Boolean::from(true));
-        assert_eq!(seq.includes(Integer::from(4)), Boolean::from(false));
+        assert!(*seq.includes(Integer::from(2)));
+        assert!(!*seq.includes(Integer::from(4)));
     }
 
     #[test]
@@ -1497,10 +1489,9 @@ mod test {
         let seq = seq.append(Text::from("one"));
         let seq = seq.append(Text::from("two"));
         let seq = seq.append(Text::from("three"));
-        assert_eq!(
-            seq.iterator(),
-            vec![Integer::from(0), Integer::from(1), Integer::from(2)]
-        );
+        assert!(*seq.iterator()[0].eq(Integer::from(0)));
+        assert!(*seq.iterator()[1].eq(Integer::from(1)));
+        assert!(*seq.iterator()[2].eq(Integer::from(2)));
     }
 
     #[test]
@@ -1508,7 +1499,7 @@ mod test {
     /// The new method is used to create a new empty set.
     fn test_new_set() {
         let set = Set::<Integer>::new();
-        assert_eq!(set.length(), 0.into());
+        assert!(*set.length().eq(0.into()));
     }
 
     #[test]
@@ -1517,7 +1508,7 @@ mod test {
         let set = Set::new();
         let set = set.insert(Integer::from(1));
         let set = set.insert(Integer::from(2));
-        assert_eq!(set.length(), 2.into());
+        assert!(*set.length().eq(2.into()));
     }
 
     #[test]
@@ -1526,7 +1517,7 @@ mod test {
         let set = Set::new();
         let set = set.insert(Integer::from(1));
         let set = set.insert(Integer::from(1));
-        assert_eq!(set.length(), 1.into());
+        assert!(*set.length().eq(1.into()));
     }
 
     #[test]
@@ -1535,9 +1526,9 @@ mod test {
         let set = Set::new();
         let set = set.insert(Integer::from(1));
         let set = set.insert(Integer::from(2));
-        assert_eq!(set.length(), 2.into());
+        assert!(*set.length().eq(2.into()));
         let set = set.remove(Integer::from(1));
-        assert_eq!(set.length(), 1.into());
+        assert!(*set.length().eq(1.into()));
     }
 
     #[test]
@@ -1546,9 +1537,9 @@ mod test {
         let set = Set::new();
         let set = set.insert(Integer::from(1));
         let set = set.insert(Integer::from(2));
-        assert_eq!(set.length(), 2.into());
+        assert!(*set.length().eq(2.into()));
         let set = set.remove(Integer::from(10));
-        assert_eq!(set.length(), 2.into());
+        assert!(*set.length().eq(2.into()));
     }
 
     #[test]
@@ -1557,8 +1548,8 @@ mod test {
         let set = Set::new();
         let set = set.insert(Integer::from(1));
         let set = set.insert(Integer::from(2));
-        assert_eq!(set.contains(Integer::from(1)), true.into());
-        assert_eq!(set.contains(Integer::from(20)), false.into());
+        assert!(*set.contains(Integer::from(1)));
+        assert!(!*set.contains(Integer::from(20)));
     }
 
     #[test]
@@ -1567,9 +1558,9 @@ mod test {
         let set = Set::new();
         let set = set.insert(Integer::from(1));
         let set = set.insert(Integer::from(2));
-        assert_eq!(set.contains(Integer::from(1)), true.into());
+        assert!(*set.contains(Integer::from(1)));
         let set = set.remove(Integer::from(1));
-        assert_eq!(set.contains(Integer::from(1)), false.into());
+        assert!(!*set.contains(Integer::from(1)));
     }
 
     #[test]
@@ -1582,23 +1573,23 @@ mod test {
 
         let iter = set.iterator();
         assert_eq!(iter.len(), 3);
-        assert_eq!(iter[0], Text::from("one"));
-        assert_eq!(iter[1], Text::from("three")); // it is in lexicographical order
-        assert_eq!(iter[2], Text::from("two"));
+        assert!(*iter[0].eq(Text::from("one")));
+        assert!(*iter[1].eq(Text::from("three"))); // it is in lexicographical order
+        assert!(*iter[2].eq(Text::from("two")));
     }
 
     #[test]
     /// A new map is created and the length of the map should be 0
     fn test_map_length() {
         let map: Map<Integer, Integer> = Map::new();
-        assert_eq!(map.length(), 0.into());
+        assert!(*map.length().eq(0.into()));
     }
 
     #[test]
     /// When adding a key-value pair to the map, the length of the map should increase by 1
     fn test_map_put() {
         let map = Map::new().put_unchecked(Integer::from(1), Integer::from(2));
-        assert_eq!(map.length(), 1.into());
+        assert!(*map.length().eq(1.into()));
     }
 
     #[test]
@@ -1606,7 +1597,7 @@ mod test {
     /// and the value should be the same as the one that was added
     fn test_map_get() {
         let map = Map::new().put_unchecked(Integer::from(1), Integer::from(2));
-        assert_eq!(map.get_unchecked(Integer::from(1)), Integer::from(2));
+        assert!(*map.get_unchecked(Integer::from(1)).eq(Integer::from(2)));
     }
 
     #[test]
@@ -1614,16 +1605,16 @@ mod test {
     fn test_map_del() {
         let map = Map::new().put_unchecked(Integer::from(1), Integer::from(2));
         let map = map.del_unchecked(Integer::from(1));
-        assert_eq!(map.length(), 0.into());
+        assert!(*map.length().eq(0.into()));
     }
 
     #[test]
     /// Deleting a key that does not exist in the map should not change the map.
     fn test_map_del_non_existent() {
         let map = Map::new().put_unchecked(Integer::from(1), Integer::from(2));
-        assert_eq!(map.length(), 1.into());
+        assert!(*map.length().eq(1.into()));
         let map = map.del_unchecked(Integer::from(2));
-        assert_eq!(map.length(), 1.into());
+        assert!(*map.length().eq(1.into()));
     }
 
     #[test]
@@ -1639,15 +1630,14 @@ mod test {
     /// a key should only exist if it was added to the map
     fn test_map_contains_key() {
         let map = Map::new().put_unchecked(Integer::from(1), Integer::from(2));
-        assert_eq!(map.contains_key(Integer::from(1)), true.into());
-        assert_eq!(map.contains_key(Integer::from(2)), false.into());
+        assert!(*map.contains_key(Integer::from(1)));
     }
 
     #[test]
     /// getting an iterator over the keys of the map
     fn test_map_iterator() {
         let map = Map::new().put_unchecked(Text::from("one"), Integer::from(1));
-        assert_eq!(map.iterator(), vec![Text::from("one")]);
+        assert!(*map.iterator()[0].eq(Text::from("one")));
     }
 
     #[test]
@@ -1655,7 +1645,7 @@ mod test {
     fn test_default_integer() {
         let var1 = Integer::default();
         let var2 = Integer::from(0);
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
     }
 
     #[test]
@@ -1663,7 +1653,7 @@ mod test {
     fn test_default_boolean() {
         let var1 = Boolean::default();
         let var2 = Boolean::from(false);
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
     }
 
     #[test]
@@ -1671,7 +1661,7 @@ mod test {
     fn test_default_rational() {
         let var1 = Rational::default();
         let var2 = Rational::from(0);
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
     }
 
     #[test]
@@ -1679,7 +1669,7 @@ mod test {
     fn test_default_text() {
         let var1 = Text::default();
         let var2 = Text::from("");
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
     }
 
     #[test]
@@ -1689,7 +1679,7 @@ mod test {
         let var2 = Error {
             inner: Intern::new(BTreeSet::new()),
         };
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
     }
 
     #[test]
@@ -1697,7 +1687,7 @@ mod test {
     fn test_default_cloak() {
         let var1 = Cloak::default();
         let var2 = Cloak::shield(Integer::default());
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
     }
 
     #[test]
@@ -1707,7 +1697,7 @@ mod test {
         let var2 = Seq {
             inner: Intern::new(Vec::new()),
         };
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
         assert!(*var1.is_empty());
     }
 
@@ -1718,7 +1708,7 @@ mod test {
         let var2 = Set {
             inner: Intern::new(BTreeSet::new()),
         };
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
         assert!(*var1.is_empty());
     }
 
@@ -1729,7 +1719,7 @@ mod test {
         let var2 = Map {
             inner: Intern::new(BTreeMap::<SMTWrap<Integer>, SMTWrap<Integer>>::new()),
         };
-        assert_eq!(var1, var2);
+        assert!(*var1.eq(var2));
         assert!(*var1.is_empty());
     }
 }

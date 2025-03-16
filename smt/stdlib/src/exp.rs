@@ -167,8 +167,8 @@ mod test {
 
     #[test]
     fn test_pattern_one_choose() {
-        let v = choose!(|var1: Integer, var2: Integer| Boolean::from(var1.eq(var2)));
-        assert_eq!(v, (Integer::from(0), Integer::from(0)));
+        let (v1, v2) = choose!(|var1: Integer, var2: Integer| Boolean::from(var1.eq(var2)));
+        assert!(*v1.eq(v2).and(v2.eq(Integer::from(0))));
     }
 
     #[test]
@@ -187,8 +187,9 @@ mod test {
         );
         let s = set!(Integer::from(10));
 
-        let v = choose!(var1 in m, var2 in s => var1.lt(var2));
-        assert_eq!(v, (Integer::from(1), Integer::from(10)));
+        let (v1, v2) = choose!(var1 in m, var2 in s => var1.lt(var2));
+        assert!(*v1.eq(Integer::from(1)));
+        assert!(*v2.eq(Integer::from(10)));
     }
 
     #[test]
@@ -213,7 +214,7 @@ mod test {
     fn test_set_min() {
         let s = set!(Integer::from(1), Integer::from(2), Integer::from(3));
         let v = choose!(v in s => forall!(e in s => Boolean::from(v.eq(e)).or(v.lt(e))));
-        assert_eq!(v, Integer::from(1));
+        assert!(*v.eq(Integer::from(1)));
     }
 
     #[test]
@@ -228,6 +229,6 @@ mod test {
             (Integer::from(3), Text::from("three"))
         );
         let v = choose!(v in m => forall!(e in m => Boolean::from(v.eq(e)).or(v.lt(e))));
-        assert_eq!(v, Integer::from(1));
+        assert!(*v.eq(Integer::from(1)));
     }
 }

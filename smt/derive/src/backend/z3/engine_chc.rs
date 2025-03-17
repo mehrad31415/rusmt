@@ -1,13 +1,15 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::backend::codegen::{l, ContentBuilder};
 use crate::backend::error::BackendResult;
 use crate::backend::z3::axiom::axiom_in_smt;
 use crate::backend::z3::common::BackendZ3;
-use crate::backend::z3::fun::fundef_in_smt;
+use crate::backend::z3::fun::{fundef_in_smt, group_dependent_funcs};
 use crate::backend::z3::sort::sort_to_smt;
 use crate::backend::z3::ty::tydef_in_smt;
+use crate::ir::index::UsrFunId;
 use crate::ir::name::{Symbol, UsrFunName};
+use crate::ir::sort::Sort;
 use crate::parser::name::UsrFuncName;
 use crate::IRContext;
 use proc_macro2::Ident;
@@ -70,18 +72,23 @@ impl BackendZ3 for BackendZ3CHC {
             l!(x); // add new line
         }
 
+        // this set is used for mutually recursive functions
+        let mut func_names: BTreeSet<BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>> =
+            BTreeSet::new();
+        for (name, generics_id) in &ir.fn_registry.lookup {
+            for (_, id) in generics_id {
+                let def = ir.fn_registry.retrieve_def(*id);
+                group_dependent_funcs(name.clone(), def, ir, generics_id, &mut func_names);
+            }
+        }
+        // println!("func_names: {:?}", func_names);
         // write the functions
         if !&ir.fn_registry.lookup.is_empty() {
             l!(x, "; Define user functions:");
-            for (name, generics_id) in &ir.fn_registry.lookup {
-                // generics are already registered in undef_sorts
-                for (_generics, id) in generics_id {
-                    let sig = ir.fn_registry.retrieve_sig(*id);
-                    let def = ir.fn_registry.retrieve_def(*id);
-                    l!(x, "{}", fundef_in_smt(name.clone(), sig, def, ir));
-                }
+            for funcs in func_names.iter() {
+                l!(x, "{}", fundef_in_smt(ir, &funcs));
+                l!(x); // add new line
             }
-            l!(x); // add new line
         }
 
         // write the axioms
@@ -233,10 +240,5 @@ pub fn assertion(impl_syms: BTreeSet<Symbol>, spec_syms: BTreeSet<Symbol>) -> St
     let ss = spec_syms.first().expect("impl must have one element");
     let new_impl = impl_syms.iter().skip(1).cloned().collect();
     let new_spec = spec_syms.iter().skip(1).cloned().collect();
-    format!(
-        "(and (= {} {}) {})",
-        is,
-        ss,
-        assertion(new_impl, new_spec)
-    )
+    format!("(and (= {} {}) {})", is, ss, assertion(new_impl, new_spec))
 }

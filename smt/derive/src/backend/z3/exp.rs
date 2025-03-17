@@ -178,7 +178,6 @@ pub fn expr_to_smt_inner(
                     variant,
                 } = atom;
                 let head_smt = expr_to_smt(exp_registry, head, ir, dependencies, mapping_vars);
-                
             }
             format!(
                 "(ite {} {} {})",

@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // counter for unique names in SMT-LIB
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-/// Converts an system default function in Rusmart into the corresponding SMT-LIB as a `String`.
+/// Converts a system default function in Rusmart into the corresponding SMT-LIB as a `String`.
 pub fn intrinsics_to_smt(
     intrinsic: &Intrinsic,
     exp_registry: &ExpRegistry,
@@ -246,6 +246,7 @@ pub fn intrinsics_to_smt(
                             "(assert (= seq_{} (as seq.empty (Seq {})))) ; seq.empty",
                             id, t
                         ));
+                        // inside the function body we need to use the name seq_<id> instead of the original name
                         mapping_vars.insert(*varid, format!("seq_{}", id));
                         break;
                     }
@@ -299,6 +300,16 @@ pub fn intrinsics_to_smt(
                             "(assert (= (len set_{}) 0)) ; length of empty set is 0",
                             id
                         ));
+                        dependencies.insert(format!(
+                            "(assert (forall ((m (Set {})) (i {}))
+                            (=> (not (select m i)) (= (len (store m i true)) (+ (len m) 1)))))",
+                            t, t
+                        ));
+                        dependencies.insert(format!(
+                            "(assert (forall ((m (Set {})) (i {}))
+                            (=> (select m i) (= (len (store m i true)) (len m)))))",
+                            t, t
+                        ));
                         break;
                     }
                 }
@@ -310,6 +321,16 @@ pub fn intrinsics_to_smt(
             let s = expr_to_smt(exp_registry, set, ir, dependencies, mapping_vars);
             // the definition should already be made but just to be sure
             dependencies.insert(format!("(declare-fun len ((Set {})) Int)", t));
+            dependencies.insert(format!(
+                "(assert (forall ((m (Set {})) (i {}))
+                (=> (not (select m i)) (= (len (store m i true)) (+ (len m) 1)))))",
+                t, t
+            ));
+            dependencies.insert(format!(
+                "(assert (forall ((m (Set {})) (i {}))
+                (=> (select m i) (= (len (store m i true)) (len m)))))",
+                t, t
+            ));
             format!("(len {})", s)
         }
         SetInsert { t: _, set, item } => {
@@ -330,7 +351,9 @@ pub fn intrinsics_to_smt(
         // --- Map ---
         MapEmpty { k, v } => {
             for (varid, var) in exp_registry.vars.iter() {
+                // a Map::new() is always used like let x = Map::new() in the code
                 if let VarKind::Bound { bind: expid } = var.kind {
+                    // get the variable id
                     if id == &expid {
                         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
                         dependencies
@@ -342,13 +365,27 @@ pub fn intrinsics_to_smt(
                             id,
                             v
                         ));
+                        // inside the function body we need to use the name map_<id> instead of the original name
                         mapping_vars.insert(*varid, format!("map_{}", id));
-                        // sets do not have a length in SMT-LIB, so we need a function
+                        // arrays do not have a length in SMT-LIB, so we need a function
+                        // also we need some semantics for the length of the map (even though a full definition is not possible)
                         dependencies
                             .insert(format!("(declare-fun len_map ((Array {} {})) Int)", k, v));
                         dependencies.insert(format!(
                             "(assert (= (len_map map_{}) 0)) ; length of empty map is 0",
                             id
+                        ));
+                        dependencies.insert(format!(
+                            "(define-fun in_map ((m (Array {} {})) (i {})) Bool
+                            (not (= (select m i) not_present_{})))",
+                            k, v, k, v
+                        ));
+                        dependencies.insert(format!("(assert (forall ((m (Array {} {})) (i {}) (v {}))
+                            (=> (not (in_map m i)) (= (len_map (store m i v)) (+ (len_map m) 1)))))", k, v, k, v));
+                        dependencies.insert(format!(
+                            "(assert (forall ((m (Array {} {})) (i {}) (v {}))
+                            (=> (in_map m i) (= (len_map (store m i v)) (len_map m)))))",
+                            k, v, k, v
                         ));
                         break;
                     }
@@ -360,6 +397,21 @@ pub fn intrinsics_to_smt(
             let s = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
             // the definition should already be made but just to be sure
             dependencies.insert(format!("(declare-fun len_map ((Array {} {})) Int)", k, v));
+            dependencies.insert(format!(
+                "(define-fun in_map ((m (Array {} {})) (i {})) Bool
+                (not (= (select m i) not_present_{})))",
+                k, v, k, v
+            ));
+            dependencies.insert(format!(
+                "(assert (forall ((m (Array {} {})) (i {}) (v {}))
+                (=> (not (in_map m i)) (= (len_map (store m i v)) (+ (len_map m) 1)))))",
+                k, v, k, v
+            ));
+            dependencies.insert(format!(
+                "(assert (forall ((m (Array {} {})) (i {}) (v {}))
+                (=> (in_map m i) (= (len_map (store m i v)) (len_map m)))))",
+                k, v, k, v
+            ));
             format!("(len_map {})", s)
         }
         MapPut {
@@ -382,22 +434,17 @@ pub fn intrinsics_to_smt(
         } => {
             let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
             let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
-            format!("(select {} {})", m, k)
+            format!("(select {} {})", m, k) // no error handling in SMT-LIB
         }
         MapDel { k: _, v, map, key } => {
             let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
             let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
             format!("(store {} {} not_present_{})", m, k, v)
         }
-        MapContainsKey {
-            k: _,
-            v: _,
-            map,
-            key,
-        } => {
+        MapContainsKey { k: _, v, map, key } => {
             let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
             let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
-            format!("(select {} {})", m, k)
+            format!("(distinct (select {} {}) not_present_{})", m, k, v)
         }
         // --- Error ---
         ErrFresh => {

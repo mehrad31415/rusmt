@@ -40,7 +40,7 @@ pub fn fundef_in_smt(name: UsrFunName, sig: &FunSig, def: &FunDef, ir: &IRContex
                 ret += "\n";
             }
             ret += format!(
-                "(define-fun-rec {} ({}) {} {})",
+                "(define-funs-rec {} ({}) {} {})",
                 name,
                 field_defs.join(" "),
                 return_type,

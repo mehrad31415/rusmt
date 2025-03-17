@@ -18,7 +18,7 @@ const FILE: &str = "main";
 /// Execution timeout for the backend in seconds: by default 10 minutes (600 seconds).
 const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
 
-/// The response returned by the solver or other backend.
+/// The response returned by the backend solver.
 pub enum Response {
     /// solver does not return anything
     Timeout,
@@ -42,28 +42,28 @@ impl Display for Response {
     }
 }
 
+/// Entrypoint for generating code via the `backend`.
 pub fn create_smt_file(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -> PathBuf {
-    // println!("calling process");
     // 1. Generate SMTLIB2 source code from the IR using the backend's process method.
     let code = backend.process(ir).expect("smt2 code generation failed");
 
-    // 2. save source code to a file named `main.smt2`.
+    // 2. Create path to `main.smt2`.
     let path_src = path_wks.join(format!("{}.{}", FILE, backend.flavor()));
+    // if the file already exists, panic
     if path_src.exists() {
         // println!("source file already exists: {}", path_src.display());
         panic!("source file already exists");
     }
+    // 3. Write the generated code to the file.
     fs::write(&path_src, code).unwrap_or_else(|e| panic!("IO error on source file: {}", e));
 
     path_src
 }
-/// Entrypoint for generating code via the `backend` and executing it in an external process.
+/// Execute the backend solver on the generated SMTLIB2 file.
 ///
 /// # Arguments
 ///
-/// * `ir` - A reference to the intermediate representation to be translated into backend code.
-/// * `backend` - A trait object that knows how to generate code for a specific solver.
-/// * `path_wks` - The working directory in which the output file will be saved.
+/// * `path_wks` - The path to the workspace directory where the SMTLIB2 file is located.
 ///
 /// # Returns
 ///

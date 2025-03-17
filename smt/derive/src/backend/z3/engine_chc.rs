@@ -39,7 +39,7 @@ impl BackendZ3 for BackendZ3CHC {
         );
         l!(
             x,
-            "(set-option :produce-models true) ; enable model generation"
+            "(set-option :produce-models true) ; enable model generation in case of satisfiability"
         );
         l!(
             x,
@@ -47,7 +47,7 @@ impl BackendZ3 for BackendZ3CHC {
         );
         l!(
             x,
-            "(set-option :smt.string_solver seq)    ; set the string solver to be the seq solver (default)"
+            "(set-option :smt.string_solver seq) ; set the string solver to be the seq solver (default)"
         );
         l!(x, "(set-logic ALL)");
         l!(x); // add new line
@@ -168,7 +168,7 @@ impl BackendZ3 for BackendZ3CHC {
                 .map(|s| format!("({})", s.as_str()))
                 .collect::<Vec<_>>()
                 .join(" "),
-            create_comment(impl_syms.clone(), spec_syms.clone()),
+            assertion(impl_syms.clone(), spec_syms.clone()),
             impl_name,
             impl_syms
                 .iter()
@@ -187,6 +187,7 @@ impl BackendZ3 for BackendZ3CHC {
         for s in all_sym_sort {
             l!(x, "(declare-const {})", s)
         }
+        // the variables of the impl and spec need to be the same
         for (i, s) in impl_syms.iter().zip(&spec_syms) {
             l!(x, "(assert (= {} {}))", i, s)
         }
@@ -210,7 +211,7 @@ impl BackendZ3 for BackendZ3CHC {
         );
         l!(x); // add new line
 
-        // check for satisfiability
+        // check for satisfiability - if it is unsatisfiable, then the impl and spec are equivalent (valid)
         l!(x, "(check-sat)");
         // exit
         l!(x, "(exit)");
@@ -219,7 +220,8 @@ impl BackendZ3 for BackendZ3CHC {
     }
 }
 
-pub fn create_comment(impl_syms: BTreeSet<Symbol>, spec_syms: BTreeSet<Symbol>) -> String {
+/// The variables of the spec and impl need to match correspondingly.
+pub fn assertion(impl_syms: BTreeSet<Symbol>, spec_syms: BTreeSet<Symbol>) -> String {
     // sanity check
     if impl_syms.len() != spec_syms.len() {
         panic!("specification and implementation must have the same number of params")
@@ -235,6 +237,6 @@ pub fn create_comment(impl_syms: BTreeSet<Symbol>, spec_syms: BTreeSet<Symbol>) 
         "(and (= {} {}) {})",
         is,
         ss,
-        create_comment(new_impl, new_spec)
+        assertion(new_impl, new_spec)
     )
 }

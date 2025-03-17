@@ -5,7 +5,7 @@ use crate::ir::ctxt::IRContext;
 
 /// A generic trait for backend code generators.
 ///
-/// CodeGenCVC5 and CodeGenZ3 implement this trait.
+/// CodeGenZ3 implements this trait.
 pub trait CodeGen {
     /// Returns the name of this code generator (e.g., "z3_chc").
     fn name(&self) -> String;
@@ -50,23 +50,6 @@ impl ContentBuilder {
         self.buffer.push('\n');
     }
 
-    /// Runs a closure in an incremented indentation scope.
-    ///
-    /// Anything inserted via `.line()` inside the closure will have +1 indentation level
-    /// compared to the outer scope. After the closure finishes, indentation reverts.
-    ///
-    /// let mut builder = ContentBuilder::new();
-    /// builder.line("fn main() {");
-    /// builder.scope(|b| {
-    ///     b.line("println!(\"Inside scope\");");
-    /// });
-    /// builder.line("}");
-    // pub fn scope<F: Fn(&mut Self)>(&mut self, f: F) {
-    //     self.indent += 1;
-    //     f(self);
-    //     self.indent -= 1;
-    // }
-
     /// Consumes this builder, returning the final accumulated string of code.
     pub fn build(self) -> String {
         self.buffer
@@ -98,8 +81,5 @@ pub(crate) use l;
 
 /// Available list of backend solvers
 pub fn solvers() -> Vec<Box<dyn CodeGen>> {
-    vec![
-        Box::new(CodeGenZ3::new(BackendZ3CHC::new())),
-        // Box::new(CodeGenCVC5::new(BackendCVC5SMT::new())), uncomment this line to enable CVC5
-    ]
+    vec![Box::new(CodeGenZ3::new(BackendZ3CHC::new()))]
 }

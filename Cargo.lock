@@ -598,6 +598,7 @@ dependencies = [
  "rusmart-smt-remark-derive",
  "rusmart-smt-stdlib",
  "rusmart-utils",
+ "walkdir",
 ]
 
 [[package]]

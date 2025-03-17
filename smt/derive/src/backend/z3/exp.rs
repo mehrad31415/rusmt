@@ -9,7 +9,8 @@ use crate::IRContext;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Converts an expression into the corresponding SMT-LIB as a `String`.
-/// This function takes an expression registry, an expression ID, and an IR context.
+/// This function takes an expression registry, an expression ID, an IR context, dependencies set,
+/// and a mapping of variables to their SMT-LIB names.
 /// It recursively converts the expression and its components into SMT-LIB format.
 pub fn expr_to_smt(
     exp_registry: &ExpRegistry,

@@ -19,7 +19,7 @@ pub fn _another_add(one: Integer, two: Integer, three: Integer) -> Integer {
 
 #[smt_impl]
 pub fn _addtwo(one: Integer, two: Integer) -> Integer {
-    _another_add(one, two, Integer::from(1))
+    _another_add(one, two, Integer::from(0))
 }
 
 #[smt_axiom]

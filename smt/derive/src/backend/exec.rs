@@ -34,9 +34,9 @@ impl Display for Response {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let text = match self {
             Self::Timeout => "timeout",
-            Self::Unknown => "unknown",
-            Self::Sat => "sat",
-            Self::Unsat => "unsat",
+            Self::Unknown => "unknown - solver z3 cannot define whether the specification matches the implementation",
+            Self::Sat => "sat - the specification does not correctly define the implementation",
+            Self::Unsat => "unsat - the specification correctly defines the implementation",
         };
         f.write_str(text)
     }
@@ -140,15 +140,12 @@ pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
             }
             match output.trim() {
                 "unknown" => {
-                    println!("solver z3 cannot define whether the specification matches the implementation");
                     Response::Unknown
                 }
                 "sat" => {
-                    println!("the specification does not correctly define the implementation");
                     Response::Sat
                 }
                 "unsat" => {
-                    println!("the specification correctly defines the implementation");
                     Response::Unsat
                 }
                 other => panic!("invalid response: {}", other),

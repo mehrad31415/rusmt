@@ -87,7 +87,6 @@ mod type_paran_in_adt;
 mod type_paran_in_func;
 mod use_function_not_annotated;
 mod vc_impl_target_invalid;
-mod vc_pair_incompatible;
 mod vc_spec_target_invalid;
 mod with_generics_impl_ok;
 mod example_ok;

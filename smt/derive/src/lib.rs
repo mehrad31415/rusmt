@@ -1,9 +1,10 @@
 use log::{debug, info}; // Log messages at different levels (e.g., debug, info)
-use rusmart_utils::config::initialize; // initialize all configs
+use rusmart_utils::config::initialize;
+use std::collections::BTreeMap;
+// initialize all configs
 use std::fs; // File system operations
 use std::path::{Path, PathBuf}; // Path manipulation
 use syn::Result; // 'syn' is a parsing library for Rust code, 'Result' is an alias for std::result::Result
-use walkdir::WalkDir;
 
 use crate::backend::codegen::solvers; // Available list of backend solvers: for now z3
 use crate::backend::error::BackendError; // An error for backend generator (e.g., not supported)
@@ -85,7 +86,8 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<Vec<IRContext>> {
 /// # Panics
 ///
 /// This function will panic if the output directory already exists or if directory creation fails.
-pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
+pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
     // ensuring the output directory does not exist and then creating it.
     let output = output.as_ref();
     if output.exists() {
@@ -98,15 +100,12 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
     // Iterate over each model (IRContext).
     // println!("model_len: {}", models.len());
 
-    let mut paths: Vec<(&IRContext, Box<_>, PathBuf)> = Vec::new();
+    let mut paths: Vec<(i32, &IRContext, Box<_>, PathBuf)> = Vec::new();
 
     // for each rusmart file, we can have a list of models (refinements)
     for ir in models {
         // For each model, iterate over all available solvers (for now, just Z3).
         for solver in solvers() {
-            // println!("count: {}", count);
-            count += 1;
-
             let name = solver.name();
             debug!("[{}] solving {} with {}", count, ir.desc, name);
 
@@ -115,21 +114,22 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
             fs::create_dir(&path_wks).expect("workspace freshly created"); // Use create_dir for a single directory when parent directories exist.
 
             // println!("workspace created: {}", path_wks.display());
-            paths.push((ir, solver, path_wks.clone()));
+            paths.push((count, ir, solver, path_wks.clone()));
+            count += 1;
         }
     }
 
     let mut path_sources = Vec::new();
     // first for each model, we create the smt2 file (this is so that if we have an error in the model, we can still see all the smt2 files)
-    for (ir, solver, path_wks) in paths.iter() {
+    for (count, ir, solver, path_wks) in paths.iter() {
         // println!("path_wks: {:?}", path_wks);
         // println!("calling process from loop");
         let path_src = create_smt_file(ir, solver.as_ref(), &path_wks);
-        path_sources.push((path_src, ir, solver));
+        path_sources.push((*count, path_src, ir, solver));
     }
 
     // then for each model, we invoke the backend solver
-    for (path_src, ir, solver) in path_sources.iter() {
+    for (count, path_src, ir, solver) in path_sources.iter() {
         // Invoke the backend solver with the IR, solver, and workspace path.
         match invoke_backend(path_src) {
             Ok(response) => {
@@ -141,6 +141,7 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
                     solver.name(),
                     response
                 );
+                map.insert(count.to_string(), response.to_string());
             }
             Err(BackendError) => {
                 // Log if the solver does not support this IR or operation.
@@ -150,9 +151,11 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
                     ir.desc,
                     solver.name()
                 );
+                map.insert(count.to_string(), "not supported".to_string());
             }
         }
     }
+    map
 }
 
 /// Main entry point that combines front-end and back-end processing, from input to output.
@@ -170,44 +173,36 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) {
 /// # Returns
 ///
 /// A `Result` indicating success or failure during the processing.
-pub fn derive<P1: AsRef<Path>, P2: AsRef<Path>>(input: P1, output: P2) -> Result<()> {
+pub fn derive<P1: AsRef<Path> + Clone, P2: AsRef<Path>>(
+    input: P1,
+    output: P2,
+) -> Result<BTreeMap<String, String>> {
     // Initialize configurations (e.g., logging, environment variables).
     initialize();
 
-    // ensuring the output directory does not exist and then creating it.
+    // ensuring the output directory is created only if it does not exist.
     let output = output.as_ref();
-    if output.exists() {
-        panic!("output directory exists");
-    }
-    fs::create_dir_all(output).expect("output directory created"); // Use create_dir_all to create the entire path, including all necessary parent directories.
-
-    let mut count = 0;
-    // Run the pipeline to parse the input and generate models (IRContexts).
-    for entry in WalkDir::new(input) {
-        let entry = entry.expect("input file error"); // Handle errors
-        let path = entry.path();
-
-        // if path is mod.rs, or the path is not a file, or the path does not exist, or the path is not a .rs file, continue
-        if !path.is_file()
-            || !path.exists()
-            || path.file_name().unwrap() == "mod.rs"
-            || path.extension().is_none()
-            || path.extension().unwrap() != "rs"
-        {
-            continue;
-        }
-        // else derive the model and solve it
-        debug!("deriving model {:?}", path);
-        let models = model(path)?;
-        debug!("derivation completed for {:?}", path);
-
-        // Solve the models using available solvers and write outputs.
-        debug!("solving model {:?}", path);
-        let output = output.join(format!("{}", count));
-        solve(&models, output);
-        debug!("solving completed for {:?}", path);
-        count += 1;
+    if !output.exists() {
+        fs::create_dir_all(output).expect("output directory created"); // Use create_dir_all to create the entire path, including all necessary parent directories.
     }
 
-    Ok(())
+    // derive the model and solve it
+    debug!("deriving models");
+    // add rs extension to the input file
+    let input = if input.as_ref().extension().is_none() {
+        input.as_ref().with_extension("rs")
+    } else {
+        input.as_ref().to_path_buf()
+    };
+    let models = model(input.clone())?;
+    debug!("derivation completed");
+
+    // Solve the models using available solvers and write outputs.
+    debug!("solving models");
+    let file_name = input.file_name().unwrap_or_default();
+    let output = output.join(file_name).with_extension("");
+    let map = solve(&models, output);
+    debug!("solving completed");
+
+    Ok(map)
 }

@@ -14,7 +14,7 @@ rusmart-utils = { workspace = true }
 rusmart-smt-stdlib = { workspace = true }
 rusmart-smt-remark-derive = { workspace = true }
 rusmart-smt-derive = { workspace = true }
-rusmart-lang = { path = "../../lang/" }
+rusmart-lang-rego = { path = "../../lang/" }
 
 [lints.rust]
 non_camel_case_types = "allow"

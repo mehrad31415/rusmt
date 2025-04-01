@@ -51,7 +51,7 @@ enum MetaValue {
     Map(BTreeSet<(Ident, Ident)>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A mark for an annotated impl function
 pub struct ImplMark {
     /// whether to derive a receiver-style method for this function
@@ -60,7 +60,7 @@ pub struct ImplMark {
     pub specs: BTreeSet<UsrFuncName>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A mark for an annotated spec function
 pub struct SpecMark {
     /// whether to derive a receiver-style method for this function
@@ -69,7 +69,7 @@ pub struct SpecMark {
     pub impls: BTreeSet<UsrFuncName>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A mark for an annotated axiom function
 pub struct SpecAxiom {
     /// Relation between impl and spec functions

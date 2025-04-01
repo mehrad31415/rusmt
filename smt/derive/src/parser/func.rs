@@ -1,6 +1,6 @@
+use crate::parser::ctxt::ContextWithSig; // Context manager for holding marked items
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter}; // used to implement the Display trait
-
 use syn::{
     Expr as Exp,    // Renaming `Expr` to `Exp` to avoid conflict with our own `Expr`
     ExprMacro,      // Represents a macro invocation `expression`
@@ -20,7 +20,9 @@ use crate::parser::expr::Expr; // Our own expression type
 use crate::parser::generics::Generics; // Declaration of generics
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrFuncName, UsrTypeName, VarName}; // Name handling
 use crate::parser::ty::{CtxtForType, TypeTag};
-use crate::{bail_if_exists, bail_if_non_empty, bail_on}; // Error handling macros // CtxtForType: A context suitable for type analysis and TypeTag: A unique and complete reference to an SMT-related type
+use crate::{bail_if_exists, bail_if_non_empty, bail_on};
+
+use super::apply::{ApplyDatabase, Kind}; // Error handling macros // CtxtForType: A context suitable for type analysis and TypeTag: A unique and complete reference to an SMT-related type
 
 /// Represents casting-related function names
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -620,4 +622,26 @@ impl Axiom {
         // If all checks pass, the function body is `unimplemented!()`
         Ok(true)
     }
+}
+
+pub fn add_methods_to_impls_or_specs(
+    context: &ContextWithSig,
+    impls: &mut BTreeMap<UsrFuncName, ImplFuncDef>,
+    specs: &mut BTreeMap<UsrFuncName, SpecFuncDef>,
+    fn_db: &ApplyDatabase,
+) {
+    let methods = fn_db.on_usr_type.clone();
+    for (name, method) in methods {
+        for (type_name, args_fn,) in method {
+            let (args, type_fn) = args_fn;
+            let kind = type_fn.kind;
+            if kind == Kind::Impl {
+
+            } else {
+                
+            }
+
+        }
+    }
+    return;
 }

@@ -1,6 +1,6 @@
 [package]
-name = "rusmart-lang"
-description = "Declarative semantics for a Demo/Rego language for eval1 and eval2"
+name = "rusmart-lang-rego"
+description = "Declarative semantics for the Rego language"
 version = "0.1.0"
 edition = "2021"
 authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>"]

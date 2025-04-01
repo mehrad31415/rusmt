@@ -132,7 +132,7 @@ impl SysTypeName {
 
 /// A type name
 /// The three variants replicate a system defined type, a user defined type, and a generic type parameter
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum TypeName {
     Sys(SysTypeName),
     Usr(UsrTypeName),     // UsrTypeName is wrapper of string (defined in name.rs).

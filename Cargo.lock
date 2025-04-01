@@ -590,7 +590,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusmart-lang"
+name = "rusmart-lang-rego"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -671,7 +671,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "datatest-stable",
- "rusmart-lang",
+ "rusmart-lang-rego",
  "rusmart-smt-derive",
  "rusmart-smt-remark-derive",
  "rusmart-smt-stdlib",

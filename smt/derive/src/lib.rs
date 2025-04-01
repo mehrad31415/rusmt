@@ -1,14 +1,13 @@
-use log::{debug, info}; // Log messages at different levels (e.g., debug, info)
+use log::{debug, info};
 use rusmart_utils::config::initialize;
 use std::collections::BTreeMap;
-// initialize all configs
-use std::fs; // File system operations
-use std::path::{Path, PathBuf}; // Path manipulation
-use syn::Result; // 'syn' is a parsing library for Rust code, 'Result' is an alias for std::result::Result
+use std::fs;
+use std::path::{Path, PathBuf};
+use syn::Result;
 
 use crate::backend::codegen::solvers; // Available list of backend solvers: for now z3
 use crate::backend::error::BackendError; // An error for backend generator (e.g., not supported)
-use crate::backend::exec::{create_smt_file, invoke_backend}; // Unified backend generation and execution service
+use crate::backend::exec::{create_smt_file, invoke_backend};
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context; // Context manager for holding marked items
 
@@ -33,12 +32,10 @@ fn pipeline(ctxt: Context) -> Result<Vec<IRContext>> {
         .parse_func_sigs()?
         .parse_func_body()?
         .finalize();
-    // println!("parsed context: {:?}", parsed.types);
 
     let mut models = vec![];
     // Iterate over all refinements obtained from the parsed context.
     for item in parsed.refinements() {
-        // println!("processing verification condition for {}", item);
         debug!("processing verification condition for {}", item);
         // Build the intermediate representation (IR) for each refinement item.
         let ir = IRBuilder::build(&parsed, item);
@@ -83,6 +80,10 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<Vec<IRContext>> {
 /// * `models` - A slice of `IRContext` instances representing the models to be solved.
 /// * `output` - The path to the output directory where results will be stored.
 ///
+/// # Returns
+///
+///  * A `BTreeMap` containing the model names and their corresponding results when the solver is run (e.g., sat/unsat/timeout/unknown).
+/// 
 /// # Panics
 ///
 /// This function will panic if the output directory already exists or if directory creation fails.
@@ -97,10 +98,9 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) -> BTreeMap<String
 
     // Initialize a counter for naming subdirectories or tracking progress.
     let mut count = 0;
-    // Iterate over each model (IRContext).
-    // println!("model_len: {}", models.len());
 
-    let mut paths: Vec<(i32, &IRContext, Box<_>, PathBuf)> = Vec::new();
+    // takes the solver_name+count, the IRContext, the solver, and the path to the workspace for each model.
+    let mut paths: Vec<(String, &IRContext, Box<_>, PathBuf)> = Vec::new();
 
     // for each rusmart file, we can have a list of models (refinements)
     for ir in models {
@@ -110,26 +110,26 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) -> BTreeMap<String
             debug!("[{}] solving {} with {}", count, ir.desc, name);
 
             // Create a workspace directory for this specific solver run.
-            let path_wks = output.join(count.to_string());
+            let path_wks = output.join(name.clone() + "_" + &count.to_string());
+            // <rusmart/studio/native/rego/<program_name>/<solver_name + count >
             fs::create_dir(&path_wks).expect("workspace freshly created"); // Use create_dir for a single directory when parent directories exist.
 
             // println!("workspace created: {}", path_wks.display());
-            paths.push((count, ir, solver, path_wks.clone()));
+            paths.push((name + "_" +&count.to_string(), ir, solver, path_wks.clone()));
             count += 1;
         }
     }
 
     let mut path_sources = Vec::new();
     // first for each model, we create the smt2 file (this is so that if we have an error in the model, we can still see all the smt2 files)
-    for (count, ir, solver, path_wks) in paths.iter() {
-        // println!("path_wks: {:?}", path_wks);
-        // println!("calling process from loop");
+    for (_, ir, solver, path_wks) in paths.iter() {
+        // path_src = <rusmart/studio/native/rego/<program_name>/<solver_name + count >/main.smt2
         let path_src = create_smt_file(ir, solver.as_ref(), &path_wks);
-        path_sources.push((*count, path_src, ir, solver));
+        path_sources.push(path_src);
     }
 
     // then for each model, we invoke the backend solver
-    for (count, path_src, ir, solver) in path_sources.iter() {
+    for (path_src, (count, ir, solver, _)) in path_sources.iter().zip(paths.iter()) {
         // Invoke the backend solver with the IR, solver, and workspace path.
         match invoke_backend(path_src) {
             Ok(response) => {
@@ -167,12 +167,12 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) -> BTreeMap<String
 ///
 /// # Arguments
 ///
-/// * `input` - The path to the input directory or file to be processed.
-/// * `output` - The path to the output directory where results will be stored.
+/// * `input` - The path to the input directory or file to be processed. <rusmart/smt/testing_backend/tests/model/backend>
+/// * `output` - The path to the output directory where results will be stored. <rusmart/studio/native/rego>
 ///
 /// # Returns
 ///
-/// A `Result` indicating success or failure during the processing.
+/// A `Result` of a `BTreeMap` containing the model names and their corresponding results when the solver is run (e.g., sat/unsat/timeout/unknown).
 pub fn derive<P1: AsRef<Path> + Clone, P2: AsRef<Path>>(
     input: P1,
     output: P2,
@@ -188,12 +188,7 @@ pub fn derive<P1: AsRef<Path> + Clone, P2: AsRef<Path>>(
 
     // derive the model and solve it
     debug!("deriving models");
-    // add rs extension to the input file
-    let input = if input.as_ref().extension().is_none() {
-        input.as_ref().with_extension("rs")
-    } else {
-        input.as_ref().to_path_buf()
-    };
+    let input = input.as_ref().to_path_buf();
     let models = model(input.clone())?;
     debug!("derivation completed");
 

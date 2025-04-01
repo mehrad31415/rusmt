@@ -1,8 +1,9 @@
 mod model;
 
 use anyhow::anyhow;
+use std::path::PathBuf;
 use datatest_stable::harness;
-use rusmart_lang::run;
+use rusmart_lang_rego::run;
 use rusmart_smt_derive::model;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -100,8 +101,6 @@ fn check_mod(path: &Path) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-/// Generic test runner for all front-end test cases.
-///
 /// This function is designed to be used with the `datatest_stable` harness for file-driven tests.
 /// It handles test files and compares their output to expected results (if present).
 ///
@@ -119,21 +118,25 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
         .expect("filename")
         .to_str()
         .expect("ascii-based filename");
-    println!("test_model: {}", base);
+
     if base == "mod.rs" {
         return check_mod(path);
     }
-    let mut expected = BTreeMap::new();
-    let path = fs::canonicalize(path).expect("Failed to get absolute path");
-    let path = remove_extension(&path);
 
-    if path.is_dir() && path.with_extension("rs").is_file() {
-        if let Ok(entries) = fs::read_dir(path.clone()) {
+    let mut expected = BTreeMap::new();
+    // get the absolute path of the file and the directory path
+    let absolute_path = fs::canonicalize(path).expect("Failed to get absolute path");
+    let directory_path = absolute_path.clone().with_extension("");
+
+    // prg.rs will be a file and prg/ will be a directory
+    if directory_path.is_dir() && absolute_path.is_file() {
+        if let Ok(entries) = fs::read_dir(directory_path.clone()) {
             for entry in entries.flatten() {
                 let file_path = entry.path();
                 if file_path.is_file() {
                     if let Some(file_name) = file_path.file_name().and_then(|f| f.to_str()) {
                         if let Ok(content) = fs::read_to_string(&file_path) {
+                            // the expected results when running invoke_backend on the rs file for each model
                             expected.insert(file_name.to_string(), content);
                         }
                     }
@@ -147,17 +150,18 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
         None => false,
         Some(e) => e.into_string().map_or(false, |s| s == "1"),
     };
-    let actual = run(path.clone());
+
+    // invoke the backend on the rusmart file and get the results (sat, unsat, unknown)
+    let actual = run(absolute_path.clone());
     if update {
         for (act_name, act_response) in actual.iter() {
             // create directory of path if it does not exist
-            if !path.exists() {
-                fs::create_dir_all(&path).expect("Failed to create directory");
+            if !directory_path.exists() {
+                fs::create_dir_all(&directory_path).expect("Failed to create directory");
             }
             // add act_name to path
-            let path = path.join(act_name);
+            let path = directory_path.join(act_name);
             // write the content of act_response to the file
-            println!("writing to file: {:?}", path);
             fs::write(&path, act_response).expect("Failed to write to file");
         }
     } else {
@@ -185,13 +189,4 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
 // This is done recursively, meaning that all subdirectories are also included.
 datatest_stable::harness! {
     { test = test_model, root = "tests/model", pattern = r"^.*\.rs$" },
-}
-
-use std::path::PathBuf; // for manipulating file paths
-fn remove_extension(path: &Path) -> PathBuf {
-    if let Some(stem) = path.file_stem() {
-        path.with_file_name(stem) // Replaces only the filename, keeps the path
-    } else {
-        path.to_path_buf() // If no filename, return the path unchanged
-    }
 }

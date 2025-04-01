@@ -1772,7 +1772,8 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 let mut heads_options = vec![];
                 for (converted, original) in heads {
                     // retrieve all variants of the ADT
-                    let (adt_name, adt_variants) = match unifier.refresh_type(converted.ty()) { // Refreshes a type by replacing any type variables with their inferred types. The heads were tentatively marked as type variables. In analyze_pat_match_head, the unifier is updated with the type of the head. So here, the type of the head is refreshed.
+                    let (adt_name, adt_variants) = match unifier.refresh_type(converted.ty()) {
+                        // Refreshes a type by replacing any type variables with their inferred types. The heads were tentatively marked as type variables. In analyze_pat_match_head, the unifier is updated with the type of the head. So here, the type of the head is refreshed.
                         TypeRef::User(name, _) => {
                             let adt = match self.root.get_type_def(&name) {
                                 None => bail_on!(original, "no such type"), // the type should be defined in the context
@@ -2325,7 +2326,8 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
         let converted = if self.bindings.is_empty() {
             Expr::Unit(inst)
         } else {
-            Expr::Block { // the only time when this is a block is for the sole expression at the end of a function with at least one local let declaration. In any other case, (right hand side of a local let declaration, inner expressions, or the sole expression at the end of a function without any local let declarations), this is a unit instruction.
+            Expr::Block {
+                // the only time when this is a block is for the sole expression at the end of a function with at least one local let declaration. In any other case, (right hand side of a local let declaration, inner expressions, or the sole expression at the end of a function without any local let declarations), this is a unit instruction.
                 lets: self.bindings,
                 body: inst,
             }

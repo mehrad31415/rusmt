@@ -25,7 +25,7 @@ pub enum Kind {
     Spec,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Represents a function type, with inference allowed.
 ///
 /// This struct holds the kind of the function, its generics, parameter types, and return type. The latter three, encapsulate the type signature of the function.
@@ -108,7 +108,7 @@ pub struct ApplyDatabase {
     on_sys_type: BTreeMap<UsrFuncName, BTreeMap<SysTypeName, TypeFn>>,
     /// User-defined functions with a user-defined type qualifier (methods on custom types).
     /// The `UsrFuncName` is the name of the method. A method can be implemented for multiple types. So the value is a map from the method name to a map. The value map is from the user-defined type name to their respective arguments (Vec<TypeTag>) and function signature (TypeFn).
-    on_usr_type: BTreeMap<UsrFuncName, BTreeMap<UsrTypeName, (Vec<TypeTag>, TypeFn)>>,
+    pub on_usr_type: BTreeMap<UsrFuncName, BTreeMap<UsrTypeName, (Vec<TypeTag>, TypeFn)>>,
 }
 
 impl ApplyDatabase {
@@ -345,7 +345,6 @@ impl ApplyDatabase {
                 params: sig
                     .params
                     .iter()
-                    .skip(1) // Skip the first element because it is the receiver type and is no longer the parameter of the method.
                     .map(|(_, ty)| ty.clone())
                     .collect::<Vec<_>>(),
                 ret_ty: sig.ret_ty.clone(),
@@ -519,6 +518,7 @@ impl ApplyDatabase {
             })),
         }
 
+        println!("candidates: {:?}", candidates);
         // Variable to hold a suitable candidate if found.
         let mut suitable = None;
         // ty_name is the type the method is defined on
@@ -527,6 +527,10 @@ impl ApplyDatabase {
             // Early filter by number of parameters.
             // the length of the parameters of the function signature should be the same as the length of the arguments. If they are not the same, we move to the next candidate.
             if fty.params.len() != args.len() {
+                println!("name: {:?}", name);
+                println!("{:?} {:?}", args, args.len());
+                println!("{:?} {:?}", fty.params, fty.params.len());
+                println!("erased");
                 continue;
             }
 

@@ -1,14 +1,14 @@
-pub mod eval1;
-pub mod eval2;
+pub mod eval_demo;
+pub mod eval_rego;
 
 use rusmart_smt_derive::derive;
 use rusmart_utils::config::WKS;
 use std::{collections::BTreeMap, path::PathBuf};
 
+/// run takes a path to an rusmart file and generates a BTreeMap of model to their corresponding result when z3 is run (sat/unsat/timeout/unknown)
 pub fn run(path: PathBuf) -> BTreeMap<String, String> {
-    println!("path inside run: {:?}", path);
-    // studio/native/demo from the root workspace = WKS.studio.join("demo")
-    match derive(path, WKS.studio.join("demo")) {
+    // studio/native/rego from the root workspace = WKS.studio.join("rego")
+    match derive(path, WKS.studio.join("rego")) {
         Ok(map) => {
             println!("ok");
             map

@@ -518,7 +518,6 @@ impl ApplyDatabase {
             })),
         }
 
-        println!("candidates: {:?}", candidates);
         // Variable to hold a suitable candidate if found.
         let mut suitable = None;
         // ty_name is the type the method is defined on

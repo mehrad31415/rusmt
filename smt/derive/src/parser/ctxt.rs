@@ -1,4 +1,3 @@
-use crate::parser::func::add_methods_to_impls_or_specs;
 use core::panic;
 use log::trace;
 use std::collections::{BTreeMap, BTreeSet};
@@ -294,21 +293,6 @@ impl Context {
         }
         trace!("impl found: {}", name);
         self.impls.insert(name, item.clone());
-
-        if let Some(method_name) = item.clone().mark.method {
-            // check for duplicated method name, return an error if so
-            if let Some(prev) = self.impls.get(&method_name) {
-                bail_on_with_note!(
-                    prev.name(),
-                    "previously defined here",
-                    method_name.to_string(),
-                    "duplicated impl method name"
-                );
-            }
-            trace!("impl method found: {}", method_name);
-            self.impls.insert(method_name, item);
-        }
-
         Ok(())
     }
 
@@ -559,7 +543,7 @@ impl ContextWithType {
                 attrs: _,
                 vis: _,
                 sig,
-                block, // handled later
+                block: _, // handled later
             } = &marked.item; // function item
 
             trace!("handling impl sig: {}", name);
@@ -567,7 +551,7 @@ impl ContextWithType {
             let parsed = FuncSig::from_sig(&self, sig)?;
             trace!("impl sig analyzed: {}", name);
             // we pass on the sig to bail_on the signature in case they are not compatible in spec and impl
-            sig_impls.insert(name.clone(), (parsed, sig.clone(), block.clone()));
+            sig_impls.insert(name.clone(), (parsed, sig.clone()));
         }
 
         // spec (extracting the function signature)
@@ -577,7 +561,7 @@ impl ContextWithType {
                 attrs: _,
                 vis: _,
                 sig,
-                block, // handled later
+                block: _, // handled later
             } = &marked.item; // function item
 
             trace!("handling spec sig: {}", name);
@@ -585,7 +569,7 @@ impl ContextWithType {
             let parsed = FuncSig::from_sig(&self, sig)?;
             trace!("spec sig analyzed: {}", name);
             // we pass on the sig to bail_on the signature in case they are not compatible in spec and impl
-            sig_specs.insert(name.clone(), (parsed, sig.clone(), block.clone()));
+            sig_specs.insert(name.clone(), (parsed, sig.clone()));
         }
 
         // axiom (extracting the function signature and body)
@@ -618,8 +602,8 @@ impl ContextWithType {
                     fn_impl: impl_name,
                     fn_spec: spec_name,
                 } = refine;
-                let (impl_sig, impl_raw, impl_block) = sig_impls.get(impl_name).expect("impl");
-                let (spec_sig, spec_raw, spec_block) = sig_specs.get(spec_name).expect("spec");
+                let (impl_sig, impl_raw) = sig_impls.get(impl_name).expect("impl");
+                let (spec_sig, spec_raw) = sig_specs.get(spec_name).expect("spec");
 
                 // first the signature of the impl and spec must be compatible
                 if !impl_sig.is_compatible(spec_sig) {
@@ -665,7 +649,7 @@ impl ContextWithType {
         let mut vc_db = BTreeSet::new(); // a database for verification conditions
         let mut fn_db = ApplyDatabase::with_intrinsics(); // a database intialized with the system functions
 
-        for (name, (sig, raw, block)) in sig_impls.iter() {
+        for (name, (sig, raw)) in sig_impls.iter() {
             // this will never throw an error and the `expect` unwraps the MarkedImpl
             let mark = &self.impls.get(name).expect("impl").mark;
             // check signature
@@ -673,7 +657,7 @@ impl ContextWithType {
                 // a spec used in the list of impl must be defined.
                 // for example, if the impl is #[smt_impl(method = my_method, specs = [spec1, spec2])], then spec1 and spec2 must be defined like #[smt_spec(method = ..., impls = [...])] fn spec1() { ... } and #[smt_spec(method = ..., impls = [...])] fn spec2() { ... }
                 // otherwise an error is thrown
-                let (spec_sig, spec_raw, spec_block) = sig_specs.get(spec_name).expect("spec");
+                let (spec_sig, spec_raw) = sig_specs.get(spec_name).expect("spec");
                 // if the signature of the spec and impl are not compatible, then an error is thrown
                 if !spec_sig.is_compatible(sig) {
                     bail_on_with_note!(raw, "signature mismatch", spec_raw, "spec signature here");
@@ -697,7 +681,7 @@ impl ContextWithType {
         }
 
         // sig_specs is a BTreeMap<UsrFuncName, (FuncSig, syn::Signature)> where the syn::Signature is the raw signature of the function. It contains all the specs that are defined in the context.
-        for (name, (sig, raw, block)) in sig_specs.iter() {
+        for (name, (sig, raw)) in sig_specs.iter() {
             // this will never throw an error and the `expect` is only to unwrap the MarkedSpec
             // this is because the sig_specs is constructed from the self.specs and they both contain all the specs that are defined in the context
             let mark = &self.specs.get(name).expect("spec").mark;
@@ -706,7 +690,7 @@ impl ContextWithType {
             for impl_name in &mark.impls {
                 // retrieve the signature of the impl
                 // if an impl inside #[smt_spec(impls = [.....])] is not defined, then an error is thrown
-                let (impl_sig, impl_raw, impl_block) = sig_impls.get(impl_name).expect("impl");
+                let (impl_sig, impl_raw) = sig_impls.get(impl_name).expect("impl");
                 // if the signature of the impl and spec are not compatible, then an error is thrown
                 if !impl_sig.is_compatible(sig) {
                     bail_on_with_note!(raw, "signature mismatch", impl_raw, "impl signature here");
@@ -740,7 +724,7 @@ impl ContextWithType {
             .into_iter()
             .map(|(name, marked)| {
                 // all the impls are stored in sig_impls
-                let (sig, _, _) = sig_impls.remove(&name).unwrap();
+                let (sig, _) = sig_impls.remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
                 (name, (sig, stmts))
             })
@@ -751,7 +735,7 @@ impl ContextWithType {
             .into_iter()
             .map(|(name, marked)| {
                 // all the specs are stored in sig_specs
-                let (sig, _, _) = sig_specs.remove(&name).unwrap();
+                let (sig, _) = sig_specs.remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
                 (name, (sig, stmts))
             })
@@ -872,9 +856,6 @@ impl ContextWithSig {
                 },
             );
         }
-
-        // add the methods to either the impls or specs (this is becuase in the fun module of the ir crate, the get_func is called for each function call inside the body and if the method is not added to the impls or specs, then it will not be found)
-        add_methods_to_impls_or_specs(&self, &mut unpacked_impls, &mut unpacked_specs, &self.fn_db);
 
         // repacking
         // - fn_db is ignored as it is not needed anymore. It is only used in the expr module to look up the function names

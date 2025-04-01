@@ -721,25 +721,81 @@ impl ContextWithType {
 
         // extract the func sig and body from the impls
         let unpacked_impls: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = impls
+            .clone()
             .into_iter()
             .map(|(name, marked)| {
                 // all the impls are stored in sig_impls
-                let (sig, _) = sig_impls.remove(&name).unwrap();
+                let (sig, _) = sig_impls.clone().remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
                 (name, (sig, stmts))
             })
             .collect();
 
+        let mut methods: BTreeMap<UsrFuncName, UsrFuncName> = BTreeMap::new();
+        // add methods to the unpacked impls
+        let impls_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = impls
+            .into_iter()
+            .filter_map(|(name, marked)| {
+                if let Some(method) = &marked.mark.method {
+                    if methods.get(method).is_some() {
+                        panic!("method {} is already defined in impl", method);
+                    }
+                    trace!("method found: {}", method);
+                    methods.insert(method.clone(), name.clone());
+
+                    let (sig, _) = sig_impls.remove(&name).unwrap();
+                    let stmts = marked.item.block.stmts;
+
+                    Some((method.clone(), (sig, stmts)))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // add the methods to the unpacked impls
+        let unpacked_impls = unpacked_impls
+            .into_iter()
+            .chain(impls_method.into_iter())
+            .collect::<BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>>();
+
         // extract the func sig and body from the specs
         let unpacked_specs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = specs
+            .clone()
             .into_iter()
             .map(|(name, marked)| {
                 // all the specs are stored in sig_specs
-                let (sig, _) = sig_specs.remove(&name).unwrap();
+                let (sig, _) = sig_specs.clone().remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
                 (name, (sig, stmts))
             })
             .collect();
+
+        let specs_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = specs
+            .into_iter()
+            .filter_map(|(name, marked)| {
+                if let Some(method) = &marked.mark.method {
+                    if methods.get(method).is_some() {
+                        panic!("method {} is already defined in spec", method);
+                    }
+                    trace!("method found: {}", method);
+                    methods.insert(method.clone(), name.clone());
+
+                    let (sig, _) = sig_specs.remove(&name).unwrap();
+                    let stmts = marked.item.block.stmts;
+
+                    Some((method.clone(), (sig, stmts)))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // add the methods to the unpacked specs
+        let unpacked_specs = unpacked_specs
+            .into_iter()
+            .chain(specs_method.into_iter())
+            .collect::<BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>>();
 
         let ctxt = ContextWithSig {
             types,

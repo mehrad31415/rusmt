@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use itertools::Itertools;
 
@@ -99,7 +99,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// same process as registering a function (register_func), but with a different signature
     ///
     /// Registers an axiom with the IR and returns its unique axiom ID.
-    /// 
+    ///
     /// # Arguments
     ///
     /// * `name` - The axiom's name at the parser level.
@@ -108,7 +108,16 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// # Returns
     ///
     /// The unique `UsrAxiomId` for the registered axiom.
-    pub fn register_axiom(&mut self, name: &AxiomName, inst: &[TypeRef]) -> UsrAxiomId {
+    pub fn register_axiom(
+        &mut self,
+        name: &AxiomName,
+        inst: &[TypeRef],
+        axioms: &mut BTreeSet<AxiomName>,
+    ) -> Option<UsrAxiomId> {
+        if axioms.contains(name) {
+            return None;
+        }
+        axioms.insert(name.clone());
         let ident = name.into();
         let ty_args = self.resolve_type_ref_vec(inst);
 
@@ -162,6 +171,6 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         self.ir.axiom_registry.register(idx, predicate);
 
         // done
-        idx
+        Some(idx)
     }
 }

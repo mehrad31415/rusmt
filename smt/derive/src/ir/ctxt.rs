@@ -118,6 +118,8 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// then builds a new mapping to be used in the derived context.
     pub fn derive(&mut self, generics: &Generics, ty_args: Vec<Sort>) -> IRBuilder {
         let ty_params = &generics.params;
+        println!("ty_params: {:?}", ty_params);
+        println!("ty_args: {:?}", ty_args);
         if ty_params.len() != ty_args.len() {
             panic!("generics mismatch");
         }
@@ -254,6 +256,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         // pull in all relevant axioms
         let mut relevant_axioms = BTreeMap::new();
         let mut uninterpreted_axiom_params = BTreeMap::new();
+        let mut processed_axioms = BTreeSet::new();
 
         let mut fixedpoint;
         loop {
@@ -326,9 +329,9 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                         IRBuilder::new(ctxt, ty_inst_impl.clone(), &mut ir);
 
                     // type instantiation for axiom
-                    let mut axiom_ty_args = vec![];
+                    let mut axiom_ty_args_impl = vec![];
                     // type arguments for IR builder context
-                    let mut axiom_ty_inst = BTreeMap::new();
+                    let mut axiom_ty_inst_impl = BTreeMap::new();
 
                     for (ty_param, ty_arg_inst) in
                         axiom.head.generics.params.iter().zip(inst.args.iter())
@@ -349,15 +352,20 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                                 (tref, sort)
                             }
                         };
-                        match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
+                        match axiom_ty_inst_impl.insert(ty_param.clone(), ty_arg_sort) {
                             None => (),
                             Some(_) => panic!("duplicated type parameter {}", ty_param),
                         }
-                        axiom_ty_args.push(ty_arg_ref);
+                        axiom_ty_args_impl.push(ty_arg_ref);
                     }
 
                     let mut axiom_ty_builder_spec =
                         IRBuilder::new(ctxt, ty_inst_spec.clone(), &mut ir);
+
+                    // type instantiation for axiom
+                    let mut axiom_ty_args_spec = vec![];
+                    // type arguments for IR builder context
+                    let mut axiom_ty_inst_spec = BTreeMap::new();
 
                     for (ty_param, ty_arg_inst) in
                         axiom.head.generics.params.iter().zip(inst.args.iter())
@@ -378,17 +386,20 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                                 (tref, sort)
                             }
                         };
-                        match axiom_ty_inst.insert(ty_param.clone(), ty_arg_sort) {
+                        match axiom_ty_inst_spec.insert(ty_param.clone(), ty_arg_sort) {
                             None => (),
                             Some(_) => panic!("duplicated type parameter {}", ty_param),
                         }
-                        axiom_ty_args.push(ty_arg_ref);
+                        axiom_ty_args_spec.push(ty_arg_ref);
                     }
 
                     // specialized builder for axiom body
-                    let mut axiom_ty_builder: IRBuilder<'_, '_> =
-                        IRBuilder::new(ctxt, axiom_ty_inst, &mut ir);
-                    axiom_ty_builder.register_axiom(&name, &axiom_ty_args);
+                    let mut axiom_ty_builder_impl: IRBuilder<'_, '_> =
+                        IRBuilder::new(ctxt, axiom_ty_inst_impl, &mut ir);
+                    axiom_ty_builder_impl.register_axiom(&name, &axiom_ty_args_impl, &mut processed_axioms);
+                    let mut axiom_ty_builder_spec: IRBuilder<'_, '_> =
+                        IRBuilder::new(ctxt, axiom_ty_inst_spec, &mut ir);
+                    axiom_ty_builder_spec.register_axiom(&name, &axiom_ty_args_spec, &mut processed_axioms);
 
                     // not reaching fixedpoint yet as long as we find a new monomorphization instance
                     fixedpoint = false;

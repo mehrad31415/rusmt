@@ -18,6 +18,6 @@ fn _spec_add(_lhs: MyInteger, _rhs: MyInteger) -> Integer {
 }
 
 #[smt_axiom]
-fn _axiom1(lhs: MyInteger, rhs: MyInteger) -> Boolean {
+fn _axiom1<T : SMT>(lhs: MyInteger, rhs: MyInteger) -> Boolean {
     _spec_add(lhs, rhs).eq(lhs.myadd(rhs))
 }

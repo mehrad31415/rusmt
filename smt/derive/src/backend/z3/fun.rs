@@ -4,7 +4,7 @@
 
 use crate::backend::z3::exp::expr_to_smt;
 use crate::backend::z3::sort::sort_to_smt;
-use crate::ir::exp::{ExpRegistry, Expression, MatchAtom, MatchCase, Variable, VariantCtor};
+use crate::ir::exp::{ExpRegistry, Expression, MatchAtom, VariantCtor};
 use crate::ir::fun::{FunDef, FunSig};
 use crate::ir::index::{ExpId, UsrFunId};
 use crate::ir::intrinsics::Intrinsic;

@@ -85,13 +85,6 @@ pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
     // monitor the execution
     let thread = thread::spawn(move || {
         loop {
-            // print any on-going messages
-            let mut message = String::new();
-            stderr.read_to_string(&mut message).expect("reading stderr");
-            if !message.is_empty() {
-                debug!("{}", message);
-            }
-
             // check status
             if let Ok(Some(status)) = child.try_wait() {
                 // print any remaining messages

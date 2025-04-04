@@ -3,9 +3,11 @@
 
 use crate::backend::z3::intrinsics::intrinsics_to_smt;
 use crate::backend::z3::sort::sort_to_smt;
+use crate::ir::exp::{EnumSelector, VarKind};
 use crate::ir::exp::{ExpRegistry, Expression, MatchAtom, MatchCase, Variable, VariantCtor};
 use crate::ir::index::{ExpId, VarId};
 use crate::IRContext;
+use core::panic;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Converts an expression into the corresponding SMT-LIB as a `String`.
@@ -23,7 +25,6 @@ pub fn expr_to_smt(
     let ExpRegistry { vars, exps } = exp_registry;
 
     let exp = exps.get(id).expect("expression not found in registry");
-
     expr_to_smt_inner(vars, exp_registry, exp, id, ir, dependencies, mapping_vars)
 }
 
@@ -38,11 +39,35 @@ pub fn expr_to_smt_inner(
 ) -> String {
     match exp {
         Expression::Var(var_id) => {
+            // if the variable is an smt variable, we return its name
             for (varid, name) in mapping_vars.iter() {
                 if varid == var_id {
                     return name.clone();
                 }
             }
+            // if the variable is inside the match
+            let varkind = vars
+                .get(var_id)
+                .expect("variable not found in registry")
+                .kind
+                .clone();
+            if let VarKind::Match {
+                head,
+                sort: _,
+                branch,
+                selector,
+            } = varkind
+            {
+                // get the name of the head variable
+                let head_smt = expr_to_smt(exp_registry, &head, ir, dependencies, mapping_vars);
+                let branch_name = match selector {
+                    EnumSelector::Tuple(x) => format!("field_{}_{}_", branch, x + 1),
+                    EnumSelector::Record(x) => format!("record_{}_", x),
+                };
+                return format!("({} {})", branch_name, head_smt);
+            }
+
+            // otherwise, we return its name
             return vars
                 .get(var_id)
                 .expect("variable not found in registry")
@@ -151,7 +176,7 @@ pub fn expr_to_smt_inner(
         }
         Expression::AccessSlot { base, slot } => {
             let base_smt = expr_to_smt(exp_registry, base, ir, dependencies, mapping_vars);
-            let field_name = format!("field{}_", slot + 1);
+            let field_name = format!("field_{}_{}_", base, slot + 1);
             format!("({} {})", field_name, base_smt)
         }
         Expression::AccessField { base, field } => {
@@ -159,40 +184,59 @@ pub fn expr_to_smt_inner(
             format!("({} {})", field, base_smt)
         }
         Expression::Match { cases } => {
+            // if the cases is empty, we panic
             if cases.is_empty() {
                 panic!("no cases in match");
             }
-            let case = cases.iter().next().expect("no cases in match");
-            // take out the first case from cases
-            let new_match: Vec<MatchCase> = cases.iter().skip(1).cloned().collect();
-            // let MatchCase { atoms, body } = case;
-            let atoms = &case.atoms;
-            let body = case.body;
-            let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
-            let cond_smt = String::new();
-            for atom in atoms {
-                let MatchAtom {
-                    head,
-                    sort,
-                    branch,
-                    variant,
-                } = atom;
-                let head_smt = expr_to_smt(exp_registry, head, ir, dependencies, mapping_vars);
-            }
-            format!(
-                "(ite {} {} {})",
-                cond_smt,
-                body_smt,
+            // otherwise, take the first case
+            let fist_case = cases.iter().next().expect("no cases in match");
+            // take the rest of the cases
+            let rest: Vec<MatchCase> = cases.iter().skip(1).cloned().collect();
+            // if the rest has only one element, no need to create ite
+            let x: String = if rest.len() == 1 {
+                let case = rest.first().expect("no cases in match");
+                let body = case.body;
+                let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
+                format!("{}", body_smt)
+            } else {
                 expr_to_smt_inner(
                     vars,
                     exp_registry,
-                    &Expression::Match { cases: new_match },
+                    &Expression::Match { cases: rest },
                     id,
                     ir,
                     dependencies,
                     mapping_vars,
                 )
-            )
+            };
+            // let MatchCase { atoms, body } = case;
+            let atoms = &fist_case.atoms; // atoms gives the condition
+                                          // the condition
+            let mut cond_smt = Vec::new();
+            for atom in atoms {
+                let MatchAtom {
+                    head,
+                    sort: _,
+                    branch,
+                    variant: _,
+                } = atom;
+
+                // get the condition
+                let head_smt = expr_to_smt(exp_registry, head, ir, dependencies, mapping_vars);
+                cond_smt.push(format!("(is-{} {})", branch, head_smt));
+            }
+
+            // construct the condition
+            let final_condition = if cond_smt.len() == 1 {
+                cond_smt.pop().unwrap()
+            } else {
+                format!("(and {})", cond_smt.join(" "))
+            };
+
+            // get the body of the first case
+            let body = fist_case.body;
+            let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
+            format!("(ite {} {} {})", final_condition, body_smt, x)
         }
         Expression::Phi { cases, default } => {
             let first = cases.iter().next();
@@ -224,21 +268,8 @@ pub fn expr_to_smt_inner(
                 .collect::<Vec<_>>();
             format!("({} {})", callee_smt, args_smt.join(" "))
         }
-        Expression::Forall { vars, body } => {
-            let vars = vars
-                .iter()
-                .map(|(var_id, sort)| {
-                    let var_name = format!("x_{}", var_id);
-                    format!("({} {})", var_name, sort_to_smt(sort, ir))
-                })
-                .collect::<Vec<_>>();
-            let ret = format!(
-                "(assert (forall ({}) {}))",
-                vars.join(" "),
-                expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars)
-            );
-            dependencies.insert(ret);
-            "".to_string()
+        Expression::Forall { vars: _, body } => {
+            expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars)
         }
         Expression::Exists { vars, body } => {
             let vars = vars

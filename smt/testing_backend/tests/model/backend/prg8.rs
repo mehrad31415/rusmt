@@ -1,23 +1,47 @@
-// testing Integers mutually dependent functions
-use rusmart_smt_remark_derive::{smt_type, smt_axiom, smt_impl, smt_spec};
-use rusmart_smt_stdlib::{Boolean, Integer, SMT};
+// testing Boolean
+use rusmart_smt_remark_derive::{smt_axiom, smt_impl, smt_spec, smt_type};
+use rusmart_smt_stdlib::{exists, forall, Boolean, Integer, Seq, SMT};
 
 #[smt_type]
-struct MyInteger {
-    value: Integer,
+enum Grades {
+    A,
+    B(Integer),
+    C { x: Integer, y: Integer },
+    D(Integer)
 }
 
-#[smt_impl (method = myadd)]
-fn _add(lhs: MyInteger, rhs: MyInteger) -> Integer {
-    lhs.value.add(rhs.value)
+#[smt_impl]
+fn grade_to_integer(x1: Grades) -> Integer {
+    match x1 {
+        Grades::A => Integer::from(1),
+        Grades::B(i) => i,
+        Grades::C { x, y } => x.add(y),
+        Grades::D(i) => i,
+    }
 }
 
-#[smt_spec(impls = _add)]
-fn _spec_add(_lhs: MyInteger, _rhs: MyInteger) -> Integer {
+#[smt_spec(impls = grade_to_integer)]
+fn grade_to_integer_spec(_x: Grades) -> Integer {
     unimplemented!()
 }
 
 #[smt_axiom]
-fn _axiom1<T : SMT>(lhs: MyInteger, rhs: MyInteger) -> Boolean {
-    _spec_add(lhs, rhs).eq(lhs.myadd(rhs))
+fn grade_to_integer_axiom(x: Grades) -> Boolean {
+    match x {
+        Grades::A => grade_to_integer_spec(x).eq(Integer::from(0)),
+        Grades::B(i) => grade_to_integer_spec(x).eq(i),
+        Grades::C { x: x1, y: y1 } => grade_to_integer_spec(x).eq(x1.add(y1)),
+        Grades::D(i) => grade_to_integer_spec(x).eq(i),
+    }
 }
+
+
+// #[smt_impl]
+// fn sort(s : Seq<Integer>) -> Seq<Integer> {
+//     let tail 
+// }
+
+// #[smt_spec(impls = sort)]
+// fn sort_spec(s : Seq<Integer>) -> Seq<Integer> {
+//     let x = iterforall
+// }

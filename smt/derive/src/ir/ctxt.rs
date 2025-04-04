@@ -118,8 +118,6 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// then builds a new mapping to be used in the derived context.
     pub fn derive(&mut self, generics: &Generics, ty_args: Vec<Sort>) -> IRBuilder {
         let ty_params = &generics.params;
-        println!("ty_params: {:?}", ty_params);
-        println!("ty_args: {:?}", ty_args);
         if ty_params.len() != ty_args.len() {
             panic!("generics mismatch");
         }

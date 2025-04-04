@@ -655,6 +655,8 @@ impl<T: SMT> Seq<T> {
         (0..self.inner.len()).map(Integer::from).collect()
     }
 
+    // todo z3 api functionalities
+
     /// checks if the sequence is empty
     /// operation: `v.is_empty()`
     pub fn is_empty(self) -> Boolean {

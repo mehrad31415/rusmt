@@ -35,7 +35,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
 
             // Generate field names: field1_, field2_, ...
             let field_names: Vec<String> = (0..gen_or_elem.len())
-                .map(|i| format!("field{}_", i + 1))
+                .map(|i| format!("field_{}_{}_", tuple_name, i + 1))
                 .collect();
 
             // Combine fields with their respective sorts
@@ -68,7 +68,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
         DataType::Tuple(elems) => {
             // Generate field names
             let field_names: Vec<String> = (0..elems.len())
-                .map(|i| format!("field{}_", i + 1))
+                .map(|i| format!("field_{}_{}_", type_name, i + 1))
                 .collect();
 
             // Combine field names with their respective sorts (types)
@@ -143,7 +143,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                         }
 
                         let field_names: Vec<String> =
-                            (0..t.len()).map(|i| format!("field{}_", i + 1)).collect();
+                            (0..t.len()).map(|i| format!("field_{}_{}_", variant_name, i + 1)).collect();
 
                         // Combine field names with their respective sorts (types)
                         let field_defs: Vec<String> = t
@@ -164,7 +164,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                         let field_defs: Vec<String> = r
                             .iter()
                             .map(|(field_name, sort)| {
-                                format!("({} {})", field_name, sort_to_smt(sort, ir))
+                                format!("(record_{}_ {})", field_name, sort_to_smt(sort, ir))
                             })
                             .collect();
 

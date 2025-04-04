@@ -67,12 +67,21 @@ pub fn expr_to_smt_inner(
                 return format!("({} {})", branch_name, head_smt);
             }
 
-            // otherwise, we return its name
-            return vars
-                .get(var_id)
-                .expect("variable not found in registry")
-                .name
-                .to_string();
+            // bound variables
+            if let VarKind::Bound { bind } = varkind {
+                return expr_to_smt(exp_registry, &bind, ir, dependencies, mapping_vars);
+            }
+
+            // if Param, we return its name
+            if let VarKind::Param = varkind {
+                return vars
+                    .get(var_id)
+                    .expect("variable not found in registry")
+                    .name
+                    .to_string();
+            }
+
+            return "quant and axiom remaining".to_string();
         }
         Expression::Pack { sort, elems } => {
             let (sort_name, ty_args) = ir.ty_registry.reverse_lookup(*sort);
@@ -144,7 +153,7 @@ pub fn expr_to_smt_inner(
             if let Some(_) = ty {
                 let constructor_name = format!("{}", branch);
                 match variant {
-                    VariantCtor::Unit => format!("({})", constructor_name),
+                    VariantCtor::Unit => format!("{}", constructor_name),
                     VariantCtor::Tuple(t) => {
                         let elems = t
                             .iter()

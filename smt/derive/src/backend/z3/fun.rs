@@ -23,7 +23,7 @@ pub fn fundef_in_smt(
     ir: &IRContext,
     funcs: &BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>,
 ) -> String {
-    let mut dependencies = BTreeSet::new();
+    let mut dependencies = Vec::new();
     let mut mapping_vars = BTreeMap::new();
 
     let mut sigs = Vec::new();

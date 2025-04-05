@@ -8,7 +8,7 @@ use crate::ir::exp::{ExpRegistry, Expression, MatchAtom, MatchCase, Variable, Va
 use crate::ir::index::{ExpId, VarId};
 use crate::IRContext;
 use core::panic;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Converts an expression into the corresponding SMT-LIB as a `String`.
 /// This function takes an expression registry, an expression ID, an IR context, dependencies set,
@@ -18,7 +18,7 @@ pub fn expr_to_smt(
     exp_registry: &ExpRegistry,
     id: &ExpId,
     ir: &IRContext,
-    dependencies: &mut BTreeSet<String>,
+    dependencies: &mut Vec<String>,
     mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
     // destruct ExpRegistry
@@ -34,7 +34,7 @@ pub fn expr_to_smt_inner(
     exp: &Expression,
     id: &ExpId,
     ir: &IRContext,
-    dependencies: &mut BTreeSet<String>,
+    dependencies: &mut Vec<String>,
     mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
     match exp {
@@ -81,7 +81,22 @@ pub fn expr_to_smt_inner(
                     .to_string();
             }
 
-            return "quant and axiom remaining".to_string();
+            // if quant
+            if let VarKind::Quant = varkind {
+                let v = vars
+                    .get(var_id)
+                    .expect("variable not found in registry")
+                    .name
+                    .to_string();
+                return format!("{}_{}", v, var_id);
+            }
+
+            // if axiom
+            return vars
+                .get(var_id)
+                .expect("variable not found in registry")
+                .name
+                .to_string();
         }
         Expression::Pack { sort, elems } => {
             let (sort_name, ty_args) = ir.ty_registry.reverse_lookup(*sort);
@@ -277,24 +292,33 @@ pub fn expr_to_smt_inner(
                 .collect::<Vec<_>>();
             format!("({} {})", callee_smt, args_smt.join(" "))
         }
-        Expression::Forall { vars: _, body } => {
-            expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars)
-        }
-        Expression::Exists { vars, body } => {
-            let vars = vars
+        Expression::Forall { vars, body } => {
+            let vars_string = vars
                 .iter()
                 .map(|(var_id, sort)| {
                     let var_name = format!("x_{}", var_id);
                     format!("({} {})", var_name, sort_to_smt(sort, ir))
                 })
                 .collect::<Vec<_>>();
-            let ret = format!(
-                "(assert (not (forall ({}) {})))",
-                vars.join(" "),
+            format!(
+                "(forall ({}) {})",
+                vars_string.join(" "),
                 expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars)
-            );
-            dependencies.insert(ret);
-            "".to_string()
+            )
+        }
+        Expression::Exists { vars, body } => {
+            let vars_string = vars
+                .iter()
+                .map(|(var_id, sort)| {
+                    let var_name = format!("x_{}", var_id);
+                    format!("({} {})", var_name, sort_to_smt(sort, ir))
+                })
+                .collect::<Vec<_>>();
+            format!(
+                "(exists ({}) {})",
+                vars_string.join(" "),
+                expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars)
+            )
         }
         _ => panic!("expression not supported in SMT-LIB"),
     }

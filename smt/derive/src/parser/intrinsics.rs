@@ -388,19 +388,19 @@ impl Intrinsic {
             (Q::Cloak, "shield") => mk1_t!(BoxShield, ty_args, args, val),
             (Q::Cloak, "reveal") => mk1_t!(BoxReveal, ty_args, args, val),
             // seq
-            (Q::Seq, "empty") => mk0_t!(SeqEmpty, ty_args, args),
+            (Q::Seq, "new") => mk0_t!(SeqEmpty, ty_args, args),
             (Q::Seq, "length") => mk1_t!(SeqLength, ty_args, args, seq),
             (Q::Seq, "append") => mk2_t!(SeqAppend, ty_args, args, seq, item),
             (Q::Seq, "at_unchecked") => mk2_t!(SeqAt, ty_args, args, seq, idx),
             (Q::Seq, "includes") => mk2_t!(SeqIncludes, ty_args, args, seq, item),
             // set
-            (Q::Set, "empty") => mk0_t!(SetEmpty, ty_args, args),
+            (Q::Set, "new") => mk0_t!(SetEmpty, ty_args, args),
             (Q::Set, "length") => mk1_t!(SetLength, ty_args, args, set),
             (Q::Set, "insert") => mk2_t!(SetInsert, ty_args, args, set, item),
             (Q::Set, "remove") => mk2_t!(SetRemove, ty_args, args, set, item),
             (Q::Set, "contains") => mk2_t!(SetContains, ty_args, args, set, item),
             // map
-            (Q::Map, "empty") => mk0_kv!(MapEmpty, ty_args, args),
+            (Q::Map, "new") => mk0_kv!(MapEmpty, ty_args, args),
             (Q::Map, "length") => mk1_kv!(MapLength, ty_args, args, map),
             (Q::Map, "put_unchecked") => mk3_kv!(MapPut, ty_args, args, map, key, val),
             (Q::Map, "get_unchecked") => mk2_kv!(MapGet, ty_args, args, map, key),

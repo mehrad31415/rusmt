@@ -6,7 +6,7 @@ use crate::backend::z3::exp::expr_to_smt;
 use crate::backend::z3::sort::sort_to_smt;
 use crate::ir::axiom::Predicate;
 use crate::IRContext;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Converts a predicate into the corresponding SMT-LIB axiom as a `String`.
 /// The predicate is a first-order logic formula that gives axiomatic semantics of the system.
@@ -18,7 +18,7 @@ pub fn axiom_in_smt(predicate: &Predicate, ir: &IRContext) -> String {
         body_exp,
     } = predicate;
     let mut ret = String::new();
-    let mut dependencies = BTreeSet::new();
+    let mut dependencies = Vec::new();
     let mut mapping_vars = BTreeMap::new();
     let body_expr = expr_to_smt(body_reg, body_exp, ir, &mut dependencies, &mut mapping_vars);
 

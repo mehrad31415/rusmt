@@ -16,7 +16,6 @@ use clap::Parser;
 use rusmart_cli::cli::Command;
 // Import the `initialize` function and `WKS` constant from the `rusmart_utils` crate.
 use rusmart_utils::config::{self, WKS};
-// handling the file system operations like creating, deleting, and reading files.
 use std::fs;
 
 // ------------------------------------------------------------------------------------------------//

@@ -92,11 +92,16 @@ pub fn expr_to_smt_inner(
             }
 
             // if axiom
-            return vars
-                .get(var_id)
-                .expect("variable not found in registry")
-                .name
-                .to_string();
+            if let VarKind::Axiom = varkind {
+                let v = vars
+                    .get(var_id)
+                    .expect("variable not found in registry")
+                    .name
+                    .to_string();
+                return format!("{}_{}", v, var_id);
+            }
+
+            panic!("variable not found in registry");
         }
         Expression::Pack { sort, elems } => {
             let (sort_name, ty_args) = ir.ty_registry.reverse_lookup(*sort);
@@ -319,6 +324,62 @@ pub fn expr_to_smt_inner(
                 vars_string.join(" "),
                 expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars)
             )
+        }
+        Expression::IterExists { vars, body } => {
+            let mut var_bindings = Vec::new(); // e.g. "(x_42 Int)"
+            let mut membership = Vec::new(); // e.g. "(member x_42 xs)"
+
+            for (var_id, domain_exp_id) in vars.iter() {
+                let var_info = exp_registry
+                    .vars
+                    .get(var_id)
+                    .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
+
+                let var_name = var_info.name.clone().to_string();
+                let smt_sort = sort_to_smt(&var_info.sort, ir);
+                let sequence =
+                    expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
+
+                membership.push(format!("(member {}_{} {})", var_name, var_id, sequence)); // TODO fix this
+                var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
+            }
+            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let mut all_tests = membership;
+            all_tests.push(body_smt);
+            let inner_and = if all_tests.len() == 1 {
+                all_tests[0].clone()
+            } else {
+                format!("(and {})", all_tests.join(" "))
+            };
+            format!("(exists ({}) {})", var_bindings.join(" "), inner_and)
+        }
+        Expression::IterForall { vars, body } => {
+            let mut var_bindings = Vec::new(); // e.g. "(x_42 Int)"
+            let mut membership = Vec::new(); // e.g. "(member x_42 xs)"
+
+            for (var_id, domain_exp_id) in vars.iter() {
+                let var_info = exp_registry
+                    .vars
+                    .get(var_id)
+                    .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
+
+                let var_name = var_info.name.clone().to_string();
+                let smt_sort = sort_to_smt(&var_info.sort, ir);
+                let sequence =
+                    expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
+
+                membership.push(format!("(member {}_{} {})", var_name, var_id, sequence)); // TODO fix this
+                var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
+            }
+            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let mut all_tests = membership;
+            all_tests.push(body_smt);
+            let inner_and = if all_tests.len() == 1 {
+                all_tests[0].clone()
+            } else {
+                format!("(and {})", all_tests.join(" "))
+            };
+            format!("(forall ({}) {})", var_bindings.join(" "), inner_and)
         }
         _ => panic!("expression not supported in SMT-LIB"),
     }

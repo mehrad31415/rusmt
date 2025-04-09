@@ -66,3 +66,8 @@ additional requirements apply:
 
 - Attributes will not be accepted.
   i.e., `#[smt_axiom(<...attrs...>)]` will cause an error.
+
+- Attributes will be accepted in the following form:
+  `#[smt_axiom(relations = {(impl1, spec1), (impl2, spec2)})]`
+  where `impl1`, `spec1`, `impl2`, and `spec2` are identifiers
+  of the corresponding `#[smt_impl]` and `#[smt_spec]` functions.

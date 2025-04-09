@@ -20,22 +20,17 @@
 //!
 //! * `Error` - SMT error - A special marker to indicate error states.
 
-//----------------------------------------DEPENDENCIES----------------------------------------------------//
-
+use internment::Intern;
+use num_bigint::BigInt;
+use num_rational::BigRational;
+use num_traits::cast::ToPrimitive;
+use paste::paste;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::ops::{Add, Deref, Div, Mul, Rem, Sub};
 use std::sync::atomic;
 use std::sync::atomic::AtomicUsize;
-
-use internment::Intern;
-use num_bigint::BigInt;
-use num_rational::BigRational;
-use num_traits::cast::ToPrimitive;
-use paste::paste;
-
-//------------------------------------------MACROS-------------------------------------------------------//
 
 /// Arithmetic operators
 /// In the below example, the operators add, sub, mul, div, and rem are implemented for the Integer type.
@@ -71,6 +66,7 @@ macro_rules! arith_operator {
 ///
 /// Example: smt_impl!(Integer);
 macro_rules! smt_impl {
+    // single types
     ($l:ty) => {
         // any type in SMT can only be compared with the same type (so float cannot be compared with integer)
         impl SMT for $l {
@@ -87,6 +83,7 @@ macro_rules! smt_impl {
             }
         }
     };
+    // tuples
     ( $n0:ident $($nx:ident)+ ) => {
         impl<$n0: SMT $(, $nx: SMT)+> SMT for ($n0 $(, $nx)+) {
             paste!{
@@ -294,12 +291,6 @@ pub trait SMT: 'static + Copy + Default + Hash + Send + Sync {
     }
 }
 
-/// This trait allows the methods of the SMT trait to be used between Integer and Rational types.
-/// The trait is only implemented for the Integer and Rational types.
-// pub trait Nums: SMT {
-//     fn into_rational(self) -> Rational;
-// }
-
 //----------------------------------------SIMPLE-TYPES----------------------------------------------------//
 /// ** 1) SMT boolean: A wrapper around the Rust boolean type
 ///
@@ -371,8 +362,7 @@ impl Boolean {
 /// For example, we can write a.add(b) or Integer::add(a,b) to add two Integer values a and b.
 /// The order_operator! macro is used to implement the order operators for the Integer type.
 /// For example, we can write a.lt(b) or Integer::lt(a,b) to check if a is less than b.
-// The Nums trait is implemented for the Integer type to allow for the conversion of Integer values to Rational values.
-// The implementation for Integer has been added for the comparison between Rationals and Integers.
+/// The ne and eq operators are implemented by default in the SMT
 #[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Integer {
     inner: Intern<BigInt>,
@@ -383,31 +373,7 @@ integer_from_literal!(i8, i16, i32, i64, i128, isize);
 integer_from_literal!(u8, u16, u32, u64, u128, usize);
 
 arith_operator!(Integer, add, sub, mul, div, rem);
-// The ne and eq operators are implemented by default in the SMT
 order_operator!(Integer, lt, le, ge, gt);
-
-// The Nums trait is implemented for the Integer type to allow for the conversion of Integer values to Rational values.
-// The implementation for Integer has been added for the comparison between Rationals and Integers.
-// impl Nums for Integer {
-//     fn into_rational(self) -> Rational {
-//         let num = self.inner.as_ref().clone().to_i64().expect("Failed to convert BigInt to i64");
-//         Rational::from(num)
-//     }
-// }
-
-// impl Integer {
-//     fn _cmp<T: Nums>(self, rhs: T) -> Ordering {
-//         SMT::_cmp(self.into_rational(), rhs.into_rational())
-//     }
-
-//     fn eq<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::eq(self.into_rational(), rhs.into_rational())
-//     }
-
-//     fn ne<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::ne(self.into_rational(), rhs.into_rational())
-//     }
-// }
 
 /// ** 3) Arbitrary precision rational number (SMT rational)
 #[derive(Debug, Clone, Copy, Default, Hash)]
@@ -442,24 +408,6 @@ impl From<f64> for Rational {
         }
     }
 }
-
-// impl Nums for Rational {
-//     fn into_rational(self) -> Rational {
-//         self
-//     }
-// }
-
-// impl Rational {
-//     fn _cmp<T: SMT + Nums>(self, rhs: T) -> Ordering {
-//         SMT::_cmp(self.into_rational(), rhs.into_rational())
-//     }
-//     fn eq<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::eq(self.into_rational(), rhs.into_rational())
-//     }
-//     fn ne<T: Nums + SMT>(self, rhs: T) -> Boolean {
-//         SMT::ne(self.into_rational(), rhs.into_rational())
-//     }
-// }
 
 /// ** 4) SMT string
 /// The String inside the interns are compared in a lexicographical order when calling the cmp method.
@@ -522,7 +470,7 @@ impl Error {
 /// Wrap for an SMT type for Rust-semantics enrichment
 /// The SMTWrap is a tuple struct that wraps an SMT type.
 // In SMTWrap, instead of using #[derive(Eq)] we implement the trait manually to avoid imposing the T: Eq constraint.
-
+// This is because T does not necessarily need to implement the Eq trait as the eq method is already implemented in the SMT trait.
 #[derive(Debug, Clone, Copy, Default)]
 struct SMTWrap<T: SMT>(T);
 
@@ -532,6 +480,8 @@ impl<T: SMT> PartialEq for SMTWrap<T> {
     }
 }
 
+impl<T: SMT> Eq for SMTWrap<T> {}
+
 // because we manually implement the PartialEq for SMTWrap
 // we need to manually implement the Hash trait as well
 // see https://rust-lang.github.io/rust-clippy/master/index.html#derived_hash_with_manual_eq
@@ -540,22 +490,6 @@ impl<T: SMT> Hash for SMTWrap<T> {
         self.0.hash(state);
     }
 }
-
-// implementation for SMTWrap<Rational> for equality between Rationals and integers inside wrappers.
-// impl PartialEq<SMTWrap<Integer>> for SMTWrap<Rational> {
-//     fn eq(&self, other: &SMTWrap<Integer>) -> bool {
-//         self.0.into_rational().eq(other.0.into_rational()).inner
-//     }
-// }
-
-// implementation for SMTWrap<Integer> for equality between Rationals and integers inside wrappers.
-// impl PartialEq<SMTWrap<Rational>> for SMTWrap<Integer> {
-//     fn eq(&self, other: &SMTWrap<Rational>) -> bool {
-//         self.0.into_rational().eq(other.0.into_rational()).inner
-//     }
-// }
-
-impl<T: SMT> Eq for SMTWrap<T> {}
 
 impl<T: SMT> PartialOrd for SMTWrap<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -654,8 +588,6 @@ impl<T: SMT> Seq<T> {
     pub fn iterator(self) -> Vec<Integer> {
         (0..self.inner.len()).map(Integer::from).collect()
     }
-
-    // todo z3 api functionalities
 
     /// checks if the sequence is empty
     /// operation: `v.is_empty()`

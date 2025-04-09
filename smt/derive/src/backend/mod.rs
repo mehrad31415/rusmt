@@ -1,3 +1,5 @@
+//! Module tree for the SMT backend
+
 pub mod error;
 
 pub mod codegen;

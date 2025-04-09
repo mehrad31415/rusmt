@@ -114,7 +114,7 @@ pub enum Expression {
     /// An Enum is a user-defined type (UserSortId)
     Enum {
         sort: UsrSortId, // the name and the inst are stored in the TypeRegistry where using the UsrSortId we can retrieve the name and the inst
-        branch: String, // the name of the enum variant
+        branch: String,  // the name of the enum variant
         variant: VariantCtor, // the call to the constructor of the enum variant (can be unit, tuple or record)
     },
     /// `<base>.<index>` - AccessSlot { base: Expr, slot: usize } in the parser
@@ -286,12 +286,12 @@ impl ExpRegistry {
     }
 
     /// Retrieve the variable
-    fn lookup_var(&self, idx: VarId) -> &Variable {
+    pub fn lookup_var(&self, idx: VarId) -> &Variable {
         self.vars.get(&idx).expect("no such var id")
     }
 
     /// Retrieve the expression
-    fn lookup_exp(&self, idx: ExpId) -> &Expression {
+    pub fn lookup_exp(&self, idx: ExpId) -> &Expression {
         self.exps.get(&idx).expect("no such exp id")
     }
 }

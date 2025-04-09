@@ -11,7 +11,6 @@
 //! fn my_function() {}
 //!
 //! The (key1 = value1, key2 = [value2, value3]) part is a key-value mapping that can be parsed using the `parse_dict` function.
-//!
 
 use crate::{bail_if_missing, bail_on};
 use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
@@ -221,7 +220,10 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
                 }
                 MetaValue::Map(map)
             }
-            _ => bail_on!(token, "expect value as identifier or set of identifiers or a set of tuples"),
+            _ => bail_on!(
+                token,
+                "expect value as identifier or set of identifiers or a set of tuples"
+            ),
         };
 
         // Add to the key-value store

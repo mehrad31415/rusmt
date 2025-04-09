@@ -1,18 +1,12 @@
 //! This is the only public module in the library crate.
 //! It provides the arguments parsing and their corresponding actions.
-//!
 
-// ------------------------------------------------------------------------------------------------//
-
-use anyhow::Result;
-use clap::Subcommand;
-use std::path::PathBuf;
-// This module depends on all the other modules in the library crate.
 use crate::dep::{DepState, Dependency};
 use crate::dep_cvc5::DepCVC5;
 use crate::dep_z3::DepZ3;
-
-// ------------------------------------------------------------------------------------------------//
+use anyhow::Result;
+use clap::Subcommand;
+use std::path::PathBuf;
 
 /// Enum representing available subcommands for the CLI
 /// Two subcommands are defined: Reset and Deps.
@@ -34,8 +28,7 @@ pub enum Command {
 
 /// Dependency subcommands: This argument defines whether to manage the Z3 or CVC5 dependency.
 #[derive(Subcommand)]
-// [allow(clippy::upper_case_acronyms)] attribute is used to suppress the warning for the Z3 and CVC5 acronyms, which are in uppercase.
-#[allow(clippy::upper_case_acronyms)]
+#[allow(clippy::upper_case_acronyms)] // attribute to suppress the warning for the Z3 and CVC5 acronyms, which are in uppercase.
 pub enum DepArgs {
     /// Solver Z3
     #[command(subcommand)]

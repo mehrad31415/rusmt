@@ -61,7 +61,6 @@ macro_rules! fail_if_error {
         }
     };
 }
-// pub(crate) use fail_if_error; not needed anymore
 
 /// Shortcut to return a compiler error
 /// It has two patterns:
@@ -79,7 +78,6 @@ macro_rules! bail_on {
         return Err(syn::Error::new_spanned($item, format!($fmt, $($arg)*)))
     };
 }
-// pub(crate) use bail_on; not needed anymore
 
 /// Special case on bail: does not expect a token to exist
 /// This macro is used to check if a token exists and if it does, it returns an error.
@@ -96,7 +94,6 @@ macro_rules! bail_if_exists {
         }
     };
 }
-// pub(crate) use bail_if_exists; not needed anymore
 
 /// Special case on bail: expects a token to exist
 /// This macro is used to check if a token is missing and if it is, it returns an error.
@@ -113,4 +110,3 @@ macro_rules! bail_if_missing {
         }
     };
 }
-// pub(crate) use bail_if_missing; not needed anymore

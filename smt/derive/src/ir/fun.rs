@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::ir::ctxt::IRBuilder;
 use crate::ir::exp::{ExpBuilder, ExpRegistry};
 use crate::ir::index::{ExpId, UsrFunId};
@@ -8,6 +6,7 @@ use crate::ir::sort::Sort;
 use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
+use std::collections::BTreeMap;
 
 /// A function signature in the IR.
 ///

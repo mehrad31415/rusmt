@@ -1,3 +1,6 @@
+//! This module defines the `CodeGen` trait and its implementation for Z3.
+//! It provides utility functions for generating SMT-LIB code from an IRContext.
+
 use crate::backend::error::BackendResult;
 use crate::backend::z3::common::CodeGenZ3;
 use crate::backend::z3::engine_chc::BackendZ3CHC;

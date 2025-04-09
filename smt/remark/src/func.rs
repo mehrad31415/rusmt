@@ -5,14 +5,13 @@
 //! - `derive_for_impl` is used inside the `smt_impl` procedural macro to derive code for implementation annotations. If the return type of derive_for_impl is an error, the macro will generate a compile-time error. If the return type of derive_for_impl is Ok, the macro will unwrap the result and return the generated code.
 //! - `derive_for_spec` is used inside the `smt_spec` procedural macro to derive code for specification annotations. If the return type of derive_for_spec is an error, the macro will generate a compile-time error. If the return type of derive_for_spec is Ok, the macro will unwrap the result and return the generated code.
 //!
-use proc_macro2::{Ident, TokenStream};
-use quote::quote;
-use syn::{FnArg, ItemFn, PatType, Path, PathSegment, Result, Signature, Type, TypePath};
-
 use crate::attr::{parse_dict, MetaValue};
 use crate::generics::TypeParamGroup;
 use crate::{bail_if_exists, bail_if_missing, bail_on};
 use log::info;
+use proc_macro2::{Ident, TokenStream};
+use quote::quote;
+use syn::{FnArg, ItemFn, PatType, Path, PathSegment, Result, Signature, Type, TypePath};
 
 /// Checks the function signature and derives additional code if a (method) attribute is present.
 ///

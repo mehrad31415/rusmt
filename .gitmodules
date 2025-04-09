@@ -1,6 +1,3 @@
-[submodule "cvc5 dependency"]
-	path = deps/cvc5
-	url = https://github.com/cvc5/cvc5.git
 [submodule "z3 dependency"]
 	path = deps/z3
 	url = https://github.com/Z3Prover/z3.git

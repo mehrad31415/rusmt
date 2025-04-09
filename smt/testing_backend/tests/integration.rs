@@ -1,12 +1,11 @@
 mod model;
 
 use anyhow::anyhow;
-use std::path::PathBuf;
 use datatest_stable::harness;
 use rusmart_lang_rego::run;
 use rusmart_smt_derive::model;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
 static ENV_UPDATE_BASELINE: &str = "UPBL";
 

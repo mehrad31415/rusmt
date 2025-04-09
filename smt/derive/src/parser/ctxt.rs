@@ -1,13 +1,5 @@
-use core::panic;
-use log::trace;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter}; // for implementing the Display trait on `Refinement` and `NamedItem` enums
-use std::fs; // for filesystem operations; for reading a single file in process_file(&mut self, path: &Path) -> Result<()> method
-use std::path::Path; // for path handling
+//! Context manager for holding marked items in rust code; the main logic to parse is in this file.
 
-use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemMod, ItemStruct, Result, Stmt}; // Import syn crate types for parsing Rust code
-
-use walkdir::WalkDir; // For walking through directories recursively (in  Context::new<P: AsRef<Path>>(path_input: P) -> Result<Self>)
 
 use crate::parser::apply::{ApplyDatabase, Kind};
 use crate::parser::attr::{ImplMark, Mark, SpecAxiom, SpecMark};
@@ -18,6 +10,14 @@ use crate::parser::infer::{TIError, TypeRef, TypeUnifier};
 use crate::parser::name::{AxiomName, UsrFuncName, UsrTypeName};
 use crate::parser::ty::{TypeBody, TypeDef, TypeTag};
 use crate::{bail_if_exists, bail_on, bail_on_with_note};
+use core::panic;
+use log::trace;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::{Display, Formatter}; // for implementing the Display trait on `Refinement` and `NamedItem` enums
+use std::fs; // for filesystem operations; for reading a single file in process_file(&mut self, path: &Path) -> Result<()> method
+use std::path::Path; // for path handling
+use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemMod, ItemStruct, Result, Stmt}; // Import syn crate types for parsing Rust code
+use walkdir::WalkDir; // For walking through directories recursively (in  Context::new<P: AsRef<Path>>(path_input: P) -> Result<Self>)
 
 #[derive(Debug)]
 /// SMT-marked type

@@ -24,7 +24,7 @@
 //! - `artifact`: The artifact.
 //! - `_phantom`: A PhantomData.
 //!
-//! The `DepState` enum automatically differentiates the scratch and package version of LLVM. It has two variants:
+//! The `DepState` enum automatically differentiates the scratch and package version. It has two variants:
 //!
 //! - `Scratch`: The scratch state.
 //! - `Package`: The package state.
@@ -35,29 +35,14 @@
 //! - `list_configurations`: List the possible build options.
 //! - `build`: Build the package.
 
-//-------------------------------------------------------------------------------------------//
-// the fs module is used to interact with the filesystem for example to create, read, update and delete files
-use std::fs;
-// the PhantomData is used to indicate that the type parameter is used in the struct but not stored
-// This is handy to check the type and lifetime of the type parameter at compile time
-use std::marker::PhantomData;
-// the Path and PathBuf are used to represent file paths (first is immutable, second is mutable)
-use std::path::{Path, PathBuf};
-// the anyhow module is used to handle errors in a more convenient way
-// Result is a type that represents either success or failure and is a synonym for Result<T, anyhow::Error> of the std::result module
-use anyhow::{bail, Result};
-// a logging facade that provides macros for logging at different levels
-// info! is used to log information messages
-// warn! is used to log warning messages (not necessarily errors)
-use log::{info, warn};
-// the tempfile module is used to create temporary files and directories
-use tempfile::tempdir;
-// the workspace struct containing the base and studio (native or docker) paths
-use rusmart_utils::config::WKS;
-// the git repo struct containing the path and commit hash
 use crate::git::GitRepo;
-
-//-----------------------------------------------------------------------------------------------//
+use anyhow::{bail, Result};
+use log::{info, warn};
+use rusmart_utils::config::WKS;
+use std::fs;
+use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
+use tempfile::tempdir;
 
 /// A trait that marks a dependency in the project
 /// The only dependencies we currently have are Z3 and CVC5
@@ -72,8 +57,6 @@ pub trait Dependency {
     /// Build the dependency from scratch
     fn build(artifact: &Artifact) -> Result<()>;
 }
-
-//-----------------------------------------------------------------------------------------------//
 
 /// A marker over a path indicating that this is an artifact of a dependency
 #[derive(Debug, PartialEq, Eq)]
@@ -125,10 +108,6 @@ impl Artifact {
     /// # Returns
     ///
     /// * `Result<Option<Self>>` - A result containing an optional Artifact struct
-    /// If the path does not exist, the result will be Ok(None)
-    /// If the path exists but is not a directory (for example a file), the result will be an error
-    /// If the path exists and is a directory, but doesn't contain both src and dst directories, the result will be an error
-    /// If the path exists and is a directory containing both src and dst directories, the result will be Ok(Some(Artifact))
     pub fn seek(path: &Path) -> Result<Option<Self>> {
         if !path.exists() {
             return Ok(None);
@@ -251,7 +230,7 @@ impl<T: Dependency> Package<T> {
     }
 }
 
-/// Automatically differentiate the scratch and package version of LLVM
+/// Automatically differentiate the scratch and package version
 #[derive(Debug, PartialEq, Eq)]
 pub enum DepState<T: Dependency> {
     /// The scratch state

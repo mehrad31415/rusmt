@@ -1,7 +1,6 @@
-use std::collections::{BTreeSet, VecDeque};
-
 use crate::parser::generics::{Generics, GenericsInstPartial, Monomorphization, PartialInst};
 use crate::parser::infer::{TIError, TypeRef, TypeUnifier};
+use std::collections::{BTreeSet, VecDeque};
 
 /// Unify two (partial) instantiations and see if new instantiations appear.
 fn self_interference(
@@ -37,7 +36,8 @@ fn self_interference(
     // collect the unified results from both sides
     let ty_to_inst = |ty| {
         let refreshed = unifier.refresh_type(&ty); // Refreshes a type by replacing any type variables with their inferred types.
-        match refreshed.reverse() { //reverse Converts the `TypeRef` back into a `TypeTag`, if possible.
+        match refreshed.reverse() {
+            //reverse Converts the `TypeRef` back into a `TypeTag`, if possible.
             None => {
                 let var = match refreshed {
                     TypeRef::Var(v) => v,

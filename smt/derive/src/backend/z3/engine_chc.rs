@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+//! Root module for Z3 smtlib code generation.
 
 use crate::backend::codegen::{l, ContentBuilder};
 use crate::backend::error::BackendResult;
@@ -12,8 +12,8 @@ use crate::ir::name::{Symbol, UsrFunName};
 use crate::ir::sort::Sort;
 use crate::parser::name::UsrFuncName;
 use crate::IRContext;
-use proc_macro2::Ident;
-use proc_macro2::Span;
+use proc_macro2::{Ident, Span};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// BackendZ3CHC is a backend designed for Z3's CHC (Constrained Horn Clause) engine.
 pub struct BackendZ3CHC {}

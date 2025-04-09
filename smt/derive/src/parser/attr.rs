@@ -5,13 +5,13 @@
 //! - `ImplMark` struct which represents the marking for an annotated impl function.
 //! - `SpecMark` struct which represents the marking for an annotated spec function.
 //! - `parse_attrs` is the main method to parse the attributes and extract the marks. This method is used in the `ctxt` module.
-//!
+
+use super::ctxt::Refinement;
 use crate::parser::name::UsrFuncName;
 use crate::{bail_if_missing, bail_on};
 use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{AttrStyle, Attribute, MacroDelimiter, Meta, MetaList, MetaNameValue, Path, Result};
-use super::ctxt::Refinement;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Allowed annotation

@@ -1,3 +1,11 @@
+//! This module defines the function signature and function definition structures
+
+use crate::parser::ctxt::ContextWithType; // Context manager after type analysis is done
+use crate::parser::expr::Expr; // Our own expression type
+use crate::parser::generics::Generics; // Declaration of generics
+use crate::parser::name::{ReservedIdent, TypeParamName, UsrFuncName, UsrTypeName, VarName}; // Name handling
+use crate::parser::ty::{CtxtForType, TypeTag};
+use crate::{bail_if_exists, bail_if_non_empty, bail_on};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter}; // used to implement the Display trait
 use syn::{
@@ -13,13 +21,6 @@ use syn::{
     Signature,  // Represents a function signature
     Stmt,       // Represents a statement in Rust code
 };
-
-use crate::parser::ctxt::ContextWithType; // Context manager after type analysis is done
-use crate::parser::expr::Expr; // Our own expression type
-use crate::parser::generics::Generics; // Declaration of generics
-use crate::parser::name::{ReservedIdent, TypeParamName, UsrFuncName, UsrTypeName, VarName}; // Name handling
-use crate::parser::ty::{CtxtForType, TypeTag};
-use crate::{bail_if_exists, bail_if_non_empty, bail_on};
 
 /// Represents casting-related function names
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]

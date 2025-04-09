@@ -1,3 +1,5 @@
+//! Modules for Z3 backend
+
 pub mod common;
 
 pub mod engine_chc;

@@ -1,16 +1,16 @@
+//! This module creates the SMTLIB2 file and invokes the backend solver (Z3).
+
+use crate::backend::codegen::CodeGen;
+use crate::backend::error::BackendResult;
+use crate::ir::ctxt::IRContext;
+use command_group::CommandGroup;
+use log::{debug, warn};
 use std::fmt::{Display, Formatter};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 use std::{fs, thread};
-
-use command_group::CommandGroup;
-use log::{debug, warn};
-
-use crate::backend::codegen::CodeGen;
-use crate::backend::error::BackendResult;
-use crate::ir::ctxt::IRContext;
 
 /// This defines the name of the <file>.smt2
 const FILE: &str = "main";
@@ -51,7 +51,6 @@ pub fn create_smt_file(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -
     let path_src = path_wks.join(format!("{}.{}", FILE, backend.flavor()));
     // if the file already exists, panic
     if path_src.exists() {
-        // println!("source file already exists: {}", path_src.display());
         panic!("source file already exists");
     }
     // 3. Write the generated code to the file.
@@ -69,7 +68,7 @@ pub fn create_smt_file(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -
 ///
 /// A `BackendResult<Response>` indicating the outcome: `sat`, `unsat`, `unknown`, or `timeout`.
 pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
-    // 3. Invoke Z3 directly on the generated SMTLIB2 file.
+    // 1. Invoke Z3 directly on the generated SMTLIB2 file.
     let mut cmd = Command::new("z3");
     cmd.arg("-smt2")
         .arg(&path_src)
@@ -112,11 +111,11 @@ pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
     // wait for thread to finish
     let status = thread.join().expect("monitoring thread completed");
 
-    // 5. Read Z3's output.
+    // 2. Read Z3's output.
     let mut output = String::new();
     stdout.read_to_string(&mut output).expect("reading stdout");
 
-    // 6. Interpret the output.
+    // 3. Interpret the output.
     let response = match status {
         None => {
             if !output.is_empty() {
@@ -132,15 +131,9 @@ pub fn invoke_backend(path_src: &PathBuf) -> BackendResult<Response> {
                 panic!("backend execution crashed with status {}", e);
             }
             match output.trim() {
-                "unknown" => {
-                    Response::Unknown
-                }
-                "sat" => {
-                    Response::Sat
-                }
-                "unsat" => {
-                    Response::Unsat
-                }
+                "unknown" => Response::Unknown,
+                "sat" => Response::Sat,
+                "unsat" => Response::Unsat,
                 other => panic!("invalid response: {}", other),
             }
         }

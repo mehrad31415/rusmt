@@ -1,20 +1,11 @@
 //! CVC5 dependency
 //!
-//! This module contains the DepCVC5 struct, which represents the CVC5 dependency.
-//! The DepCVC5 struct implements the Dependency trait, which provides the functionality to configure and build the CVC5 dependency.
-//!
+//! This module contains the DepCVC5 struct, which implements the Dependency trait.
+//! The Dependency trait provides the functionality to configure and build the CVC5 dependency.
 
-// ------------------------------------------DEPENDENCIES---------------------------------------//
-
-// the `std::process::Command` module provides the Command struct to spawn child processes
-use std::process::Command;
-// the `anyhow` crate provides the `bail` macro to return an error
-// The Result type is a type alias for `Result<T, anyhow::Error>`.
-use anyhow::{bail, Context, Result};
-// artifact struct contains the base, src and dst paths
 use crate::dep::{Artifact, Dependency};
-
-// ------------------------------------------DEFINITIONS------------------------------------------//
+use anyhow::{bail, Context, Result};
+use std::process::Command; // artifact struct contains the base, src and dst paths
 
 // path constants
 static PATH_REPO: [&str; 2] = ["deps", "cvc5"];
@@ -22,8 +13,6 @@ static PATH_REPO: [&str; 2] = ["deps", "cvc5"];
 /// Represent the dependency: CVC5
 #[derive(Debug, PartialEq, Eq)]
 pub struct DepCVC5 {}
-
-// ------------------------------------------IMPLEMENTATION------------------------------------//
 
 impl Dependency for DepCVC5 {
     /// Get the path to the CVC5 repository from the root of the workspace (deps/cvc5)

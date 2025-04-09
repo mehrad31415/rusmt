@@ -1,11 +1,11 @@
 mod model;
 
-use anyhow::anyhow; // for error handling
+use anyhow::anyhow;
 use datatest_stable::harness; // or writing file-driven or data-driven tests
 use rusmart_smt_derive::model; // model is the internal entrypoint for front-end to intermediate representation
-use std::collections::BTreeSet; // for ordered sets
-use std::path::Path; // for file paths
-use std::{env, fs}; // for environment variables and file system operations
+use std::collections::BTreeSet;
+use std::path::Path;
+use std::{env, fs};
 
 static ENV_UPDATE_BASELINE: &str = "UPBL";
 

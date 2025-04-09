@@ -1,19 +1,19 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter};
+//! This module parses the rust defined types and converts them to the type tags used in the SMT context.
 
 use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string.
-
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::{Display, Formatter};
 use syn::{
-    AngleBracketedGenericArguments, Field, FieldMutability, Fields, FieldsNamed, FieldsUnnamed,
-    GenericArgument, Ident, ItemEnum, ItemStruct, Path, PathArguments, PathSegment, Result, Token,
-    Type, TypePath, TypeTuple as TypePack, Variant, punctuated::Punctuated,
+    punctuated::Punctuated, AngleBracketedGenericArguments, Field, FieldMutability, Fields,
+    FieldsNamed, FieldsUnnamed, GenericArgument, Ident, ItemEnum, ItemStruct, Path, PathArguments,
+    PathSegment, Result, Token, Type, TypePath, TypeTuple as TypePack, Variant,
 };
 
 // The ContextWithGenerics are imported to form the TypeDef for each type.
 use crate::parser::ctxt::{ContextWithGenerics, MarkedType};
-use crate::{bail_if_empty, bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::generics::Generics;
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};
+use crate::{bail_if_empty, bail_if_exists, bail_if_missing, bail_on};
 
 /// A context suitable for type analysis
 /// Three types implement this trait: TypeParseCtxt (in ty.rs), FuncSigParseCtxt (in func.rs), and ExprParserRoot (in expr.rs)
@@ -796,8 +796,8 @@ impl TypeBody {
         // we encapsulate the `context with generics` and the `generics` themselves
         // A context provider for type parsing
         let ctxt = TypeParseCtxt {
-            ctxt, // the whole context containing all the types
-            generics,     // generics of the current type as the from_marked function is used inside a loop in ctxt.rs for each type
+            ctxt,     // the whole context containing all the types
+            generics, // generics of the current type as the from_marked function is used inside a loop in ctxt.rs for each type
         };
 
         // depending on the item type (enum or struct) we have different parsing strategies
@@ -807,7 +807,7 @@ impl TypeBody {
                     attrs: _,
                     vis: _,
                     enum_token: _,
-                    ident: _,    // handled earlier (the fact that the ident must be unique is checked in the context - in sanity check, etc.)
+                    ident: _, // handled earlier (the fact that the ident must be unique is checked in the context - in sanity check, etc.)
                     generics: _, // handled earlier (when the conversion from Context to ContextWithGenerics happened in parse_generics)
                     brace_token: _, // enums do not have semicolons at the end
                     variants,
@@ -827,7 +827,7 @@ impl TypeBody {
                     attrs: _,
                     vis: _,
                     struct_token: _,
-                    ident: _,    // handled earlier (the fact that the ident must be unique is checked in the context - in sanity check, etc.)
+                    ident: _, // handled earlier (the fact that the ident must be unique is checked in the context - in sanity check, etc.)
                     generics: _, // handled earlier (when the conversion from Context to ContextWithGenerics happened in parse_generics)
                     fields,
                     semi_token, // record structs do not have semicolons at the end but tuple structs do. This is enforced by the rust compiler.

@@ -6,27 +6,10 @@
 //! - Create a new instance of `GitRepo`.
 //! - Retrieve the current commit hash of the repository.
 //! - Clone & Checkout the repository into a new directory.
-//!
 
-// ------------------------------------------------------------------------------------------------//
-
-// PathBuf & Path both represent a path on the filesystem.
-// PathBuf is owned, mutable, heap-allocated and growable.
-// Path is borrowed, immutable, stack-allocated and fixed-size.
-// The relation between PathBuf and Path is like String and str.
-// Note that a Path is not internally represented as an UTF-8 string, but instead is stored as an OsString
-use std::path::{Path, PathBuf};
-// Command is a struct representing a command to be run in a child process.
-// It is mainly used to spawn new processes for example running a shell command from the Rust program.
-use std::process::Command;
-// The Result type is a type that represents either success (Ok) or failure (Err).
-// It is a type alias of the std::result::Result type: pub type Result<T, E = Error> = std::result::Result<T, E>;
-// anyhow macro is used to create an error from a string or an error type that can be converted into an anyhow::Error.
-// bail macro is used to return an error from a function without explicitly mentioning return. bail!(....) = return Err(anyhow!(...)).
-// The Context trait allows you to add extra context when an operation returns an error. This is done by calling the context or with_context methods on a Result.
 use anyhow::{anyhow, bail, Context, Result};
-
-//---------------------------------------------------------------------------------------------------//
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 // These traits are derived for writing unit tests.
 #[derive(Debug, PartialEq, Eq)]
@@ -58,7 +41,6 @@ impl GitRepo {
     /// The -n 1 parameters mean give the first one in the list (which is the latest hash commit given that the commits are ordered in a reverse chronological order).
     /// The version in `git rev-list -n 1 <version>` means that give the latest commit hash from the specified version.
     /// The path is specified to mention from which directory this command should be executed. In other words, the command is run in the directory specified by the `path` variable.
-    ///
     ///
     /// # Errors:
     /// The cmd.output() gives a Result<Output>. The ? in output = cmd.output()?; propagates the error.

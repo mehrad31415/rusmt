@@ -1,21 +1,12 @@
 //! Z3 dependency
 //!
-//! This module contains the DepZ3 struct, which represents the Z3 dependency.
-//! The DepZ3 struct implements the Dependency trait, which provides the functionality to configure and build the Z3 dependency.
+//! This module contains the DepZ3 struct, which implements the Dependency trait
+//! The Dependency trait provides the functionality to configure and build the Z3 dependency.
 
-// ------------------------------------------DEPENDENCIES---------------------------------------//
-
-// the `std::process::Command` module provides the Command struct to spawn child processes
-use std::process::Command;
-// the `anyhow` crate provides the `bail` macro to return an error
-// The Result type is a type alias for `Result<T, anyhow::Error>`.
+use crate::dep::{Artifact, Dependency}; // artifact struct contains the base, src and dst paths
 use anyhow::{bail, Context, Result};
-// artifact struct contains the base, src and dst paths
-use crate::dep::{Artifact, Dependency};
-// interacting with the file system
 use std::fs;
-
-// ------------------------------------------DEFINITIONS------------------------------------------//
+use std::process::Command;
 
 // path constants
 static PATH_REPO: [&str; 2] = ["deps", "z3"];
@@ -23,8 +14,6 @@ static PATH_REPO: [&str; 2] = ["deps", "z3"];
 /// Represent the dependency: Z3
 #[derive(Debug, PartialEq, Eq)]
 pub struct DepZ3 {}
-
-// ------------------------------------------IMPLEMENTATIONS------------------------------------//
 
 impl Dependency for DepZ3 {
     /// Get the path to the Z3 repository from the root of the workspace (deps/z3)

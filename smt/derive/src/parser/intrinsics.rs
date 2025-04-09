@@ -1,15 +1,15 @@
-use std::fmt::{Display, Formatter};
+//! System types and functions of Rusmart
 
-use anyhow::bail;
-use syn::punctuated::Punctuated;
-use syn::token::Comma;
-use syn::{Expr as Exp, ExprLit, Lit, Result};
-
-use crate::{bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::expr::Expr;
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
 use crate::parser::ty::SysTypeName;
+use crate::{bail_if_exists, bail_if_missing, bail_on};
+use anyhow::bail;
+use std::fmt::{Display, Formatter};
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::{Expr as Exp, ExprLit, Lit, Result};
 
 /// Intrinsic procedure
 #[derive(Clone, Debug)]

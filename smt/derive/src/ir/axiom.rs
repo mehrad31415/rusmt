@@ -1,7 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-
-use itertools::Itertools;
-
 use crate::ir::ctxt::IRBuilder;
 use crate::ir::exp::{ExpBuilder, ExpRegistry};
 use crate::ir::fun::FunSig;
@@ -11,6 +7,8 @@ use crate::ir::sort::Sort;
 use crate::parser::func::{Axiom, FuncSig};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::AxiomName;
+use itertools::Itertools;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// An axiom predicate in the IR.
 ///

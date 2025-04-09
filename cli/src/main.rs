@@ -3,34 +3,24 @@
 //!
 //! - The entry point is the `main` function, which parses command-line arguments and executes the corresponding actions.
 //! - The CLI uses the `clap` crate for argument parsing and the `rusmart_utils` crate for workspace initialization.
-//!
 
-// ------------------------------------------------------------------------------------------------//
-
-// the Result type is a type alias for `Result<T, anyhow::Error>` for simplified error handling.
 use anyhow::{Context, Result};
-// the `clap` crate provides a simple way to parse command-line arguments.
-// Parser is a trait in the clap crate that allows for parsing command-line arguments into a struct.
 use clap::Parser;
-// Import the `Command` struct from the `rusmart_cli` library crate to handle command management.
 use rusmart_cli::cli::Command;
-// Import the `initialize` function and `WKS` constant from the `rusmart_utils` crate.
 use rusmart_utils::config::{self, WKS};
 use std::fs;
-
-// ------------------------------------------------------------------------------------------------//
 
 // By deriving Parser, command-line arguments are automatically parsed into the fields of the Args struct.
 #[derive(Parser)]
 /// * Semantic SMT CLI
 /// By running the cargo run -- --help command, the following help message is displayed:
-/// 
+///
 /// Tool: semantic-smt-cli
 /// Author: Meng Xu <meng.xu.cs@uwaterloo.ca>
 /// Version: 0.1.0
 /// A command line interface for the Rusmart project
-/// 
-/// Usage: rusmart-cli <COMMAND> 
+///
+/// Usage: rusmart-cli <COMMAND>
 ///  Commands:
 ///   reset  Run cargo run -- reset to delete the studio directory
 ///   deps   Manage dependencies (subcommand is defined in DepArgs) for example> cargo run deps cvc5 build
@@ -39,7 +29,7 @@ use std::fs;
 /// Options:
 ///   -h, --help     Print help
 ///   -V, --version  Print version
-/// 
+///
 /// The about, version, and author attributes are taken from the Cargo.toml file.
 /// The rename_all = "kebab-case" attribute converts the struct field names to kebab-case.
 /// The help_template attribute customizes the help message format.

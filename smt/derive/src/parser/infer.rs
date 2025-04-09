@@ -1,13 +1,11 @@
 //! Type inference and unification for the SMT parser.
 
+use crate::parser::name::{TypeParamName, UsrTypeName}; // generic type parameter name and user-defined type name.
+use crate::parser::ty::TypeTag;
+use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string for example like args.iter().format(",") will return a string with the elements of args separated by a comma.
 use std::cmp::Ordering; // Imported for comparing type variables.
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter};
-
-use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string for example like args.iter().format(",") will return a string with the elements of args separated by a comma.
-
-use crate::parser::name::{TypeParamName, UsrTypeName}; // generic type parameter name and user-defined type name.
-use crate::parser::ty::TypeTag; // TypeTag provides the variants: Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error, User, Pack, Parameter.
+use std::fmt::{Display, Formatter}; // TypeTag provides the variants: Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error, User, Pack, Parameter.
 
 /// An error for type inference
 pub enum TIError {

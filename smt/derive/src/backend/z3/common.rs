@@ -1,12 +1,11 @@
-use std::path::PathBuf;
-
-use lazy_static::lazy_static;
-
-use rusmart_cli::cli::expect_z3;
+//! This module provides a generic backend for Z3-related operations.
 
 use crate::backend::codegen::CodeGen;
 use crate::backend::error::BackendResult;
 use crate::ir::ctxt::IRContext;
+use lazy_static::lazy_static;
+use rusmart_cli::cli::expect_z3;
+use std::path::PathBuf;
 
 // `lazy_static!` ensures that a static, thread-safe value is initialized only once
 // and reused across the program.

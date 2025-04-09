@@ -7,7 +7,6 @@
 //! - `bail_if_missing!` to handle the case where a token should exist
 //! - `bail_if_non_empty!` to handle the case where a token should be empty
 //! - `bail_if_empty!` to handle the case where a token should have at least one element
-//!
 
 // Note that some of these macros have been defined in the err.rs file in the smt/remark crate.
 // Given that the rusmart-smt-remark crate is a proc-macro crate, it was not possible to export the declarative macros defined in the err.rs file. Now this is possible!

@@ -1,5 +1,4 @@
-use std::fmt::{Display, Formatter};
-use syn::{Expr as Exp, ExprPath, Path, PathArguments, PathSegment, Result};
+//! Path parsing for expressions
 
 use crate::parser::expr::CtxtForExpr;
 use crate::parser::func::{CastFuncName, FuncName, SysFuncName};
@@ -8,6 +7,8 @@ use crate::parser::infer::TypeUnifier;
 use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName, VarName};
 use crate::parser::ty::{SysTypeName, TypeBody, TypeName};
 use crate::{bail_if_exists, bail_if_missing, bail_on};
+use std::fmt::{Display, Formatter};
+use syn::{Expr as Exp, ExprPath, Path, PathArguments, PathSegment, Result};
 
 /// An identifier for a ADT variant
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]

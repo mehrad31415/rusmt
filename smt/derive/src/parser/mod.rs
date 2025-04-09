@@ -1,3 +1,5 @@
+//! Module tree of the parser
+
 pub mod ctxt;
 mod err;
 mod test;

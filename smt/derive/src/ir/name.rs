@@ -102,7 +102,6 @@ name! {
         : crate::parser::name::AxiomName
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,16 +110,16 @@ mod tests {
     #[test]
     fn test_into_from() {
         let a = UsrTypeName {
-            ident : String::from("hello")
+            ident: String::from("hello"),
         };
 
         let b = UsrSortName::from(a.clone());
-        let c : UsrSortName = a.clone().into();
-        assert_eq!(b,c);
+        let c: UsrSortName = a.clone().into();
+        assert_eq!(b, c);
 
         let d = b.into();
         let e = UsrTypeName::from(c);
-        assert_eq!(a,d);
-        assert_eq!(d,e)
-    }    
+        assert_eq!(a, d);
+        assert_eq!(d, e)
+    }
 }

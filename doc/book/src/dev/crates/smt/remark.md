@@ -87,6 +87,6 @@ The _lib_ section indicates that the package is a library crate and contains a _
 This package contains one library crate, which in turn has only one _lib_ module defining procedural macros for annotating Rust types, functions, and constants in order to generate additional code and derive traits. It provides four procedural macros: __smt_type, smt_impl, smt_spec, and smt_axiom__.
     - smt_type is used to annotate Rust type definitions (like structs and enums). The primary purpose of this procedural macros is to automatically derive the __SMT__ trait for the annotated types by generating the necessary code for the comparison method (cmp) method.
     - smt_impl and smt_spec annotate top-level functions to derive code for implementation and specification annotations, respectively. The primary purpose of these procedural macros is to generate code to implement a _method_ for the first parameter of the given function.
-    - smt_axiom is used to annotate functions, specifically enforcing that no attributes are present.
+    - smt_axiom is used to annotate functions, specifically enforcing that no attributes are present or attributes are present in the format of _relations = {(impl, spec)}_.
 
 Regarding testing, the _lib_ module contains the procedural macros, and thus, procedural macro API cannot be used outside of a procedural macro. Therefore, the procedural macros functions are not covered by the unit tests.

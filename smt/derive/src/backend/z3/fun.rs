@@ -106,6 +106,8 @@ pub fn fundef_in_smt(
     ret
 }
 
+/// Groups dependent functions in the function definition.
+/// This is so that cyclic dependent functions are defined differently in SMT-LIB.
 pub fn group_dependent_funcs(
     func_name: UsrFunName,
     def: &FunDef,
@@ -155,6 +157,7 @@ pub fn group_dependent_funcs(
     }
 }
 
+/// Analyzes the expression and its dependencies to determine the function calls inside the expression.
 fn analyze_expression(
     func_name: UsrFunName,
     id: &ExpId,
@@ -168,25 +171,25 @@ fn analyze_expression(
     let exp = exps.get(id).expect("expression not found in registry");
 
     match exp {
-        Expression::Var(var_id) => (),
-        Expression::Pack { sort, elems } => {
+        Expression::Var(_) => (),
+        Expression::Pack { sort: _, elems } => {
             elems.iter().for_each(|e| {
                 analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
             });
         }
-        Expression::Tuple { sort, slots } => {
+        Expression::Tuple { sort: _, slots } => {
             slots.iter().for_each(|e| {
                 analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
             });
         }
-        Expression::Record { sort, fields } => {
-            fields.iter().for_each(|(s, e)| {
+        Expression::Record { sort: _, fields } => {
+            fields.iter().for_each(|(_, e)| {
                 analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
             });
         }
         Expression::Enum {
-            sort,
-            branch,
+            sort: _,
+            branch: _,
             variant,
         } => match variant {
             VariantCtor::Unit => (),
@@ -196,15 +199,15 @@ fn analyze_expression(
                 });
             }
             VariantCtor::Record(r) => {
-                r.iter().for_each(|(s, e)| {
+                r.iter().for_each(|(_, e)| {
                     analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
                 });
             }
         },
-        Expression::AccessSlot { base, slot } => {
+        Expression::AccessSlot { base, slot: _ } => {
             analyze_expression(func_name, base, reg, ir, generics_id, func_deps);
         }
-        Expression::AccessField { base, field } => {
+        Expression::AccessField { base, field: _ } => {
             analyze_expression(func_name, base, reg, ir, generics_id, func_deps);
         }
         Expression::Match { cases } => {
@@ -215,9 +218,9 @@ fn analyze_expression(
                 for atom in atoms {
                     let MatchAtom {
                         head,
-                        sort,
-                        branch,
-                        variant,
+                        sort: _,
+                        branch: _,
+                        variant: _,
                     } = atom;
                     analyze_expression(func_name.clone(), head, reg, ir, generics_id, func_deps);
                 }
@@ -254,30 +257,38 @@ fn analyze_expression(
                 analyze_expression(func_name.clone(), arg, reg, ir, generics_id, func_deps);
             }
         }
-        Expression::Forall { vars, body } => {
+        Expression::Forall { vars: _, body } => {
             analyze_expression(func_name, body, reg, ir, generics_id, func_deps);
         }
-        Expression::Exists { vars, body } => {
+        Expression::Exists { vars: _, body } => {
             analyze_expression(func_name, body, reg, ir, generics_id, func_deps);
         }
-        Expression::Choose { vars, body, rets } => {
+        Expression::Choose {
+            vars: _,
+            body,
+            rets: _,
+        } => {
             analyze_expression(func_name, body, reg, ir, generics_id, func_deps);
         }
         Expression::IterForall { vars, body } => {
             analyze_expression(func_name.clone(), body, reg, ir, generics_id, func_deps);
-            vars.iter().for_each(|(s, e)| {
+            vars.iter().for_each(|(_, e)| {
                 analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
             });
         }
         Expression::IterExists { vars, body } => {
             analyze_expression(func_name.clone(), body, reg, ir, generics_id, func_deps);
-            vars.iter().for_each(|(s, e)| {
+            vars.iter().for_each(|(_, e)| {
                 analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
             });
         }
-        Expression::IterChoose { vars, body, rets } => {
+        Expression::IterChoose {
+            vars,
+            body,
+            rets: _,
+        } => {
             analyze_expression(func_name.clone(), body, reg, ir, generics_id, func_deps);
-            vars.iter().for_each(|(s, e)| {
+            vars.iter().for_each(|(_, e)| {
                 analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
             });
         }
@@ -295,7 +306,7 @@ fn analyze_intrinsic(
     use crate::ir::intrinsics::Intrinsic::*;
 
     match intrinsic {
-        BoolVal(b) => (),
+        BoolVal(_) => (),
         BoolNot { val } => {
             analyze_expression(func_name.clone(), val, reg, ir, generics_id, func_deps);
         }
@@ -306,7 +317,7 @@ fn analyze_intrinsic(
             analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
         }
-        IntVal(i) => (),
+        IntVal(_) => (),
         IntLt { lhs, rhs }
         | IntLe { lhs, rhs }
         | IntGe { lhs, rhs }
@@ -319,7 +330,7 @@ fn analyze_intrinsic(
             analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
         }
-        NumVal(i) => (),
+        NumVal(_) => (),
         NumLt { lhs, rhs }
         | NumLe { lhs, rhs }
         | NumGe { lhs, rhs }
@@ -331,18 +342,18 @@ fn analyze_intrinsic(
             analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
         }
-        StrVal(s) => (),
+        StrVal(_) => (),
         StrLt { lhs, rhs } | StrLe { lhs, rhs } | StrGe { lhs, rhs } | StrGt { lhs, rhs } => {
             analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
         }
-        BoxShield { t, val } => {
+        BoxShield { t: _, val } => {
             analyze_expression(func_name.clone(), val, reg, ir, generics_id, func_deps);
         }
-        BoxReveal { t, val } => {
+        BoxReveal { t: _, val } => {
             analyze_expression(func_name.clone(), val, reg, ir, generics_id, func_deps);
         }
-        SeqEmpty { t } => (),
+        SeqEmpty { t: _ } => (),
         SeqLength { t: _, seq } => {
             analyze_expression(func_name.clone(), seq, reg, ir, generics_id, func_deps);
         }
@@ -358,8 +369,8 @@ fn analyze_intrinsic(
             analyze_expression(func_name.clone(), seq, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), item, reg, ir, generics_id, func_deps);
         }
-        SetEmpty { t } => (),
-        SetLength { t, set } => {
+        SetEmpty { t: _ } => (),
+        SetLength { t: _, set } => {
             analyze_expression(func_name.clone(), set, reg, ir, generics_id, func_deps);
         }
         SetInsert { t: _, set, item } => {
@@ -375,8 +386,8 @@ fn analyze_intrinsic(
             analyze_expression(func_name.clone(), item, reg, ir, generics_id, func_deps);
         }
         // --- Map ---
-        MapEmpty { k, v } => (),
-        MapLength { k, v, map } => {
+        MapEmpty { k: _, v: _ } => (),
+        MapLength { k: _, v: _, map } => {
             analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
         }
         MapPut {
@@ -399,11 +410,21 @@ fn analyze_intrinsic(
             analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), key, reg, ir, generics_id, func_deps);
         }
-        MapDel { k: _, v, map, key } => {
+        MapDel {
+            k: _,
+            v: _,
+            map,
+            key,
+        } => {
             analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), key, reg, ir, generics_id, func_deps);
         }
-        MapContainsKey { k: _, v, map, key } => {
+        MapContainsKey {
+            k: _,
+            v: _,
+            map,
+            key,
+        } => {
             analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
             analyze_expression(func_name.clone(), key, reg, ir, generics_id, func_deps);
         }

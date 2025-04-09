@@ -5,13 +5,8 @@
 //! * `forall` operator
 //! * `exists` operator
 //! * `choose` operator
-//!
-
-//---------------------------------------DEPENDENCIES----------------------------------------------------//
 
 pub use itertools::iproduct;
-
-//----------------------------------------MACROS---------------------------------------------------------//
 
 /// Operator: forall
 /// There are two patterns:
@@ -34,9 +29,6 @@ macro_rules! forall {
     };
     ($v0:ident in $c0:expr $(, $vn:ident in $cn:expr)* => $constraint:expr) => {
         (|| -> $crate::Boolean {
-            // let iterators = $crate::iproduct!($c0.iterator() $(, $cn.iterator())*);
-            // // consume the iterators
-            // dbg!(iterators.collect::<Vec<_>>()); to debug
             $crate::Boolean::from(
                 $crate::iproduct!($c0.iterator() $(, $cn.iterator())*).all(
                     |($v0, $($vn, )*)| *$constraint
@@ -58,7 +50,7 @@ macro_rules! exists {
     };
     ($v0:ident in $c0:expr $(, $vn:ident in $cn:expr)* => $constraint:expr) => {
         $crate::Boolean::from(
-            $crate::exp::iproduct!($c0.iterator() $(, $cn.iterator())*).any(
+            $crate::iproduct!($c0.iterator() $(, $cn.iterator())*).any(
                 |($v0, $($vn, )*)| *$constraint
             )
         )
@@ -68,8 +60,7 @@ macro_rules! exists {
 /// Operator: choose
 /// If there exists a valid set of values that satisfy the constraint, the values are returned
 /// In the first pattern, the default values are returned if the constraint is satisfied
-/// In the second pattern, the cartesian product of the iterators is created and the constraint is applied to each pair of values
-/// The first pair of values that satisfies the constraint is returned
+/// In the second pattern, the first pair of values that satisfies the constraint is returned
 /// If no pair of values satisfies the constraint, a panic is thrown
 #[macro_export]
 macro_rules! choose {

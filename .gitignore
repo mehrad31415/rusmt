@@ -14,3 +14,6 @@
 
 # dump files
 /dump_smt/
+
+# vscode
+.vscode/

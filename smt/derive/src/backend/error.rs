@@ -1,3 +1,5 @@
+//! Error types for the backend generator
+
 use std::fmt::Display;
 
 /// An error for backend generator

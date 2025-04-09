@@ -1,12 +1,4 @@
-// Import BTreeMap for storing data in a sorted order in the `ApplyDatabase` struct (field `unqualified`, `on_sys_type`, `on_usr_type`).
-use std::collections::BTreeMap;
-// The Result type is a type that represents either success (Ok) or failure (Err).
-// It is a type alias of the std::result::Result type: pub type Result<T, E = Error> = std::result::Result<T, E>;
-// `anyhow` macro is used to create an error from a string or an error type that can be converted into an anyhow::Error.
-// bail macro is used to return an error from a function without explicitly mentioning return. bail!(....) = return Err(anyhow!(...)).
-// The Context trait allows you to add extra context when an operation returns an error. This is done by calling the context or with_context methods on a Result.
-// Import error handling utilities from the anyhow crate.
-use anyhow::{bail, Result};
+//! This module defines the `ApplyDatabase` struct, which is used to store and manage function signatures and their types.
 
 use crate::parser::expr::{CtxtForExpr, Expr, Op}; // Import expression-related types and traits.
 use crate::parser::func::FuncSig; // Import function signature ADT.
@@ -15,6 +7,8 @@ use crate::parser::infer::{TIError, TypeRef, TypeUnifier}; // Import type infere
 use crate::parser::intrinsics::Intrinsic; // Import intrinsic function handling.
 use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName}; // Import type parameters, user-defined function names, and user-defined type names.
 use crate::parser::ty::{SysTypeName, TypeName, TypeTag};
+use anyhow::{bail, Result};
+use std::collections::BTreeMap; // Import BTreeMap for storing data in a sorted order in the `ApplyDatabase` struct (field `unqualified`, `on_sys_type`, `on_usr_type`).
 
 /// Marks whether this function is for implementation (`Impl`) or specification (`Spec`).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -507,7 +501,8 @@ impl ApplyDatabase {
         match self.on_sys_type.get(name) {
             None => (),
             Some(options) => candidates.extend(options.iter().filter_map(|(n, t)| {
-                Self::filter_by_kind(t, kind).map(|t: &TypeFn| (TypeName::Sys(*n), t)) // TypeName::Sys(*n) is the type the function is defined on. t is the function signature along with kind.
+                Self::filter_by_kind(t, kind).map(|t: &TypeFn| (TypeName::Sys(*n), t))
+                // TypeName::Sys(*n) is the type the function is defined on. t is the function signature along with kind.
             })),
         }
         // then look at methods defined on the user-defined types.
@@ -546,7 +541,8 @@ impl ApplyDatabase {
             };
             // Instantiate function generics, possibly using provided type arguments.
             // fn_inst is the generics of the function signature.
-            let fn_inst = match inst { // inst is the turbufish type arguments provided to the function call.
+            let fn_inst = match inst {
+                // inst is the turbufish type arguments provided to the function call.
                 None => GenericsInstPartial::new_without_args(&fty.generics), // the turbofish is for the function arguments.
                 Some(tags) => match GenericsInstPartial::try_with_args(&fty.generics, tags) {
                     None => continue, // Type arguments don't match.

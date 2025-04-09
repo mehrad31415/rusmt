@@ -9,7 +9,7 @@
 mod attr;
 mod err;
 mod generics;
-// `proc-macro` crate types currently cannot export any items other than functions tagged with `#[proc_macro]`, `#[proc_macro_derive]`, or `#[proc_macro_attribute]`.
+// `proc-macro` crate types currently cannot export items other than functions tagged with `#[proc_macro]`, `#[proc_macro_derive]`, or `#[proc_macro_attribute]`.
 // since this crate is no longer a `proc-macro` crate, we can export the func and ty modules.
 // func and ty modules are used for defining the procedural macros in the `rusmart_smt_remark_derive` package.
 pub mod func;

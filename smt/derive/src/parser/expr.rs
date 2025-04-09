@@ -1,11 +1,4 @@
-use itertools::Itertools;
-use std::collections::BTreeMap;
-use std::fmt::{Display, Formatter};
-use syn::{
-    Arm, Block, Expr as Exp, ExprBlock, ExprCall, ExprField, ExprIf, ExprMatch, ExprMethodCall,
-    ExprParen, ExprStruct, ExprTuple, ExprUnary, FieldValue, Local, LocalInit, Member, Pat,
-    PatTuple, PatType, Result, Stmt, UnOp,
-};
+//! Module for parsing expressions
 
 use crate::parser::{
     adt::{MatchAnalyzer, MatchOrganizer},
@@ -21,6 +14,14 @@ use crate::parser::{
     ty::{CtxtForType, EnumVariant, SysTypeName, TypeBody, TypeDef, TypeTag},
 };
 use crate::{bail_if_exists, bail_if_missing, bail_if_non_empty, bail_on};
+use itertools::Itertools;
+use std::collections::BTreeMap;
+use std::fmt::{Display, Formatter};
+use syn::{
+    Arm, Block, Expr as Exp, ExprBlock, ExprCall, ExprField, ExprIf, ExprMatch, ExprMethodCall,
+    ExprParen, ExprStruct, ExprTuple, ExprUnary, FieldValue, Local, LocalInit, Member, Pat,
+    PatTuple, PatType, Result, Stmt, UnOp,
+};
 
 /// Marks a declaration of variable(s)
 #[derive(Clone, Debug)]

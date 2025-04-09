@@ -3,12 +3,10 @@
 //! The `TypeParamGroup` struct is used to collect and manage type parameters in generic definitions.
 //! It provides methods for parsing generics, checking for type parameter existence, and converting type parameters into syntax suitable for definition and usage.
 
-use proc_macro2::{Ident, TokenStream};
-use std::collections::BTreeSet;
-// Import the `quote` macro to generate tokens
-use quote::quote;
-// Import various syntax-related types from the `syn` crate, used for parsing Rust code
 use crate::{bail_if_exists, bail_if_missing, bail_on};
+use proc_macro2::{Ident, TokenStream};
+use quote::quote;
+use std::collections::BTreeSet;
 use syn::{
     AngleBracketedGenericArguments, GenericArgument, GenericParam, Generics, Path, PathArguments,
     PathSegment, Result, TraitBound, TraitBoundModifier, Type, TypeParam, TypeParamBound, TypePath,

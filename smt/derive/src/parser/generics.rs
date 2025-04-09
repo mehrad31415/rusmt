@@ -1,20 +1,21 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter};
+//! Generics declaration when the type is generic in functions, structs, and enums
+//! Generics instantiation when the type is inferred in functions, structs, and enums
 
+use crate::parser::ctxt::MarkedType;
+use crate::parser::expr::CtxtForExpr;
+use crate::parser::infer::{TypeRef, TypeUnifier, TypeVar};
+use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};
+use crate::parser::ty::TypeTag;
+use crate::{bail_if_exists, bail_if_missing, bail_on};
 use itertools::Itertools;
 use quote::quote_spanned;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::{Display, Formatter};
 use syn::{
     AngleBracketedGenericArguments, GenericArgument, GenericParam, Generics as GenericsDecl,
     ItemEnum, ItemStruct, PathArguments, Result, TraitBound, TraitBoundModifier, Type, TypeParam,
     TypeParamBound,
 };
-
-use crate::parser::ctxt::MarkedType;
-use crate::{bail_if_exists, bail_if_missing, bail_on};
-use crate::parser::expr::CtxtForExpr;
-use crate::parser::infer::{TypeRef, TypeUnifier, TypeVar};
-use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};
-use crate::parser::ty::TypeTag;
 
 /// Reserved trait
 #[allow(clippy::upper_case_acronyms)]
@@ -229,7 +230,7 @@ impl Display for Generics {
 /// }
 /// let x = Option::<i32>::Some(3);
 /// ```
-/// In the above example, the type parameter T is assigned to i32, so the partial instantiation is {T: (0, Some(Integer))}. 
+/// In the above example, the type parameter T is assigned to i32, so the partial instantiation is {T: (0, Some(Integer))}.
 /// If the type parameter is not assigned, then the partial instantiation is {T: (0, None)}: let x = Option::Some(3);
 pub struct GenericsInstPartial {
     args: BTreeMap<TypeParamName, (usize, Option<TypeTag>)>,

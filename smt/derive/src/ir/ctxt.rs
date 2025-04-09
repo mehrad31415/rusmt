@@ -1,7 +1,3 @@
-use std::collections::{BTreeMap, BTreeSet};
-
-use log::trace;
-
 use crate::ir::axiom::AxiomRegistry;
 use crate::ir::fun::FunRegistry;
 use crate::ir::mono::add_instantiation;
@@ -12,6 +8,8 @@ use crate::parser::generics::{Generics, PartialInst};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::{TypeParamName, UsrFuncName};
 use crate::parser::ty::TypeTag;
+use log::trace;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A context for intermediate representation.
 /// An IRContext for each of the refinement relations in the rusmart file is created.
@@ -394,10 +392,18 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                     // specialized builder for axiom body
                     let mut axiom_ty_builder_impl: IRBuilder<'_, '_> =
                         IRBuilder::new(ctxt, axiom_ty_inst_impl, &mut ir);
-                    axiom_ty_builder_impl.register_axiom(&name, &axiom_ty_args_impl, &mut processed_axioms);
+                    axiom_ty_builder_impl.register_axiom(
+                        &name,
+                        &axiom_ty_args_impl,
+                        &mut processed_axioms,
+                    );
                     let mut axiom_ty_builder_spec: IRBuilder<'_, '_> =
                         IRBuilder::new(ctxt, axiom_ty_inst_spec, &mut ir);
-                    axiom_ty_builder_spec.register_axiom(&name, &axiom_ty_args_spec, &mut processed_axioms);
+                    axiom_ty_builder_spec.register_axiom(
+                        &name,
+                        &axiom_ty_args_spec,
+                        &mut processed_axioms,
+                    );
 
                     // not reaching fixedpoint yet as long as we find a new monomorphization instance
                     fixedpoint = false;

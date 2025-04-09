@@ -15,10 +15,10 @@
 #![deny(missing_docs)]
 
 /// The module tree. These modules can be accessed from within the library crate.
-mod git;
 mod dep;
 mod dep_cvc5;
 mod dep_z3;
+mod git;
 
 /// The CLI module. This module can be accessed from the binary crate (and other external crates).
 pub mod cli;

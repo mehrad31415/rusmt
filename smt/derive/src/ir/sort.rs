@@ -1,12 +1,11 @@
-use std::collections::BTreeMap;
-use std::fmt::{Display, Formatter};
-
 use crate::ir::ctxt::IRBuilder;
 use crate::ir::index::UsrSortId;
 use crate::ir::name::{SmtSortName, UsrSortName};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrTypeName;
 use crate::parser::ty::{EnumVariant, TypeBody, TypeTag};
+use std::collections::BTreeMap;
+use std::fmt::{Display, Formatter};
 
 /// A unique and complete reference to an SMT sort
 /// In the IR, types have been fully resolved (e.g. type variables should have been unified and substituted with its representation).
@@ -140,7 +139,7 @@ impl TypeRegistry {
     ///
     /// If `name` is `None`, the lookup is done in the anonymous tuple mapping and inst is the type of tuple elements.
     /// If `name` is provided, the lookup is done in the named types mapping and inst is the type parameters (generics).
-    fn get_index(&self, name: Option<&UsrSortName>, inst: &[Sort]) -> Option<UsrSortId> {
+    pub fn get_index(&self, name: Option<&UsrSortName>, inst: &[Sort]) -> Option<UsrSortId> {
         let idx = match name {
             None => self.idx_tuple.get(inst)?,
             Some(n) => self.idx_named.get(n)?.get(inst)?,

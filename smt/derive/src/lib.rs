@@ -83,7 +83,7 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<Vec<IRContext>> {
 /// # Returns
 ///
 ///  * A `BTreeMap` containing the model names and their corresponding results when the solver is run (e.g., sat/unsat/timeout/unknown).
-/// 
+///
 /// # Panics
 ///
 /// This function will panic if the output directory already exists or if directory creation fails.
@@ -115,7 +115,12 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) -> BTreeMap<String
             fs::create_dir(&path_wks).expect("workspace freshly created"); // Use create_dir for a single directory when parent directories exist.
 
             // println!("workspace created: {}", path_wks.display());
-            paths.push((name + "_" +&count.to_string(), ir, solver, path_wks.clone()));
+            paths.push((
+                name + "_" + &count.to_string(),
+                ir,
+                solver,
+                path_wks.clone(),
+            ));
             count += 1;
         }
     }

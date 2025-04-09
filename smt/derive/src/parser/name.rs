@@ -1,13 +1,15 @@
-use std::fmt::{Display, Formatter}; // Imported for implementing the Display trait
-use syn::{Ident, Pat, PatIdent, Path, Result}; // Import syn crate types for parsing Rust code
+//! This module defines the `ReservedIdent` trait and its implementations for various reserved identifiers in the SMT-LIB language.
+//! It provides functionality to parse and validate reserved identifiers, including type names, function names, and macro names.
 
 use crate::parser::dsl::SysMacroName;
-use crate::{bail_if_exists, bail_on};
 use crate::parser::func::CastFuncName;
 use crate::parser::func::ReservedFuncName;
 use crate::parser::func::SysFuncName;
 use crate::parser::generics::SysTrait;
 use crate::parser::ty::SysTypeName;
+use crate::{bail_if_exists, bail_on};
+use std::fmt::{Display, Formatter}; // Imported for implementing the Display trait
+use syn::{Ident, Pat, PatIdent, Path, Result}; // Import syn crate types for parsing Rust code
 
 /// Trait to mark that a type is a reserved identifier.
 /// This trait provides methods to parse reserved identifiers from strings or paths.

@@ -1,18 +1,16 @@
 //! This module is only used in the Expr module.
-//! This module provide utilities for analyzing match expressions.
+//! This module provides utilities for analyzing match expressions.
 
-use std::collections::BTreeMap;
-
-use itertools::Itertools;
-use syn::{ExprMatch, ExprPath, FieldPat, Member, Pat, PatOr, PatStruct, PatTupleStruct, Result};
-
-use crate::{bail_if_exists, bail_if_missing, bail_on};
 use crate::parser::expr::{CtxtForExpr, Expr, MatchCombo, MatchVariant, Unpack};
 use crate::parser::generics::GenericsInstFull;
 use crate::parser::infer::{ti_unify, TypeRef, TypeUnifier};
 use crate::parser::name::{UsrTypeName, VarName};
 use crate::parser::path::{ADTBranch, ADTPath};
 use crate::parser::ty::EnumVariant;
+use crate::{bail_if_exists, bail_if_missing, bail_on};
+use itertools::Itertools;
+use std::collections::BTreeMap;
+use syn::{ExprMatch, ExprPath, FieldPat, Member, Pat, PatOr, PatStruct, PatTupleStruct, Result};
 
 /// An atom for a specific variable in the match head
 /// For example in match (x, y) { (1, 2) => ... } one MatchAtom is for x and the other is for y
@@ -77,8 +75,8 @@ impl MatchAnalyzer {
                 // } not allowed
                 // in let x = 1; match 2 { x => println!("{}", x) } the inner x is different from the outer x. So again no binding is created (2 is printed)
                 let adt = ADTPath::from_path(ctxt, path)?; // adt has the enum type name and the variant name and all the ar at the calling place matched wit the parameters at the definition
-                // branch contains the enum type name and variant name
-                // inst contains the type parameters matched with the arguments. Through the complete, the arguments are converted from Option(TypeTag) to TypeRef where None is converted to TypeRef::TypeVar and the rest is straightforward. None for the type parameters means that there are no arguments or the argument is _ (wildcard).
+                                                           // branch contains the enum type name and variant name
+                                                           // inst contains the type parameters matched with the arguments. Through the complete, the arguments are converted from Option(TypeTag) to TypeRef where None is converted to TypeRef::TypeVar and the rest is straightforward. None for the type parameters means that there are no arguments or the argument is _ (wildcard).
                 let (branch, inst) = adt.complete(unifier); // unit variant enum::<i32>::A
                 let variant = match ctxt.get_adt_variant_details(&branch) {
                     None => bail_on!(path, "not a valid enum branch"), // it will never happen as this is already checked in the ADTPath::from_path
@@ -362,7 +360,7 @@ impl MatchOrganizer {
 
     /// Organize the arms into per-combo-by-permutation format
     pub fn into_organized(
-        self, // holds Vec<MatchArm>, each MatchArm holds Vec<MatchAtom> and Expr
+        self,             // holds Vec<MatchArm>, each MatchArm holds Vec<MatchAtom> and Expr
         expr: &ExprMatch, // the match expression
         heads: &[(UsrTypeName, BTreeMap<String, Unpack>)], // this holds the type name and all the variants of the type for all the variables in the match head
     ) -> Result<Vec<MatchCombo>> {

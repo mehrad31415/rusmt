@@ -1,5 +1,3 @@
-//! The module tree for the intermediate representation (IR) of the SMT-LIB input.
-
 pub mod ctxt;
 
 pub mod index;

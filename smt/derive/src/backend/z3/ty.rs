@@ -8,7 +8,7 @@ use crate::ir::index::UsrSortId;
 use crate::ir::sort::{DataType, Variant};
 use crate::IRContext;
 
-/// Converts defining a user defined type into the corresponding SMT-LIB as a `String`.
+/// Translates a user defined type to SMT-LIB.
 /// This is where the definition of the data type is generated.
 pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
     // get the data type

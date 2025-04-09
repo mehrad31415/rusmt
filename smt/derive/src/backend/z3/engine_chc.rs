@@ -8,7 +8,7 @@ use crate::backend::z3::fun::{fundef_in_smt, group_dependent_funcs};
 use crate::backend::z3::sort::sort_to_smt;
 use crate::backend::z3::ty::tydef_in_smt;
 use crate::ir::index::UsrFunId;
-use crate::ir::name::{Symbol, UsrFunName};
+use crate::ir::name::UsrFunName;
 use crate::ir::sort::Sort;
 use crate::parser::name::UsrFuncName;
 use crate::IRContext;
@@ -31,42 +31,45 @@ impl BackendZ3 for BackendZ3CHC {
 
     /// Generate backend SMT-LIB code for the CHC engine based on the given `IRContext`.
     fn process(&self, ir: &IRContext) -> BackendResult<String> {
+        // create a new content builder for writing the SMT-LIB code
         let mut x = ContentBuilder::new();
 
+        // destructure the IRContext
+        let IRContext {
+            desc,
+            undef_sorts,
+            ty_registry,
+            fn_registry,
+            axiom_registry,
+        } = ir;
+
         // The set-option command is used to configure Z3.
-        l!(x, "; verification of impl-spec pair: {}", ir.desc);
-        l!(
-            x,
-            "(set-option :print-success false) ; disable success messages"
-        );
-        l!(
-            x,
-            "(set-option :produce-models true) ; enable model generation in case of satisfiability"
-        );
-        l!(
-            x,
-            "(set-option :smt.string_solver z3str3) ; set the string solver to be the z3str3 solver"
-        );
-        l!(
-            x,
-            "(set-option :smt.string_solver seq) ; set the string solver to be the seq solver (default)"
-        );
-        l!(x, "(set-logic ALL)");
+        l!(x, "; verification of impl-spec pair: {}", desc);
+        // disable success messages
+        l!(x, "(set-option :print-success false)");
+        // enable model generation in case of satisfiability for debugging
+        l!(x, "(set-option :produce-models true)");
+        // set the string solver to be the z3str3 solver for string constraints
+        l!(x, "(set-option :smt.string_solver z3str3)");
+        // set the string solver to be the seq solver (default) for sequence constraints
+        l!(x, "(set-option :smt.string_solver seq)");
+        // allow all available theories
+        l!(x, "(set-logic AUFLIA)");
         l!(x); // add new line
 
         // write the type parameters
-        if !&ir.undef_sorts.is_empty() {
+        if !&undef_sorts.is_empty() {
             l!(x, "; Define Type Parameters of Function Signatures:");
-            for sort in &ir.undef_sorts {
+            for sort in undef_sorts {
                 l!(x, "(declare-sort {} 0)", sort);
             }
             l!(x); // add new line
         }
 
         // write the user-defined types
-        if !ir.ty_registry.data_types().is_empty() {
+        if !ty_registry.data_types().is_empty() {
             l!(x, "; Define user-defined types:");
-            for sid in ir.ty_registry.data_types().keys() {
+            for sid in ty_registry.data_types().keys() {
                 l!(x, "{}", tydef_in_smt(*sid, ir));
             }
             l!(x); // add new line
@@ -75,15 +78,15 @@ impl BackendZ3 for BackendZ3CHC {
         // this set is used for mutually recursive functions
         let mut func_names: BTreeSet<BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>> =
             BTreeSet::new();
-        for (name, generics_id) in &ir.fn_registry.lookup {
+        for (name, generics_id) in &fn_registry.lookup {
             for (_, id) in generics_id {
-                let def = ir.fn_registry.retrieve_def(*id);
+                let def = fn_registry.retrieve_def(*id);
                 group_dependent_funcs(name.clone(), def, ir, generics_id, &mut func_names);
             }
         }
-        // println!("func_names: {:?}", func_names);
+
         // write the functions
-        if !&ir.fn_registry.lookup.is_empty() {
+        if !&fn_registry.lookup.is_empty() {
             l!(x, "; Define user functions:");
             for funcs in func_names.iter() {
                 l!(x, "{}", fundef_in_smt(ir, &funcs));
@@ -92,13 +95,13 @@ impl BackendZ3 for BackendZ3CHC {
         }
 
         // write the axioms
-        if !&ir.axiom_registry.lookup.is_empty() {
+        if !&axiom_registry.lookup.is_empty() {
             l!(x, "; Define axioms:");
             // we don't need to write the name. The axiom is registered as forall<axiom params> {axiom body}
-            for (_name, generics_id) in &ir.axiom_registry.lookup {
+            for (_name, generics_id) in &axiom_registry.lookup {
                 // generics are already registered in undef_sorts
                 for (_generics, id) in generics_id {
-                    let predicate = ir.axiom_registry.retrieve(*id);
+                    let predicate = axiom_registry.retrieve(*id);
                     l!(x, "{}", axiom_in_smt(predicate, ir));
                 }
             }
@@ -111,7 +114,7 @@ impl BackendZ3 for BackendZ3CHC {
             x,
             "; Prove the equivalence of the operational and denotational semantics:"
         );
-        let (impl_name, spec_name) = ir.desc.split_once(" ~> ").expect("Invalid description");
+        let (impl_name, spec_name) = desc.split_once(" ~> ").expect("Invalid description");
         let impl_name = Ident::new(impl_name, Span::call_site());
         let spec_name = Ident::new(spec_name, Span::call_site());
 
@@ -138,8 +141,8 @@ impl BackendZ3 for BackendZ3CHC {
             .1;
 
         // get the signature of the impl and spec
-        let impl_sig = ir.fn_registry.retrieve_sig(*impl_id);
-        let spec_sig = ir.fn_registry.retrieve_sig(*spec_id);
+        let impl_sig = fn_registry.retrieve_sig(*impl_id);
+        let spec_sig = fn_registry.retrieve_sig(*spec_id);
 
         // get the symbols for the spec and impl
         let impl_syms = impl_sig
@@ -152,6 +155,11 @@ impl BackendZ3 for BackendZ3CHC {
             .iter()
             .map(|(sym, _)| sym.clone())
             .collect::<BTreeSet<_>>();
+
+        // sanity check
+        if impl_syms.len() != spec_syms.len() {
+            panic!("specification and implementation must have the same number of params")
+        }
 
         // get the var + sort pair
         let set1 = impl_sig
@@ -166,6 +174,24 @@ impl BackendZ3 for BackendZ3CHC {
             .collect::<BTreeSet<_>>();
         let all_sym_sort = set1.union(&set2).clone().collect::<BTreeSet<_>>();
 
+        let constraint = if impl_syms.is_empty() {
+            "".to_string()
+        } else if impl_syms.len() == 1 {
+            let is = impl_syms.first().expect("impl must have one element");
+            let ss = spec_syms.first().expect("spec must have one element");
+            format!("(= {} {})", is, ss)
+        } else {
+            format!(
+                "(and {})",
+                impl_syms
+                    .iter()
+                    .zip(spec_syms.iter())
+                    .map(|(is, ss)| format!("(= {} {})", is, ss))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        };
+
         // ; forall (lhs Point) (rhs Point) (= (add_spec lhs rhs) (add lhs rhs))
         l!(
             x,
@@ -175,7 +201,7 @@ impl BackendZ3 for BackendZ3CHC {
                 .map(|s| format!("({})", s.as_str()))
                 .collect::<Vec<_>>()
                 .join(" "),
-            assertion(impl_syms.clone(), spec_syms.clone()),
+            constraint,
             impl_name,
             impl_syms
                 .iter()
@@ -191,10 +217,12 @@ impl BackendZ3 for BackendZ3CHC {
         );
 
         // (declare-const lhs Point) (declare-const rhs Point)
+        // declare the variables for the params of the impl and spec
         for s in all_sym_sort {
             l!(x, "(declare-const {})", s)
         }
-        // the variables of the impl and spec need to be the same
+
+        // the variables of the impl and spec need to be the same even if they have different names
         for (i, s) in impl_syms.iter().zip(&spec_syms) {
             l!(x, "(assert (= {} {}))", i, s)
         }
@@ -225,20 +253,4 @@ impl BackendZ3 for BackendZ3CHC {
         // done
         Ok(x.build())
     }
-}
-
-/// The variables of the spec and impl need to match correspondingly.
-pub fn assertion(impl_syms: BTreeSet<Symbol>, spec_syms: BTreeSet<Symbol>) -> String {
-    // sanity check
-    if impl_syms.len() != spec_syms.len() {
-        panic!("specification and implementation must have the same number of params")
-    }
-    if impl_syms.is_empty() {
-        return "".to_string();
-    }
-    let is = impl_syms.first().expect("impl must have one element");
-    let ss = spec_syms.first().expect("impl must have one element");
-    let new_impl = impl_syms.iter().skip(1).cloned().collect();
-    let new_spec = spec_syms.iter().skip(1).cloned().collect();
-    format!("(and (= {} {}) {})", is, ss, assertion(new_impl, new_spec))
 }

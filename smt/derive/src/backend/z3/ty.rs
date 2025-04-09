@@ -24,7 +24,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             // unique name for tuple
             let tuple_name = format!(
                 "Tuple_{}",
-                gen_or_elem // for tuples it is the elements list type
+                gen_or_elem // for tuples it is the elements list type so this will be unique
                     .iter()
                     .map(|t| t.to_string())
                     .collect::<Vec<_>>()
@@ -33,6 +33,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             let constructor_name = format!("mk-{}", tuple_name);
 
             // Generate field names: field_Tuple_Integer_Bool_1, field_Tuple_Integer_Bool_2, etc.
+            // tuple_name gives the field a unique name accross all tuples and the i+1 gives the field a unique name within the tuple
             let field_names: Vec<String> = (0..gen_or_elem.len())
                 .map(|i| format!("field_{}_{}_", tuple_name, i + 1))
                 .collect();
@@ -79,7 +80,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                 "(declare-datatypes ({}) (({} ({} {}))))",
                 gen_or_elem
                     .iter()
-                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name))
+                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name)) // type name is so that it is unique across all tuples
                     .collect::<Vec<_>>()
                     .join(" "),
                 type_name,
@@ -90,7 +91,14 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
         DataType::Record(recs) => {
             let field_defs: Vec<String> = recs
                 .iter()
-                .map(|(field_name, sort)| format!("({} {})", field_name, sort_to_smt(sort, ir)))
+                .map(|(field_name, sort)| {
+                    format!(
+                        "(record_{}_{}_ {})", // type name is so that it is unique across all tuples and field name is so that it is unique within the record
+                        type_name,
+                        field_name,
+                        sort_to_smt(sort, ir)
+                    )
+                })
                 .collect();
 
             return format!(
@@ -117,8 +125,9 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                             panic!("slots in tuple is empty");
                         }
 
+                        // type name is so that it is unique across all tuples and variant name is so that it is unique within the enum and the i+1 gives the field a unique name within the tuple
                         let field_names: Vec<String> = (0..t.len())
-                            .map(|i| format!("{}_{}", variant_name, i + 1))
+                            .map(|i| format!("field_{}_{}_{}_", type_name, variant_name, i + 1))
                             .collect();
 
                         // Combine field names with their respective sorts (types)
@@ -126,12 +135,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                             .iter()
                             .zip(field_names.iter())
                             .map(|(sort, field_name)| {
-                                format!(
-                                    "(field_{}_{} {})",
-                                    field_name,
-                                    type_name,
-                                    sort_to_smt(sort, ir)
-                                )
+                                format!("({} {})", field_name, sort_to_smt(sort, ir))
                             })
                             .collect();
 
@@ -146,9 +150,10 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                             .iter()
                             .map(|(field_name, sort)| {
                                 format!(
-                                    "(record_{}_{} {})",
-                                    field_name,
+                                    "(record_{}_{}_{}_ {})",
                                     type_name,
+                                    variant_name,
+                                    field_name,
                                     sort_to_smt(sort, ir)
                                 )
                             })

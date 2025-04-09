@@ -28,6 +28,7 @@ pub fn expr_to_smt(
     let ExpRegistry { vars, exps } = exp_registry;
 
     let exp = exps.get(id).expect("expression not found in registry");
+    println!("LLL: {:?}", exp);
     expr_to_smt_inner(vars, exp_registry, exp, id, ir, dependencies, mapping_vars)
 }
 
@@ -41,6 +42,9 @@ pub fn expr_to_smt_inner(
     mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
     match exp {
+        Expression::Intrinsic(intrinsic) => {
+            intrinsics_to_smt(intrinsic, exp_registry, id, ir, dependencies, mapping_vars)
+        }
         Expression::Var(var_id) => {
             // if the variable is an smt variable, we return its name
             for (varid, name) in mapping_vars.iter() {
@@ -48,71 +52,70 @@ pub fn expr_to_smt_inner(
                     return name.clone();
                 }
             }
-            // if the variable is inside the match
+            // get the kind of the variable
             let varkind = vars
                 .get(var_id)
-                .expect("variable not found in registry")
+                .expect("variable not found in registrya")
                 .kind
                 .clone();
-            if let VarKind::Match {
-                head,
-                sort,
-                branch,
-                selector,
-            } = varkind
-            {
-                // get the name of the head variable
-                let head_smt = expr_to_smt(exp_registry, &head, ir, dependencies, mapping_vars);
-                // get the sort
-                let (sort_name, _) = ir.ty_registry.reverse_lookup(sort);
-                let sort_name = sort_name.expect("sort name not found");
-                let branch_name = match selector {
-                    EnumSelector::Tuple(x) => format!("field_{}_{}_{}", branch, x + 1, sort_name),
-                    EnumSelector::Record(x) => format!("record_{}_{}", x, sort_name),
-                };
-                return format!("({} {})", branch_name, head_smt);
+            match varkind {
+                // if it is a match variable
+                VarKind::Match {
+                    head,
+                    sort,
+                    branch,
+                    selector,
+                } => {
+                    // get the name of the head variable
+                    let head_smt = expr_to_smt(exp_registry, &head, ir, dependencies, mapping_vars);
+                    // get the sort
+                    let (sort_name, _) = ir.ty_registry.reverse_lookup(sort);
+                    let sort_name = sort_name.expect("sort name not found");
+                    let branch_name = match selector {
+                        EnumSelector::Tuple(x) => {
+                            format!("field_{}_{}_{}_", sort_name, branch, x + 1)
+                        }
+                        EnumSelector::Record(x) => {
+                            format!("record_{}_{}_{}_", sort_name, branch, x)
+                        }
+                    };
+                    return format!("({} {})", branch_name, head_smt);
+                }
+                // bound variables
+                VarKind::Bound { bind } => {
+                    expr_to_smt(exp_registry, &bind, ir, dependencies, mapping_vars);
+                }
+                // if Param, we return its name
+                VarKind::Param => {
+                    return vars
+                        .get(var_id)
+                        .expect("variable not found in registryD")
+                        .name
+                        .to_string();
+                }
+                // if quant
+                VarKind::Quant => {
+                    let v = vars
+                        .get(var_id)
+                        .expect("variable not found in registryQ")
+                        .name
+                        .to_string();
+                    return format!("{}_{}", v, var_id);
+                }
+                // if axiom
+                VarKind::Axiom => {
+                    let v = vars
+                        .get(var_id)
+                        .expect("variable not found in registryE")
+                        .name
+                        .to_string();
+                    return format!("{}_{}", v, var_id);
+                }
             }
 
-            // bound variables
-            if let VarKind::Bound { bind: _ } = varkind {
-                return vars
-                    .get(var_id)
-                    .expect("variable not found in registry")
-                    .name
-                    .to_string();
-            }
-
-            // if Param, we return its name
-            if let VarKind::Param = varkind {
-                return vars
-                    .get(var_id)
-                    .expect("variable not found in registry")
-                    .name
-                    .to_string();
-            }
-
-            // if quant
-            if let VarKind::Quant = varkind {
-                let v = vars
-                    .get(var_id)
-                    .expect("variable not found in registry")
-                    .name
-                    .to_string();
-                return format!("{}_{}", v, var_id);
-            }
-
-            // if axiom
-            if let VarKind::Axiom = varkind {
-                let v = vars
-                    .get(var_id)
-                    .expect("variable not found in registry")
-                    .name
-                    .to_string();
-                return format!("{}_{}", v, var_id);
-            }
-
+            println!("LLLDDDD: {:?}", exp);
             // never happens
-            panic!("variable not found in registry");
+            panic!("variable not found in registryZ");
         }
         Expression::Pack { sort, elems } => {
             let (sort_name, ty_args) = ir.ty_registry.reverse_lookup(*sort);
@@ -291,9 +294,6 @@ pub fn expr_to_smt_inner(
             let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
             let default = expr_to_smt(exp_registry, default, ir, dependencies, mapping_vars);
             format!("(ite {} {} {})", cond_smt, body_smt, default)
-        }
-        Expression::Intrinsic(intrinsic) => {
-            intrinsics_to_smt(intrinsic, exp_registry, id, ir, dependencies, mapping_vars)
         }
         Expression::Procedure { callee, args } => {
             let callee_smt = ir.fn_registry.get_name(callee);

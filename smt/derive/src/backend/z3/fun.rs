@@ -44,6 +44,7 @@ pub fn fundef_in_smt(
 
             match def {
                 FunDef::Defined(reg, id) => {
+                    println!("reg {:?}", reg);
                     // convert the function body to SMT-LIB
                     let body_expr = expr_to_smt(reg, id, ir, &mut dependencies, &mut mapping_vars);
 

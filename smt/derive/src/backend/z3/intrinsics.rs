@@ -1,7 +1,7 @@
 //! This module contains the conversion of Rusmart intrinsics to SMT-LIB format.
 
 use crate::backend::z3::exp::expr_to_smt;
-use crate::backend::z3::sort::sort_not_present;
+use crate::backend::z3::sort::sort_to_smt;
 use crate::ir::exp::ExpRegistry;
 use crate::ir::exp::VarKind;
 use crate::ir::index::ExpId;
@@ -10,7 +10,6 @@ use crate::ir::intrinsics::Intrinsic;
 use crate::IRContext;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::backend::z3::sort::sort_to_smt;
 
 // counter for unique names in SMT-LIB
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -21,7 +20,7 @@ pub fn intrinsics_to_smt(
     exp_registry: &ExpRegistry,
     id: &ExpId,
     ir: &IRContext,
-    dependencies: &mut Vec<String>,
+    dependencies: &mut Vec<String>, // we use vec because the order is important
     mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
     use crate::ir::intrinsics::Intrinsic::*;
@@ -111,7 +110,7 @@ pub fn intrinsics_to_smt(
         IntMul { lhs, rhs } => {
             let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
             let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
-            format!("( {} {})", l, r)
+            format!("(* {} {})", l, r)
         }
         // `Integer::div` - integer division
         IntDiv { lhs, rhs } => {
@@ -170,7 +169,7 @@ pub fn intrinsics_to_smt(
         NumMul { lhs, rhs } => {
             let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
             let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
-            format!("( {} {})", l, r)
+            format!("(* {} {})", l, r)
         }
         // `Rational::div` - rational division
         NumDiv { lhs, rhs } => {
@@ -187,66 +186,122 @@ pub fn intrinsics_to_smt(
         StrLt { lhs, rhs } => {
             let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
             let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
-            format!("(simplify (str.< {} {}))", l, r) // simplify is needed for Z3 otherwise unsupported error
+            format!("(str.< {} {})", l, r)
         }
         // `Text::le`
         StrLe { lhs, rhs } => {
             let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
             let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
-            format!("(simplify (str.<= {} {}))", l, r)
+            format!("(str.<= {} {})", l, r)
         }
         // `Text::ge`
         StrGe { lhs, rhs } => {
             let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
             let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
-            format!("(simplify (str.<= {} {}))", r, l)
+            format!("(str.<= {} {})", r, l)
         }
         // `Text::gt`
         StrGt { lhs, rhs } => {
             let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
             let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
-            format!("(simplify (str.< {} {}))", r, l)
+            format!("(str.< {} {})", r, l)
         }
         // --- Cloak (box) ---
         // `Cloak::shield`
         BoxShield { t, val } => {
             let v = expr_to_smt(exp_registry, val, ir, dependencies, mapping_vars);
-            dependencies.push(format!("(declare-sort Cloak 1) ; Cloak<T>"));
-            dependencies.push(format!("(declare-fun shield ({}) (Cloak {}))", sort_to_smt(t,ir), sort_to_smt(t,ir)));
-            dependencies.push(format!("(declare-fun reveal ((Cloak {})) {})", sort_to_smt(t,ir), sort_to_smt(t,ir)));
-            dependencies.push(format!("(assert (forall ((x (Cloak {}))) (= (shield (reveal x)) x))) ; shield(reveal(x)) = x", sort_to_smt(t,ir)));
-            dependencies.push(format!(
+            let decl = format!("(declare-sort Cloak 1) ; Cloak<T>");
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(declare-fun shield ({}) (Cloak {}))",
+                sort_to_smt(t, ir),
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(declare-fun reveal ((Cloak {})) {})",
+                sort_to_smt(t, ir),
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!("(assert (forall ((x (Cloak {}))) (= (shield (reveal x)) x))) ; shield(reveal(x)) = x", sort_to_smt(t,ir));
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
                 "(assert (forall ((x {})) (= (reveal (shield x)) x))) ; reveal(shield(x)) = x",
-                sort_to_smt(t,ir)
-            ));
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
             format!("(shield {})", v) // shield(x) - needs to be the same function as in the assert
         }
         // `Cloak::reveal`
         BoxReveal { t, val } => {
             let v = expr_to_smt(exp_registry, val, ir, dependencies, mapping_vars);
-            dependencies.push(format!("(declare-sort Cloak 1) ; Cloak<T>"));
-            dependencies.push(format!("(declare-fun shield ({}) (Cloak {}))", sort_to_smt(t,ir), sort_to_smt(t,ir)));
-            dependencies.push(format!("(declare-fun reveal ((Cloak {})) {})", sort_to_smt(t,ir), sort_to_smt(t,ir)));
-            dependencies.push(format!("(assert (forall ((x (Cloak {}))) (= (shield (reveal x)) x))) ; shield(reveal(x)) = x", sort_to_smt(t,ir)));
-            dependencies.push(format!(
+            let decl = format!("(declare-sort Cloak 1) ; Cloak<T>");
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(declare-fun shield ({}) (Cloak {}))",
+                sort_to_smt(t, ir),
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(declare-fun reveal ((Cloak {})) {})",
+                sort_to_smt(t, ir),
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!("(assert (forall ((x (Cloak {}))) (= (shield (reveal x)) x))) ; shield(reveal(x)) = x", sort_to_smt(t,ir));
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
                 "(assert (forall ((x {})) (= (reveal (shield x)) x))) ; reveal(shield(x)) = x",
-                sort_to_smt(t,ir)
-            ));
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
             format!("(reveal {})", v) // reveal(x) - needs to be the same function as in the assert
         }
         // --- Sequence ---
         // `Seq::empty` - (declare-const <name> (Seq <type>))
         SeqEmpty { t } => {
             for (varid, var) in exp_registry.vars.iter() {
+                // let x = Seq::empty() is the only place where we have a Seq::empty()
                 if let VarKind::Bound { bind: expid } = var.kind {
                     if id == &expid {
                         // because the asssertions go on the top level, there might be the case where variables with the same names are defined in different functions (for example let a = Seq::new())
                         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-                        dependencies.push(format!("(declare-const seq_{} (Seq {}))", id, sort_to_smt(t,ir)));
-                        dependencies.push(format!(
+                        let decl =
+                            format!("(declare-const seq_{} (Seq {}))", id, sort_to_smt(t, ir));
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(assert (= seq_{} (as seq.empty (Seq {})))) ; seq.empty",
-                            id, sort_to_smt(t,ir)
-                        ));
+                            id,
+                            sort_to_smt(t, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+
                         // inside the function body we need to use the name seq_<id> instead of the original name
                         mapping_vars.insert(*varid, format!("seq_{}", id));
                         break;
@@ -256,8 +311,19 @@ pub fn intrinsics_to_smt(
             format!("")
         }
         // `Seq::length`
-        SeqLength { t: _, seq } => {
+        SeqLength { t, seq } => {
+            let a = exp_registry.lookup_exp(*seq);
+            println!("SAAAA: {:?}", a);
+            let b = exp_registry.lookup_var(VarId { index: 0 });
+            println!("SABBB: {:?}", b);
             let s = expr_to_smt(exp_registry, seq, ir, dependencies, mapping_vars);
+            let c = exp_registry.lookup_exp(ExpId { index: 0 });
+            println!("SACCC: {:?}", c);
+            println!("seqXXX: {}", s);
+            println!("seqXXXSORT: {}", sort_to_smt(t, ir));
+            println!("seqXXXseq: {}", seq);
+            println!("seqXXXID: {}", id);
+            println!("intrinsic: {:?}", intrinsic);
             format!("(seq.len {})", s)
         }
         // `Seq::append`
@@ -270,10 +336,6 @@ pub fn intrinsics_to_smt(
         SeqAt { t: _, seq, idx } => {
             let s = expr_to_smt(exp_registry, seq, ir, dependencies, mapping_vars);
             let i = expr_to_smt(exp_registry, idx, ir, dependencies, mapping_vars);
-            // dependencies.push(format!(
-            //     "(assert (and (<= 0 {}) (< {} (seq.len {}))))",
-            //     i, i, s
-            // ));
             format!("(seq.nth {} {})", s, i)
         }
         // `Seq::includes`
@@ -286,31 +348,52 @@ pub fn intrinsics_to_smt(
         // `Set::empty` - The type constructor (Set T) is a macro for (Array T Bool).
         SetEmpty { t } => {
             for (varid, var) in exp_registry.vars.iter() {
+                // a Set::new() is always used like let x = Set::new() in the code
                 if let VarKind::Bound { bind: expid } = var.kind {
                     if id == &expid {
                         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-                        dependencies.push(format!("(declare-const set_{} (Set {}))", id, t));
-                        dependencies.push(format!(
+                        let decl = format!("(declare-const set_{} (Set {}))", id, t);
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(assert (forall ((x {})) (= (select set_{} x) false))) ; set.empty",
-                            sort_to_smt(t,ir), id
-                        ));
+                            sort_to_smt(t, ir),
+                            id
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+
                         mapping_vars.insert(*varid, format!("set_{}", id));
                         // sets do not have a length in SMT-LIB, so we need a function
-                        dependencies.push(format!("(declare-fun len ((Set {})) Int)", t));
-                        dependencies.push(format!(
-                            "(assert (= (len set_{}) 0)) ; length of empty set is 0",
-                            id
-                        ));
-                        dependencies.push(format!(
+                        let decl = format!("(declare-fun len ((Set {})) Int)", t);
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl =
+                            format!("(assert (= (len set_{}) 0)) ; length of empty set is 0", id);
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(assert (forall ((m (Set {})) (i {}))
-                            (=> (not (select m i)) (= (len (store m i true)) (+ (len m) 1)))))",
-                            sort_to_smt(t,ir), sort_to_smt(t,ir)
-                        ));
-                        dependencies.push(format!(
+                            (=> (not (select m i)) (= (len (store m i true)) (+ (len m) 1))))) ; length of set after adding an element",
+                            sort_to_smt(t, ir),
+                            sort_to_smt(t, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(assert (forall ((m (Set {})) (i {}))
                             (=> (select m i) (= (len (store m i true)) (len m)))))",
-                            sort_to_smt(t,ir), sort_to_smt(t,ir)
-                        ));
+                            sort_to_smt(t, ir),
+                            sort_to_smt(t, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
                         break;
                     }
                 }
@@ -320,18 +403,28 @@ pub fn intrinsics_to_smt(
         // `Set::length`
         SetLength { t, set } => {
             let s = expr_to_smt(exp_registry, set, ir, dependencies, mapping_vars);
-            // the definition should already be made but just to be sure
-            dependencies.push(format!("(declare-fun len ((Set {})) Int)", t));
-            dependencies.push(format!(
+            let decl = format!("(declare-fun len ((Set {})) Int)", t);
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
                 "(assert (forall ((m (Set {})) (i {}))
                 (=> (not (select m i)) (= (len (store m i true)) (+ (len m) 1)))))",
-                sort_to_smt(t,ir), sort_to_smt(t,ir)
-            ));
-            dependencies.push(format!(
+                sort_to_smt(t, ir),
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
                 "(assert (forall ((m (Set {})) (i {}))
                 (=> (select m i) (= (len (store m i true)) (len m)))))",
-                sort_to_smt(t,ir), sort_to_smt(t,ir)
-            ));
+                sort_to_smt(t, ir),
+                sort_to_smt(t, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
             format!("(len {})", s)
         }
         SetInsert { t: _, set, item } => {
@@ -357,37 +450,85 @@ pub fn intrinsics_to_smt(
                     // get the variable id
                     if id == &expid {
                         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-                        dependencies
-                            .push(format!("(declare-const map_{} (Array {} {}))", id, sort_to_smt(k,ir), sort_to_smt(v,ir)));
-                        dependencies.push(sort_not_present(v, ir));
-                        dependencies.push(format!(
+                        let decl = format!(
+                            "(declare-const map_{} (Array {} {}))",
+                            id,
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
+                            "(declare-const not_present_{} {})",
+                            sort_to_smt(v, ir),
+                            sort_to_smt(v, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(assert (forall ((x {})) (= (select map_{} x) not_present_{}))) ; array.empty",
                             sort_to_smt(k,ir),
                             id,
-                            sort_to_smt(v,ir)
-                        ));
+                            sort_to_smt(v, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+
                         // inside the function body we need to use the name map_<id> instead of the original name
                         mapping_vars.insert(*varid, format!("map_{}", id));
                         // arrays do not have a length in SMT-LIB, so we need a function
                         // also we need some semantics for the length of the map (even though a full definition is not possible)
-                        dependencies
-                            .push(format!("(declare-fun len_map ((Array {} {})) Int)", sort_to_smt(k,ir), sort_to_smt(v,ir)));
-                        dependencies.push(format!(
+                        let decl = format!(
+                            "(declare-fun len_map ((Array {} {})) Int)",
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(assert (= (len_map map_{}) 0)) ; length of empty map is 0",
                             id
-                        ));
-                        dependencies.push(format!(
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(define-fun in_map ((m (Array {} {})) (i {})) Bool
                             (not (= (select m i) not_present_{})))",
-                            sort_to_smt(k,ir), sort_to_smt(v,ir), sort_to_smt(k,ir), sort_to_smt(v,ir)
-                        ));
-                        dependencies.push(format!("(assert (forall ((m (Array {} {})) (i {}) (v {}))
-                            (=> (not (in_map m i)) (= (len_map (store m i v)) (+ (len_map m) 1)))))", sort_to_smt(k,ir), sort_to_smt(v,ir), sort_to_smt(k,ir), sort_to_smt(v,ir)));
-                        dependencies.push(format!(
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir),
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
+                            "(assert (forall ((m (Array {} {})) (i {}) (v {}))
+                        (=> (not (in_map m i)) (= (len_map (store m i v)) (+ (len_map m) 1)))))",
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir),
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
+                        let decl = format!(
                             "(assert (forall ((m (Array {} {})) (i {}) (v {}))
                             (=> (in_map m i) (= (len_map (store m i v)) (len_map m)))))",
-                            sort_to_smt(k,ir), sort_to_smt(v,ir), sort_to_smt(k,ir), sort_to_smt(v,ir)
-                        ));
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir),
+                            sort_to_smt(k, ir),
+                            sort_to_smt(v, ir)
+                        );
+                        if !dependencies.contains(&decl) {
+                            dependencies.push(decl);
+                        }
                         break;
                     }
                 }
@@ -396,23 +537,47 @@ pub fn intrinsics_to_smt(
         }
         MapLength { k, v, map } => {
             let s = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
-            // the definition should already be made but just to be sure
-            dependencies.push(format!("(declare-fun len_map ((Array {} {})) Int)", k, v));
-            dependencies.push(format!(
+            let decl = format!(
+                "(declare-fun len_map ((Array {} {})) Int)",
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
                 "(define-fun in_map ((m (Array {} {})) (i {})) Bool
                 (not (= (select m i) not_present_{})))",
-                sort_to_smt(k,ir), sort_to_smt(v,ir), sort_to_smt(k,ir), sort_to_smt(v,ir)
-            ));
-            dependencies.push(format!(
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
                 "(assert (forall ((m (Array {} {})) (i {}) (v {}))
                 (=> (not (in_map m i)) (= (len_map (store m i v)) (+ (len_map m) 1)))))",
-                sort_to_smt(k,ir), sort_to_smt(v,ir), sort_to_smt(k,ir), sort_to_smt(v,ir)
-            ));
-            dependencies.push(format!(
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
                 "(assert (forall ((m (Array {} {})) (i {}) (v {}))
                 (=> (in_map m i) (= (len_map (store m i v)) (len_map m)))))",
-                sort_to_smt(k,ir), sort_to_smt(v,ir), sort_to_smt(k,ir), sort_to_smt(v,ir)
-            ));
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
             format!("(len_map {})", s)
         }
         MapPut {
@@ -435,12 +600,12 @@ pub fn intrinsics_to_smt(
         } => {
             let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
             let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
-            format!("(select {} {})", m, k) // no error handling in SMT-LIB
+            format!("(select {} {})", m, k)
         }
         MapDel { k: _, v, map, key } => {
             let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
             let k = expr_to_smt(exp_registry, key, ir, dependencies, mapping_vars);
-            format!("(store {} {} not_present_{})", m, k, sort_to_smt(v,ir))
+            format!("(store {} {} not_present_{})", m, k, sort_to_smt(v, ir))
         }
         MapContainsKey { k: _, v, map, key } => {
             let m = expr_to_smt(exp_registry, map, ir, dependencies, mapping_vars);
@@ -449,15 +614,12 @@ pub fn intrinsics_to_smt(
         }
         // --- Error ---
         ErrFresh => {
-            format!("(error \"something went wrong in error fresh\")")
+            format!("error fresh")
         }
         ErrMerge { lhs, rhs } => {
             let l = expr_to_smt(exp_registry, lhs, ir, dependencies, mapping_vars);
             let r = expr_to_smt(exp_registry, rhs, ir, dependencies, mapping_vars);
-            format!(
-                "(error \"something went wrong in error merge between {} {}\")",
-                l, r
-            )
+            format!("(error merge between {} {}\")", l, r)
         }
         // --- Generic eq/ne ---
         SmtEq { t: _, lhs, rhs } => {

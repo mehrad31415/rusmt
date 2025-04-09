@@ -80,11 +80,6 @@ pub fn sort_default_value(
     }
 }
 
-/// Give the value no present for sorts
-pub fn sort_not_present(s: &Sort, ir: &IRContext) -> String {
-    format!("(declare-const not_present_{} {})", s, sort_to_smt(s, ir))
-}
-
 /// Derive the type of an expression for inside quantifiers for example forall (x in xs => x > 0) the type of xs is defined by this function
 pub fn derive_type(exp_registry: &ExpRegistry, ir: &IRContext, eid: &ExpId) -> Sort {
     let sort = match exp_registry.lookup_exp(*eid) {

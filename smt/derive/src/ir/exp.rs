@@ -36,7 +36,7 @@ pub enum VarKind {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Information about a variable
 pub struct Variable {
     pub name: Symbol, // the name of the variable (in the Intermediate Representation a variable is represented by a Symbol)
@@ -51,7 +51,7 @@ pub enum EnumSelector {
     Record(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Denotes how to construct an enum variant
 pub enum VariantCtor {
     Unit,
@@ -83,14 +83,14 @@ pub struct MatchCase {
     pub body: ExpId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// One phi case (i.e., conditional branch)
 pub struct PhiCase {
     pub cond: ExpId,
     pub body: ExpId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// An expression (which is the intermediate representation of the Op in the parser)
 pub enum Expression {
     /// `<var>` - Var(VarName) in the parser
@@ -166,7 +166,7 @@ pub enum Expression {
 }
 
 /// A registry of expressions (organized around a function body)
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct ExpRegistry {
     /// a map from variable id to variables
     pub vars: BTreeMap<VarId, Variable>,

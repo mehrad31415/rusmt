@@ -1,15 +1,14 @@
 //! This module contains the conversion of user defined types to SMT-LIB
 //! It has the following functions:
-//! - `tydef_in_smt`: Converts defining a user defined type into the corresponding SMT-LIB as a `String`.
-//! - `tyuse_in_smt`: Converts using a user defined type in a function signature into the corresponding SMT-LIB as a `String`.
+//! - `tydef_in_smt`: Translates a user defined type to SMT-LIB when it is defined.
+//! - `tyuse_in_smt`: Translates a user defined type to SMT-LIB in a function signature.
 
 use crate::backend::z3::sort::sort_to_smt;
 use crate::ir::index::UsrSortId;
 use crate::ir::sort::{DataType, Variant};
 use crate::IRContext;
 
-/// Translates a user defined type to SMT-LIB.
-/// This is where the definition of the data type is generated.
+/// Translates a user defined type to SMT-LIB when it is defined.
 pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
     // get the data type
     let (type_name, gen_or_elem, dt) = {
@@ -33,7 +32,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             );
             let constructor_name = format!("mk-{}", tuple_name);
 
-            // Generate field names: field1_, field2_, ...
+            // Generate field names: field_Tuple_Integer_Bool_1, field_Tuple_Integer_Bool_2, etc.
             let field_names: Vec<String> = (0..gen_or_elem.len())
                 .map(|i| format!("field_{}_{}_", tuple_name, i + 1))
                 .collect();
@@ -42,9 +41,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             let field_defs: Vec<String> = gen_or_elem
                 .iter()
                 .zip(field_names.iter())
-                .map(|(sort, field_name)| {
-                    format!("({} {})", field_name, sort_to_smt(sort, ir))
-                })
+                .map(|(sort, field_name)| format!("({} {})", field_name, sort_to_smt(sort, ir)))
                 .collect();
 
             // for tuple (Integer, Bool):
@@ -75,60 +72,38 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             let field_defs: Vec<String> = elems
                 .iter()
                 .zip(field_names.iter())
-                .map(|(sort, field_name)| {
-                    format!("({} {})", field_name, sort_to_smt(sort, ir))
-                })
+                .map(|(sort, field_name)| format!("({} {})", field_name, sort_to_smt(sort, ir)))
                 .collect();
 
-            if gen_or_elem.is_empty() {
-                return format!(
-                    "(declare-datatypes () (({} ({} {}))))",
-                    type_name,
-                    constructor_name,
-                    field_defs.join(" ")
-                );
-            } else {
-                return format!(
-                    "(declare-datatypes (({})) (({} ({} {}))))",
-                    gen_or_elem
-                        .iter()
-                        .map(|t| t.to_string())
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                    type_name,
-                    constructor_name,
-                    field_defs.join(" ")
-                );
-            }
+            return format!(
+                "(declare-datatypes ({}) (({} ({} {}))))",
+                gen_or_elem
+                    .iter()
+                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                type_name,
+                constructor_name,
+                field_defs.join(" ")
+            );
         }
         DataType::Record(recs) => {
             let field_defs: Vec<String> = recs
                 .iter()
-                .map(|(field_name, sort)| {
-                    format!("({} {})", field_name, sort_to_smt(sort, ir))
-                })
+                .map(|(field_name, sort)| format!("({} {})", field_name, sort_to_smt(sort, ir)))
                 .collect();
 
-            if gen_or_elem.is_empty() {
-                return format!(
-                    "(declare-datatypes () (({} ({} {}))))",
-                    type_name,
-                    constructor_name,
-                    field_defs.join(" ")
-                );
-            } else {
-                return format!(
-                    "(declare-datatypes (({})) (({} ({} {}))))",
-                    gen_or_elem
-                        .iter()
-                        .map(|t| t.to_string())
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                    type_name,
-                    constructor_name,
-                    field_defs.join(" ")
-                );
-            }
+            return format!(
+                "(declare-datatypes ({}) (({} ({} {}))))",
+                gen_or_elem
+                    .iter()
+                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                type_name,
+                constructor_name,
+                field_defs.join(" ")
+            );
         }
         DataType::Enum(vars) => {
             let mut variants = Vec::new();
@@ -142,15 +117,21 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                             panic!("slots in tuple is empty");
                         }
 
-                        let field_names: Vec<String> =
-                            (0..t.len()).map(|i| format!("field_{}_{}_", variant_name, i + 1)).collect();
+                        let field_names: Vec<String> = (0..t.len())
+                            .map(|i| format!("{}_{}", variant_name, i + 1))
+                            .collect();
 
                         // Combine field names with their respective sorts (types)
                         let field_defs: Vec<String> = t
                             .iter()
                             .zip(field_names.iter())
                             .map(|(sort, field_name)| {
-                                format!("({} {})", field_name, sort_to_smt(sort, ir))
+                                format!(
+                                    "(field_{}_{} {})",
+                                    field_name,
+                                    type_name,
+                                    sort_to_smt(sort, ir)
+                                )
                             })
                             .collect();
 
@@ -164,7 +145,12 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                         let field_defs: Vec<String> = r
                             .iter()
                             .map(|(field_name, sort)| {
-                                format!("(record_{}_ {})", field_name, sort_to_smt(sort, ir))
+                                format!(
+                                    "(record_{}_{} {})",
+                                    field_name,
+                                    type_name,
+                                    sort_to_smt(sort, ir)
+                                )
                             })
                             .collect();
 
@@ -173,24 +159,16 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                 }
             }
 
-            if gen_or_elem.is_empty() {
-                return format!(
-                    "(declare-datatypes () (({} {})))",
-                    type_name,
-                    variants.join(" ")
-                );
-            } else {
-                return format!(
-                    "(declare-datatypes (({})) (({} {})))",
-                    gen_or_elem
-                        .iter()
-                        .map(|t| t.to_string())
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                    type_name,
-                    variants.join(" ")
-                );
-            }
+            return format!(
+                "(declare-datatypes ({}) (({} {})))",
+                gen_or_elem
+                    .iter()
+                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                type_name,
+                variants.join(" ")
+            );
         }
     }
 }

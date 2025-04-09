@@ -11,7 +11,7 @@ use crate::ir::intrinsics::Intrinsic;
 use crate::ir::name::UsrFunName;
 use crate::ir::sort::Sort;
 use crate::IRContext;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::panic;
 
 /// Converts a function definition into the corresponding SMT-LIB function definition as a `String`.
@@ -21,7 +21,7 @@ use std::panic;
 /// The Generics are already registered in `undef_sorts`.
 pub fn fundef_in_smt(
     ir: &IRContext,
-    funcs: &BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>,
+    funcs: &Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>,
 ) -> String {
     let mut dependencies = Vec::new();
     let mut mapping_vars = BTreeMap::new();
@@ -29,6 +29,8 @@ pub fn fundef_in_smt(
     let mut sigs = Vec::new();
     let mut bodies = Vec::new();
     let mut ret = String::new();
+    let mut num_of_uninterpreted: i32 = 0;
+    let mut uninterpreted_ret: String = String::new();
     for (name, generics_id) in funcs {
         let generics_id = generics_id.as_ref().expect("generics_id is None");
         for (_generics, id) in generics_id {
@@ -67,6 +69,7 @@ pub fn fundef_in_smt(
                     bodies.push(format!("{}\n", body_expr));
                 }
                 FunDef::Uninterpreted => {
+                    num_of_uninterpreted += 1;
                     let field_defs: Vec<String> = params
                         .iter()
                         .map(|(_, sort)| format!("{}", sort_to_smt(sort, ir)))
@@ -74,7 +77,7 @@ pub fn fundef_in_smt(
 
                     // declare the function with declare-fun
                     // mutually dependent functions must have a body so no need to check here!
-                    return format!(
+                    uninterpreted_ret = format!(
                         "(declare-fun {} ({}) {})",
                         name,
                         field_defs.join(" "),
@@ -84,24 +87,37 @@ pub fn fundef_in_smt(
             }
         }
     }
-    if sigs.len() == 1 {
-        ret += format!("(define-fun-rec {} {})", sigs[0], bodies[0]).as_str();
+    if num_of_uninterpreted > 1 {
+        panic!(
+            "There are {} mutually depedendent uninterpreted functions, but maximum one is allowed!",
+            num_of_uninterpreted
+        );
+    } else if num_of_uninterpreted == 1 {
+        if sigs.len() != 0 {
+            panic!(
+                "when there is one uninterpreted function, there should be no defined functions!"
+            );
+        }
+        return uninterpreted_ret;
     } else {
-        ret += format!(
-            "(define-funs-rec ({}) ({}))",
-            sigs.iter()
-                .map(|s| format!("({})", s))
-                .collect::<Vec<_>>()
-                .join(" "),
-            bodies
-                .iter()
-                .map(|s| format!("{}", s))
-                .collect::<Vec<_>>()
-                .join(" ")
-        )
-        .as_str();
+        if sigs.len() == 1 {
+            ret += format!("(define-fun-rec {} {})", sigs[0], bodies[0]).as_str();
+        } else {
+            ret += format!(
+                "(define-funs-rec ({}) ({}))",
+                sigs.iter()
+                    .map(|s| format!("({})", s))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                bodies
+                    .iter()
+                    .map(|s| format!("{}", s))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+            .as_str();
+        }
     }
-
     // done
     ret
 }
@@ -109,62 +125,49 @@ pub fn fundef_in_smt(
 /// Groups dependent functions in the function definition.
 /// This is so that cyclic dependent functions are defined differently in SMT-LIB.
 pub fn group_dependent_funcs(
-    func_name: UsrFunName,
-    def: &FunDef,
-    ir: &IRContext,
+    func_name: &UsrFunName,
     generics_id: &BTreeMap<Vec<Sort>, UsrFunId>,
-    func_deps: &mut BTreeSet<BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>>,
+    ir: &IRContext,
+    func_deps: &mut Vec<Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>>,
 ) {
-    match def {
-        FunDef::Defined(reg, id) => {
-            if let Some(old_map) = func_deps
-                .iter()
-                .find(|map| map.contains_key(&func_name))
-                .cloned()
-            {
-                func_deps.take(&old_map);
-                if old_map.get(&func_name.clone()).unwrap().is_some() {
-                    panic!("Function {:?} is already defined in the map!", func_name);
-                }
-                let mut new_map = old_map;
-                new_map.insert(func_name.clone(), Some(generics_id.clone()));
-                func_deps.insert(new_map.clone());
-                return;
+    for (_, id) in generics_id {
+        let def = ir.fn_registry.retrieve_def(*id).clone();
+
+        if let Some(inner) = func_deps
+            .iter_mut()
+            .find(|v| v.iter().any(|(name, _)| name == func_name))
+        {
+            // grab the (name, value) pair itself
+            let (_, slot) = inner
+                .iter_mut()
+                .find(|(name, _)| name == func_name)
+                .unwrap();
+
+            // same‐name definition already present
+            if slot.is_some() {
+                panic!("Function {:?} is already defined in the map!", func_name);
             }
 
-            func_deps.insert(BTreeMap::from([(
-                func_name.clone(),
-                Some(generics_id.clone()),
-            )]));
-            analyze_expression(func_name, id, reg, ir, generics_id, func_deps);
+            // otherwise fill the slot
+            *slot = Some(generics_id.clone());
+        } else {
+            // no inner vec had `func_name`
+            func_deps.push(vec![(func_name.clone(), Some(generics_id.clone()))]);
         }
-        FunDef::Uninterpreted => {
-            if func_deps
-                .iter()
-                .any(|map| map.keys().any(|key| key == &func_name))
-            {
-                panic!(
-                    "Function {:?} is uninterpreted but already exists in the map!",
-                    func_name
-                );
-            }
-
-            // Otherwise, insert a new set with just fun_name
-            let mut new_map = BTreeMap::new();
-            new_map.insert(func_name, Some(generics_id.clone()));
-            func_deps.insert(new_map);
+        if let FunDef::Defined(reg, id) = def {
+            // analyzes the body of the function
+            receive_funcall(func_name, &id, &reg, ir, func_deps);
         }
     }
 }
 
-/// Analyzes the expression and its dependencies to determine the function calls inside the expression.
-fn analyze_expression(
-    func_name: UsrFunName,
+/// Analyzes the body expression and its dependencies to determine the function calls inside the expression.
+fn receive_funcall(
+    func_name: &UsrFunName,
     id: &ExpId,
     reg: &ExpRegistry,
     ir: &IRContext,
-    generics_id: &BTreeMap<Vec<Sort>, UsrFunId>,
-    func_deps: &mut BTreeSet<BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>>,
+    func_deps: &mut Vec<Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>>,
 ) {
     // destruct ExpRegistry
     let ExpRegistry { vars: _, exps } = reg;
@@ -174,17 +177,17 @@ fn analyze_expression(
         Expression::Var(_) => (),
         Expression::Pack { sort: _, elems } => {
             elems.iter().for_each(|e| {
-                analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, e, reg, ir, func_deps);
             });
         }
         Expression::Tuple { sort: _, slots } => {
             slots.iter().for_each(|e| {
-                analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, e, reg, ir, func_deps);
             });
         }
         Expression::Record { sort: _, fields } => {
             fields.iter().for_each(|(_, e)| {
-                analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, e, reg, ir, func_deps);
             });
         }
         Expression::Enum {
@@ -195,26 +198,26 @@ fn analyze_expression(
             VariantCtor::Unit => (),
             VariantCtor::Tuple(t) => {
                 t.iter().for_each(|e| {
-                    analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                    receive_funcall(func_name, e, reg, ir, func_deps);
                 });
             }
             VariantCtor::Record(r) => {
                 r.iter().for_each(|(_, e)| {
-                    analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                    receive_funcall(func_name, e, reg, ir, func_deps);
                 });
             }
         },
         Expression::AccessSlot { base, slot: _ } => {
-            analyze_expression(func_name, base, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, base, reg, ir, func_deps);
         }
         Expression::AccessField { base, field: _ } => {
-            analyze_expression(func_name, base, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, base, reg, ir, func_deps);
         }
         Expression::Match { cases } => {
             for case in cases {
                 let atoms = &case.atoms;
                 let body = case.body;
-                analyze_expression(func_name.clone(), &body, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, &body, reg, ir, func_deps);
                 for atom in atoms {
                     let MatchAtom {
                         head,
@@ -222,64 +225,72 @@ fn analyze_expression(
                         branch: _,
                         variant: _,
                     } = atom;
-                    analyze_expression(func_name.clone(), head, reg, ir, generics_id, func_deps);
+                    receive_funcall(func_name, head, reg, ir, func_deps);
                 }
             }
         }
         Expression::Phi { cases, default } => {
-            analyze_expression(func_name.clone(), default, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, default, reg, ir, func_deps);
             for case in cases {
                 let cond = &case.cond;
                 let body = case.body;
-                analyze_expression(func_name.clone(), cond, reg, ir, generics_id, func_deps);
-                analyze_expression(func_name.clone(), &body, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, cond, reg, ir, func_deps);
+                receive_funcall(func_name, &body, reg, ir, func_deps);
             }
         }
         Expression::Intrinsic(intrinsic) => {
-            analyze_intrinsic(func_name, intrinsic, reg, ir, generics_id, func_deps);
+            analyze_intrinsic(func_name, intrinsic, reg, ir, func_deps);
         }
         Expression::Procedure { callee, args } => {
             let callee_smt = ir.fn_registry.get_name(callee);
-            if let Some(old_map) = func_deps
+            if let Some(pos) = func_deps
                 .iter()
-                .find(|map| map.contains_key(&func_name))
-                .cloned()
+                .position(|v| v.iter().any(|(name, _)| name == func_name))
             {
-                func_deps.take(&old_map);
+                // take the old inner vec
+                let mut inner = func_deps.remove(pos);
 
-                let mut new_map = old_map;
-                new_map.insert(callee_smt.clone(), None);
+                // if already defined, do not add it again
+                if inner.iter().any(|(name, _)| name == &callee_smt) {
+                    // put the vec back where it was
+                    func_deps.insert(pos, inner);
+                    return;
+                }
 
-                // Reinsert the modified map back into the set.
-                func_deps.insert(new_map.clone());
+                // add the new (callee, None) entry at the start
+                // this is because we want the callee to be first defined before being used
+                inner.insert(0, (callee_smt.clone(), None));
+
+                // put the vec back where it was
+                func_deps.insert(pos, inner);
             }
             for arg in args {
-                analyze_expression(func_name.clone(), arg, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, arg, reg, ir, func_deps);
             }
         }
         Expression::Forall { vars: _, body } => {
-            analyze_expression(func_name, body, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, body, reg, ir, func_deps);
         }
         Expression::Exists { vars: _, body } => {
-            analyze_expression(func_name, body, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, body, reg, ir, func_deps);
         }
         Expression::Choose {
             vars: _,
             body,
             rets: _,
         } => {
-            analyze_expression(func_name, body, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, body, reg, ir, func_deps);
         }
         Expression::IterForall { vars, body } => {
-            analyze_expression(func_name.clone(), body, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, body, reg, ir, func_deps);
             vars.iter().for_each(|(_, e)| {
-                analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, e, reg, ir, func_deps);
             });
         }
         Expression::IterExists { vars, body } => {
-            analyze_expression(func_name.clone(), body, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, body, reg, ir, func_deps);
             vars.iter().for_each(|(_, e)| {
-                analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, e, reg, ir, func_deps);
             });
         }
         Expression::IterChoose {
@@ -287,35 +298,35 @@ fn analyze_expression(
             body,
             rets: _,
         } => {
-            analyze_expression(func_name.clone(), body, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, body, reg, ir, func_deps);
             vars.iter().for_each(|(_, e)| {
-                analyze_expression(func_name.clone(), e, reg, ir, generics_id, func_deps);
+                receive_funcall(func_name, e, reg, ir, func_deps);
             });
         }
     }
 }
 
+/// Analyze the function calls in the intrinsic.
 fn analyze_intrinsic(
-    func_name: UsrFunName,
+    func_name: &UsrFunName,
     intrinsic: &Intrinsic,
     reg: &ExpRegistry,
     ir: &IRContext,
-    generics_id: &BTreeMap<Vec<Sort>, UsrFunId>,
-    func_deps: &mut BTreeSet<BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>>,
+    func_deps: &mut Vec<Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>>,
 ) {
     use crate::ir::intrinsics::Intrinsic::*;
 
     match intrinsic {
         BoolVal(_) => (),
         BoolNot { val } => {
-            analyze_expression(func_name.clone(), val, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, val, reg, ir, func_deps);
         }
         BoolAnd { lhs, rhs }
         | BoolOr { lhs, rhs }
         | BoolXor { lhs, rhs }
         | BoolImplies { lhs, rhs } => {
-            analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, lhs, reg, ir, func_deps);
+            receive_funcall(func_name, rhs, reg, ir, func_deps);
         }
         IntVal(_) => (),
         IntLt { lhs, rhs }
@@ -327,8 +338,8 @@ fn analyze_intrinsic(
         | IntMul { lhs, rhs }
         | IntDiv { lhs, rhs }
         | IntRem { lhs, rhs } => {
-            analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, lhs, reg, ir, func_deps);
+            receive_funcall(func_name, rhs, reg, ir, func_deps);
         }
         NumVal(_) => (),
         NumLt { lhs, rhs }
@@ -339,56 +350,56 @@ fn analyze_intrinsic(
         | NumSub { lhs, rhs }
         | NumMul { lhs, rhs }
         | NumDiv { lhs, rhs } => {
-            analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, lhs, reg, ir, func_deps);
+            receive_funcall(func_name, rhs, reg, ir, func_deps);
         }
         StrVal(_) => (),
         StrLt { lhs, rhs } | StrLe { lhs, rhs } | StrGe { lhs, rhs } | StrGt { lhs, rhs } => {
-            analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, lhs, reg, ir, func_deps);
+            receive_funcall(func_name, rhs, reg, ir, func_deps);
         }
         BoxShield { t: _, val } => {
-            analyze_expression(func_name.clone(), val, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, val, reg, ir, func_deps);
         }
         BoxReveal { t: _, val } => {
-            analyze_expression(func_name.clone(), val, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, val, reg, ir, func_deps);
         }
         SeqEmpty { t: _ } => (),
         SeqLength { t: _, seq } => {
-            analyze_expression(func_name.clone(), seq, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, seq, reg, ir, func_deps);
         }
         SeqAppend { t: _, seq, item } => {
-            analyze_expression(func_name.clone(), seq, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), item, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, seq, reg, ir, func_deps);
+            receive_funcall(func_name, item, reg, ir, func_deps);
         }
         SeqAt { t: _, seq, idx } => {
-            analyze_expression(func_name.clone(), seq, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), idx, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, seq, reg, ir, func_deps);
+            receive_funcall(func_name, idx, reg, ir, func_deps);
         }
         SeqIncludes { t: _, seq, item } => {
-            analyze_expression(func_name.clone(), seq, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), item, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, seq, reg, ir, func_deps);
+            receive_funcall(func_name, item, reg, ir, func_deps);
         }
         SetEmpty { t: _ } => (),
         SetLength { t: _, set } => {
-            analyze_expression(func_name.clone(), set, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, set, reg, ir, func_deps);
         }
         SetInsert { t: _, set, item } => {
-            analyze_expression(func_name.clone(), set, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), item, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, set, reg, ir, func_deps);
+            receive_funcall(func_name, item, reg, ir, func_deps);
         }
         SetRemove { t: _, set, item } => {
-            analyze_expression(func_name.clone(), set, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), item, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, set, reg, ir, func_deps);
+            receive_funcall(func_name, item, reg, ir, func_deps);
         }
         SetContains { t: _, set, item } => {
-            analyze_expression(func_name.clone(), set, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), item, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, set, reg, ir, func_deps);
+            receive_funcall(func_name, item, reg, ir, func_deps);
         }
         // --- Map ---
         MapEmpty { k: _, v: _ } => (),
         MapLength { k: _, v: _, map } => {
-            analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, map, reg, ir, func_deps);
         }
         MapPut {
             k: _,
@@ -397,9 +408,9 @@ fn analyze_intrinsic(
             key,
             val,
         } => {
-            analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), key, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), val, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, map, reg, ir, func_deps);
+            receive_funcall(func_name, key, reg, ir, func_deps);
+            receive_funcall(func_name, val, reg, ir, func_deps);
         }
         MapGet {
             k: _,
@@ -407,8 +418,8 @@ fn analyze_intrinsic(
             map,
             key,
         } => {
-            analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), key, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, map, reg, ir, func_deps);
+            receive_funcall(func_name, key, reg, ir, func_deps);
         }
         MapDel {
             k: _,
@@ -416,8 +427,8 @@ fn analyze_intrinsic(
             map,
             key,
         } => {
-            analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), key, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, map, reg, ir, func_deps);
+            receive_funcall(func_name, key, reg, ir, func_deps);
         }
         MapContainsKey {
             k: _,
@@ -425,21 +436,21 @@ fn analyze_intrinsic(
             map,
             key,
         } => {
-            analyze_expression(func_name.clone(), map, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), key, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, map, reg, ir, func_deps);
+            receive_funcall(func_name, key, reg, ir, func_deps);
         }
         ErrFresh => (),
         ErrMerge { lhs, rhs } => {
-            analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, lhs, reg, ir, func_deps);
+            receive_funcall(func_name, rhs, reg, ir, func_deps);
         }
         SmtEq { t: _, lhs, rhs } => {
-            analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, lhs, reg, ir, func_deps);
+            receive_funcall(func_name, rhs, reg, ir, func_deps);
         }
         SmtNe { t: _, lhs, rhs } => {
-            analyze_expression(func_name.clone(), lhs, reg, ir, generics_id, func_deps);
-            analyze_expression(func_name.clone(), rhs, reg, ir, generics_id, func_deps);
+            receive_funcall(func_name, lhs, reg, ir, func_deps);
+            receive_funcall(func_name, rhs, reg, ir, func_deps);
         }
     }
 }

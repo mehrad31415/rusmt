@@ -56,23 +56,30 @@ pub fn expr_to_smt_inner(
                 .clone();
             if let VarKind::Match {
                 head,
-                sort: _,
+                sort,
                 branch,
                 selector,
             } = varkind
             {
                 // get the name of the head variable
                 let head_smt = expr_to_smt(exp_registry, &head, ir, dependencies, mapping_vars);
+                // get the sort
+                let (sort_name, _) = ir.ty_registry.reverse_lookup(sort);
+                let sort_name = sort_name.expect("sort name not found");
                 let branch_name = match selector {
-                    EnumSelector::Tuple(x) => format!("field_{}_{}_", branch, x + 1),
-                    EnumSelector::Record(x) => format!("record_{}_", x),
+                    EnumSelector::Tuple(x) => format!("field_{}_{}_{}", branch, x + 1, sort_name),
+                    EnumSelector::Record(x) => format!("record_{}_{}", x, sort_name),
                 };
                 return format!("({} {})", branch_name, head_smt);
             }
 
             // bound variables
-            if let VarKind::Bound { bind } = varkind {
-                return expr_to_smt(exp_registry, &bind, ir, dependencies, mapping_vars);
+            if let VarKind::Bound { bind: _ } = varkind {
+                return vars
+                    .get(var_id)
+                    .expect("variable not found in registry")
+                    .name
+                    .to_string();
             }
 
             // if Param, we return its name
@@ -104,6 +111,7 @@ pub fn expr_to_smt_inner(
                 return format!("{}_{}", v, var_id);
             }
 
+            // never happens
             panic!("variable not found in registry");
         }
         Expression::Pack { sort, elems } => {
@@ -298,6 +306,9 @@ pub fn expr_to_smt_inner(
                     )
                 })
                 .collect::<Vec<_>>();
+            if args_smt.is_empty() {
+                return format!("{}", callee_smt);
+            }
             format!("({} {})", callee_smt, args_smt.join(" "))
         }
         Expression::Forall { vars, body } | Expression::Exists { vars, body } => {

@@ -20,7 +20,7 @@ pub struct FunSig {
     pub ret_ty: Sort,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A function body in the IR.
 pub enum FunDef {
     /// A function that is defined by an explicit body.

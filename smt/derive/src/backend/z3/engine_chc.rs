@@ -53,8 +53,7 @@ impl BackendZ3 for BackendZ3CHC {
         l!(x, "(set-option :smt.string_solver z3str3)");
         // set the string solver to be the seq solver (default) for sequence constraints
         l!(x, "(set-option :smt.string_solver seq)");
-        // allow all available theories
-        l!(x, "(set-logic AUFLIA)");
+        // allow all available theories: l!(x, "(set-logic ALL)"); Z3 will automatically detect the logic
         l!(x); // add new line
 
         // write the type parameters
@@ -76,13 +75,11 @@ impl BackendZ3 for BackendZ3CHC {
         }
 
         // this set is used for mutually recursive functions
-        let mut func_names: BTreeSet<BTreeMap<UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>>> =
-            BTreeSet::new();
+        let mut func_names: Vec<Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>> =
+            Vec::new();
+
         for (name, generics_id) in &fn_registry.lookup {
-            for (_, id) in generics_id {
-                let def = fn_registry.retrieve_def(*id);
-                group_dependent_funcs(name.clone(), def, ir, generics_id, &mut func_names);
-            }
+            group_dependent_funcs(name, generics_id, ir, &mut func_names);
         }
 
         // write the functions
@@ -227,23 +224,29 @@ impl BackendZ3 for BackendZ3CHC {
             l!(x, "(assert (= {} {}))", i, s)
         }
 
-        // (assert (!= (add_spec lhs rhs) (add lhs rhs)))
-        l!(
-            x,
-            "(assert (not (= ({} {}) ({} {}))))",
-            impl_name,
-            impl_syms
-                .iter()
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
-                .join(" "),
-            spec_name,
-            spec_syms
-                .iter()
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+        if impl_syms.is_empty() {
+            // (assert (!= (add_spec lhs rhs) (add lhs rhs)))
+            l!(x, "(assert (not (= {} {})))", impl_name, spec_name);
+        } else {
+            // (assert (!= (add_spec lhs rhs) (add lhs rhs)))
+            l!(
+                x,
+                "(assert (not (= ({} {}) ({} {}))))",
+                impl_name,
+                impl_syms
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                spec_name,
+                spec_syms
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+        }
+
         l!(x); // add new line
 
         // check for satisfiability - if it is unsatisfiable, then the impl and spec are equivalent (valid)

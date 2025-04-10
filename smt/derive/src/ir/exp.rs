@@ -347,6 +347,15 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     fn expect_type_tuple(&self, sort_id: UsrSortId) -> Vec<Sort> {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
             DataType::Tuple(tuple) => tuple.clone(),
+            DataType::Enum(adt) => {
+                let mut tuple = vec![];
+                for (_, variant) in adt.iter() {
+                    if let Variant::Tuple(t) = variant {
+                        tuple.extend(t.clone());
+                    }
+                }
+                tuple
+            },
             dt => panic!("type mismatch: expect <tuple> | actual {}", dt),
         }
     }
@@ -355,6 +364,15 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     fn expect_type_record(&self, sort_id: UsrSortId) -> BTreeMap<String, Sort> {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
             DataType::Record(record) => record.clone(),
+            DataType::Enum(adt) => {
+                let mut record = BTreeMap::new();
+                for (_, variant) in adt.iter() {
+                    if let Variant::Record(r) = variant {
+                        record.extend(r.clone());
+                    }
+                }
+                record
+            }
             dt => panic!("type mismatch: expect <record> | actual {}", dt),
         }
     }

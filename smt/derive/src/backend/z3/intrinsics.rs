@@ -180,7 +180,7 @@ pub fn intrinsics_to_smt(
         // --- Text ---
         // `Text::from`
         StrVal(s) => {
-            format!("\"{}\"", s)
+            format!("{}", s)
         }
         // `Text::lt` - lexicographic string comparison
         StrLt { lhs, rhs } => {
@@ -311,19 +311,8 @@ pub fn intrinsics_to_smt(
             format!("")
         }
         // `Seq::length`
-        SeqLength { t, seq } => {
-            let a = exp_registry.lookup_exp(*seq);
-            println!("SAAAA: {:?}", a);
-            let b = exp_registry.lookup_var(VarId { index: 0 });
-            println!("SABBB: {:?}", b);
+        SeqLength { t: _, seq } => {
             let s = expr_to_smt(exp_registry, seq, ir, dependencies, mapping_vars);
-            let c = exp_registry.lookup_exp(ExpId { index: 0 });
-            println!("SACCC: {:?}", c);
-            println!("seqXXX: {}", s);
-            println!("seqXXXSORT: {}", sort_to_smt(t, ir));
-            println!("seqXXXseq: {}", seq);
-            println!("seqXXXID: {}", id);
-            println!("intrinsic: {:?}", intrinsic);
             format!("(seq.len {})", s)
         }
         // `Seq::append`

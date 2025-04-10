@@ -2,6 +2,7 @@
 //! An expression is the body of a function or an axiom.
 
 use crate::backend::z3::intrinsics::intrinsics_to_smt;
+use crate::backend::z3::sort;
 use crate::backend::z3::sort::derive_type;
 use crate::backend::z3::sort::sort_default_value;
 use crate::backend::z3::sort::sort_to_smt;
@@ -28,7 +29,6 @@ pub fn expr_to_smt(
     let ExpRegistry { vars, exps } = exp_registry;
 
     let exp = exps.get(id).expect("expression not found in registry");
-    println!("LLL: {:?}", exp);
     expr_to_smt_inner(vars, exp_registry, exp, id, ir, dependencies, mapping_vars)
 }
 
@@ -83,7 +83,16 @@ pub fn expr_to_smt_inner(
                 }
                 // bound variables
                 VarKind::Bound { bind } => {
-                    expr_to_smt(exp_registry, &bind, ir, dependencies, mapping_vars);
+                    let o = expr_to_smt_inner(
+                        vars,
+                        exp_registry,
+                        exp_registry.lookup_exp(bind),
+                        &bind,
+                        ir,
+                        dependencies,
+                        mapping_vars,
+                    );
+                    return o;
                 }
                 // if Param, we return its name
                 VarKind::Param => {
@@ -112,10 +121,6 @@ pub fn expr_to_smt_inner(
                     return format!("{}_{}", v, var_id);
                 }
             }
-
-            println!("LLLDDDD: {:?}", exp);
-            // never happens
-            panic!("variable not found in registryZ");
         }
         Expression::Pack { sort, elems } => {
             let (sort_name, ty_args) = ir.ty_registry.reverse_lookup(*sort);
@@ -131,6 +136,7 @@ pub fn expr_to_smt_inner(
                     .join("_")
             );
             let constructor_name = format!("mk-{}", tuple_name);
+            let field = format!("field_{}_", tuple_name);
             let elems = elems
                 .iter()
                 .map(|e| {
@@ -140,7 +146,7 @@ pub fn expr_to_smt_inner(
                     )
                 })
                 .collect::<Vec<_>>();
-            format!("({} {})", constructor_name, elems.join(" "))
+            format!("({} ({} {}))", field, constructor_name, elems.join(" "))
         }
         Expression::Tuple { sort, slots } => {
             let (ty, _) = ir.ty_registry.reverse_lookup(*sort);
@@ -218,13 +224,14 @@ pub fn expr_to_smt_inner(
             }
         }
         Expression::AccessSlot { base, slot } => {
+            let ty = sort_to_smt(&derive_type(exp_registry, ir, base), ir);
             let base_smt = expr_to_smt(exp_registry, base, ir, dependencies, mapping_vars);
-            let field_name = format!("field_{}_{}_", base, slot + 1);
-            format!("({} {})", field_name, base_smt)
+            format!("(field_{}_{}_ {})", ty, slot + 1, base_smt)
         }
         Expression::AccessField { base, field } => {
+            let ty = sort_to_smt(&derive_type(exp_registry, ir, base), ir);
             let base_smt = expr_to_smt(exp_registry, base, ir, dependencies, mapping_vars);
-            format!("({} {})", field, base_smt)
+            format!("(record_{}_{}_ {})", ty, field, base_smt)
         }
         Expression::Match { cases } => {
             // if the cases is empty, we panic

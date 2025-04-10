@@ -44,7 +44,6 @@ pub fn fundef_in_smt(
 
             match def {
                 FunDef::Defined(reg, id) => {
-                    println!("reg {:?}", reg);
                     // convert the function body to SMT-LIB
                     let body_expr = expr_to_smt(reg, id, ir, &mut dependencies, &mut mapping_vars);
 
@@ -244,27 +243,91 @@ fn receive_funcall(
         }
         Expression::Procedure { callee, args } => {
             let callee_smt = ir.fn_registry.get_name(callee);
-            if let Some(pos) = func_deps
+
+            // Find the index of the group that contains the caller - if any.
+            let pos_caller_opt = func_deps
                 .iter()
-                .position(|v| v.iter().any(|(name, _)| name == func_name))
-            {
-                // take the old inner vec
-                let mut inner = func_deps.remove(pos);
+                .position(|group| group.iter().any(|(name, _)| name == func_name));
+            // Find the index of the group that already contains the callee - if any.
+            let pos_callee_opt = func_deps
+                .iter()
+                .position(|group| group.iter().any(|(name, _)| name == &callee_smt));
 
-                // if already defined, do not add it again
-                if inner.iter().any(|(name, _)| name == &callee_smt) {
-                    // put the vec back where it was
-                    func_deps.insert(pos, inner);
-                    return;
+            match (pos_caller_opt, pos_callee_opt) {
+                // Both caller and callee are in some groups.
+                (Some(pos_caller), Some(pos_callee)) => {
+                    if pos_caller != pos_callee {
+                        // Merge the two groups.
+                        // We'll remove both groups and then push back a union of their members.
+                        let idx_low = pos_caller.min(pos_callee);
+                        let idx_high = pos_caller.max(pos_callee);
+                        let mut group_low = func_deps.remove(idx_low);
+                        // Removing idx_high: note that after removing the lower-index group, the higher index shifts by -1.
+                        let group_high = func_deps.remove(idx_high - 1);
+                        for (n, dep) in group_high {
+                            if !group_low.iter().any(|(name, _)| name == &n) {
+                                group_low.push((n, dep));
+                            } else {
+                                // here we have the same function in two groups, so we see:
+                                // if the dep is none in group_low and some in group_high, we take the one in group_high
+                                // if the dep is none in both do nothing
+                                // if the dep is some in group_low and none in group_high, we take the one in group_low
+                                // if the dep is some in both, they should be equal and do nothing
+                                if group_low
+                                    .iter()
+                                    .find(|(name, _)| name == &n)
+                                    .unwrap()
+                                    .1
+                                    .is_none()
+                                    && dep.is_some()
+                                {
+                                    // replace the None with the Some
+                                    let pos =
+                                        group_low.iter().position(|(name, _)| name == &n).unwrap();
+                                    group_low[pos].1 = dep.clone();
+                                }
+
+                                // if both are Some, we should check if they are equal
+                                if group_low
+                                    .iter()
+                                    .find(|(name, _)| name == &n)
+                                    .unwrap()
+                                    .1
+                                    .is_some()
+                                    && dep.is_some()
+                                {
+                                    let pos =
+                                        group_low.iter().position(|(name, _)| name == &n).unwrap();
+                                    if group_low[pos].1 != dep {
+                                        panic!("Function {:?} has different dependencies in two groups!", n);
+                                    }
+                                }
+                            }
+                        }
+                        func_deps.push(group_low);
+                    }
+                    // Else: same group already — do nothing.
                 }
-
-                // add the new (callee, None) entry at the start
-                // this is because we want the callee to be first defined before being used
-                inner.insert(0, (callee_smt.clone(), None));
-
-                // put the vec back where it was
-                func_deps.insert(pos, inner);
+                // Caller is in a group but callee is new.
+                (Some(pos_caller), None) => {
+                    // Add callee to the caller's group.
+                    let mut group = func_deps.remove(pos_caller);
+                    // Only add callee if not already present.
+                    if !group.iter().any(|(name, _)| name == &callee_smt) {
+                        // add the new (callee, None) entry at the start
+                        // this is because we want the callee to be first defined before being used
+                        group.insert(0, (callee_smt.clone(), None));
+                    }
+                    // put the vec back where it was
+                    func_deps.insert(pos_caller, group);
+                }
+                // caller is not in a group, this should not happen because the caller is added before entering the function
+                (None, _) => {
+                    panic!("Caller {:?} is not in a group", func_name);
+                }
             }
+
+            // Process the procedure arguments as before.
             for arg in args {
                 receive_funcall(func_name, arg, reg, ir, func_deps);
             }

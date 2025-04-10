@@ -9,7 +9,7 @@ use anyhow::bail;
 use std::fmt::{Display, Formatter};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::{Expr as Exp, ExprLit, Lit, Result};
+use syn::{Expr as Exp, ExprLit, ExprUnary, Lit, Result};
 
 /// Intrinsic procedure
 #[derive(Clone, Debug)]
@@ -279,6 +279,18 @@ impl Intrinsic {
                     },
                     _ => bail_on!(lit, "not an integer literal"),
                 }
+            }
+            Exp::Unary(unary) => {
+                let ExprUnary { attrs: _, op, expr } = unary;
+                let val = match op {
+                    syn::UnOp::Neg(_) => {
+                        -Self::unpack_lit_int(&Punctuated::from_iter(vec![(*expr)
+                            .as_ref()
+                            .clone()]))?
+                    }
+                    _ => bail_on!(op, "not a unary negation operator"),
+                };
+                val
             }
             _ => bail_on!(expr, "not a literal"),
         };

@@ -2,7 +2,6 @@
 //! An expression is the body of a function or an axiom.
 
 use crate::backend::z3::intrinsics::intrinsics_to_smt;
-use crate::backend::z3::sort;
 use crate::backend::z3::sort::derive_type;
 use crate::backend::z3::sort::sort_default_value;
 use crate::backend::z3::sort::sort_to_smt;
@@ -136,7 +135,6 @@ pub fn expr_to_smt_inner(
                     .join("_")
             );
             let constructor_name = format!("mk-{}", tuple_name);
-            let field = format!("field_{}_", tuple_name);
             let elems = elems
                 .iter()
                 .map(|e| {
@@ -146,7 +144,7 @@ pub fn expr_to_smt_inner(
                     )
                 })
                 .collect::<Vec<_>>();
-            format!("({} ({} {}))", field, constructor_name, elems.join(" "))
+            format!("({} {})", constructor_name, elems.join(" "))
         }
         Expression::Tuple { sort, slots } => {
             let (ty, _) = ir.ty_registry.reverse_lookup(*sort);
@@ -318,12 +316,13 @@ pub fn expr_to_smt_inner(
             }
             format!("({} {})", callee_smt, args_smt.join(" "))
         }
+        // these can only be used in the spec body
         Expression::Forall { vars, body } | Expression::Exists { vars, body } => {
             let bindings = vars
                 .iter()
                 .map(|(var_id, sort)| {
                     let var_name = format!("x_{}", var_id);
-                    let default_value = sort_default_value(var_id, sort, ir, dependencies);
+                    let default_value = sort_default_value(exp_registry, var_id, sort, ir, dependencies, mapping_vars);
                     format!("({} {})", var_name, default_value)
                 })
                 .collect::<Vec<_>>();

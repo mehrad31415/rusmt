@@ -51,7 +51,7 @@ pub enum EnumSelector {
     Record(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Denotes how to construct an enum variant
 pub enum VariantCtor {
     Unit,
@@ -59,7 +59,7 @@ pub enum VariantCtor {
     Record(BTreeMap<String, ExpId>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Denotes how to destruct an enum variant and bind variables
 pub enum VariantDtor {
     Unit,
@@ -67,7 +67,7 @@ pub enum VariantDtor {
     Record(BTreeMap<String, Option<VarId>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// One atom in the match case to unpack
 pub struct MatchAtom {
     pub head: ExpId,
@@ -76,21 +76,21 @@ pub struct MatchAtom {
     pub variant: VariantDtor,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// One match case
 pub struct MatchCase {
     pub atoms: Vec<MatchAtom>,
     pub body: ExpId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// One phi case (i.e., conditional branch)
 pub struct PhiCase {
     pub cond: ExpId,
     pub body: ExpId,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// An expression (which is the intermediate representation of the Op in the parser)
 pub enum Expression {
     /// `<var>` - Var(VarName) in the parser
@@ -355,7 +355,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     }
                 }
                 tuple
-            },
+            }
             dt => panic!("type mismatch: expect <tuple> | actual {}", dt),
         }
     }
@@ -490,8 +490,24 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         elems.len(),
                     );
                 }
-                for (elem_decl, elem_sort) in elems.iter().zip(tuple) {
-                    self.bind_decl(elem_decl, elem_sort, exp);
+                let e = self.registry.lookup_exp(exp).clone();
+                if let Expression::Pack {
+                    sort: _,
+                    elems: elems_pack,
+                } = e
+                {
+                    if elems_pack.len() != elems.len() {
+                        panic!(
+                            "pack slot number mismatch: expect {} | actual {}",
+                            elems_pack.len(),
+                            elems.len()
+                        );
+                    }
+                    for ((elem_decl, elem_sort), ex) in elems.iter().zip(tuple).zip(elems_pack) {
+                        self.bind_decl(elem_decl, elem_sort, ex);
+                    }
+                } else {
+                    panic!("expect a pack expression");
                 }
             }
         }

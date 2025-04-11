@@ -963,8 +963,9 @@ impl<'ctx> ExprParserRoot<'ctx> {
             &mut |ty| {
                 // unnessecary to refresh the type if we had just used the type unification in forming the OP in the convert_expr function.
                 let refreshed = unifier.refresh_type(ty); // replaces any TypeRef::Var with the actual type (if the type is known). because this is inside visit, it traverses the whole `parsed` expression and replaces all the TypeRef::Var with the inferred types
-                                                          // if there are still any TypeRef::Var left, the type is incomplete and we return an error
-                                                          // this will happen when the type variable is not unified to a concrete type
+
+                // if there are still any TypeRef::Var left, the type is incomplete and we return an error
+                // this will happen when the type variable is not unified to a concrete type
                 if !refreshed.validate() {
                     bail_on!(refreshed.to_string(), "incomplete type") // if the type is incomplete, we return an error
                 }
@@ -1462,8 +1463,14 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             &def.body
                         }
                     },
+                    // TypeRef::Pack(s) => &TypeBody::Tuple(TypeTuple {
+                    //     slots: s
+                    //         .iter()
+                    //         .map(|t| unifier.refresh_type(t).reverse().expect("expected a type"))
+                    //         .collect::<Vec<TypeTag>>(),
+                    // }),
                     // any other type is invalid (because it does not have fields to access)
-                    // one may assume that we access the inner of Integer, Boolean, etc. but this is not allowed in rusmart as inner is a private field in dt.rs of stdlib
+                    // the inner of Integer, Boolean, etc. cannot be accessed as it is private in dt.rs of stdlib
                     _ => bail_on!(base, "invalid type"),
                 };
 

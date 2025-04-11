@@ -1,5 +1,6 @@
 //! This module contains the conversion functions for converting Rusmart types to SMT-LIB types
 
+use crate::backend::z3::exp::expr_to_smt;
 use crate::backend::z3::ty::tyuse_in_smt;
 use crate::ir::exp::{ExpRegistry, Expression};
 use crate::ir::index::{ExpId, UsrSortId, VarId};
@@ -8,6 +9,11 @@ use crate::ir::name::UsrSortName;
 use crate::ir::sort::{DataType, Sort};
 use crate::IRContext;
 use core::panic;
+use std::collections::BTreeMap;
+use std::f32::consts::PI;
+use std::sync::atomic::Ordering;
+
+use super::intrinsics::COUNTER;
 
 /// Converts a Rust `Sort` into the corresponding SMT-LIB sort as a `String`
 pub fn sort_to_smt(s: &Sort, ir: &IRContext) -> String {
@@ -31,12 +37,31 @@ pub fn sort_to_smt(s: &Sort, ir: &IRContext) -> String {
     }
 }
 
+pub fn sort_to_smt_name(s: &Sort, ir: &IRContext) -> String {
+    match s {
+        Sort::Boolean => "Bool".to_string(),
+        Sort::Integer => "Int".to_string(),
+        Sort::Rational => "Real".to_string(),
+        Sort::Text => "String".to_string(),
+        Sort::Seq(inner) => format!("Seq_{}", sort_to_smt(inner, ir)),
+        Sort::Set(inner) => format!("Set_{}", sort_to_smt(inner, ir)),
+        Sort::Map(key, value) => {
+            format!("Array_{}_{}", sort_to_smt(key, ir), sort_to_smt(value, ir))
+        }
+        Sort::Error => "undefined_function".to_string(), // triggers an undefined function which leads to a crash assuming that `undefined_function` is not defined!
+        Sort::User(usr_sort_id) => tyuse_in_smt(*usr_sort_id, ir),
+        Sort::Uninterpreted(name) => format!("{}", name),
+    }
+}
+
 /// This function gives the default value for a given sort (type)
 pub fn sort_default_value(
+    exp_registry: &ExpRegistry,
     var_id: &VarId,
     s: &Sort,
     ir: &IRContext,
     dependencies: &mut Vec<String>,
+    mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
     match s {
         Sort::Boolean => "false".to_string(),
@@ -45,37 +70,199 @@ pub fn sort_default_value(
         Sort::Text => "\"\"".to_string(), // empty string
         Sort::Seq(ty) => {
             let ty_name = sort_to_smt(ty, ir);
-            format!("(as seq.empty (Seq {}))", ty_name)
+            let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let decl = format!("(declare-const seq_{} (Seq {}))", id, ty_name);
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (= seq_{} (as seq.empty (Seq {})))) ; seq.empty",
+                id, ty_name
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+
+            // inside the function body we need to use the name seq_<id> instead of the original name
+            mapping_vars.insert(*var_id, format!("seq_{}", id));
+            format!("seq_{}", id)
         }
         Sort::Set(ty) => {
             let ty_name = sort_to_smt(ty, ir);
-            dependencies.push(format!(
-                "(define-fun empty_set_{} () (Array {} Bool) ((as const (Array {} Bool)) false))",
-                var_id.to_string(),
+            let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let decl = format!("(declare-const set_{} (Set {}))", id, ty_name);
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((x {})) (= (select set_{} x) false))) ; set.empty",
+                ty_name, id
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+
+            mapping_vars.insert(*var_id, format!("set_{}", id));
+            // sets do not have a length in SMT-LIB, so we need a function
+            let decl = format!("(declare-fun len ((Set {})) Int)", ty_name);
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!("(assert (= (len set_{}) 0)) ; length of empty set is 0", id);
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Set {})) (i {}))
+                (=> (not (select m i)) (= (len (store m i true)) (+ (len m) 1))))) ; length of set after adding an element",
                 ty_name,
                 ty_name
-            ));
-            format!("empty_set_{}", var_id.to_string())
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Set {})) (i {}))
+                (=> (select m i) (= (len (store m i true)) (len m)))))",
+                ty_name, ty_name
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Set {})) (i {}))
+                (=> (select m i) (= (len (store m i false)) (- (len m) 1)))))",
+                ty_name, ty_name
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Set {})) (i {}))
+                (=> (not (select m i)) (= (len (store m i false)) (len m)))))",
+                ty_name, ty_name
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            format!("set_{}", id)
         }
-        Sort::Map(key_sort, value_sort) => {
-            let sort_default_key = sort_default_value(var_id, value_sort, ir, dependencies);
-            dependencies.push(format!(
-                "(define-fun empty_map_{} () (Array {} {}) ((as const (Array {} {})) {}))",
-                var_id.to_string(),
-                sort_to_smt(key_sort, ir),
-                sort_to_smt(value_sort, ir),
-                sort_to_smt(key_sort, ir),
-                sort_to_smt(value_sort, ir),
-                sort_default_key
-            ));
-            format!("empty_map_{}", var_id.to_string())
+        Sort::Map(k, v) => {
+            let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let decl = format!(
+                "(declare-const map_{} (Array {} {}))",
+                id,
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(declare-const not_present_{} {})",
+                sort_to_smt_name(v, ir),
+                sort_to_smt(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((x {})) (= (select map_{} x) not_present_{}))) ; array.empty",
+                sort_to_smt(k, ir),
+                id,
+                sort_to_smt_name(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+
+            // inside the function body we need to use the name map_<id> instead of the original name
+            mapping_vars.insert(*var_id, format!("map_{}", id));
+            // arrays do not have a length in SMT-LIB, so we need a function
+            // also we need some semantics for the length of the map (even though a full definition is not possible)
+            let decl = format!(
+                "(declare-fun len_map ((Array {} {})) Int)",
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (= (len_map map_{}) 0)) ; length of empty map is 0",
+                id
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(define-fun in_map ((m (Array {} {})) (i {})) Bool
+                (not (= (select m i) not_present_{})))",
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt_name(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Array {} {})) (i {}) (v {}))
+            (=> (and (not (in_map m i)) (not (= v not_present_{}))) (= (len_map (store m i v)) (+ (len_map m) 1)))))",
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt_name(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Array {} {})) (i {}) (v {}))
+                (=> (and (in_map m i) (not (= v not_present_{}))) (= (len_map (store m i v)) (len_map m)))))",
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt_name(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Array {} {})) (i {}))
+                        (=> (in_map m i)
+                            (= (len_map (store m i not_present_{})) (- (len_map m) 1)))))",
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt_name(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            let decl = format!(
+                "(assert (forall ((m (Array {} {})) (i {}))
+                        (=> (not (in_map m i))
+                            (= (len_map (store m i not_present_{})) (len_map m)))))",
+                sort_to_smt(k, ir),
+                sort_to_smt(v, ir),
+                sort_to_smt(k, ir),
+                sort_to_smt_name(v, ir)
+            );
+            if !dependencies.contains(&decl) {
+                dependencies.push(decl);
+            }
+            format!("map_{}", id)
         }
         Sort::Error => "undefined_function".to_string(), // just crash on purpose
         Sort::User(usr_sort_id) => {
-            panic!("User defined sort {} is not supported", usr_sort_id);
+            // give the first element of the user defined type as a default value
+            format!("")
         }
         Sort::Uninterpreted(name) => {
-            panic!("Uninterpreted sort {} is not supported", name);
+            panic!("no default value for {}", name);
         }
     }
 }

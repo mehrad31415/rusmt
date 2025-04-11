@@ -1,21 +1,22 @@
 use rusmart_smt_remark_derive::{smt_axiom, smt_impl, smt_spec, smt_type};
-use rusmart_smt_stdlib::{exists, forall, Boolean, Cloak, Integer, Seq, Text, SMT};
+use rusmart_smt_stdlib::{
+    exists, forall, Boolean, Cloak, Error, Integer, Map, Seq, Set, Text, SMT,
+};
 
 #[smt_impl]
-fn grade_to_integer() -> Integer {
-    // cannot write let a = Seq::new(); as we will get incomplete type error
+fn pack() -> Seq<Integer> {
     let a: Seq<Integer> = Seq::new();
-    // must have type annotation
     let b: Seq<Integer> = a.append(Integer::from(0));
-    b.length()
+    let c: Seq<Integer> = b.append(Integer::from(0));
+    c
 }
 
-#[smt_spec(impls = grade_to_integer)]
-fn grade_to_integer_spec() -> Integer {
+#[smt_spec(impls = pack)]
+fn pack_spec() -> Seq<Integer> {
     unimplemented!()
 }
 
 #[smt_axiom]
-fn grade_to_integer_axiom() -> Boolean {
-    grade_to_integer_spec().eq(Integer::from(1))
+fn ax() -> Boolean {
+    forall!(|x: Integer| (pack_spec().includes(x).implies(x.eq(Integer::from(0)))))
 }

@@ -3,11 +3,11 @@
 
 use crate::backend::z3::intrinsics::intrinsics_to_smt;
 use crate::backend::z3::sort::derive_type;
-use crate::backend::z3::sort::sort_default_value;
 use crate::backend::z3::sort::sort_to_smt;
 use crate::ir::exp::{EnumSelector, VarKind};
 use crate::ir::exp::{ExpRegistry, Expression, MatchAtom, MatchCase, Variable, VariantCtor};
 use crate::ir::index::{ExpId, VarId};
+use crate::ir::intrinsics::Intrinsic;
 use crate::ir::sort::Sort;
 use crate::IRContext;
 use core::panic;
@@ -317,92 +317,73 @@ pub fn expr_to_smt_inner(
             format!("({} {})", callee_smt, args_smt.join(" "))
         }
         // these can only be used in the spec body
-        Expression::Forall { vars, body } | Expression::Exists { vars, body } => {
-            let bindings = vars
+        Expression::Forall { vars, body } => {
+            let vars_string = vars
                 .iter()
                 .map(|(var_id, sort)| {
-                    let var_name = format!("x_{}", var_id);
-                    let default_value = sort_default_value(exp_registry, var_id, sort, ir, dependencies, mapping_vars);
-                    format!("({} {})", var_name, default_value)
+                    // get the varname
+                    let var_name = exp_registry
+                        .vars
+                        .get(var_id)
+                        .expect("variable not found in registry")
+                        .name
+                        .to_string();
+                    let var_name = format!("{}_{}", var_name, var_id);
+                    format!("({} {})", var_name, sort_to_smt(sort, ir))
                 })
                 .collect::<Vec<_>>();
-
-            format!(
-                "(let ({}) {})",
-                bindings.join(" "),
-                expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars)
-            )
-        }
-        Expression::Choose { vars, body, rets } => {
-            // declare const
-            for (var_id, sort) in vars.iter() {
-                let var_name = format!("x_{}", var_id);
-                let smt_sort = sort_to_smt(sort, ir);
-                dependencies.push(format!("(declare-const {} {})", var_name, smt_sort));
-            }
             // the condition
             let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
-            // add the condition for the const to the dependencies
-            dependencies.push(format!("(assert {})", body_smt));
-            let rets_string = rets
-                .iter()
-                .map(|var_id| format!("x_{}", var_id))
-                .collect::<Vec<_>>();
-            format!("({})", rets_string.join(" "))
+            format!("(forall ({}) {})", vars_string.join(" "), body_smt)
         }
-        Expression::IterChoose { vars, body, rets } => {
-            let mut var_bindings = Vec::new(); // e.g. "(x_42 Int)"
-            let mut membership = Vec::new(); // e.g. "(member x_42 xs)"
-
-            for (var_id, domain_exp_id) in vars.iter() {
-                let var_info = exp_registry
-                    .vars
-                    .get(var_id)
-                    .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
-
-                let var_name = var_info.name.clone().to_string();
-                let smt_sort = sort_to_smt(&var_info.sort, ir);
-                let collection =
-                    expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
-
-                // check whether the collection is a set or a seq or a map
-                if exp_registry.exps.get(domain_exp_id).is_none() {
-                    panic!("domain_exp_id not found in registry");
-                }
-                let s = derive_type(exp_registry, ir, domain_exp_id);
-                match s {
-                    Sort::Set(_) => {
-                        membership.push(format!("(select {} {}_{})", collection, var_name, var_id));
-                    }
-                    Sort::Seq(_) => {
-                        membership.push(format!(
-                            "(seq.contains {} (seq.unit {}_{}))",
-                            collection, var_name, var_id
-                        ));
-                    }
-                    Sort::Map(_, v) => {
-                        membership.push(format!(
-                            "(distinct (select {} {}_{}) not_present_{})",
-                            collection, var_name, var_id, v
-                        ));
-                    }
-                    _ => panic!("domain_exp_id is not a set or a seq or a map"),
-                }
-                var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
-            }
-            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
-            let inner_and = if membership.len() == 1 {
-                membership[0].clone()
-            } else {
-                format!("(and {})", membership.join(" "))
-            };
-
-            let rets_string = rets
+        Expression::Exists { vars, body } => {
+            let vars_string = vars
                 .iter()
-                .map(|var_id| format!("x_{}", var_id))
+                .map(|(var_id, sort)| {
+                    // get the varname
+                    let var_name = exp_registry
+                        .vars
+                        .get(var_id)
+                        .expect("variable not found in registry")
+                        .name
+                        .to_string();
+                    let var_name = format!("{}_{}", var_name, var_id);
+                    format!("({} {})", var_name, sort_to_smt(sort, ir))
+                })
                 .collect::<Vec<_>>();
-
-            format!("({})", rets_string.join(" "))
+            // the condition
+            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            format!("(exists ({}) {})", vars_string.join(" "), body_smt)
+        }
+        Expression::Choose {
+            vars,
+            body,
+            rets: _,
+        } => {
+            let vars_string = vars
+                .iter()
+                .map(|(var_id, sort)| {
+                    // get the varname
+                    let var_name = exp_registry
+                        .vars
+                        .get(var_id)
+                        .expect("variable not found in registry")
+                        .name
+                        .to_string();
+                    let var_name = format!("{}_choose_{}", var_name, var_id);
+                    mapping_vars.insert(*var_id, var_name.clone());
+                    dependencies.push(format!(
+                        "(declare-const {} ({}))",
+                        var_name,
+                        sort_to_smt(sort, ir)
+                    ));
+                    format!("{}", var_name)
+                })
+                .collect::<Vec<_>>();
+            // the condition
+            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            dependencies.push(format!("(assert {})", body_smt));
+            format!("({})", vars_string.join(" "))
         }
         Expression::IterExists { vars, body } => {
             let mut var_bindings = Vec::new(); // e.g. "(x_42 Int)"
@@ -414,8 +395,13 @@ pub fn expr_to_smt_inner(
                     .get(var_id)
                     .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
 
-                let var_name = var_info.name.clone().to_string();
-                let smt_sort = sort_to_smt(&var_info.sort, ir);
+                let Variable {
+                    name,
+                    kind: _,
+                    sort,
+                } = var_info.clone();
+                let var_name = name.to_string();
+                let smt_sort = sort_to_smt(&sort, ir);
                 let collection =
                     expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
 
@@ -425,16 +411,53 @@ pub fn expr_to_smt_inner(
                 }
                 let s = derive_type(exp_registry, ir, domain_exp_id);
                 match s {
-                    Sort::Set(_) => {
+                    Sort::Set(s) => {
+                        let intrinsic = Intrinsic::SetEmpty {
+                            t: s.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
                         membership.push(format!("(select {} {}_{})", collection, var_name, var_id));
                     }
-                    Sort::Seq(_) => {
+                    Sort::Seq(s) => {
+                        let intrinsic = Intrinsic::SeqEmpty {
+                            t: s.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
                         membership.push(format!(
                             "(seq.contains {} (seq.unit {}_{}))",
                             collection, var_name, var_id
                         ));
                     }
-                    Sort::Map(_, v) => {
+                    Sort::Map(k, v) => {
+                        let intrinsic = Intrinsic::MapEmpty {
+                            k: k.as_ref().clone(),
+                            v: v.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
                         membership.push(format!(
                             "(distinct (select {} {}_{}) not_present_{})",
                             collection, var_name, var_id, v
@@ -445,7 +468,7 @@ pub fn expr_to_smt_inner(
                 var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
             }
             let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
-            let inner_and = if membership.len() == 1 {
+            let members = if membership.len() == 1 {
                 membership[0].clone()
             } else {
                 format!("(and {})", membership.join(" "))
@@ -453,7 +476,7 @@ pub fn expr_to_smt_inner(
             format!(
                 "(exists ({}) (=> {} {}))",
                 var_bindings.join(" "),
-                inner_and,
+                members,
                 body_smt
             )
         }
@@ -467,8 +490,13 @@ pub fn expr_to_smt_inner(
                     .get(var_id)
                     .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
 
-                let var_name = var_info.name.clone().to_string();
-                let smt_sort = sort_to_smt(&var_info.sort, ir);
+                let Variable {
+                    name,
+                    kind: _,
+                    sort,
+                } = var_info.clone();
+                let var_name = name.to_string();
+                let smt_sort = sort_to_smt(&sort, ir);
                 let collection =
                     expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
 
@@ -478,16 +506,53 @@ pub fn expr_to_smt_inner(
                 }
                 let s = derive_type(exp_registry, ir, domain_exp_id);
                 match s {
-                    Sort::Set(_) => {
+                    Sort::Set(s) => {
+                        let intrinsic = Intrinsic::SetEmpty {
+                            t: s.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
                         membership.push(format!("(select {} {}_{})", collection, var_name, var_id));
                     }
-                    Sort::Seq(_) => {
+                    Sort::Seq(s) => {
+                        let intrinsic = Intrinsic::SeqEmpty {
+                            t: s.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
                         membership.push(format!(
                             "(seq.contains {} (seq.unit {}_{}))",
                             collection, var_name, var_id
                         ));
                     }
-                    Sort::Map(_, v) => {
+                    Sort::Map(k, v) => {
+                        let intrinsic = Intrinsic::MapEmpty {
+                            k: k.as_ref().clone(),
+                            v: v.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
                         membership.push(format!(
                             "(distinct (select {} {}_{}) not_present_{})",
                             collection, var_name, var_id, v
@@ -498,7 +563,7 @@ pub fn expr_to_smt_inner(
                 var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
             }
             let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
-            let inner_and = if membership.len() == 1 {
+            let members = if membership.len() == 1 {
                 membership[0].clone()
             } else {
                 format!("(and {})", membership.join(" "))
@@ -506,9 +571,107 @@ pub fn expr_to_smt_inner(
             format!(
                 "(forall ({}) (=> {} {}))",
                 var_bindings.join(" "),
-                inner_and,
+                members,
                 body_smt
             )
+        }
+        Expression::IterChoose {
+            vars,
+            body,
+            rets: _,
+        } => {
+            let mut var_bindings = Vec::new(); // e.g. "(x_42 Int)"
+            let mut membership = Vec::new(); // e.g. "(member x_42 xs)"
+
+            for (var_id, domain_exp_id) in vars.iter() {
+                let var_info = exp_registry
+                    .vars
+                    .get(var_id)
+                    .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
+
+                let Variable {
+                    name,
+                    kind: _,
+                    sort,
+                } = var_info.clone();
+                let var_name = name.to_string();
+                let var_name = format!("{}_choose_{}", var_name, var_id);
+                let smt_sort = sort_to_smt(&sort, ir);
+                let collection =
+                    expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
+
+                // check whether the collection is a set or a seq or a map
+                if exp_registry.exps.get(domain_exp_id).is_none() {
+                    panic!("domain_exp_id not found in registry");
+                }
+                let s = derive_type(exp_registry, ir, domain_exp_id);
+                match s {
+                    Sort::Set(s) => {
+                        let intrinsic = Intrinsic::SetEmpty {
+                            t: s.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
+                        membership.push(format!("(select {} {})", collection, var_name));
+                    }
+                    Sort::Seq(s) => {
+                        let intrinsic = Intrinsic::SeqEmpty {
+                            t: s.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
+                        membership.push(format!(
+                            "(seq.contains {} (seq.unit {}))",
+                            collection, var_name
+                        ));
+                    }
+                    Sort::Map(k, v) => {
+                        let intrinsic = Intrinsic::MapEmpty {
+                            k: k.as_ref().clone(),
+                            v: v.as_ref().clone(),
+                        };
+                        // add the dependencies and throw away the result
+                        let _s = intrinsics_to_smt(
+                            &intrinsic,
+                            exp_registry,
+                            &domain_exp_id,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        );
+                        membership.push(format!(
+                            "(distinct (select {} {}) not_present_{})",
+                            collection, var_name, v
+                        ));
+                    }
+                    _ => panic!("domain_exp_id is not a set or a seq or a map"),
+                }
+                mapping_vars.insert(*var_id, var_name.clone());
+                dependencies.push(format!("(declare-const {} ({}))", var_name, smt_sort));
+                var_bindings.push(format!("{}", var_name));
+            }
+            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let members = if membership.len() == 1 {
+                membership[0].clone()
+            } else {
+                format!("(and {})", membership.join(" "))
+            };
+            dependencies.push(format!("(assert (=> {} {}))", members, body_smt));
+            format!("({})", var_bindings.join(" "))
         }
     }
 }

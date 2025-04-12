@@ -383,7 +383,7 @@ pub fn expr_to_smt_inner(
             // the condition
             let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
             dependencies.push(format!("(assert {})", body_smt));
-            format!("({})", vars_string.join(" "))
+            format!("{}", vars_string.join(" "))
         }
         Expression::IterExists { vars, body } => {
             let mut var_bindings = Vec::new(); // e.g. "(x_42 Int)"
@@ -671,7 +671,7 @@ pub fn expr_to_smt_inner(
                 format!("(and {})", membership.join(" "))
             };
             dependencies.push(format!("(assert (=> {} {}))", members, body_smt));
-            format!("({})", var_bindings.join(" "))
+            format!("{}", var_bindings.join(" "))
         }
     }
 }

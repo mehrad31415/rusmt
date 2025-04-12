@@ -1,0 +1,50 @@
+prg1: unsat
+prg2: sat
+prg3: unsat
+prg4: sat
+prg5: unknown
+prg6: unsat
+prg7: unsat
+prg8: unsat
+prg9: sat
+prg10: unsat
+prg11: unsat
+prg12: sat
+prg13: unsat
+prg14: unsat
+prg15: unsat
+prg16: unsat
+prg17: unsat
+prg18: unsat
+prg19: unsat
+prg20: unsat
+prg21: unsat
+prg22: unsat
+prg23: unsat
+prg24: sat
+prg25: sat
+prg26: unsat
+prg27: 
+prg28: sat
+prg29: 
+prg30: 
+prg31: unsat
+prg32: unsat
+prg33: unsat
+prg34: unsat
+prg35: sat
+prg36: unsat
+prg37: 
+prg38: unsat
+prg39: unsat
+prg40: 
+prg41: unsat
+prg42: unsat
+prg43: unsat
+prg44: unsat
+prg45: unsat
+prg46: unsat
+prg47: unsat
+prg48: unsat
+prg49: unsat
+prg50: unsat

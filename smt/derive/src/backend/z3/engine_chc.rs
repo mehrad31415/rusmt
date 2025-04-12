@@ -74,43 +74,8 @@ impl BackendZ3 for BackendZ3CHC {
             l!(x); // add new line
         }
 
-        // this set is used for mutually recursive functions
-        let mut func_names: Vec<Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>> =
-            Vec::new();
-
-        for (name, generics_id) in &fn_registry.lookup {
-            group_dependent_funcs(name, generics_id, ir, &mut func_names);
-        }
-
-        // write the functions
-        if !&fn_registry.lookup.is_empty() {
-            l!(x, "; Define user functions:");
-            for funcs in func_names.iter() {
-                l!(x, "{}", fundef_in_smt(ir, &funcs));
-                l!(x); // add new line
-            }
-        }
-
-        // write the axioms
-        if !&axiom_registry.lookup.is_empty() {
-            l!(x, "; Define axioms:");
-            // we don't need to write the name. The axiom is registered as forall<axiom params> {axiom body}
-            for (_name, generics_id) in &axiom_registry.lookup {
-                // generics are already registered in undef_sorts
-                for (_generics, id) in generics_id {
-                    let predicate = axiom_registry.retrieve(*id);
-                    l!(x, "{}", axiom_in_smt(predicate, ir));
-                }
-            }
-            l!(x); // add new line
-        }
-
-        // prove the `validity` of the fact that the operational (smt_impl) and denotational semantics (smt_spec) are equivalent
-        // To prove: negate the equivalence and check for unsatisfiability
-        l!(
-            x,
-            "; Prove the equivalence of the operational and denotational semantics:"
-        );
+        // before anything else, declare the parameters of the function signatures of impl and spec
+        // this is because assertions that use the parameters of the impl and spec need to be declared outside of the function
         let (impl_name, spec_name) = desc.split_once(" ~> ").expect("Invalid description");
         let impl_name = Ident::new(impl_name, Span::call_site());
         let spec_name = Ident::new(spec_name, Span::call_site());
@@ -189,6 +154,50 @@ impl BackendZ3 for BackendZ3CHC {
             )
         };
 
+        // (declare-const lhs Point) (declare-const rhs Point)
+        // declare the variables for the params of the impl and spec
+        for s in all_sym_sort.clone() {
+            l!(x, "(declare-const {})", s)
+        }
+
+        // this set is used for mutually recursive functions
+        let mut func_names: Vec<Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>> =
+            Vec::new();
+
+        for (name, generics_id) in &fn_registry.lookup {
+            group_dependent_funcs(name, generics_id, ir, &mut func_names);
+        }
+
+        // write the functions
+        if !&fn_registry.lookup.is_empty() {
+            l!(x, "; Define user functions:");
+            for funcs in func_names.iter() {
+                l!(x, "{}", fundef_in_smt(ir, &funcs));
+                l!(x); // add new line
+            }
+        }
+
+        // write the axioms
+        if !&axiom_registry.lookup.is_empty() {
+            l!(x, "; Define axioms:");
+            // we don't need to write the name. The axiom is registered as forall<axiom params> {axiom body}
+            for (_name, generics_id) in &axiom_registry.lookup {
+                // generics are already registered in undef_sorts
+                for (_generics, id) in generics_id {
+                    let predicate = axiom_registry.retrieve(*id);
+                    l!(x, "{}", axiom_in_smt(predicate, ir));
+                }
+            }
+            l!(x); // add new line
+        }
+
+        // prove the `validity` of the fact that the operational (smt_impl) and denotational semantics (smt_spec) are equivalent
+        // To prove: negate the equivalence and check for unsatisfiability
+        l!(
+            x,
+            "; Prove the equivalence of the operational and denotational semantics:"
+        );
+
         // ; forall (lhs Point) (rhs Point) (= (add_spec lhs rhs) (add lhs rhs))
         l!(
             x,
@@ -212,12 +221,6 @@ impl BackendZ3 for BackendZ3CHC {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-
-        // (declare-const lhs Point) (declare-const rhs Point)
-        // declare the variables for the params of the impl and spec
-        for s in all_sym_sort {
-            l!(x, "(declare-const {})", s)
-        }
 
         // the variables of the impl and spec need to be the same even if they have different names
         for (i, s) in impl_syms.iter().zip(&spec_syms) {

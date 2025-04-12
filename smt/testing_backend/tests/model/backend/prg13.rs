@@ -1,22 +1,18 @@
-// this program makes no sense and is just for testing purposes of forall and exists
-use rusmart_smt_remark_derive::{smt_axiom, smt_impl, smt_spec, smt_type};
-use rusmart_smt_stdlib::{choose, exists, forall, Boolean, Integer, Seq, SMT};
+// testing Rational commutative property
+use rusmart_smt_remark_derive::{smt_axiom, smt_impl, smt_spec};
+use rusmart_smt_stdlib::{Boolean, Rational, SMT};
 
-#[smt_impl]
-fn seq_min(seq: Seq<Integer>) -> Integer {
-    seq.at_unchecked(Integer::from(0))
+#[smt_impl] // method cannot be defined because Rational is a system type
+fn _add(lhs: Rational, rhs: Rational) -> Rational {
+    lhs.add(rhs)
 }
 
-#[smt_spec(impls = seq_min)]
-fn seq_min_spec(seq: Seq<Integer>) -> Integer {
+#[smt_spec(impls = _add)]
+fn _add_spec(_lhs: Rational, _rhs: Rational) -> Rational {
     unimplemented!()
 }
 
 #[smt_axiom]
-fn seq_min_axiom(seq: Seq<Integer>) -> Boolean {
-    forall!(|x: Integer| seq.includes(seq_min_spec(seq))).and(
-        exists!(|x: Integer| x.le(seq_min_spec(seq)).or(
-            seq_min_spec(seq).ge(x),
-        )),
-    )
+fn _and_axiom(lhs: Rational, rhs: Rational) -> Boolean {
+    _add_spec(lhs, rhs).eq(_add(rhs, lhs))
 }

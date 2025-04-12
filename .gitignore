@@ -12,8 +12,8 @@
 # Z3 trace files
 .z3-trace
 
-# dump files
-/dump_smt/
+# dump file
+dump.txt
 
 # vscode
 .vscode/

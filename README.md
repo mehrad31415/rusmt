@@ -66,3 +66,9 @@ make docs
 However, as Rusmart is still under active development,
 changes, even major refactorings, are constantly pushed to the codebase.
 Therefore, expect the book to be incomplete for a foreseeable amount of time.
+
+
+The tested _rusmart_ programs and the generated SMT-LIB formulae can be found in the following Overleaf project:
+[Rusmart Examples](https://www.overleaf.com/read/tthrqhpchqbr#cd0fdc).
+
+

@@ -365,6 +365,4 @@ mod tests {
         // check the body
         assert_eq!(body.to_token_stream().to_string(), "x > y");
     }
-
-    //? parse method for Quantifier not tested because a generics type that implements CtxtForExpr is needed...
 }

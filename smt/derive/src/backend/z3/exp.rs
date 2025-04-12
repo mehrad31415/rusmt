@@ -240,6 +240,19 @@ pub fn expr_to_smt_inner(
             let fist_case = cases.iter().next().expect("no cases in match");
             // take the rest of the cases
             let rest: Vec<MatchCase> = cases.iter().skip(1).cloned().collect();
+            // if rest has zero elements
+            if rest.len() == 0 {
+                return format!(
+                    "{}",
+                    expr_to_smt(
+                        exp_registry,
+                        &fist_case.body,
+                        ir,
+                        dependencies,
+                        mapping_vars
+                    )
+                );
+            }
             // if the rest has only one element, no need to create ite
             let x: String = if rest.len() == 1 {
                 let case = rest.first().expect("no cases in match");
@@ -426,10 +439,8 @@ pub fn expr_to_smt_inner(
                         );
                         membership.push(format!("(select {} {}_{})", collection, var_name, var_id));
                     }
-                    Sort::Seq(s) => {
-                        let intrinsic = Intrinsic::SeqEmpty {
-                            t: s.as_ref().clone(),
-                        };
+                    Sort::Seq(_) => {
+                        let intrinsic = Intrinsic::SeqEmpty { t: Sort::Integer };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
                             &intrinsic,
@@ -439,10 +450,6 @@ pub fn expr_to_smt_inner(
                             dependencies,
                             mapping_vars,
                         );
-                        membership.push(format!(
-                            "(seq.contains {} (seq.unit {}_{}))",
-                            collection, var_name, var_id
-                        ));
                     }
                     Sort::Map(k, v) => {
                         let intrinsic = Intrinsic::MapEmpty {
@@ -468,6 +475,9 @@ pub fn expr_to_smt_inner(
                 var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
             }
             let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            if membership.len() == 0 {
+                return format!("(exists ({}) {})", var_bindings.join(" "), body_smt);
+            }
             let members = if membership.len() == 1 {
                 membership[0].clone()
             } else {
@@ -521,10 +531,8 @@ pub fn expr_to_smt_inner(
                         );
                         membership.push(format!("(select {} {}_{})", collection, var_name, var_id));
                     }
-                    Sort::Seq(s) => {
-                        let intrinsic = Intrinsic::SeqEmpty {
-                            t: s.as_ref().clone(),
-                        };
+                    Sort::Seq(_) => {
+                        let intrinsic = Intrinsic::SeqEmpty { t: Sort::Integer };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
                             &intrinsic,
@@ -534,10 +542,6 @@ pub fn expr_to_smt_inner(
                             dependencies,
                             mapping_vars,
                         );
-                        membership.push(format!(
-                            "(seq.contains {} (seq.unit {}_{}))",
-                            collection, var_name, var_id
-                        ));
                     }
                     Sort::Map(k, v) => {
                         let intrinsic = Intrinsic::MapEmpty {
@@ -563,6 +567,9 @@ pub fn expr_to_smt_inner(
                 var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
             }
             let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            if membership.len() == 0 {
+                return format!("(forall ({}) {})", var_bindings.join(" "), body_smt);
+            }
             let members = if membership.len() == 1 {
                 membership[0].clone()
             } else {
@@ -621,10 +628,8 @@ pub fn expr_to_smt_inner(
                         );
                         membership.push(format!("(select {} {})", collection, var_name));
                     }
-                    Sort::Seq(s) => {
-                        let intrinsic = Intrinsic::SeqEmpty {
-                            t: s.as_ref().clone(),
-                        };
+                    Sort::Seq(_) => {
+                        let intrinsic = Intrinsic::SeqEmpty { t: Sort::Integer };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
                             &intrinsic,
@@ -634,10 +639,6 @@ pub fn expr_to_smt_inner(
                             dependencies,
                             mapping_vars,
                         );
-                        membership.push(format!(
-                            "(seq.contains {} (seq.unit {}))",
-                            collection, var_name
-                        ));
                     }
                     Sort::Map(k, v) => {
                         let intrinsic = Intrinsic::MapEmpty {
@@ -665,6 +666,9 @@ pub fn expr_to_smt_inner(
                 var_bindings.push(format!("{}", var_name));
             }
             let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            if membership.len() == 0 {
+                return format!("(assert {})", body_smt);
+            }
             let members = if membership.len() == 1 {
                 membership[0].clone()
             } else {

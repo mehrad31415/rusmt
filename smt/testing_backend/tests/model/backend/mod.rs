@@ -48,3 +48,8 @@ mod prg47;
 mod prg48;
 mod prg49;
 mod prg50;
+mod prg51;
+mod prg52;
+mod prg53;
+mod prg54;
+mod prg55;

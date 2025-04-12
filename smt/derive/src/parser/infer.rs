@@ -488,7 +488,7 @@ impl Typing {
 
         let inferred = match (lhs, rhs) {
             // Both are type variables.
-            (Var(l), Var(r)) => match Ord::cmp(&l.0, &r.0) {
+            (Var(l), Var(r)) => match Ord::cmp(&l.0, &r.0) { // same variables as they have same ids
                 // Ord::cmp returns Ordering::Less, Ordering::Equal, or Ordering::Greater. It is used to compare two values and it is part of the standard library (does not need to be imported). &l.0.cmp(&r.0) = Ord::cmp(&l.0, &r.0). Ordering needs to be imported (use std::cmp::Ordering).
                 Ordering::Equal => {
                     // if the indexes of the type variables are equal, return the type variable itself. In this case, the type variables are the same. They are the same variable.

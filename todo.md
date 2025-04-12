@@ -1,0 +1,24 @@
+- Ongoing work:
+    - testing parser, IR, and backend (writing unit and integration tests).
+    - Some todos are in the codebase and should be removed.
+
+- Topics to be discussed:
+    - Maintain the AST (Abstract Syntax Tree) in memory and utilize the Z3 API directly for SMT generation, bypassing the SMT-LIB output format.
+    - CyclicUnification is the only type inference error that we have in infer.rs of parser. Type Mismatch, Ambiguous Types, Unresolved Generics, are all panicked. Why not make them errors? In general the choice of bailing, panicking, or returning an error is not clear in the codebase. We should have a clear distinction between these three and use them accordingly.
+    - When should a crate be a member of the workspace in the Cargo.toml and when should it only be a dependency?
+    - Look at the types that are defined in smt and their respective functions to add the missing ones for expressivity.
+    - fn lookup_unqualified(&self, name: &UsrFuncName) -> Option<&TypeFn> in expr.rs of the parser is used to look up the function name in the function database. An impl function can be called inside an impl function. A spec function can be called inside a spec function. An impl function can be called inside a spec function. A spec function CANNOT be called inside an impl function and an error will be thrown.
+    - Expand on the number of expressions that can be handled by the parser.
+    - The checks we do are sound but are they complete? In general to formally verify a DSL, the software needs to be formally verified itself. Why rust and why not Coq?
+    - Why are iterated quantifiers allowed in non0spec but non-iterated are only allowed in spec?
+    - Look into the z3 profiler to see where the most computation power is being spent.
+    - Look into mbqi to see if you can improve the performance.
+    - Get rid of the assert forall for the axioms and convert the axioms to functions in the smt, also get rid of the asserts and define them as asserts with declare-const (see if this is better).
+    - Right now the current translation to smt is that the spec and the impl are equal but it should be that the spec => impl (implication). Rethink the smt_spec and whether it is need or can we just have axioms and impls.
+    - For compound types, if we do not have concrete declarations, we get the incomplete type error; fix this.
+    - Add relations to axioms in ctxt.rs of the parser (self annotated axioms).
+    - Is the translation for the forall good? is it the case that the forall is not usable in rust? is the default only for pleasing the compiler?
+    - Do not continue writing the book, until the design choices are finalized.
+    - For simplicity, require type generics be the first set of type parameters; what does this mean and what to do?
+    - Look at the smt outputs of the rusmart test files.
+    - 

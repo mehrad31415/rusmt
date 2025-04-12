@@ -111,46 +111,6 @@ fn validate_user_ident(ident: &Ident) -> Result<String> {
     Ok(name)
 }
 
-/// Parses a plain identifier from a path.
-///
-/// # Arguments
-///
-/// * `path` - A reference to a `syn::Path` from which to parse the identifier.
-///
-/// # Returns
-///
-/// * `Result<&Ident>` - Ok containing a reference to the identifier if successful.
-///
-/// # Errors
-///
-/// Returns an error if the path is invalid, has leading colons, multiple segments,
-/// or contains unexpected arguments.
-/// parse_ident_from_path is the same as get_ident in the syn crate. https://docs.rs/syn/1.0.77/syn/struct.Path.html#method.get_ident. get_ident just returns an Option<&Ident> while parse_ident_from_path returns a Result<&Ident>.
-// fn parse_ident_from_path(path: &Path) -> Result<&Ident> {
-//     let Path {
-//         leading_colon,
-//         segments,
-//     } = path;
-
-//     // Leading colons are not allowed in a plain identifier.
-//     bail_if_exists!(leading_colon);
-
-//     let mut iter = segments.iter();
-
-//     // There should be exactly one segment; single identifier expected.
-//     let segment = bail_if_missing!(iter.next(), path, "invalid path with no segments");
-//     bail_if_exists!(iter.next());
-
-//     let PathSegment { ident, arguments } = segment;
-//     // Arguments are not expected in a plain identifier.
-//     if !matches!(arguments, PathArguments::None) {
-//         bail_on!(arguments, "unexpected argument in path");
-//     }
-
-//     // Return the identifier.
-//     Ok(ident)
-// }
-
 /// Parses a plain identifier from a pattern.
 ///
 /// # Arguments

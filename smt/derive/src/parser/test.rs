@@ -128,4 +128,42 @@ mod tests {
             x.not().and(false.into()).or(true.into()).xor(y).eq(x.ne(y))
         }
     });
+
+    #[test]
+    fn test_pipeline2() {
+        // Create a token stream representing a simple Rust function.
+        let stream = quote! {
+            #[smt_type]
+            struct Point2 {
+                x: Integer,
+                y: Integer,
+            }
+        };
+        test_on_stream(stream).unwrap();
+    }
+
+    unit_test!(
+        receiver2,
+        {
+            #[smt_impl]
+            fn foo(self) -> Boolean {
+                false.into()
+            }
+        },
+        "unexpected self param"
+    );
+
+    unit_test!(
+        r2,
+        {
+            #[smt_impl]
+            fn foo2(x: Boolean, y: Boolean) -> Boolean {
+                x.not()
+                    .and(false.into())
+                    .or(true.into())
+                    .xor(y)
+                    .eq(x.ne(y))
+            }
+        }
+    );
 }

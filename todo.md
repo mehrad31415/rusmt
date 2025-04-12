@@ -21,4 +21,4 @@
     - Do not continue writing the book, until the design choices are finalized.
     - For simplicity, require type generics be the first set of type parameters; what does this mean and what to do?
     - Look at the smt outputs of the rusmart test files.
-    - 
+    - Write an interpreter for the rego or while language.

@@ -1,5 +1,4 @@
-pub mod eval_demo;
-pub mod eval_rego;
+mod eval;
 
 use rusmart_smt_derive::derive;
 use rusmart_utils::config::WKS;

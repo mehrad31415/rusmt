@@ -1,0 +1,15 @@
+[package]
+name = "rusmart-lang-while"
+description = "Declarative semantics for the While language"
+version = "0.1.0"
+edition = "2021"
+authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>"]
+license = "GPL-3.0"
+
+[dependencies]
+anyhow = { workspace = true }
+walkdir = {workspace = true}
+rusmart-utils = { workspace = true }
+rusmart-smt-stdlib = { workspace = true }
+rusmart-smt-remark-derive = { workspace = true }
+rusmart-smt-derive = { workspace = true }

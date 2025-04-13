@@ -2,7 +2,7 @@ mod model;
 
 use anyhow::anyhow;
 use datatest_stable::harness;
-use rusmart_lang_rego::run;
+use rusmart_lang_test::run;
 use rusmart_smt_derive::model;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};

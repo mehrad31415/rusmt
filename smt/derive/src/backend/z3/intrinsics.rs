@@ -288,7 +288,7 @@ pub fn intrinsics_to_smt(
                 if let VarKind::Bound { bind: expid } = var.kind {
                     if id == &expid {
                         // because the asssertions go on the top level, there might be the case where variables with the same names are defined in different functions (for example let a = Seq::new())
-                        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
                         let decl =
                             format!("(declare-const seq_{} (Seq {}))", id, sort_to_smt(t, ir));
                         if !dependencies.contains(&decl) {
@@ -341,7 +341,7 @@ pub fn intrinsics_to_smt(
                 // a Set::new() is always used like let x = Set::new() in the code
                 if let VarKind::Bound { bind: expid } = var.kind {
                     if id == &expid {
-                        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
                         let decl =
                             format!("(declare-const set_{} (Set {}))", id, sort_to_smt(t, ir));
                         if !dependencies.contains(&decl) {
@@ -476,7 +476,7 @@ pub fn intrinsics_to_smt(
                 if let VarKind::Bound { bind: expid } = var.kind {
                     // get the variable id
                     if id == &expid {
-                        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                        let id = COUNTER.fetch_add(1, Ordering::SeqCst);
                         let decl = format!(
                             "(declare-const map_{} (Array {} {}))",
                             id,

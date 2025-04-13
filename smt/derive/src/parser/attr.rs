@@ -809,7 +809,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string().as_str(),
-            "unexpected list\nfor smt_type and smt_axiom, no attributes are expected\n# [smt_type (copy)]"
+            "unexpected list\nfor smt_type, no attributes are expected\n# [smt_type (copy)]"
         );
     }
 
@@ -823,7 +823,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string().as_str(),
-            "unexpected list\nfor smt_type and smt_axiom, no attributes are expected\n# [smt_axiom (copy)]"
+            "expect =\ncopy"
         );
     }
 

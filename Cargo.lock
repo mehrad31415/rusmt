@@ -126,9 +126,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "clap"
-version = "4.5.35"
+version = "4.5.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8aa86934b44c19c50f87cc2790e19f54f7a67aedb64101c2e1a2e5ecfb73944"
+checksum = "2df961d8c8a0d08aa9945718ccf584145eee3f3aa06cddbeac12933781102e04"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -136,9 +136,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.35"
+version = "4.5.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2414dbb2dd0695280da6ea9261e327479e9d37b0630f6b53ba2a11c60c679fd9"
+checksum = "132dbda40fb6753878316a489d5a1242a8ef2f0d9e47ba01c951ea8aa7d013a5"
 dependencies = [
  "anstream",
  "anstyle",
@@ -495,9 +495,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.20.2"
+version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1261fe7e33c73b354eab43b1273a57c8f967d0391e80353e51f764ac02cf6775"
+checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
 name = "parking_lot_core"
@@ -592,7 +592,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusmart-lang-demo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rusmart-smt-derive",
+ "rusmart-smt-remark-derive",
+ "rusmart-smt-stdlib",
+ "rusmart-utils",
+ "walkdir",
+]
+
+[[package]]
 name = "rusmart-lang-rego"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rusmart-smt-derive",
+ "rusmart-smt-remark-derive",
+ "rusmart-smt-stdlib",
+ "rusmart-utils",
+ "walkdir",
+]
+
+[[package]]
+name = "rusmart-lang-test"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rusmart-smt-derive",
+ "rusmart-smt-remark-derive",
+ "rusmart-smt-stdlib",
+ "rusmart-utils",
+ "walkdir",
+]
+
+[[package]]
+name = "rusmart-lang-while"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -673,7 +709,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "datatest-stable",
- "rusmart-lang-rego",
+ "rusmart-lang-test",
  "rusmart-smt-derive",
  "rusmart-smt-remark-derive",
  "rusmart-smt-stdlib",

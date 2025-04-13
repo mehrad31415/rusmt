@@ -426,14 +426,14 @@ mod tests {
     #[test]
     fn test_parse_invalid_value() {
         // Test parsing when the value is not an identifier or a set: key = 1
-        // This gets invoked here: _ => bail_on!(token, "expect value as identifier or set of identifiers")
+        // This gets invoked here: _ => bail_on!(token, "expect value as identifier or set of identifiers or a set of tuples")
         let tokens = quote! { key = 1 };
         let result = parse_dict(&tokens);
 
         assert!(result.is_err());
 
         let result = result.unwrap_err().to_string();
-        assert_eq!(result, "expect value as identifier or set of identifiers");
+        assert_eq!(result, "expect value as identifier or set of identifiers or a set of tuples");
     }
 
     #[test]

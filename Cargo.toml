@@ -13,13 +13,16 @@ members = [
     "smt/derive",
     "smt/testing_frontend",
     "smt/testing_backend",
-    "lang",
+    "lang/test",
+    "lang/while",
+    "lang/demo",
+    "lang/rego",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0.97"
-clap = { version = "4.5.35", features = ["derive"] }
+clap = { version = "4.5.36", features = ["derive"] }
 command-group = "5.0.1"
 datatest-stable = "0.3.2"
 internment = { version = "0.8.4", features = ["arc"] }
@@ -30,7 +33,7 @@ num_cpus = "1.16.0"
 num-bigint = "0.4.6"
 num-rational = "0.4.2"
 num-traits = "0.2.19"
-paste = "1.0.15"
+paste = "1"
 petgraph = "0.8.1"
 proc-macro2 = "1.0.94"
 quote = "1.0.40"
@@ -45,3 +48,7 @@ rusmart-smt-stdlib = { path = "smt/stdlib" }
 rusmart-smt-remark = { path = "smt/remark" }
 rusmart-smt-remark-derive = { path = "smt/remark/remark_derive" }
 rusmart-smt-derive = { path = "smt/derive" }
+rusmart-lang-test = { path = "lang/test" }
+
+[profile.test] # fixed
+opt-level = 2

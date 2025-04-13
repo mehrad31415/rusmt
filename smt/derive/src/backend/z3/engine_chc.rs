@@ -53,6 +53,9 @@ impl BackendZ3 for BackendZ3CHC {
         l!(x, "(set-option :smt.string_solver z3str3)");
         // set the string solver to be the seq solver (default) for sequence constraints
         l!(x, "(set-option :smt.string_solver seq)");
+        // mbqi (model-based quantifier instantiation) is a technique used by Z3 to instantiate quantifiers
+        // in a model-based way. It is used to improve the performance of the solver.
+        l!(x, "(set-option :mbqi true)");
         // allow all available theories: l!(x, "(set-logic ALL)"); Z3 will automatically detect the logic
         l!(x); // add new line
 

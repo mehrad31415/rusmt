@@ -13,7 +13,7 @@
     - Why are iterated quantifiers allowed in non0spec but non-iterated are only allowed in spec?
     - Look into the z3 profiler to see where the most computation power is being spent.
     - Look into mbqi to see if you can improve the performance.
-    - Get rid of the assert forall for the axioms and convert the axioms to functions in the smt, also get rid of the asserts and define them as asserts with declare-const (see if this is better).
+    - Get rid of the assert forall for the axioms and convert the axioms to functions in the smt, also get rid of the exists and define them as asserts with declare-const (see if this is better).
     - Right now the current translation to smt is that the spec and the impl are equal but it should be that the spec => impl (implication). Rethink the smt_spec and whether it is need or can we just have axioms and impls.
     - For compound types, if we do not have concrete declarations, we get the incomplete type error; fix this.
     - Add relations to axioms in ctxt.rs of the parser (self annotated axioms).
@@ -22,3 +22,5 @@
     - For simplicity, require type generics be the first set of type parameters; what does this mean and what to do?
     - Look at the smt outputs of the rusmart test files.
     - Write an interpreter for the rego, while, and ebpf language.
+    - What does the eq/lt/gt mean in the smt for strings? Is it the same as the rust eq/lt/gt?
+    - use tactics and heuristics to improve the performance of the z3 solver.

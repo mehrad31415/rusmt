@@ -9,6 +9,7 @@ license = "GPL-3.0"
 [dependencies]
 anyhow = { workspace = true }
 walkdir = {workspace = true}
+z3 = { workspace = true }
 rusmart-utils = { workspace = true }
 rusmart-smt-stdlib = { workspace = true }
 rusmart-smt-remark-derive = { workspace = true }

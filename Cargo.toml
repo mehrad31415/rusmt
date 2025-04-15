@@ -21,7 +21,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 clap = { version = "4.5.36", features = ["derive"] }
 command-group = "5.0.1"
 datatest-stable = "0.3.2"
@@ -41,6 +41,7 @@ syn = { version = "2.0.100", features = ["full", "extra-traits"] }
 tempfile = "3.19.1"
 simplelog = "0.12.2"
 walkdir = "2.5.0"
+z3 = "0.12.0"
 
 rusmart-utils = { path = "utils" }
 rusmart-cli = { path = "cli" }
@@ -49,6 +50,3 @@ rusmart-smt-remark = { path = "smt/remark" }
 rusmart-smt-remark-derive = { path = "smt/remark/remark_derive" }
 rusmart-smt-derive = { path = "smt/derive" }
 rusmart-lang-test = { path = "lang/test" }
-
-[profile.test] # fixed
-opt-level = 2

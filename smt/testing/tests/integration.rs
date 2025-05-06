@@ -146,4 +146,4 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
     Ok(())
 }
 
-harness!(test_model, "tests/model", r"^.*\.rs$");
+harness! {{test = test_model, root = "tests/model", pattern =r"^.*\.rs$"}}

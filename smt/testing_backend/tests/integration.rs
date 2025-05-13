@@ -186,6 +186,6 @@ fn test_model(path: &Path) -> datatest_stable::Result<()> {
 
 // This macro sets up the datatest harness, which runs `test_model` on all `.rs` files in "tests/model" directory.
 // This is done recursively, meaning that all subdirectories are also included.
-datatest_stable::harness! {
+harness! {
     { test = test_model, root = "tests/model", pattern = r"^.*\.rs$" },
 }

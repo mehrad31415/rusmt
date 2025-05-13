@@ -53,3 +53,8 @@ mod prg52;
 mod prg53;
 mod prg54;
 mod prg55;
+mod prg56;
+mod prg57;
+mod prg58;
+mod prg59;
+mod prg60;

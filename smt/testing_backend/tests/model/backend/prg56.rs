@@ -17,7 +17,7 @@ fn len_elem_spec() -> Set<Integer> {
 
 #[smt_axiom]
 fn ax() -> Boolean {
-    len_elem_spec().contains(Integer::from(0)).and(
-        forall!(|x: Integer| x.ne(Integer::from(0)).implies(len_elem_spec().contains(x).not()))
-    )
+    len_elem_spec()
+        .contains(Integer::from(0))
+        .and(len_elem_spec().length().eq(Integer::from(1)))
 }

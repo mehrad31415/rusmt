@@ -10,7 +10,7 @@
     - fn lookup_unqualified(&self, name: &UsrFuncName) -> Option<&TypeFn> in expr.rs of the parser is used to look up the function name in the function database. An impl function can be called inside an impl function. A spec function can be called inside a spec function. An impl function can be called inside a spec function. A spec function CANNOT be called inside an impl function and an error will be thrown.
     - Expand on the number of expressions that can be handled by the parser.
     - The checks we do are sound but are they complete? In general to formally verify a DSL, the software needs to be formally verified itself. Why rust and why not Coq?
-    - Why are iterated quantifiers allowed in non0spec but non-iterated are only allowed in spec?
+    - Why are iterated quantifiers allowed in non-spec but non-iterated are only allowed in spec?
     - Look into the z3 profiler to see where the most computation power is being spent.
     - Look into mbqi to see if you can improve the performance.
     - Get rid of the assert forall for the axioms and convert the axioms to functions in the smt, also get rid of the exists and define them as asserts with declare-const (see if this is better).
@@ -24,3 +24,19 @@
     - Write an interpreter for the rego, while, and ebpf language.
     - What does the eq/lt/gt mean in the smt for strings? Is it the same as the rust eq/lt/gt?
     - use tactics and heuristics to improve the performance of the z3 solver.
+    - forall erases the environment! also the typing has an error!
+    - change the structure of the project with the cvc5, z3 build .... in the deps
+    - what happens if the impl and spec do not have the same generics!
+    - test the generics more!
+    - prg56 up error!
+    - Sort::Seq(_) => {} error in expression.rs backend! (pick an element from the seq using the index)
+
+- Remarks:
+    - "AE" is in between "A" and "C" in the z3 str encoding.
+    - The lengths are not defined in a good way!
+    - 
+
+- Plan:
+    - First look at the update made by professor meng xu (included the changes made in the last commit).
+    - Second look at the changes made over the last few weeks!
+    - 

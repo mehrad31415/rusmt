@@ -6,7 +6,9 @@ use crate::ir::sort::Sort;
 use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
+use proc_macro2::Span;
 use std::collections::BTreeMap;
+use syn::Ident;
 
 /// A function signature in the IR.
 ///
@@ -18,6 +20,16 @@ pub struct FunSig {
     pub params: Vec<(Symbol, Sort)>,
     /// The sort (or type) of the function's return value.
     pub ret_ty: Sort,
+}
+
+impl FunSig {
+    pub fn get_params(&self) -> Vec<Symbol> {
+        let mut symbols = vec![];
+        for (name, _) in &self.params {
+            symbols.push(name.clone());
+        }
+        symbols
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +192,19 @@ impl FunRegistry {
             }
         }
         panic!("no such function id in get_name")
+    }
+
+    /// Retrieve the ID of the specification function.
+    pub fn get_spec_id(&self, spec_name: &str) -> &UsrFunId {
+        let spec_name = Ident::new(spec_name, Span::call_site());
+        self.lookup
+            .get(&UsrFunName::from(
+                UsrFuncName::try_from(&spec_name).expect("spec name invalid"),
+            ))
+            .expect("Function not found")
+            .first_key_value()
+            .expect("Function not found")
+            .1
     }
 }
 

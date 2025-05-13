@@ -5,10 +5,6 @@ members = [
     "cli",
     "smt/stdlib",
     "smt/remark",
-    # if "smt/remark/remark_derive" was not listed as a member and was only listed as a dependency:
-    # 1) It will not share the workspace's Cargo.lock file.
-    # 2) It will not share the target directory.
-    # 3) It will be built in isolation from the workspace members.
     "smt/remark/remark_derive",
     "smt/derive",
     "smt/testing_frontend",
@@ -22,7 +18,7 @@ resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0.98"
-clap = { version = "4.5.37", features = ["derive"] }
+clap = { version = "4.5.38", features = ["derive"] }
 command-group = "5.0.1"
 datatest-stable = "0.3.2"
 internment = { version = "0.8.4", features = ["arc"] }
@@ -38,7 +34,7 @@ petgraph = "0.8.1"
 proc-macro2 = "1.0.95"
 quote = "1.0.40"
 syn = { version = "2.0.101", features = ["full", "extra-traits"] }
-tempfile = "3.19.1"
+tempfile = "3.20.0"
 simplelog = "0.12.2"
 walkdir = "2.5.0"
 z3 = "0.12.0"

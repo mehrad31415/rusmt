@@ -16,10 +16,10 @@ use std::collections::BTreeMap;
 pub enum VarKind {
     /// function parameter (x in fn f(x: i32) -> i32 { x + 1 })
     Param,
-    /// bounded variable used in a quantifier (forall, exists, choose)
+    /// bounded variable used in a quantifier (forall, exists)
     /// x in  ∀x. P(x)
     Quant,
-    /// axiomatized (through a list of predicates)
+    /// axiomatized (through a list of predicates - choose)
     Axiom,
     /// let-binding to an expression
     /// let x = e where x is assigned to e
@@ -286,12 +286,12 @@ impl ExpRegistry {
     }
 
     /// Retrieve the variable
-    pub fn lookup_var(&self, idx: VarId) -> &Variable {
+    pub fn lookup_var(&self, idx: &VarId) -> &Variable {
         self.vars.get(&idx).expect("no such var id")
     }
 
     /// Retrieve the expression
-    pub fn lookup_exp(&self, idx: ExpId) -> &Expression {
+    pub fn lookup_exp(&self, idx: &ExpId) -> &Expression {
         self.exps.get(&idx).expect("no such exp id")
     }
 }
@@ -490,7 +490,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         elems.len(),
                     );
                 }
-                let e = self.registry.lookup_exp(exp).clone();
+                let e = self.registry.lookup_exp(&exp).clone();
                 if let Expression::Pack {
                     sort: _,
                     elems: elems_pack,
@@ -1282,8 +1282,8 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
 
     /// Derive type of an expression
     fn derive_type(&self, eid: ExpId) -> Sort {
-        let sort = match self.registry.lookup_exp(eid) {
-            Expression::Var(vid) => self.registry.lookup_var(*vid).sort.clone(),
+        let sort = match self.registry.lookup_exp(&eid) {
+            Expression::Var(vid) => self.registry.lookup_var(vid).sort.clone(),
             Expression::Pack { sort, elems: _ }
             | Expression::Tuple { sort, slots: _ }
             | Expression::Record { sort, fields: _ }

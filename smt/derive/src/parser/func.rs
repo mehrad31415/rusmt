@@ -7,7 +7,7 @@ use crate::parser::name::{ReservedIdent, TypeParamName, UsrFuncName, UsrTypeName
 use crate::parser::ty::{CtxtForType, TypeTag};
 use crate::{bail_if_exists, bail_if_non_empty, bail_on};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter}; // used to implement the Display trait
+use std::fmt::{Display, Formatter};
 use syn::{
     Expr as Exp,    // Renaming `Expr` to `Exp` to avoid conflict with our own `Expr`
     ExprMacro,      // Represents a macro invocation `expression`
@@ -365,13 +365,13 @@ impl FuncSig {
             ret_ty: spec_ret_ty,
         } = sig;
 
-        // check if the length of the parameter lists are different, they are not compatible
-        if impl_params.len() != spec_params.len() {
+        // if the length of the generics lists are different, they are not compatible
+        if impl_gens.params.len() != spec_gens.params.len() {
             return false;
         }
 
-        // if the length of the type parameter lists are different, they are not compatible
-        if impl_gens.params.len() != spec_gens.params.len() {
+        // check if the length of the parameter lists are different, they are not compatible
+        if impl_params.len() != spec_params.len() {
             return false;
         }
 
@@ -389,7 +389,9 @@ impl FuncSig {
 
         let mut zip_gens = BTreeSet::new();
         for (impl_ty, spec_ty) in impl_types.iter().zip(spec_types.iter()) {
-            unify(&impl_ty, &spec_ty, &mut zip_gens);
+            if !unify(&impl_ty, &spec_ty, &mut zip_gens) {
+                return false;
+            }
         }
 
         // in zip_gens there needs to be a one-to-one mapping between the type parameters of the impl and the spec (check this!)
@@ -412,94 +414,122 @@ pub fn unify(
     impl_params: &TypeTag,
     spec_params: &TypeTag,
     zip_gens: &mut BTreeSet<(TypeParamName, TypeParamName)>,
-) {
+) -> bool {
     match impl_params {
         TypeTag::Boolean => {
             if !matches!(spec_params, TypeTag::Boolean) {
-                panic!("unification failed as the types are not compatible on Boolean");
+                // panic!("unification failed as the types are not compatible on Boolean");
+                return false;
             }
+            return true;
         }
         TypeTag::Integer => {
             if !matches!(spec_params, TypeTag::Integer) {
-                panic!("unification failed as the types are not compatible on Integer");
+                // panic!("unification failed as the types are not compatible on Integer");
+                return false;
             }
+            return true;
         }
         TypeTag::Rational => {
             if !matches!(spec_params, TypeTag::Rational) {
-                panic!("unification failed as the types are not compatible on Rational");
+                // panic!("unification failed as the types are not compatible on Rational");
+                return false;
             }
+            return true;
         }
         TypeTag::Text => {
             if !matches!(spec_params, TypeTag::Text) {
-                panic!("unification failed as the types are not compatible on Text");
+                // panic!("unification failed as the types are not compatible on Text");
+                return false;
             }
+            return true;
         }
         TypeTag::Cloak(inside) => {
             if let TypeTag::Cloak(inside_spec) = spec_params {
-                unify(inside, inside_spec, zip_gens);
+                unify(inside, inside_spec, zip_gens)
             } else {
-                panic!("unification failed as the types are not compatible on Cloak");
+                // panic!("unification failed as the types are not compatible on Cloak");
+                return false;
             }
         }
         TypeTag::Seq(inside) => {
             if let TypeTag::Seq(inside_spec) = spec_params {
-                unify(inside, inside_spec, zip_gens);
+                unify(inside, inside_spec, zip_gens)
             } else {
-                panic!("unification failed as the types are not compatible on Seq");
+                // panic!("unification failed as the types are not compatible on Seq");
+                return false;
             }
         }
         TypeTag::Set(inside) => {
             if let TypeTag::Set(inside_spec) = spec_params {
-                unify(inside, inside_spec, zip_gens);
+                unify(inside, inside_spec, zip_gens)
             } else {
-                panic!("unification failed as the types are not compatible on Set");
+                // panic!("unification failed as the types are not compatible on Set");
+                return false;
             }
         }
         TypeTag::Map(key, value) => {
             if let TypeTag::Map(key_spec, value_spec) = spec_params {
-                unify(key, key_spec, zip_gens);
-                unify(value, value_spec, zip_gens);
+                unify(key, key_spec, zip_gens) && unify(value, value_spec, zip_gens)
             } else {
-                panic!("unification failed as the types are not compatible on Map");
+                // panic!("unification failed as the types are not compatible on Map");
+                return false;
             }
         }
         TypeTag::Error => {
             if !matches!(spec_params, TypeTag::Error) {
-                panic!("unification failed as the types are not compatible on Error");
+                // panic!("unification failed as the types are not compatible on Error");
+                return false;
             }
+            return true;
         }
         TypeTag::User(name, args) => {
             if let TypeTag::User(name_spec, args_spec) = spec_params {
                 if name != name_spec {
-                    panic!("unification failed as the types are not compatible on User");
+                    // panic!("unification failed as the types are not compatible on User");
+                    return false;
                 }
                 if args.len() != args_spec.len() {
-                    panic!("unification failed as the types are not compatible on User");
+                    // panic!("unification failed as the number of arguments are not compatible on User");
+                    return false;
                 }
                 for (arg, arg_spec) in args.iter().zip(args_spec.iter()) {
-                    unify(arg, arg_spec, zip_gens);
+                    if !unify(arg, arg_spec, zip_gens) {
+                        // panic!("unification failed as the types are not compatible on User");
+                        return false;
+                    }
                 }
+                return true;
             } else {
-                panic!("unification failed as the types are not compatible on User");
+                // panic!("unification failed as the types are not compatible on User");
+                return false;
             }
         }
         TypeTag::Pack(elems) => {
             if let TypeTag::Pack(elems_spec) = spec_params {
                 if elems.len() != elems_spec.len() {
-                    panic!("unification failed as the types are not compatible on Pack");
+                    // panic!("unification failed as the number of elements are not compatible on Pack");
+                    return false;
                 }
                 for (elem, elem_spec) in elems.iter().zip(elems_spec.iter()) {
-                    unify(elem, elem_spec, zip_gens);
+                    if !unify(elem, elem_spec, zip_gens) {
+                        // panic!("unification failed as the types are not compatible on Pack");
+                        return false;
+                    }
                 }
+                return true;
             } else {
-                panic!("unification failed as the types are not compatible on Pack");
+                // panic!("unification failed as the types are not compatible on Pack");
+                return false;
             }
         }
         TypeTag::Parameter(x) => {
             if let TypeTag::Parameter(y) = spec_params {
                 zip_gens.insert((x.clone(), y.clone()));
+                return true;
             } else {
-                panic!("unification failed as the types are not compatible on Parameter");
+                // panic!("unification failed as the types are not compatible on Parameter");
+                return false;
             }
         }
     }

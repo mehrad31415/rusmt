@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug)]
 pub struct IRContext {
     /// description
-    pub desc: String,
+    pub desc: Refinement,
     /// uninterpreted sorts
     /// A type parameter is converted to a smt sort name in the ir (intermediate representation).
     /// These are the type parameters of the impl function in the definition
@@ -38,9 +38,9 @@ pub struct IRContext {
 impl IRContext {
     /// Create an empty context
     /// The only place this is called is in the first line of the `IRBuilder::build` function
-    fn new(desc: String) -> Self {
+    fn new(desc: &Refinement) -> Self {
         Self {
-            desc,
+            desc: desc.clone(),
             undef_sorts: BTreeSet::new(),
             ty_registry: TypeRegistry::new(),
             fn_registry: FunRegistry::new(),
@@ -143,7 +143,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         //     fn_registry: FunRegistry::new(),
         //     axiom_registry: AxiomRegistry::new(),
         // }
-        let mut ir = IRContext::new(rel.to_string()); // rel.to_string() is the description of the refinement which gives <impl> ~> <spec>
+        let mut ir = IRContext::new(rel); // rel.to_string() is the description of the refinement which gives <impl> ~> <spec>
 
         // get the pair
         let fn_impl = ctxt.get_func(&rel.fn_impl); // get the function signature and body of the implementation

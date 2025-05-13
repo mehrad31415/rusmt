@@ -32,7 +32,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             );
             let constructor_name = format!("mk-{}", tuple_name);
 
-            // Generate field names: field_Tuple_Integer_Bool_1, field_Tuple_Integer_Bool_2, etc.
+            // Generate field names: field_Tuple_Integer_Bool_1_, field_Tuple_Integer_Bool_2_, etc.
             // tuple_name gives the field a unique name accross all tuples and the i+1 gives the field a unique name within the tuple
             let field_names: Vec<String> = (0..gen_or_elem.len())
                 .map(|i| format!("field_{}_{}_", tuple_name, i + 1))
@@ -42,11 +42,13 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             let field_defs: Vec<String> = gen_or_elem
                 .iter()
                 .zip(field_names.iter())
-                .map(|(sort, field_name)| format!("({} {})", field_name, sort_to_smt(sort, ir)))
+                .map(|(sort, field_name)| {
+                    format!("({} {})", field_name, sort_to_smt(sort, ir, None))
+                })
                 .collect();
 
             // for tuple (Integer, Bool):
-            // (declare-datatypes () ((Tuple_Integer_Bool (mk-Tuple_Integer_Bool (field1_ Int) (field2_ Bool)))))
+            // (declare-datatypes () ((Tuple_Integer_Bool (mk-Tuple_Integer_Bool (field_Tuple_Integer_Bool_1_ Int) (field_Tuple_Integer_Bool_2_ Bool)))))
             return format!(
                 "(declare-datatypes () (({} ({} {}))))",
                 tuple_name,
@@ -64,7 +66,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
     match dt {
         // a struct tuple
         DataType::Tuple(elems) => {
-            // Generate field names
+            // Generate field names (type name is so that it is unique across all tuples and the i+1 gives the field a unique name within the tuple)
             let field_names: Vec<String> = (0..elems.len())
                 .map(|i| format!("field_{}_{}_", type_name, i + 1))
                 .collect();
@@ -73,16 +75,24 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             let field_defs: Vec<String> = elems
                 .iter()
                 .zip(field_names.iter())
-                .map(|(sort, field_name)| format!("({} {})", field_name, sort_to_smt(sort, ir)))
+                .map(|(sort, field_name)| {
+                    format!(
+                        "({} {})",
+                        field_name,
+                        sort_to_smt(sort, ir, Some(type_name))
+                    )
+                })
                 .collect();
 
+            // (declare-sort t_X 0)
+            // (declare-datatypes () ((X (mk-X (field_X_1_ Int) (field_X_2_ t_X)))))
             return format!(
-                "(declare-datatypes ({}) (({} ({} {}))))",
+                "{}\n(declare-datatypes () (({} ({} {}))))",
                 gen_or_elem
                     .iter()
-                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name)) // type name is so that it is unique across all tuples
+                    .map(|t| format!("(declare-sort {}_{} 0)", t.to_string(), type_name)) // type name is so that it is unique across all tuples
                     .collect::<Vec<_>>()
-                    .join(" "),
+                    .join("\n"),
                 type_name,
                 constructor_name,
                 field_defs.join(" ")
@@ -96,18 +106,18 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                         "(record_{}_{}_ {})", // type name is so that it is unique across all tuples and field name is so that it is unique within the record
                         type_name,
                         field_name,
-                        sort_to_smt(sort, ir)
+                        sort_to_smt(sort, ir, Some(type_name)),
                     )
                 })
                 .collect();
 
             return format!(
-                "(declare-datatypes ({}) (({} ({} {}))))",
+                "{}\n(declare-datatypes () (({} ({} {}))))",
                 gen_or_elem
                     .iter()
-                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name))
+                    .map(|t| format!("(declare-sort {}_{} 0)", t.to_string(), type_name)) // type name is so that it is unique across all tuples
                     .collect::<Vec<_>>()
-                    .join(" "),
+                    .join("\n"),
                 type_name,
                 constructor_name,
                 field_defs.join(" ")
@@ -118,7 +128,7 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             for (variant_name, variant_df) in vars {
                 match variant_df {
                     Variant::Unit => {
-                        variants.push(format!("({})", variant_name.clone()));
+                        variants.push(format!("({}_{})", type_name, variant_name));
                     }
                     Variant::Tuple(t) => {
                         if t.is_empty() {
@@ -135,11 +145,15 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                             .iter()
                             .zip(field_names.iter())
                             .map(|(sort, field_name)| {
-                                format!("({} {})", field_name, sort_to_smt(sort, ir))
+                                format!(
+                                    "({} {})",
+                                    field_name,
+                                    sort_to_smt(sort, ir, Some(type_name))
+                                )
                             })
                             .collect();
 
-                        variants.push(format!("({} {})", variant_name, field_defs.join(" ")));
+                        variants.push(format!("({}_{} {})", type_name, variant_name, field_defs.join(" ")));
                     }
                     Variant::Record(r) => {
                         if r.is_empty() {
@@ -154,23 +168,23 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                                     type_name,
                                     variant_name,
                                     field_name,
-                                    sort_to_smt(sort, ir)
+                                    sort_to_smt(sort, ir, Some(type_name)),
                                 )
                             })
                             .collect();
 
-                        variants.push(format!("({} {})", variant_name, field_defs.join(" ")));
+                        variants.push(format!("({}_{} {})", type_name, variant_name, field_defs.join(" ")));
                     }
                 }
             }
 
             return format!(
-                "(declare-datatypes ({}) (({} {})))",
+                "{}\n(declare-datatypes () (({} {})))",
                 gen_or_elem
                     .iter()
-                    .map(|t| format!("({}_{} 0)", t.to_string(), type_name))
+                    .map(|t| format!("(declare-sort {}_{} 0)", t.to_string(), type_name)) // type name is so that it is unique across all tuples
                     .collect::<Vec<_>>()
-                    .join(" "),
+                    .join("\n"),
                 type_name,
                 variants.join(" ")
             );
@@ -207,7 +221,7 @@ pub fn tyuse_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
             // Tuple_Integer_Bool, basically gives the sort name
             return format!("{}", tuple_name);
         } else {
-            panic!("A data tupe without a name must be a tuple {}", sid);
+            panic!("A data type without a name must be a tuple {}", sid);
         }
     }
 

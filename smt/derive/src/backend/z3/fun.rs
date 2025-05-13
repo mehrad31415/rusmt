@@ -6,7 +6,7 @@ use crate::backend::z3::exp::expr_to_smt;
 use crate::backend::z3::sort::sort_to_smt;
 use crate::ir::exp::{ExpRegistry, Expression, MatchAtom, VariantCtor};
 use crate::ir::fun::{FunDef, FunSig};
-use crate::ir::index::{ExpId, UsrFunId};
+use crate::ir::index::{ExpId, UsrFunId, VarId};
 use crate::ir::intrinsics::Intrinsic;
 use crate::ir::name::UsrFunName;
 use crate::ir::sort::Sort;
@@ -22,10 +22,9 @@ use std::panic;
 pub fn fundef_in_smt(
     ir: &IRContext,
     funcs: &Vec<(UsrFunName, Option<BTreeMap<Vec<Sort>, UsrFunId>>)>,
+    dependencies: &mut Vec<String>,
+    mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
-    let mut dependencies = Vec::new();
-    let mut mapping_vars = BTreeMap::new();
-
     let mut sigs = Vec::new();
     let mut bodies = Vec::new();
     let mut ret = String::new();
@@ -40,26 +39,27 @@ pub fn fundef_in_smt(
             // depending on whether the function is defined or uninterpreted, the function signature is different
             let FunSig { params, ret_ty } = sig;
 
-            let return_type = sort_to_smt(ret_ty, ir);
+            let return_type = sort_to_smt(ret_ty, ir, None);
 
             match def {
                 FunDef::Defined(reg, id) => {
                     // convert the function body to SMT-LIB
-                    let body_expr = expr_to_smt(reg, id, ir, &mut dependencies, &mut mapping_vars);
+                    let body_expr =
+                        expr_to_smt(name.to_string(), reg, id, ir, dependencies, mapping_vars);
 
                     let field_defs: Vec<String> = params
                         .iter()
                         .map(|(field_name, sort)| {
-                            format!("({} {})", field_name, sort_to_smt(sort, ir))
+                            format!(
+                                "({}_{} {})",
+                                name.to_string(),
+                                field_name,
+                                sort_to_smt(sort, ir, None)
+                            )
                         })
                         .collect();
 
                     // define the function with define-fun-rec - "(define-fun-rec {} ({}) {} {})"
-                    // add the dependencies
-                    for dep in dependencies.iter() {
-                        ret += dep.as_str();
-                        ret += "\n";
-                    }
                     sigs.push(format!(
                         "{} ({}) {}\n",
                         name,
@@ -72,7 +72,7 @@ pub fn fundef_in_smt(
                     num_of_uninterpreted += 1;
                     let field_defs: Vec<String> = params
                         .iter()
-                        .map(|(_, sort)| format!("{}", sort_to_smt(sort, ir)))
+                        .map(|(_, sort)| format!("{}", sort_to_smt(sort, ir, None)))
                         .collect();
 
                     // declare the function with declare-fun

@@ -34,9 +34,9 @@ impl Display for Response {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let text = match self {
             Self::Timeout => "timeout",
-            Self::Unknown => "unknown - solver z3 cannot define whether the specification matches the implementation",
-            Self::Sat => "sat - the specification does not correctly define the implementation",
-            Self::Unsat => "unsat - the specification correctly defines the implementation",
+            Self::Unknown => "unknown",
+            Self::Sat => "sat",
+            Self::Unsat => "unsat",
         };
         f.write_str(text)
     }
@@ -58,6 +58,7 @@ pub fn create_smt_file(ir: &IRContext, backend: &dyn CodeGen, path_wks: &Path) -
 
     path_src
 }
+
 /// Execute the backend solver on the generated SMTLIB2 file.
 ///
 /// # Arguments

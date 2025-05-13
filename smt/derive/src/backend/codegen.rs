@@ -6,9 +6,7 @@ use crate::backend::z3::common::CodeGenZ3;
 use crate::backend::z3::engine_chc::BackendZ3CHC;
 use crate::ir::ctxt::IRContext;
 
-/// A generic trait for backend code generators.
-///
-/// CodeGenZ3 implements this trait.
+/// A generic trait for backend code generators (CodeGenZ3 implements this trait).
 pub trait CodeGen {
     /// Returns the name of this code generator (e.g., "z3_chc").
     fn name(&self) -> String;
@@ -19,13 +17,11 @@ pub trait CodeGen {
     }
 
     /// Given an IRContext, generate the backend source code.
-    ///
     /// Returns a `BackendResult<String>` containing either the full source code or a BackendError::NotSupported error.
     fn process(&self, ir: &IRContext) -> BackendResult<String>;
 }
 
 /// A utility for source code builder
-/// This struct collects lines of code in a buffer.
 pub struct ContentBuilder {
     /// Internal buffer holding all lines of code so far.
     buffer: String,
@@ -34,9 +30,7 @@ pub struct ContentBuilder {
 }
 
 impl ContentBuilder {
-    /// Creates a new, empty content builder.
-    ///
-    /// let mut builder = ContentBuilder::new();
+    /// Creates a new, empty content builder: let mut builder = ContentBuilder::new();
     pub fn new() -> Self {
         Self {
             buffer: String::new(),

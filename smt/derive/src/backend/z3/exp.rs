@@ -18,6 +18,7 @@ use std::collections::BTreeMap;
 /// and a mapping of variables to their SMT-LIB names.
 /// It recursively converts the expression and its components into SMT-LIB format.
 pub fn expr_to_smt(
+    func_name: String,
     exp_registry: &ExpRegistry,
     id: &ExpId,
     ir: &IRContext,
@@ -28,10 +29,20 @@ pub fn expr_to_smt(
     let ExpRegistry { vars, exps } = exp_registry;
 
     let exp = exps.get(id).expect("expression not found in registry");
-    expr_to_smt_inner(vars, exp_registry, exp, id, ir, dependencies, mapping_vars)
+    expr_to_smt_inner(
+        func_name,
+        vars,
+        exp_registry,
+        exp,
+        id,
+        ir,
+        dependencies,
+        mapping_vars,
+    )
 }
 
 pub fn expr_to_smt_inner(
+    name: String,
     vars: &BTreeMap<VarId, Variable>,
     exp_registry: &ExpRegistry,
     exp: &Expression,
@@ -41,22 +52,23 @@ pub fn expr_to_smt_inner(
     mapping_vars: &mut BTreeMap<VarId, String>,
 ) -> String {
     match exp {
-        Expression::Intrinsic(intrinsic) => {
-            intrinsics_to_smt(intrinsic, exp_registry, id, ir, dependencies, mapping_vars)
-        }
+        Expression::Intrinsic(intrinsic) => intrinsics_to_smt(
+            name.clone(),
+            intrinsic,
+            exp_registry,
+            id,
+            ir,
+            dependencies,
+            mapping_vars,
+        ),
         Expression::Var(var_id) => {
-            // if the variable is an smt variable, we return its name
-            for (varid, name) in mapping_vars.iter() {
-                if varid == var_id {
-                    return name.clone();
-                }
-            }
             // get the kind of the variable
             let varkind = vars
                 .get(var_id)
                 .expect("variable not found in registrya")
                 .kind
                 .clone();
+
             match varkind {
                 // if it is a match variable
                 VarKind::Match {
@@ -66,7 +78,14 @@ pub fn expr_to_smt_inner(
                     selector,
                 } => {
                     // get the name of the head variable
-                    let head_smt = expr_to_smt(exp_registry, &head, ir, dependencies, mapping_vars);
+                    let head_smt = expr_to_smt(
+                        name.clone(),
+                        exp_registry,
+                        &head,
+                        ir,
+                        dependencies,
+                        mapping_vars,
+                    );
                     // get the sort
                     let (sort_name, _) = ir.ty_registry.reverse_lookup(sort);
                     let sort_name = sort_name.expect("sort name not found");
@@ -82,10 +101,17 @@ pub fn expr_to_smt_inner(
                 }
                 // bound variables
                 VarKind::Bound { bind } => {
+                    // if the variable is an smt variable, we return its name
+                    for (varid, name) in mapping_vars.iter() {
+                        if varid == var_id {
+                            return name.clone();
+                        }
+                    }
                     let o = expr_to_smt_inner(
+                        name.clone(),
                         vars,
                         exp_registry,
-                        exp_registry.lookup_exp(bind),
+                        exp_registry.lookup_exp(&bind),
                         &bind,
                         ir,
                         dependencies,
@@ -95,17 +121,18 @@ pub fn expr_to_smt_inner(
                 }
                 // if Param, we return its name
                 VarKind::Param => {
-                    return vars
+                    let v = vars
                         .get(var_id)
-                        .expect("variable not found in registryD")
+                        .expect("variable not found in registry")
                         .name
                         .to_string();
+                    return format!("{}_{}", name, v);
                 }
                 // if quant
                 VarKind::Quant => {
                     let v = vars
                         .get(var_id)
-                        .expect("variable not found in registryQ")
+                        .expect("variable not found in registry")
                         .name
                         .to_string();
                     return format!("{}_{}", v, var_id);
@@ -114,7 +141,7 @@ pub fn expr_to_smt_inner(
                 VarKind::Axiom => {
                     let v = vars
                         .get(var_id)
-                        .expect("variable not found in registryE")
+                        .expect("variable not found in registry")
                         .name
                         .to_string();
                     return format!("{}_{}", v, var_id);
@@ -140,7 +167,14 @@ pub fn expr_to_smt_inner(
                 .map(|e| {
                     format!(
                         "{}",
-                        expr_to_smt(exp_registry, e, ir, dependencies, mapping_vars)
+                        expr_to_smt(
+                            name.clone(),
+                            exp_registry,
+                            e,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        )
                     )
                 })
                 .collect::<Vec<_>>();
@@ -155,7 +189,14 @@ pub fn expr_to_smt_inner(
                     .map(|e| {
                         format!(
                             "{}",
-                            expr_to_smt(exp_registry, e, ir, dependencies, mapping_vars)
+                            expr_to_smt(
+                                name.clone(),
+                                exp_registry,
+                                e,
+                                ir,
+                                dependencies,
+                                mapping_vars,
+                            )
                         )
                     })
                     .collect::<Vec<_>>();
@@ -173,7 +214,14 @@ pub fn expr_to_smt_inner(
                     .map(|(_, e)| {
                         format!(
                             "{}",
-                            expr_to_smt(exp_registry, e, ir, dependencies, mapping_vars)
+                            expr_to_smt(
+                                name.clone(),
+                                exp_registry,
+                                e,
+                                ir,
+                                dependencies,
+                                mapping_vars,
+                            )
                         )
                     })
                     .collect::<Vec<_>>();
@@ -188,21 +236,28 @@ pub fn expr_to_smt_inner(
             variant,
         } => {
             let (ty, _) = ir.ty_registry.reverse_lookup(*sort);
-            if let Some(_) = ty {
+            if let Some(type_name) = ty {
                 let constructor_name = format!("{}", branch);
                 match variant {
-                    VariantCtor::Unit => format!("{}", constructor_name),
+                    VariantCtor::Unit => format!("{}_{}", type_name, constructor_name),
                     VariantCtor::Tuple(t) => {
                         let elems = t
                             .iter()
                             .map(|e| {
                                 format!(
                                     "{}",
-                                    expr_to_smt(exp_registry, e, ir, dependencies, mapping_vars)
+                                    expr_to_smt(
+                                        name.clone(),
+                                        exp_registry,
+                                        e,
+                                        ir,
+                                        dependencies,
+                                        mapping_vars,
+                                    )
                                 )
                             })
                             .collect::<Vec<_>>();
-                        format!("({} {})", constructor_name, elems.join(" "))
+                        format!("({}_{} {})", type_name, constructor_name, elems.join(" "))
                     }
                     VariantCtor::Record(r) => {
                         let elems = r
@@ -210,11 +265,18 @@ pub fn expr_to_smt_inner(
                             .map(|(_, e)| {
                                 format!(
                                     "{}",
-                                    expr_to_smt(exp_registry, e, ir, dependencies, mapping_vars)
+                                    expr_to_smt(
+                                        name.clone(),
+                                        exp_registry,
+                                        e,
+                                        ir,
+                                        dependencies,
+                                        mapping_vars,
+                                    )
                                 )
                             })
                             .collect::<Vec<_>>();
-                        format!("({} {})", constructor_name, elems.join(" "))
+                        format!("({}_{} {})", type_name, constructor_name, elems.join(" "))
                     }
                 }
             } else {
@@ -222,13 +284,27 @@ pub fn expr_to_smt_inner(
             }
         }
         Expression::AccessSlot { base, slot } => {
-            let ty = sort_to_smt(&derive_type(exp_registry, ir, base), ir);
-            let base_smt = expr_to_smt(exp_registry, base, ir, dependencies, mapping_vars);
+            let ty = sort_to_smt(&derive_type(exp_registry, ir, base), ir, None);
+            let base_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                base,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             format!("(field_{}_{}_ {})", ty, slot + 1, base_smt)
         }
         Expression::AccessField { base, field } => {
-            let ty = sort_to_smt(&derive_type(exp_registry, ir, base), ir);
-            let base_smt = expr_to_smt(exp_registry, base, ir, dependencies, mapping_vars);
+            let ty = sort_to_smt(&derive_type(exp_registry, ir, base), ir, None);
+            let base_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                base,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             format!("(record_{}_{}_ {})", ty, field, base_smt)
         }
         Expression::Match { cases } => {
@@ -245,11 +321,12 @@ pub fn expr_to_smt_inner(
                 return format!(
                     "{}",
                     expr_to_smt(
+                        name.clone(),
                         exp_registry,
                         &fist_case.body,
                         ir,
                         dependencies,
-                        mapping_vars
+                        mapping_vars,
                     )
                 );
             }
@@ -257,10 +334,18 @@ pub fn expr_to_smt_inner(
             let x: String = if rest.len() == 1 {
                 let case = rest.first().expect("no cases in match");
                 let body = case.body;
-                let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
+                let body_smt = expr_to_smt(
+                    name.clone(),
+                    exp_registry,
+                    &body,
+                    ir,
+                    dependencies,
+                    mapping_vars,
+                );
                 format!("{}", body_smt)
             } else {
                 expr_to_smt_inner(
+                    name.clone(),
                     vars,
                     exp_registry,
                     &Expression::Match { cases: rest },
@@ -283,7 +368,14 @@ pub fn expr_to_smt_inner(
                 } = atom;
 
                 // get the condition
-                let head_smt = expr_to_smt(exp_registry, head, ir, dependencies, mapping_vars);
+                let head_smt = expr_to_smt(
+                    name.clone(),
+                    exp_registry,
+                    head,
+                    ir,
+                    dependencies,
+                    mapping_vars,
+                );
                 cond_smt.push(format!("(is-{} {})", branch, head_smt));
             }
 
@@ -296,7 +388,14 @@ pub fn expr_to_smt_inner(
 
             // get the body of the first case
             let body = fist_case.body;
-            let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                &body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             format!("(ite {} {} {})", final_condition, body_smt, x)
         }
         Expression::Phi { cases, default } => {
@@ -308,9 +407,30 @@ pub fn expr_to_smt_inner(
             // let PhiCase { cond, body } = first_case;
             let cond = first_case.cond;
             let body = first_case.body;
-            let cond_smt = expr_to_smt(exp_registry, &cond, ir, dependencies, mapping_vars);
-            let body_smt = expr_to_smt(exp_registry, &body, ir, dependencies, mapping_vars);
-            let default = expr_to_smt(exp_registry, default, ir, dependencies, mapping_vars);
+            let cond_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                &cond,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                &body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
+            let default = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                default,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             format!("(ite {} {} {})", cond_smt, body_smt, default)
         }
         Expression::Procedure { callee, args } => {
@@ -320,7 +440,14 @@ pub fn expr_to_smt_inner(
                 .map(|e| {
                     format!(
                         "{}",
-                        expr_to_smt(exp_registry, e, ir, dependencies, mapping_vars)
+                        expr_to_smt(
+                            name.clone(),
+                            exp_registry,
+                            e,
+                            ir,
+                            dependencies,
+                            mapping_vars,
+                        )
                     )
                 })
                 .collect::<Vec<_>>();
@@ -342,11 +469,18 @@ pub fn expr_to_smt_inner(
                         .name
                         .to_string();
                     let var_name = format!("{}_{}", var_name, var_id);
-                    format!("({} {})", var_name, sort_to_smt(sort, ir))
+                    format!("({} {})", var_name, sort_to_smt(sort, ir, None))
                 })
                 .collect::<Vec<_>>();
             // the condition
-            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             format!("(forall ({}) {})", vars_string.join(" "), body_smt)
         }
         Expression::Exists { vars, body } => {
@@ -361,11 +495,18 @@ pub fn expr_to_smt_inner(
                         .name
                         .to_string();
                     let var_name = format!("{}_{}", var_name, var_id);
-                    format!("({} {})", var_name, sort_to_smt(sort, ir))
+                    format!("({} {})", var_name, sort_to_smt(sort, ir, None))
                 })
                 .collect::<Vec<_>>();
             // the condition
-            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             format!("(exists ({}) {})", vars_string.join(" "), body_smt)
         }
         Expression::Choose {
@@ -383,19 +524,32 @@ pub fn expr_to_smt_inner(
                         .expect("variable not found in registry")
                         .name
                         .to_string();
-                    let var_name = format!("{}_choose_{}", var_name, var_id);
+                    let var_name = format!("{}_{}", var_name, var_id);
                     mapping_vars.insert(*var_id, var_name.clone());
-                    dependencies.push(format!(
+                    let x = format!(
                         "(declare-const {} ({}))",
                         var_name,
-                        sort_to_smt(sort, ir)
-                    ));
+                        sort_to_smt(sort, ir, None)
+                    );
+                    if !dependencies.contains(&x) {
+                        dependencies.push(x);
+                    }
                     format!("{}", var_name)
                 })
                 .collect::<Vec<_>>();
             // the condition
-            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
-            dependencies.push(format!("(assert {})", body_smt));
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
+            let x = format!("(assert {})", body_smt);
+            if !dependencies.contains(&x) {
+                dependencies.push(x);
+            }
             format!("{}", vars_string.join(" "))
         }
         Expression::IterExists { vars, body } => {
@@ -409,14 +563,20 @@ pub fn expr_to_smt_inner(
                     .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
 
                 let Variable {
-                    name,
+                    name: sym,
                     kind: _,
                     sort,
                 } = var_info.clone();
-                let var_name = name.to_string();
-                let smt_sort = sort_to_smt(&sort, ir);
-                let collection =
-                    expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
+                let var_name = sym.to_string();
+                let smt_sort = sort_to_smt(&sort, ir, None);
+                let collection = expr_to_smt(
+                    name.clone(),
+                    exp_registry,
+                    domain_exp_id,
+                    ir,
+                    dependencies,
+                    mapping_vars,
+                );
 
                 // check whether the collection is a set or a seq or a map
                 if exp_registry.exps.get(domain_exp_id).is_none() {
@@ -430,6 +590,7 @@ pub fn expr_to_smt_inner(
                         };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -443,6 +604,7 @@ pub fn expr_to_smt_inner(
                         let intrinsic = Intrinsic::SeqEmpty { t: Sort::Integer };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -458,6 +620,7 @@ pub fn expr_to_smt_inner(
                         };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -474,7 +637,14 @@ pub fn expr_to_smt_inner(
                 }
                 var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
             }
-            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             if membership.len() == 0 {
                 return format!("(exists ({}) {})", var_bindings.join(" "), body_smt);
             }
@@ -501,14 +671,20 @@ pub fn expr_to_smt_inner(
                     .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
 
                 let Variable {
-                    name,
+                    name: sym,
                     kind: _,
                     sort,
                 } = var_info.clone();
-                let var_name = name.to_string();
-                let smt_sort = sort_to_smt(&sort, ir);
-                let collection =
-                    expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
+                let var_name = sym.to_string();
+                let smt_sort = sort_to_smt(&sort, ir, None);
+                let collection = expr_to_smt(
+                    name.clone(),
+                    exp_registry,
+                    domain_exp_id,
+                    ir,
+                    dependencies,
+                    mapping_vars,
+                );
 
                 // check whether the collection is a set or a seq or a map
                 if exp_registry.exps.get(domain_exp_id).is_none() {
@@ -522,6 +698,7 @@ pub fn expr_to_smt_inner(
                         };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -535,6 +712,7 @@ pub fn expr_to_smt_inner(
                         let intrinsic = Intrinsic::SeqEmpty { t: Sort::Integer };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -550,6 +728,7 @@ pub fn expr_to_smt_inner(
                         };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -566,7 +745,14 @@ pub fn expr_to_smt_inner(
                 }
                 var_bindings.push(format!("({}_{} {})", var_name, var_id, smt_sort));
             }
-            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             if membership.len() == 0 {
                 return format!("(forall ({}) {})", var_bindings.join(" "), body_smt);
             }
@@ -597,15 +783,21 @@ pub fn expr_to_smt_inner(
                     .unwrap_or_else(|| panic!("VarId {var_id} not found in registry"));
 
                 let Variable {
-                    name,
+                    name: sym,
                     kind: _,
                     sort,
                 } = var_info.clone();
-                let var_name = name.to_string();
-                let var_name = format!("{}_choose_{}", var_name, var_id);
-                let smt_sort = sort_to_smt(&sort, ir);
-                let collection =
-                    expr_to_smt(exp_registry, domain_exp_id, ir, dependencies, mapping_vars);
+                let var_name = sym.to_string();
+                let var_name = format!("{}_{}", var_name, var_id);
+                let smt_sort = sort_to_smt(&sort, ir, None);
+                let collection = expr_to_smt(
+                    name.clone(),
+                    exp_registry,
+                    domain_exp_id,
+                    ir,
+                    dependencies,
+                    mapping_vars,
+                );
 
                 // check whether the collection is a set or a seq or a map
                 if exp_registry.exps.get(domain_exp_id).is_none() {
@@ -619,6 +811,7 @@ pub fn expr_to_smt_inner(
                         };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -632,6 +825,7 @@ pub fn expr_to_smt_inner(
                         let intrinsic = Intrinsic::SeqEmpty { t: Sort::Integer };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -647,6 +841,7 @@ pub fn expr_to_smt_inner(
                         };
                         // add the dependencies and throw away the result
                         let _s = intrinsics_to_smt(
+                            name.clone(),
                             &intrinsic,
                             exp_registry,
                             &domain_exp_id,
@@ -662,10 +857,20 @@ pub fn expr_to_smt_inner(
                     _ => panic!("domain_exp_id is not a set or a seq or a map"),
                 }
                 mapping_vars.insert(*var_id, var_name.clone());
-                dependencies.push(format!("(declare-const {} ({}))", var_name, smt_sort));
+                let x = format!("(declare-const {} ({}))", var_name, smt_sort);
+                if !dependencies.contains(&x) {
+                    dependencies.push(x);
+                }
                 var_bindings.push(format!("{}", var_name));
             }
-            let body_smt = expr_to_smt(exp_registry, body, ir, dependencies, mapping_vars);
+            let body_smt = expr_to_smt(
+                name.clone(),
+                exp_registry,
+                body,
+                ir,
+                dependencies,
+                mapping_vars,
+            );
             if membership.len() == 0 {
                 return format!("(assert {})", body_smt);
             }
@@ -674,7 +879,10 @@ pub fn expr_to_smt_inner(
             } else {
                 format!("(and {})", membership.join(" "))
             };
-            dependencies.push(format!("(assert (=> {} {}))", members, body_smt));
+            let x = format!("(assert (=> {} {}))", members, body_smt);
+            if !dependencies.contains(&x) {
+                dependencies.push(x);
+            }
             format!("{}", var_bindings.join(" "))
         }
     }

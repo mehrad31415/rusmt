@@ -10,24 +10,30 @@ use crate::IRContext;
 use core::panic;
 
 /// Converts a Rust `Sort` into the corresponding SMT-LIB sort as a `String`
-pub fn sort_to_smt(s: &Sort, ir: &IRContext) -> String {
+pub fn sort_to_smt(s: &Sort, ir: &IRContext, user_sort_name: Option<&UsrSortName>) -> String {
     match s {
         Sort::Boolean => "Bool".to_string(),
         Sort::Integer => "Int".to_string(),
         Sort::Rational => "Real".to_string(),
         Sort::Text => "String".to_string(),
-        Sort::Seq(inner) => format!("(Seq {})", sort_to_smt(inner, ir)),
-        Sort::Set(inner) => format!("(Set {})", sort_to_smt(inner, ir)),
+        Sort::Seq(inner) => format!("(Seq {})", sort_to_smt(inner, ir, user_sort_name)),
+        Sort::Set(inner) => format!("(Set {})", sort_to_smt(inner, ir, user_sort_name)),
         Sort::Map(key, value) => {
             format!(
                 "(Array {} {})",
-                sort_to_smt(key, ir),
-                sort_to_smt(value, ir)
+                sort_to_smt(key, ir, user_sort_name),
+                sort_to_smt(value, ir, user_sort_name)
             )
         }
         Sort::Error => "undefined_function".to_string(), // triggers an undefined function which leads to a crash assuming that `undefined_function` is not defined!
         Sort::User(usr_sort_id) => tyuse_in_smt(*usr_sort_id, ir),
-        Sort::Uninterpreted(name) => format!("{}", name),
+        Sort::Uninterpreted(name) => {
+            if let Some(user_sort_name) = user_sort_name {
+                format!("({}_{})", name, user_sort_name)
+            } else {
+                format!("{}", name)
+            }
+        }
     }
 }
 
@@ -37,10 +43,14 @@ pub fn sort_to_smt_name(s: &Sort, ir: &IRContext) -> String {
         Sort::Integer => "Int".to_string(),
         Sort::Rational => "Real".to_string(),
         Sort::Text => "String".to_string(),
-        Sort::Seq(inner) => format!("Seq_{}", sort_to_smt(inner, ir)),
-        Sort::Set(inner) => format!("Set_{}", sort_to_smt(inner, ir)),
+        Sort::Seq(inner) => format!("Seq_{}", sort_to_smt(inner, ir, None)),
+        Sort::Set(inner) => format!("Set_{}", sort_to_smt(inner, ir, None)),
         Sort::Map(key, value) => {
-            format!("Array_{}_{}", sort_to_smt(key, ir), sort_to_smt(value, ir))
+            format!(
+                "Array_{}_{}",
+                sort_to_smt(key, ir, None),
+                sort_to_smt(value, ir, None)
+            )
         }
         Sort::Error => "undefined_function".to_string(), // triggers an undefined function which leads to a crash assuming that `undefined_function` is not defined!
         Sort::User(usr_sort_id) => tyuse_in_smt(*usr_sort_id, ir),
@@ -50,8 +60,8 @@ pub fn sort_to_smt_name(s: &Sort, ir: &IRContext) -> String {
 
 /// Derive the type of an expression for inside quantifiers for example forall (x in xs => x > 0) the type of xs is defined by this function
 pub fn derive_type(exp_registry: &ExpRegistry, ir: &IRContext, eid: &ExpId) -> Sort {
-    let sort = match exp_registry.lookup_exp(*eid) {
-        Expression::Var(vid) => exp_registry.lookup_var(*vid).sort.clone(),
+    let sort = match exp_registry.lookup_exp(eid) {
+        Expression::Var(vid) => exp_registry.lookup_var(vid).sort.clone(),
         Expression::Pack { sort, elems: _ }
         | Expression::Tuple { sort, slots: _ }
         | Expression::Record { sort, fields: _ }

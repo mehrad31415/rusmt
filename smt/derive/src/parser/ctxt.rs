@@ -1,6 +1,5 @@
 //! Context manager for holding marked items in rust code; the main logic to parse is in this file.
 
-
 use crate::parser::apply::{ApplyDatabase, Kind};
 use crate::parser::attr::{ImplMark, Mark, SpecAxiom, SpecMark};
 use crate::parser::expr::{Expr, ExprParserRoot, Op};
@@ -168,7 +167,7 @@ impl Context {
     /// Process a single file
     fn process_file(&mut self, path: &Path) -> Result<()> {
         // if the path does not have a file extension or the file extension is not "rs", do nothing and return Ok(())
-        if path.extension().map_or(false, |ext| ext == "rs") {
+        if path.extension().is_some_and(|ext| ext == "rs") {
             let content = fs::read_to_string(path).unwrap_or_else(|err| {
                 panic!(
                     "unable to read source file {}: {}",

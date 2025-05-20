@@ -5,6 +5,14 @@ use crate::backend::error::BackendResult;
 use crate::backend::z3::common::CodeGenZ3;
 use crate::backend::z3::engine_chc::BackendZ3CHC;
 use crate::ir::ctxt::IRContext;
+use z3::Model;
+
+/// The result of the API call to Z3.
+pub enum ApiResult<'a> {
+    Sat(Model<'a>),
+    Unsat,
+    Unknown,
+}
 
 /// A generic trait for backend code generators (CodeGenZ3 implements this trait).
 pub trait CodeGen {
@@ -19,6 +27,9 @@ pub trait CodeGen {
     /// Given an IRContext, generate the backend source code.
     /// Returns a `BackendResult<String>` containing either the full source code or a BackendError::NotSupported error.
     fn process(&self, ir: &IRContext) -> BackendResult<String>;
+
+    /// Returns the result of the process using the Z3 API.
+    fn call_z3_api(&self, ir: &IRContext) -> BackendResult<ApiResult<'_>>;
 }
 
 /// A utility for source code builder

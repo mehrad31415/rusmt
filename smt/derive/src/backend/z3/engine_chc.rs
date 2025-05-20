@@ -1,14 +1,14 @@
 //! Root module for Z3 smtlib code generation.
 
-use crate::backend::codegen::{l, ContentBuilder};
+use crate::backend::codegen::{l, ApiResult, ContentBuilder};
 use crate::backend::error::BackendResult;
 use crate::backend::z3::axiom::axiom_in_smt;
 use crate::backend::z3::common::BackendZ3;
 use crate::backend::z3::fun::{fundef_in_smt, group_dependent_funcs};
 use crate::backend::z3::sort::sort_to_smt;
 use crate::backend::z3::ty::tydef_in_smt;
-use crate::ir::index::{UsrFunId, VarId};
-use crate::ir::name::UsrFunName;
+use crate::ir::index::{UsrFunId, UsrSortId, VarId};
+use crate::ir::name::{SmtSortName, UsrFunName};
 use crate::ir::sort::Sort;
 use crate::IRContext;
 use std::collections::{BTreeMap, BTreeSet};
@@ -289,5 +289,9 @@ impl BackendZ3 for BackendZ3CHC {
         l!(x, "(exit)");
         // done
         Ok(x.build())
+    }
+
+    fn call_z3_api(&self, ir: &IRContext) -> BackendResult<ApiResult<'_>> {
+        unimplemented!()
     }
 }

@@ -153,7 +153,12 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                             })
                             .collect();
 
-                        variants.push(format!("({}_{} {})", type_name, variant_name, field_defs.join(" ")));
+                        variants.push(format!(
+                            "({}_{} {})",
+                            type_name,
+                            variant_name,
+                            field_defs.join(" ")
+                        ));
                     }
                     Variant::Record(r) => {
                         if r.is_empty() {
@@ -173,7 +178,12 @@ pub fn tydef_in_smt(sid: UsrSortId, ir: &IRContext) -> String {
                             })
                             .collect();
 
-                        variants.push(format!("({}_{} {})", type_name, variant_name, field_defs.join(" ")));
+                        variants.push(format!(
+                            "({}_{} {})",
+                            type_name,
+                            variant_name,
+                            field_defs.join(" ")
+                        ));
                     }
                 }
             }

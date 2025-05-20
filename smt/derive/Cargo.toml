@@ -20,3 +20,4 @@ syn = { workspace = true }
 walkdir = { workspace = true }
 rusmart-cli = { workspace = true }
 rusmart-utils = { workspace = true }
+z3 = { workspace = true }

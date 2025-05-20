@@ -1,6 +1,6 @@
 //! This module provides a generic backend for Z3-related operations.
 
-use crate::backend::codegen::CodeGen;
+use crate::backend::codegen::{ApiResult, CodeGen};
 use crate::backend::error::BackendResult;
 use crate::ir::ctxt::IRContext;
 use lazy_static::lazy_static;
@@ -30,6 +30,9 @@ pub trait BackendZ3 {
     /// # Returns
     /// A `BackendResult` wrapping the generated code as a `String` or an error.
     fn process(&self, ir: &IRContext) -> BackendResult<String>;
+
+    /// Returns the result of the process using z3 api of rust.
+    fn call_z3_api(&self, ir: &IRContext) -> BackendResult<ApiResult<'_>>;
 }
 
 /// A wrapper for Z3 backends that implements the `CodeGen` trait.
@@ -60,5 +63,10 @@ impl<T: BackendZ3> CodeGen for CodeGenZ3<T> {
     /// A `BackendResult` wrapping the generated code as a `String` or an error.
     fn process(&self, ir: &IRContext) -> BackendResult<String> {
         self.backend.process(ir)
+    }
+
+    /// Returns the result of the process using the Z3 API of Rust.
+    fn call_z3_api(&self, ir: &IRContext) -> BackendResult<ApiResult<'_>> {
+        self.backend.call_z3_api(ir)
     }
 }

@@ -3,9 +3,9 @@ use rusmart_smt_stdlib::{exists, forall, Boolean, Integer, Text, SMT};
 
 #[smt_impl]
 fn grade_to_integer(x1: Text) -> Integer {
-    let A: Text = Text::from("A");
-    let B: Text = Text::from("B");
-    let C: Text = Text::from("C");
+    let a: Text = Text::from("A");
+    let b: Text = Text::from("B");
+    let c: Text = Text::from("C");
 
     // do not write as this because the else if will be ignored by the parser
     // if *x1.eq(A) {
@@ -17,13 +17,13 @@ fn grade_to_integer(x1: Text) -> Integer {
     // } else {
     //     Integer::from(-1)
     // }
-    if *x1.eq(A) {
+    if *x1.eq(a) {
         Integer::from(0)
     } else {
-        if *x1.eq(B) {
+        if *x1.eq(b) {
             Integer::from(1)
         } else {
-            if *x1.eq(C) {
+            if *x1.eq(c) {
                 Integer::from(2)
             } else {
                 Integer::from(-1)

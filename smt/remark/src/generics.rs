@@ -1,7 +1,5 @@
-//! This module provides a utility for parsing and manipulating generic type parameters.
-//!
+//! Utility for parsing and manipulating generic type parameters.
 //! The `TypeParamGroup` struct is used to collect and manage type parameters in generic definitions.
-//! It provides methods for parsing generics, checking for type parameter existence, and converting type parameters into syntax suitable for definition and usage.
 
 use crate::{bail_if_exists, bail_if_missing, bail_on};
 use proc_macro2::{Ident, TokenStream};
@@ -13,9 +11,6 @@ use syn::{
 };
 
 /// Represents a group of type parameters in generic definitions.
-///
-/// This struct is used to collect and manipulate type parameters
-/// when parsing and generating code for procedural macros.
 #[derive(Debug)]
 pub struct TypeParamGroup {
     /// A vector of identifiers for the type parameters.
@@ -24,19 +19,6 @@ pub struct TypeParamGroup {
 
 impl TypeParamGroup {
     /// Parses the generics from a `syn::Generics` and returns a `TypeParamGroup`.
-    ///
-    /// This function checks for correctness in the generics syntax, ensuring that:
-    /// - Angle brackets are correctly used.
-    /// - Each type parameter has ONLY a `: SMT` trait bound.
-    /// - There are no duplicate type parameters.
-    ///
-    /// # Arguments
-    ///
-    /// * `generics` - A reference to the `Generics` to parse.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a `TypeParamGroup` if successful, or a `syn::Error`.
     pub fn parse_generics(generics: &Generics) -> Result<Self> {
         // Destructure the Generics for easier access to its components
         let Generics {
@@ -49,17 +31,15 @@ impl TypeParamGroup {
         // Sanity check: Ensure that the angle brackets are used correctly
         if params.is_empty() {
             // If there are no parameters, there should be no angle brackets
-            // one cannot be only present, both need to be present for the syntax to pass the rust compiler.
-            // so theoretically bail_if_exists!(gt_token); is unreachable invocation?
             bail_if_exists!(lt_token);
-            bail_if_exists!(gt_token);
+            bail_if_exists!(gt_token); // unreachable
         } else {
             // If there are parameters, angle brackets must exist
-            bail_if_missing!(lt_token, generics, "<"); //unreachable code as the rust compiler catches it beforehand
-            bail_if_missing!(gt_token, generics, ">"); //unreachable code as the rust compiler catches it beforehand. you cannot have fn temp T:SMT (x:T) {....}
+            bail_if_missing!(lt_token, generics, "<"); // unreachable
+            bail_if_missing!(gt_token, generics, ">"); // unreachable code as the rust compiler catches it beforehand. you cannot have fn temp T:SMT (x:T) {....}
         }
 
-        // The where clause is not expected in this context; bail if it exists
+        // The where clause is not expected in this context
         bail_if_exists!(where_clause);
 
         // Collect type parameters
@@ -113,12 +93,13 @@ impl TypeParamGroup {
                                 bail_on!(modifier, "invalid modifier");
                             }
                             bail_if_exists!(lifetimes); // Lifetimes are not expected for example for<'a> Foo<&'a T> Higher ranked trait bounds are not expected
-                                                        // HRTB are the same as lifetimes but they mean that the trait is generic over all lifetimes 'a but if we wrote Foo<&'a T> it would mean that the trait is generic over a specific lifetime 'a
+
+                            // HRTB are the same as lifetimes but they mean that the trait is generic over all lifetimes 'a but if we wrote Foo<&'a T> it would mean that the trait is generic over a specific lifetime 'a
                             bail_if_exists!(leading_colon); // Leading colon is not expected for example T: ::std
 
                             // Check the path segments
                             let mut iter = segments.iter();
-                            let segment = bail_if_missing!(iter.next(), bound, "trait name"); // this will never lead to an error.
+                            let segment = bail_if_missing!(iter.next(), bound, "trait name"); // never panics!
                             bail_if_exists!(iter.next()); // Only one segment is expected and the trait name is expected to be SMT
 
                             let PathSegment { ident, arguments } = segment;
@@ -153,14 +134,6 @@ impl TypeParamGroup {
     }
 
     /// Checks if the group contains a specific type parameter.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The identifier of the type parameter to check.
-    ///
-    /// # Returns
-    ///
-    /// Returns `true` if the type parameter is in the group, `false` otherwise.
     pub fn contains(&self, name: &Ident) -> bool {
         self.params.contains(name)
     }
@@ -170,14 +143,6 @@ impl TypeParamGroup {
     /// This function recursively inspects the given type and collects any type parameters
     /// that are used as type arguments. It helps in tracking which type parameters are
     /// actually used in a type definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `ty` - The type from which to collect type arguments.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a `TypeParamGroup` of collected type arguments.
     pub fn collect_type_arguments(&self, ty: &Type) -> Result<Self> {
         let mut ty_args_set = BTreeSet::new();
         let mut ty_args_vec = vec![];
@@ -189,16 +154,7 @@ impl TypeParamGroup {
 
     /// Calculates the difference of type parameters between this group and another.
     ///
-    /// This function returns a new `TypeParamGroup` containing the type parameters
-    /// that are present in `self` but not in `other`.
-    ///
-    /// # Arguments
-    ///
-    /// * `other` - The other `TypeParamGroup` to compare against.
-    ///
-    /// # Returns
-    ///
-    /// Returns a new `TypeParamGroup` containing the difference.
+    /// This function is used when auto generating the impl block for a type,
     pub fn diff(&self, other: &Self) -> Self {
         let filtered: Vec<Ident> = self
             .params
@@ -210,10 +166,6 @@ impl TypeParamGroup {
     }
 
     /// Converts the type parameters into a syntax suitable for definition (e.g., `<T: SMT>`).
-    ///
-    /// # Returns
-    ///
-    /// Returns a `TokenStream` representing the type parameter definitions.
     /// The result of this is used after `impl`, `struct` in defnition, `enum` in definition, etc. keywords to define type parameters and trait bounds.
     pub fn to_syntax_def(&self) -> TokenStream {
         if self.params.is_empty() {
@@ -225,10 +177,6 @@ impl TypeParamGroup {
     }
 
     /// Converts the type parameters into a syntax suitable for use (e.g., `<T>`).
-    ///
-    /// # Returns
-    ///
-    /// Returns a `TokenStream` representing the type parameter usages.
     /// The result of this is used when referring to the type parameters in the code for example after the name of the struct or enum in impl block.
     pub fn to_syntax_use(&self) -> TokenStream {
         if self.params.is_empty() {
@@ -240,10 +188,6 @@ impl TypeParamGroup {
     }
 
     /// Converts the type parameters into a syntax suitable for function invocation (e.g., `::<T>`).
-    ///
-    /// # Returns
-    ///
-    /// Returns a `TokenStream` representing the type parameter invocations.
     /// The result of this is used when invoking a function with type parameters for example function_name::<T>
     pub fn to_syntax_invoke(&self) -> TokenStream {
         if self.params.is_empty() {
@@ -260,17 +204,6 @@ impl TypeParamGroup {
 /// This helper function is used to traverse a type and collect any type parameters
 /// that are used as type arguments. It updates the provided sets and vectors with
 /// the collected identifiers.
-///
-/// # Arguments
-///
-/// * `ty` - The type from which to collect arguments.
-/// * `ty_params` - The current `TypeParamGroup` of type parameters.
-/// * `ty_args` - A set to store unique type argument identifiers.
-/// * `ty_args_ordered` - A vector to maintain the order of type arguments.
-///
-/// # Returns
-///
-/// Returns `Result<()>` indicating success or a `syn::Error`.
 fn collect_type_arguments_recursive(
     ty: &Type,
     ty_params: &TypeParamGroup,
@@ -345,13 +278,11 @@ fn collect_type_arguments_recursive(
     Ok(())
 }
 
-// ----------------------------------------------------------------------------------------------- //
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use syn::punctuated::Punctuated;
-    use syn::{parse_quote, Generics, Type};
+    use syn::{Generics, Type, parse_quote};
 
     #[test]
     fn test_parse_generics_params_empty_bail() {

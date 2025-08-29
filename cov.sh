@@ -1,12 +1,10 @@
 #!/bin/bash
 
-#cleaning up the previous coverage files
-cargo clean
-
 cargo tarpaulin \
     --engine llvm \
+    --exclude "tests" \
+    --exclude "lang" \
     --workspace \
-    --exclude-files "smt/testing/*.rs" \
     --out Lcov \
     --out html \
     --output-dir target/tarpaulin \

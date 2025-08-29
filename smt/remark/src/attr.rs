@@ -2,8 +2,8 @@
 //!
 //! This module provides the `parse_dict` function to parse key-value mappings from a token stream.
 //! The `parse_dict` function is used inside the `derive_for_func` of the `func` module.
-//! The `derive_for_func` function is used inside the `derive_for_impl` and `derive_for_spec` functions of the `func` module.
-//! The `derive_for_impl` and `derive_for_spec` functions are used inside the `smt_impl` and `smt_spec` procedural macros of the `lib` module.
+//! The `derive_for_func` function is used inside the `derive_for_impl` and `derive_for_spec` and `derive_for_axiom` functions of the `func` module.
+//! The `derive_for_impl` and `derive_for_spec` and `derive_for_axiom` functions are used inside the `smt_impl` and `smt_spec` and `smt_axiom` procedural macros of the `lib` module.
 //!
 //! Use cases of the `parse_dict` function include parsing attributes and annotations in Rust macros. for example:
 //!
@@ -22,73 +22,45 @@ use syn::Result;
 ///
 /// This enum is used to store the value associated with a key when parsing
 /// a token stream.
-///
-/// The `MetaValue::One` variant is used to store a single identifier value.
-/// The `MetaValue::Set` variant is used to store a set of identifier values.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum MetaValue {
     /// A single identifier value.
     One(Ident),
     /// A set of identifier values.
     Set(BTreeSet<Ident>),
-    /// A set of impl-spec pairs
-    Map(Vec<(Ident, Ident)>),
 }
 
 /// Parses a key-value mapping from a token stream.
-///
-/// This function takes a `TokenStream` and attempts to parse it into a
-/// `BTreeMap<String, MetaValue>`. The expected format is a series of
-/// key-value pairs, where keys are identifiers and values are either
-/// identifiers or lists of identifiers enclosed in square brackets.
-/// Key-value pairs are separated by commas.
-///
-/// # Arguments
-///
-/// * `stream` - A reference to a `TokenStream` containing the key-value pairs.
-///
-/// # Returns
-///
-/// * `Result<BTreeMap<String, MetaValue>>` - A map of keys to values, or an error if parsing fails.
-///
-/// # Errors
-///
-/// This function will return an error if:
-/// - A key or value is missing.
-/// - A key or item is duplicated.
-/// - The syntax does not match the expected format.
 pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
-    let mut store: BTreeMap<String, MetaValue> = BTreeMap::new(); // Stores the parsed key-value pairs
-    let mut iter = stream.clone().into_iter(); // Creates an iterator over the token stream
+    let mut store: BTreeMap<String, MetaValue> = BTreeMap::new();
+    let mut iter = stream.clone().into_iter();
 
     // this will be a None value if the stream is empty
     let mut cursor = iter.next(); // Current token
 
     while cursor.is_some() {
         // Extract key
-        let token = bail_if_missing!(cursor.as_ref(), stream, "key"); // this will never lead to a compile error because cursor is checked to be Some at the beginning of the loop.
+        let token = bail_if_missing!(cursor.as_ref(), stream, "key"); // never panics!
 
         // Extract the key as an identifier
         // A key must be an identifier for example in #[my_attr(key = value)]
         // #[my_attr(1 = value)] leads to an error
         let key = match token {
             TokenTree::Ident(ident) => ident.to_string(),
-            _ => bail_on!(token, "key not an identifier"), // return an error if the token is not an identifier
+            _ => bail_on!(token, "key not an identifier"),
         };
         // Check for duplicated keys and return an error if found
-        // for example #[my_attr(key1 = value1, key1 = value2)] leads to an error
+        // #[my_attr(key1 = value1, key1 = value2)] leads to an error
         if store.contains_key(&key) {
             bail_on!(token, "duplicated key");
         }
 
         // Extract equal sign (the format is key = value)
-        // if the next token is empty (None), it will be caught in the next iteration
-        // the error message will be "expect =" for the stream.
         let token = bail_if_missing!(iter.next(), stream, "=");
         // Check if the token is an equal sign
         match &token {
             TokenTree::Punct(punct) if punct.as_char() == '=' => (),
-            _ => bail_on!(token, "expect ="), // return an error if the token is not an equal sign
+            _ => bail_on!(token, "expect ="),
         }
 
         // Extract value (the format is key = value)
@@ -102,8 +74,8 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
             TokenTree::Group(group) if matches!(group.delimiter(), Delimiter::Bracket) => {
                 let mut set = BTreeSet::new(); // Stores the set of identifiers
 
-                let sub = group.stream(); // creates a TokenStream
-                let mut sub_iter = sub.into_iter(); // Iterator over the sub-stream
+                let sub = group.stream();
+                let mut sub_iter = sub.into_iter();
 
                 // sub_cursor will be a None value if we have #[my_attr(key = [])]
                 let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
@@ -113,8 +85,8 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
                 }
 
                 while sub_cursor.is_some() {
-                    // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
-                    let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
+                    // Extract the item.
+                    let token = bail_if_missing!(sub_cursor.as_ref(), group, "item"); // never panics!
                     // Extract the item as an identifier.
                     let item = match token {
                         TokenTree::Ident(ident) => ident.clone(),
@@ -138,87 +110,7 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
                         bail_on!(sub_cursor, "expect comma between items");
                     }
                 }
-
                 MetaValue::Set(set)
-            }
-            // Set of identifiers enclosed in braces key = {value1, value2} where each value_i is a tuple
-            TokenTree::Group(group) if matches!(group.delimiter(), Delimiter::Brace) => {
-                let mut map = Vec::new();
-
-                let sub = group.stream(); // creates a TokenStream
-                let mut sub_iter = sub.into_iter(); // Iterator over the sub-stream
-
-                // sub_cursor will be a None value if we have #[my_attr(key = {})]
-                let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
-
-                if sub_cursor.is_none() {
-                    bail_on!(group, "expect at least one item in set");
-                }
-
-                while sub_cursor.is_some() {
-                    // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
-                    let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
-                    // Extract the item as an identifier.
-                    let item: (Ident, Ident) = match token {
-                        TokenTree::Group(inner_group)
-                            if matches!(inner_group.delimiter(), Delimiter::Parenthesis) =>
-                        {
-                            let inner_sub = inner_group.stream(); // creates a TokenStream
-                            let mut inner_sub_iter = inner_sub.into_iter(); // Iterator over the sub-stream
-
-                            let mut inner_sub_cursor = inner_sub_iter.next();
-                            if inner_sub_cursor.is_none() {
-                                bail_on!(group, "expect a tuple");
-                            }
-
-                            let impl_token = bail_if_missing!(inner_sub_cursor, group, "item");
-
-                            let impl_key = match impl_token {
-                                TokenTree::Ident(ident) => ident,
-                                _ => bail_on!(token, "impl not an identifier"), // return an error if the token is not an identifier
-                            };
-
-                            inner_sub_cursor = inner_sub_iter.next();
-                            if matches!(inner_sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
-                            {
-                                inner_sub_cursor = inner_sub_iter.next();
-                            } else {
-                                // Return an error if a comma is missing between items
-                                bail_on!(inner_sub_cursor, "expect comma between items");
-                            }
-
-                            let spec_token =
-                                bail_if_missing!(inner_sub_cursor.as_ref(), inner_group, "item");
-
-                            let spec_key = match spec_token {
-                                TokenTree::Ident(ident) => ident,
-                                _ => bail_on!(token, "spec not an identifier"), // return an error if the token is not an identifier
-                            };
-                            (impl_key.clone(), spec_key.clone())
-                        }
-                        _ => bail_on!(token, "item not a tuple of identifiers"), // return an error if the token is not a tuple of identifiers
-                    };
-
-                    // Check for duplicated items and return an error if found
-                    // for example #[my_attr(key = {(value1, value2), (value1, value2)})] leads to an error
-                    if map.contains(&item) {
-                        bail_on!(group, "duplicated item");
-                    }
-
-                    map.push(item.clone());
-
-                    // Advance the cursor
-                    sub_cursor = sub_iter.next();
-                    // Skip commas between items
-                    if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
-                    {
-                        sub_cursor = sub_iter.next();
-                    } else if sub_cursor.is_some() {
-                        // Return an error if a comma is missing between items
-                        bail_on!(sub_cursor, "expect comma between items");
-                    }
-                }
-                MetaValue::Map(map)
             }
             _ => bail_on!(
                 token,
@@ -241,7 +133,6 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
         }
     }
 
-    // if the stream is empty, return an empty store map
     Ok(store)
 }
 
@@ -433,7 +324,10 @@ mod tests {
         assert!(result.is_err());
 
         let result = result.unwrap_err().to_string();
-        assert_eq!(result, "expect value as identifier or set of identifiers or a set of tuples");
+        assert_eq!(
+            result,
+            "expect value as identifier or set of identifiers or a set of tuples"
+        );
     }
 
     #[test]

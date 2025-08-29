@@ -1,0 +1,2 @@
+[env]
+CMAKE = "/opt/homebrew/bin/cmake"

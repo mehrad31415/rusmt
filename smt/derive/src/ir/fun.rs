@@ -6,9 +6,7 @@ use crate::ir::sort::Sort;
 use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
-use proc_macro2::Span;
 use std::collections::BTreeMap;
-use syn::Ident;
 
 /// A function signature in the IR.
 ///
@@ -69,34 +67,12 @@ impl FunRegistry {
     }
 
     /// Returns the unique function ID associated with a given function name and list of parameter types.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The user function name.
-    /// * `inst` - A slice of sorts representing the type instantiation.
-    ///
-    /// # Returns
-    ///
-    /// * `Some(UsrFunId)` if the function instance exists.
-    /// * `None` otherwise.
     fn get_index(&self, name: &UsrFunName, inst: &[Sort]) -> Option<UsrFunId> {
         self.lookup.get(name)?.get(inst).copied() // return a copy of the value UsrFunId
     }
 
     /// Creates a new function instance entry in the registry.
-    ///
-    /// # Panics
-    ///
     /// Panics if the function instance (i.e. same name and parameters) is already registered.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The user function name.
-    /// * `inst` - The type instantiation (as a vector of sorts) for the function.
-    ///
-    /// # Returns
-    ///
-    /// * A newly created unique `UsrFunId` for the created function instance.
     fn create(&mut self, name: UsrFunName, inst: Vec<Sort>) -> UsrFunId {
         // the new index is the sum of all the lengths of the values in the lookup table.
         // So if we had 15 functions already defined it will be 16.
@@ -112,15 +88,6 @@ impl FunRegistry {
     }
 
     /// Registers a function signature for a given function ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a signature for the function ID is already registered.
-    ///
-    /// # Arguments
-    ///
-    /// * `idx` - The unique function ID.
-    /// * `sig` - The function signature to register.
     fn register_sig(&mut self, idx: UsrFunId, sig: FunSig) {
         let existing = self.sigs.insert(idx, sig);
         if existing.is_some() {
@@ -129,18 +96,6 @@ impl FunRegistry {
     }
 
     /// Retrieves the function signature associated with a given function ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no signature is found for the provided function ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `idx` - The unique function ID.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the corresponding `FunSig`.
     pub fn retrieve_sig(&self, idx: UsrFunId) -> &FunSig {
         self.sigs
             .get(&idx)
@@ -148,15 +103,6 @@ impl FunRegistry {
     }
 
     /// Registers a function definition for a given function ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a definition for the function ID is already registered.
-    ///
-    /// # Arguments
-    ///
-    /// * `idx` - The unique function ID.
-    /// * `def` - The function definition to register.
     fn register_def(&mut self, idx: UsrFunId, def: FunDef) {
         let existing = self.defs.insert(idx, def);
         if existing.is_some() {
@@ -165,60 +111,22 @@ impl FunRegistry {
     }
 
     /// Retrieves the function definition associated with a given function ID.
-    ///
-    /// # Panics
-    ///
-    /// Panics if no definition is found for the provided function ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `idx` - The unique function ID.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the corresponding `FunDef`.
     pub fn retrieve_def(&self, idx: UsrFunId) -> &FunDef {
         self.defs
             .get(&idx)
             .expect("no such function id in retrieve_def")
     }
 
-    pub fn get_name(&self, idx: &UsrFunId) -> UsrFunName {
-        for (name, inst) in self.lookup.iter() {
-            for (_, id) in inst.iter() {
-                if id == idx {
-                    return name.clone();
-                }
-            }
-        }
-        panic!("no such function id in get_name")
-    }
-
-    /// Retrieve the ID of the specification function.
-    pub fn get_spec_id(&self, spec_name: &str) -> &UsrFunId {
-        let spec_name = Ident::new(spec_name, Span::call_site());
+    /// Returns a reference to the lookup table for a given function.
+    pub fn get_lookup(&self, name: &UsrFuncName) -> &BTreeMap<Vec<Sort>, UsrFunId> {
         self.lookup
-            .get(&UsrFunName::from(
-                UsrFuncName::try_from(&spec_name).expect("spec name invalid"),
-            ))
+            .get(&UsrFunName::from(name))
             .expect("Function not found")
-            .first_key_value()
-            .expect("Function not found")
-            .1
     }
 }
 
 impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// Registers a function with the IR and returns its unique function ID.
-    ///
-    /// # Arguments
-    ///
-    /// * `fn_name` - The user-defined function name.
-    /// * `ty_args` - A slice of type references corresponding to the generic type arguments. Basically just stored the type parameters of the function as TypeRef::Parameter(TypeParamName { name: "T" })
-    ///
-    /// # Returns
-    ///
-    /// The unique function ID (`UsrFunId`) for the registered function.
     /// This is called for the specification, implementation, and any function calls in the body of the implementation or specification.
     pub fn register_func(&mut self, fn_name: &UsrFuncName, ty_args: &[TypeRef]) -> UsrFunId {
         // Convert the parser-level function name into its IR-level UsrFunName (UsrFunName is the IR of UsrFuncName)

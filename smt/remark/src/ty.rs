@@ -1,27 +1,14 @@
+//! Handling Annotation for Types
+
 use crate::generics::TypeParamGroup;
-use crate::{bail_if_exists, bail_if_missing, bail_on}; // import the error macros from the crate
+use crate::{bail_if_exists, bail_if_missing, bail_on};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    parse_quote, Field, FieldMutability, Fields, Index, Item, ItemEnum, ItemStruct, Result, Variant,
+    Field, FieldMutability, Fields, Index, Item, ItemEnum, ItemStruct, Result, Variant, parse_quote,
 };
 
 /// Derives the `SMT` trait implementation for a struct.
-///
-/// This function takes a mutable reference to an `ItemStruct` and returns a `TokenStream` containing
-/// the generated implementation code.
-///
-/// # Arguments
-///
-/// * `item` - A mutable reference to the struct item to derive the trait for.
-///
-/// # Returns
-///
-/// * `Result<TokenStream>` - The generated code as a token stream, or an error.
-///
-/// # Errors
-///
-/// Returns an error if the struct has unit fields or unexpected field mutability.
 fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
     // #[derive(Debug)]
     // struct MyStruct<T> {
@@ -47,8 +34,9 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 
     // Add derive attributes to the struct such as `Debug`, `Clone`, `Copy`, `Default`, and `Hash`.
     // every SMT type is copyable (as there are no references in the SMT types). If a type implements Copy, it must also implement Clone.
-    // Implementing Debug is for testing purposes. Ord is not implemented as the SMT trait has a cmp method. Default is implemented for the default method in the expression macros. The Hash trait is implemented for storing in BTreeMaps in the SMT.
-    // Note that `Default` can be derived automatically for structs.
+    // Implementing Debug is for testing purposes. Ord is not implemented as the SMT trait has a cmp method.
+    // Default is implemented for the default method in the expression macros. Note that `Default` can be derived automatically for structs.
+    // The Hash trait is implemented for storing in BTreeMaps in the SMT.
     // all types in SMT must derive the following traits: Debug, Clone, Copy, Default, and Hash. (also Send and Sync)
     attrs.push(parse_quote!(
         #[derive(Debug, Clone, Copy, Default, Hash)]
@@ -56,12 +44,10 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 
     // Generate the `SMT::_cmp` function implementation based on the struct fields.
     let cmp_fn = match fields {
-        // Unit structs are not supported.
-        // struct MyUnitStruct; // Unit struct example
+        // Unit structs (struct MyUnitStruct;) are not supported.
         Fields::Unit => bail_on!(item, "unexpected unit fields in struct"),
 
-        // Tuple structs (unnamed fields).
-        // struct MyTupleStruct(i32, String); // Tuple struct example
+        // Tuple structs (unnamed fields) - struct MyTupleStruct(i32, String);
         Fields::Unnamed(defs) => {
             let mut cmp_exprs = vec![];
             for (i, field) in defs.unnamed.iter().enumerate() {
@@ -186,18 +172,6 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 }
 
 /// Derives the `SMT` trait implementation for an enum.
-///
-/// # Arguments
-///
-/// * `item` - A mutable reference to the enum item to derive the trait for.
-///
-/// # Returns
-///
-/// * `Result<TokenStream>` - The generated code as a token stream, or an error.
-///
-/// # Errors
-///
-/// Returns an error if the enum variants have discriminants or unexpected field mutability.
 fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
     // #[derive(Debug)]
     // enum MyEnum<T> {
@@ -463,21 +437,6 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
 }
 
 /// Derives the `SMT` trait implementation for a type (struct or enum).
-///
-/// This function is the entry point for the procedural macro and handles both structs and enums.
-///
-/// # Arguments
-///
-/// * `attr` - The attribute token stream (should be empty).
-/// * `item` - The token stream of the item to derive the trait for.
-///
-/// # Returns
-///
-/// * `Result<TokenStream>` - The combined original item and generated code as a token stream, or an error.
-///
-/// # Errors
-///
-/// Returns an error if the input is not a struct or enum, or if unexpected attributes are provided.
 pub fn derive_for_type(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     // Check that no attributes are provided.
     if !attr.is_empty() {
@@ -485,7 +444,6 @@ pub fn derive_for_type(attr: TokenStream, item: TokenStream) -> Result<TokenStre
     }
 
     // Parse the input item.
-    // let mut original = syn::parse::<Item>(Syntax::from(item))?; cannot test becase: procedural macro API is used outside of a procedural macro. This is revolved by using the proc-macro crate.
     let mut original = syn::parse2::<Item>(item)?;
     let extended = match &mut original {
         Item::Struct(item_struct) => derive_for_struct(item_struct)?,
@@ -501,13 +459,11 @@ pub fn derive_for_type(attr: TokenStream, item: TokenStream) -> Result<TokenStre
     Ok(combined)
 }
 
-// ------------------------------------------------------------------------------------------------//
-
 // Unit tests for the derive functions.
 #[cfg(test)]
 mod tests {
     use super::*;
-    use syn::{parse_quote, ItemEnum, ItemStruct};
+    use syn::{ItemEnum, ItemStruct, parse_quote};
 
     #[test]
     // Fields::Unit => bail_on!(item, "unexpected unit fields in struct"),
@@ -537,7 +493,10 @@ mod tests {
         assert!(res.is_ok());
         let tokens = res.unwrap();
         let generated_code = tokens.to_string();
-        assert_eq!(generated_code, "impl SMT for MyStruct { fn _cmp (self , rhs : Self) -> std :: cmp :: Ordering { match self . 0 . _cmp (rhs . 0) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; match self . 1 . _cmp (rhs . 1) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; std :: cmp :: Ordering :: Equal } }");
+        assert_eq!(
+            generated_code,
+            "impl SMT for MyStruct { fn _cmp (self , rhs : Self) -> std :: cmp :: Ordering { match self . 0 . _cmp (rhs . 0) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; match self . 1 . _cmp (rhs . 1) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; std :: cmp :: Ordering :: Equal } }"
+        );
     }
 
     // invoke let ty_params = TypeParamGroup::parse_generics(generics)?;
@@ -568,7 +527,10 @@ mod tests {
         assert!(res.is_ok());
         let tokens = res.unwrap();
         let generated_code = tokens.to_string();
-        assert_eq!(generated_code, "impl SMT for MyStruct { fn _cmp (self , rhs : Self) -> std :: cmp :: Ordering { match self . a . _cmp (rhs . a) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; match self . b . _cmp (rhs . b) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; std :: cmp :: Ordering :: Equal } }");
+        assert_eq!(
+            generated_code,
+            "impl SMT for MyStruct { fn _cmp (self , rhs : Self) -> std :: cmp :: Ordering { match self . a . _cmp (rhs . a) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; match self . b . _cmp (rhs . b) { std :: cmp :: Ordering :: Less => return std :: cmp :: Ordering :: Less , std :: cmp :: Ordering :: Equal => () , std :: cmp :: Ordering :: Greater => return std :: cmp :: Ordering :: Greater , } ; std :: cmp :: Ordering :: Equal } }"
+        );
     }
 
     #[test]
@@ -685,7 +647,7 @@ mod tests {
         assert!(res.is_ok());
         let tokens = res.unwrap();
         let generated_code = tokens.to_string();
-        dbg!(&generated_code);
+        // dbg!(&generated_code);
         // generated code should contain the following:
         // impl Default for TestEnum {
         //     fn default() -> Self {
@@ -769,7 +731,6 @@ mod tests {
     // if !attr.is_empty() {
     //     bail_on!(attr, "unexpected attributes provided");
     // }
-    // cannot test becase: procedural macro API is used outside of a procedural macro
     fn test_derive_for_type_attr() {
         let attr: TokenStream = parse_quote! { #[derive(Debug)] };
         let item: TokenStream = parse_quote! { struct MyStruct; };
@@ -795,7 +756,6 @@ mod tests {
 
     #[test]
     // t => bail_on!(t, "expect a type definition (i.e., struct or enum)") // smt_type only supports struct and enum
-    // cannot test becase: procedural macro API is used outside of a procedural macro
     fn test_derive_for_type_struct_or_enum() {
         let attr: TokenStream = parse_quote! {};
         let item: TokenStream = parse_quote! {
@@ -813,7 +773,6 @@ mod tests {
 
     #[test]
     // Item::Enum(item_enum) => derive_for_enum(item_enum)?,
-    // cannot test becase: procedural macro API is used outside of a procedural macro
     fn test_derive_for_type_enum() {
         let attr: TokenStream = parse_quote! {};
         let item: TokenStream = parse_quote! {
@@ -832,7 +791,6 @@ mod tests {
 
     #[test]
     // Item::Struct(item_struct) => derive_for_struct(item_struct)?,
-    // cannot test becase: procedural macro API is used outside of a procedural macro
     fn test_derive_for_type_struct() {
         let attr: TokenStream = parse_quote! {};
         let item: TokenStream = parse_quote! {

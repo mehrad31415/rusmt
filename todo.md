@@ -34,9 +34,52 @@
 - Remarks:
     - "AE" is in between "A" and "C" in the z3 str encoding.
     - The lengths are not defined in a good way!
-    - 
+    - create a docker image for the project.
+    - write documentation for the z3 api rust.
+    - write workflows yml for the project.
+    - check whether monomorphization happens in the parser or in the backend.
 
-- Plan:
-    - First look at the update made by professor meng xu (included the changes made in the last commit).
-    - Second look at the changes made over the last few weeks!
-    - 
+
+1 - being intrinsic for a TypeParamName in name.rs is not checked for types in the context? it can be checked here 
+    let param_name = ident.try_into()?;
+    if generics.params.contains(&param_name) {
+    Self::Param(param_name) in ty.rs and in generics.rs in the validate_type_param_decl method. The latter is for checking the intrinsic of top level types in the context. and the former is for checking the intrinsic of embedded types in the context.
+2 -  db.builtin("contains_key", Q::Map, fn2(map_kv(), k(), Boolean)); // `contains_key` is a function that checks if a map contains a key. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Map(Box(Parameter(TypeParamName { ident: String::from("K") }), Box(Parameter(TypeParamName { ident: String::from("V") })), Parameter(TypeParamName { ident: String::from("K") })], ret_ty: Boolean, } so the parameters are a map of type K to type V, a key of type K and the return type is a Boolean.
+shoudn't the generics be not empty in the above example? in apply.rs
+3 - in apply.rs         let fn0 = |rty: TypeTag| TypeFn {
+            kind: Kind::Impl,
+            generics: empty(),
+            params: vec![],
+            ret_ty: rty,
+        };
+depending on the TypeTag the generics should be populated? in the above example, the generics are empty only...
+Maybe for system you use the intrinsic         let t = || Parameter(TypeParamName::intrinsic("T")); // gives a Parameter(TypeParamName { ident: String::from("T") }) when called. That is why the generics are empty? so intrinsic types don't count as generics?
+4 - Theoretically this is wrong: db.builtin("new", Q::Seq, fn0(seq_t()));  and then having generics empty in apply.rs
+
+
+Make all of the function return ok than panic!
+checkout functional calls and vars in string comparison
+
+
+
+are they? the transpilers are still limiting factors to the adoption of formal verification. 
+
+*Related work: ZEN work, K framework, Conformance Testing of Formal Semantics Using Grammar-Based Fuzzing (TAP 2022)*
+
+
+do the clappy rego part for the lang!
+
+check tarpaulin
+
+cpu cores from initialize
+
+
+
+
+
+
+
+-------------------------------
+1 - finish off writing the book 
+2 - write new brief report and rusmart programs for documents
+3 - 

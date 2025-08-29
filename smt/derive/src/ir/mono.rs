@@ -44,7 +44,7 @@ fn self_interference(
                     _ => panic!("type parameter must be either assigned or variadic"),
                 };
                 let tp_name = match base_lhs.reverse(&var).or_else(|| base_rhs.reverse(&var)) {
-                    None => panic!("unable to find the origin of type var {}", var),
+                    None => panic!("unable to find the origin of type var {var}"),
                     Some((n, _)) => n.clone(),
                 };
                 PartialInst::Unassigned(tp_name)

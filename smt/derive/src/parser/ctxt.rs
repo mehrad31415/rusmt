@@ -1,7 +1,7 @@
 //! Context manager for holding marked items in rust code; the main logic to parse is in this file.
 
 use crate::parser::apply::{ApplyDatabase, Kind};
-use crate::parser::attr::{ImplMark, Mark, SpecAxiom, SpecMark};
+use crate::parser::attr::{ImplMark, Mark, SpecMark};
 use crate::parser::expr::{Expr, ExprParserRoot, Op};
 use crate::parser::func::{Axiom, FuncDef, FuncSig, ImplFuncDef, SpecFuncDef};
 use crate::parser::generics::{Generics, GenericsInstPartial, Monomorphization, PartialInst};
@@ -12,21 +12,20 @@ use crate::{bail_if_exists, bail_on, bail_on_with_note};
 use core::panic;
 use log::trace;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter}; // for implementing the Display trait on `Refinement` and `NamedItem` enums
-use std::fs; // for filesystem operations; for reading a single file in process_file(&mut self, path: &Path) -> Result<()> method
-use std::path::Path; // for path handling
-use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemMod, ItemStruct, Result, Stmt}; // Import syn crate types for parsing Rust code
-use walkdir::WalkDir; // For walking through directories recursively (in  Context::new<P: AsRef<Path>>(path_input: P) -> Result<Self>)
+use std::fmt::{Display, Formatter};
+use std::fs;
+use std::path::Path;
+use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemMod, ItemStruct, Result, Stmt};
+use walkdir::WalkDir;
 
 #[derive(Debug)]
 /// SMT-marked type
 pub enum MarkedType {
-    Enum(ItemEnum),     // a wrapper for the syn enum type
-    Struct(ItemStruct), // a wrapper for the syn struct type
+    Enum(ItemEnum),
+    Struct(ItemStruct),
 }
 
 impl MarkedType {
-    /// Retrieve the name of the marked type
     pub fn name(&self) -> &Ident {
         match self {
             Self::Enum(item) => &item.ident,
@@ -45,7 +44,6 @@ pub struct MarkedImpl {
 }
 
 impl MarkedImpl {
-    /// Retrieve the name of the function marked as impl
     pub fn name(&self) -> &Ident {
         &self.item.sig.ident
     }
@@ -61,7 +59,6 @@ pub struct MarkedSpec {
 }
 
 impl MarkedSpec {
-    /// Retrieve the name of the function marked as spec
     pub fn name(&self) -> &Ident {
         &self.item.sig.ident
     }
@@ -69,14 +66,12 @@ impl MarkedSpec {
 
 #[derive(Debug, Clone)]
 /// SMT-marked const as axiom
-/// #[smt_axiom(relations = {(impl1, spec1), (impl2, spec2)})]
+/// #[smt_axiom]
 pub struct MarkedAxiom {
-    item: ItemFn,    // the function that is marked as smt_axiom
-    mark: SpecAxiom, // the mark that is associated with the function
+    item: ItemFn, // the function that is marked as smt_axiom
 }
 
 impl MarkedAxiom {
-    /// Retrieve the name of the function marked as axiom
     pub fn name(&self) -> &Ident {
         &self.item.sig.ident
     }
@@ -223,9 +218,7 @@ impl Context {
                     None => continue, // the function is not marked with any smt-related attributes
                     Some(Mark::Impl(mark)) => self.add_impl(MarkedImpl { item: syntax, mark })?,
                     Some(Mark::Spec(mark)) => self.add_spec(MarkedSpec { item: syntax, mark })?,
-                    Some(Mark::Axiom(mark)) => {
-                        self.add_axiom(MarkedAxiom { item: syntax, mark })?
-                    }
+                    Some(Mark::Axiom) => self.add_axiom(MarkedAxiom { item: syntax })?,
                     _ => bail_on!(
                         syntax,
                         "invalid annotation\n#[smt_type] is not allowed for fn"
@@ -271,7 +264,7 @@ impl Context {
                 "duplicated type name"
             );
         }
-        trace!("type found: {}", name);
+        trace!("type found: {name}");
         self.types.insert(name, item);
         Ok(())
     }
@@ -290,7 +283,7 @@ impl Context {
                 "duplicated impl name"
             );
         }
-        trace!("impl found: {}", name);
+        trace!("impl found: {name}");
         self.impls.insert(name, item.clone());
         Ok(())
     }
@@ -309,7 +302,7 @@ impl Context {
                 "duplicated spec name"
             );
         }
-        trace!("spec found: {}", name);
+        trace!("spec found: {name}");
         self.specs.insert(name, item);
         Ok(())
     }
@@ -328,7 +321,7 @@ impl Context {
                 "duplicated axiom name"
             );
         }
-        trace!("axiom found: {}", name);
+        trace!("axiom found: {name}");
         self.axioms.insert(name, item);
         Ok(())
     }
@@ -338,12 +331,8 @@ impl Context {
     /// In other words, avoid naming conflict between different smt-related items.
     /// It also checks if the impl and spec pairs are valid, meaning that every spec target used inside an impl needs to be defined, and every impl target used inside a spec needs to be defined.
     pub fn sanity_check(&self) -> Result<()> {
-        // create a map to store the names of types, impls, specs, and axioms
         let mut names = BTreeMap::new();
 
-        // k.as_ref() & v.name() both return the name of the type, impl, spec, or axiom
-        // The names are stored in the value as well so that they can be used to display the error message and the span location of the error
-        // NamedItem::Type, NamedItem::Impl, NamedItem::Spec, NamedItem::Axiom are used to identify the type of the item where the name conflict occurs. They are defined because BTreeMap is homogeneous.
         for (key, (kind, ident)) in self
             .types
             .iter()
@@ -396,28 +385,10 @@ impl Context {
                 }
             }
         }
-        // in the axiom relations, the impls and specs must be defined
-        for marked in self.axioms.values() {
-            let MarkedAxiom { item, mark } = marked;
-            for refine in &mark.relations {
-                let Refinement {
-                    fn_impl: impl_name,
-                    fn_spec: spec_name,
-                } = refine;
-                if !self.impls.contains_key(impl_name) {
-                    bail_on!(item, "invalid impl target: {}", impl_name);
-                }
-                if !self.specs.contains_key(spec_name) {
-                    bail_on!(item, "invalid spec target: {}", spec_name);
-                }
-            }
-        }
         Ok(())
     }
 
     /// Parse the generics declarations
-    /// The only difference between Context and ContextWithGenerics is that ContextWithGenerics is the types field in the struct.
-    /// In ContextWithGenerics, the list of the generics are stored as well.
     pub fn parse_generics(self) -> Result<ContextWithGenerics> {
         let mut types = BTreeMap::new();
         for (name, marked) in self.types {
@@ -472,14 +443,14 @@ impl ContextWithGenerics {
 
         // iterate over the types
         for (name, (generics, marked)) in &self.types {
-            trace!("handling type: {}", name);
+            trace!("handling type: {name}");
             // from_marked tries to convert the MarkedType into TypeBody
             let body = TypeBody::from_marked(&self, generics, marked)?;
             let def = TypeDef {
                 head: generics.clone(),
                 body,
             };
-            trace!("type analyzed: {}", name);
+            trace!("type analyzed: {name}");
             new_types.insert(name.clone(), def);
         }
 
@@ -516,8 +487,7 @@ pub struct ContextWithType {
 }
 
 impl ContextWithType {
-    /// Get the generics declaration for a type
-    /// used for finding if a user defined type exists in the context
+    /// Get the generics declaration for a type - used for finding if a user defined type exists in the context
     /// If return value is None, then the type does not exist in the context
     pub fn get_type_generics(&self, name: &UsrTypeName) -> Option<&Generics> {
         self.types.get(name).map(|def: &TypeDef| &def.head)
@@ -545,10 +515,10 @@ impl ContextWithType {
                 block: _, // handled later
             } = &marked.item; // function item
 
-            trace!("handling impl sig: {}", name);
+            trace!("handling impl sig: {name}");
             // convert the function signature into a FuncSig struct (abstract syntax tree for function signatures)
             let parsed = FuncSig::from_sig(&self, sig)?;
-            trace!("impl sig analyzed: {}", name);
+            trace!("impl sig analyzed: {name}");
             // we pass on the sig to bail_on the signature in case they are not compatible in spec and impl
             sig_impls.insert(name.clone(), (parsed, sig.clone()));
         }
@@ -563,17 +533,16 @@ impl ContextWithType {
                 block: _, // handled later
             } = &marked.item; // function item
 
-            trace!("handling spec sig: {}", name);
+            trace!("handling spec sig: {name}");
             // convert the function signature into a FuncSig struct (abstract syntax tree for function signatures)
             let parsed = FuncSig::from_sig(&self, sig)?;
-            trace!("spec sig analyzed: {}", name);
+            trace!("spec sig analyzed: {name}");
             // we pass on the sig to bail_on the signature in case they are not compatible in spec and impl
             sig_specs.insert(name.clone(), (parsed, sig.clone()));
         }
 
         // axiom (extracting the function signature and body)
         let mut unpacked_axioms: BTreeMap<AxiomName, (FuncSig, Vec<Stmt>)> = BTreeMap::new();
-        let mut probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>> = BTreeMap::new();
         for (name, marked) in &self.axioms {
             let ItemFn {
                 attrs: _,
@@ -582,7 +551,7 @@ impl ContextWithType {
                 block, // handled later
             } = &marked.item;
 
-            trace!("handling axiom sig: {}", name);
+            trace!("handling axiom sig: {name}");
 
             // convert the function signature into a FuncSig struct (abstract syntax tree for function signatures)
             let head = FuncSig::from_sig(&self, sig)?;
@@ -593,54 +562,7 @@ impl ContextWithType {
             // extract the body
             let body = block.stmts.clone();
 
-            let relations = &marked.mark.relations;
-
-            // check if the relations are valid (that is the spec and impl pairs are defined and are compatible)
-            for refine in relations {
-                let Refinement {
-                    fn_impl: impl_name,
-                    fn_spec: spec_name,
-                } = refine;
-                let (impl_sig, impl_raw) = sig_impls.get(impl_name).expect("impl");
-                let (spec_sig, spec_raw) = sig_specs.get(spec_name).expect("spec");
-
-                // first the signature of the impl and spec must be compatible
-                if !impl_sig.is_compatible(spec_sig) {
-                    bail_on_with_note!(
-                        impl_raw,
-                        "signature mismatch",
-                        spec_raw,
-                        "spec signature here in axiom {}",
-                        name
-                    );
-                }
-
-                // second the impl must have the spec as a target
-                let sp = self.impls.get(impl_name).expect("impl").mark.specs.clone();
-                if !sp.contains(spec_name) {
-                    bail_on!(
-                        &sig,
-                        "spec {} is not a target of impl {}",
-                        spec_name,
-                        impl_name
-                    );
-                }
-
-                // third the spec must have the impl as a target
-                let im = self.specs.get(spec_name).expect("spec").mark.impls.clone();
-                if !im.contains(impl_name) {
-                    bail_on!(
-                        &sig,
-                        "impl {} is not a target of spec {}",
-                        impl_name,
-                        spec_name
-                    );
-                }
-            }
-
-            probe_axioms.insert(name.clone(), relations.clone());
-
-            trace!("axiom analyzed sig: {}", name);
+            trace!("axiom analyzed sig: {name}");
             unpacked_axioms.insert(name.clone(), (head, body));
         }
 
@@ -654,16 +576,14 @@ impl ContextWithType {
             // check signature
             for spec_name in &mark.specs {
                 // a spec used in the list of impl must be defined.
-                // for example, if the impl is #[smt_impl(method = my_method, specs = [spec1, spec2])], then spec1 and spec2 must be defined like #[smt_spec(method = ..., impls = [...])] fn spec1() { ... } and #[smt_spec(method = ..., impls = [...])] fn spec2() { ... }
-                // otherwise an error is thrown
                 let (spec_sig, spec_raw) = sig_specs.get(spec_name).expect("spec");
                 // if the signature of the spec and impl are not compatible, then an error is thrown
                 if !spec_sig.is_compatible(sig) {
                     bail_on_with_note!(raw, "signature mismatch", spec_raw, "spec signature here");
                 }
                 // otherwise, the refinement relation is added to the vc_db
-                // the refinement relation is a struct that contains the name of the impl and the name of the corresponding spec
-                // As vc_db is a set, it will not add the same refinement relation twice
+                // the refinement relation contains the name of the impl and corresponding spec
+                // vc_db is a set, it will not add the same refinement relation twice
                 vc_db.insert(Refinement {
                     fn_impl: name.clone(),
                     fn_spec: spec_name.clone(),
@@ -681,8 +601,6 @@ impl ContextWithType {
 
         // sig_specs is a BTreeMap<UsrFuncName, (FuncSig, syn::Signature)> where the syn::Signature is the raw signature of the function. It contains all the specs that are defined in the context.
         for (name, (sig, raw)) in sig_specs.iter() {
-            // this will never throw an error and the `expect` is only to unwrap the MarkedSpec
-            // this is because the sig_specs is constructed from the self.specs and they both contain all the specs that are defined in the context
             let mark = &self.specs.get(name).expect("spec").mark;
             // check signature for each impl in the list of impls that is defined in the spec
             // for example, if the spec is #[smt_spec(method = my_method, impls = [impl1, impl2])], then impl1 and impl2 are checked
@@ -718,44 +636,32 @@ impl ContextWithType {
             axioms: _,
         } = self;
 
+        let mut impls_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = BTreeMap::new();
+        let mut specs_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = BTreeMap::new();
+
         // extract the func sig and body from the impls
         let unpacked_impls: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = impls
-            .clone()
             .into_iter()
             .map(|(name, marked)| {
                 // all the impls are stored in sig_impls
-                let (sig, _) = sig_impls.clone().remove(&name).unwrap();
+                let (sig, _) = sig_impls.remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
-                (name, (sig, stmts))
-            })
-            .collect();
 
-        let mut methods: BTreeMap<UsrFuncName, UsrFuncName> = BTreeMap::new();
-        // add methods to the unpacked impls
-        let impls_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = impls
-            .into_iter()
-            .filter_map(|(name, marked)| {
                 if let Some(method) = &marked.mark.method {
-                    if methods.get(method).is_some() {
-                        panic!("method {} is already defined in impl", method);
+                    if impls_method.contains_key(method) {
+                        panic!("method {} is already defined in impl {}", method, name);
                     }
-                    trace!("method found: {}", method);
-                    methods.insert(method.clone(), name.clone());
-
-                    let (sig, _) = sig_impls.remove(&name).unwrap();
-                    let stmts = marked.item.block.stmts;
-
-                    Some((method.clone(), (sig, stmts)))
-                } else {
-                    None
+                    impls_method.insert(method.clone(), (sig.clone(), stmts.clone()));
                 }
+
+                (name, (sig, stmts))
             })
             .collect();
 
         // add the methods to the unpacked impls
         let unpacked_impls = unpacked_impls
             .into_iter()
-            .chain(impls_method.into_iter())
+            .chain(impls_method)
             .collect::<BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>>();
 
         // extract the func sig and body from the specs
@@ -766,34 +672,23 @@ impl ContextWithType {
                 // all the specs are stored in sig_specs
                 let (sig, _) = sig_specs.clone().remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
-                (name, (sig, stmts))
-            })
-            .collect();
 
-        let specs_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = specs
-            .into_iter()
-            .filter_map(|(name, marked)| {
+                // if the spec has a method, then it is added to the methods map
                 if let Some(method) = &marked.mark.method {
-                    if methods.get(method).is_some() {
-                        panic!("method {} is already defined in spec", method);
+                    if specs_method.contains_key(method) {
+                        panic!("method {} is already defined in spec {}", method, name);
                     }
-                    trace!("method found: {}", method);
-                    methods.insert(method.clone(), name.clone());
-
-                    let (sig, _) = sig_specs.remove(&name).unwrap();
-                    let stmts = marked.item.block.stmts;
-
-                    Some((method.clone(), (sig, stmts)))
-                } else {
-                    None
+                    specs_method.insert(method.clone(), (sig.clone(), stmts.clone()));
                 }
+
+                (name, (sig, stmts))
             })
             .collect();
 
         // add the methods to the unpacked specs
         let unpacked_specs = unpacked_specs
             .into_iter()
-            .chain(specs_method.into_iter())
+            .chain(specs_method)
             .collect::<BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>>();
 
         let ctxt = ContextWithSig {
@@ -803,7 +698,6 @@ impl ContextWithType {
             axioms: unpacked_axioms,
             vc_db,
             fn_db,
-            probe_axioms,
         };
 
         // done
@@ -822,8 +716,6 @@ pub struct ContextWithSig {
     vc_db: BTreeSet<Refinement>,
     /// a database for all the marked functions (impl, spec). These can be standalone user-defined functions, system functions, and methods.
     pub fn_db: ApplyDatabase,
-    // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
-    probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>>,
 }
 
 impl ContextWithSig {
@@ -851,7 +743,7 @@ impl ContextWithSig {
         // unpack impls
         let mut unpacked_impls = BTreeMap::new();
         for (name, (sig, stmts)) in &self.impls {
-            trace!("handling impl body: {}", name);
+            trace!("handling impl body: {name}");
             // build the expression tree from the statements
             // this is called for each function in `rusmart`
             // The function body can only contain one expression statement (must be at the end) and the rest are Local let-binding statements
@@ -867,13 +759,13 @@ impl ContextWithSig {
                     body,
                 },
             );
-            trace!("impl body analyzed: {}", name);
+            trace!("impl body analyzed: {name}");
         }
 
         // unpack specs
         let mut unpacked_specs = BTreeMap::new();
         for (name, (sig, stmts)) in &self.specs {
-            trace!("handling spec body: {}", name);
+            trace!("handling spec body: {name}");
             // check for uninterpreted function
             // only a spec can be uninterpreted
             let uninterpreted = Axiom::is_unimplemented(stmts)?;
@@ -884,7 +776,7 @@ impl ContextWithSig {
                 // this is called for each function
                 Some(ExprParserRoot::new(&self, Kind::Spec, sig).parse(stmts)?)
             };
-            trace!("spec body analyzed: {}", name);
+            trace!("spec body analyzed: {name}");
             unpacked_specs.insert(
                 name.clone(),
                 SpecFuncDef {
@@ -897,12 +789,12 @@ impl ContextWithSig {
         // unpack axioms
         let mut unpacked_axioms = BTreeMap::new();
         for (name, (sig, stmts)) in &self.axioms {
-            trace!("handling axiom body: {}", name);
+            trace!("handling axiom body: {name}");
             // build the expression tree from the statements
             // note axioms are treated as specs kind
             // this is called for each function
             let body = ExprParserRoot::new(&self, Kind::Spec, sig).parse(stmts)?;
-            trace!("axiom body analyzed: {}", name);
+            trace!("axiom body analyzed: {name}");
             unpacked_axioms.insert(
                 name.clone(),
                 Axiom {
@@ -923,7 +815,6 @@ impl ContextWithSig {
             axioms: _,
             fn_db: _,
             vc_db,
-            probe_axioms,
         } = self;
 
         Ok(ContextWithFunc {
@@ -932,7 +823,6 @@ impl ContextWithSig {
             specs: unpacked_specs,
             axioms: unpacked_axioms,
             vc_db,
-            probe_axioms,
         })
     }
 }
@@ -943,15 +833,12 @@ pub struct ContextWithFunc {
     impls: BTreeMap<UsrFuncName, ImplFuncDef>,
     specs: BTreeMap<UsrFuncName, SpecFuncDef>,
     axioms: BTreeMap<AxiomName, Axiom>,
-    vc_db: BTreeSet<Refinement>, // a database for verification conditions
-    probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>>, // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
+    vc_db: BTreeSet<Refinement>,
 }
 
 impl ContextWithFunc {
     /// Finalize parsing context into AST
-    /// This function will convert the ContextWithFunc struct into an ASTContext struct.
-    ///
-    /// The only difference between the two structs is that the `impls` & `specs` fields are merged into one single `funcs` field in the ASTContext struct.
+    /// the `impls` & `specs` fields are merged into one single `funcs` field in the ASTContext struct.
     pub fn finalize(self) -> ASTContext {
         // unpack the context
         let Self {
@@ -960,7 +847,6 @@ impl ContextWithFunc {
             specs,
             axioms,
             vc_db,
-            probe_axioms,
         } = self;
 
         // merge the functions
@@ -985,7 +871,6 @@ impl ContextWithFunc {
             funcs,
             axioms,
             vc_db,
-            probe_axioms,
         }
     }
 }
@@ -996,7 +881,6 @@ pub struct ASTContext {
     funcs: BTreeMap<UsrFuncName, FuncDef>,
     axioms: BTreeMap<AxiomName, Axiom>,
     vc_db: BTreeSet<Refinement>,
-    pub probe_axioms: BTreeMap<AxiomName, BTreeSet<Refinement>>, // matches the related axiom to the refinement relation (i.e., impl and spec mapping)
 }
 
 impl ASTContext {
@@ -1033,8 +917,8 @@ impl ASTContext {
     /// For each refinement relation, the specification, implementation, and any function calls inside them are collected. For each of these functions, the relevant axioms are collected by calling this function.
     pub fn probe_related_axioms(
         &self,
-        name: &UsrFuncName, // the name of the function
-        inst: &[TypeTag],   // the type arguments of the function definition
+        name: &UsrFuncName,
+        inst: &[TypeTag],
     ) -> BTreeMap<AxiomName, BTreeSet<Monomorphization>> {
         // instantiate the axioms
         let mut related: BTreeMap<AxiomName, BTreeSet<Monomorphization>> = BTreeMap::new();

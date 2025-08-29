@@ -90,7 +90,7 @@ pub struct PhiCase {
     pub body: ExpId,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 /// An expression (which is the intermediate representation of the Op in the parser)
 pub enum Expression {
     /// `<var>` - Var(VarName) in the parser
@@ -159,7 +159,7 @@ pub enum Expression {
         rets: Vec<VarId>,
     },
     /// `<class>::<method>(<a1>, <a2>, ...)` - Intrinsic(Intrinsic) in the parser (the definition of the intrinsic is in the IR)
-    Intrinsic(Intrinsic),
+    Intrinsic(Box<Intrinsic>),
     /// `<function>(<a1>, <a2>, ...)` - Procedure { name: UsrFuncName, inst: Vec<TypeRef>, args: Vec<Expr>} in the parser
     // in the FunRegistry, the name, inst, signature and the body are stored where using the UsrFunId they can be retrieved
     Procedure { callee: UsrFunId, args: Vec<ExpId> },
@@ -287,12 +287,12 @@ impl ExpRegistry {
 
     /// Retrieve the variable
     pub fn lookup_var(&self, idx: &VarId) -> &Variable {
-        self.vars.get(&idx).expect("no such var id")
+        self.vars.get(idx).expect("no such var id")
     }
 
     /// Retrieve the expression
     pub fn lookup_exp(&self, idx: &ExpId) -> &Expression {
-        self.exps.get(&idx).expect("no such exp id")
+        self.exps.get(idx).expect("no such exp id")
     }
 }
 
@@ -318,7 +318,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             let id = registry.add_param(name.clone(), sort.clone());
             match namespace.insert(name.clone(), id) {
                 None => (),
-                Some(_) => panic!("symbol conflict: {}", name),
+                Some(_) => panic!("symbol conflict: {name}"),
             }
         }
         Self {
@@ -331,7 +331,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     /// Utility: expect type match
     fn check_sort(expect: &Sort, actual: &Sort) {
         if expect != actual {
-            panic!("type mismatch: expect {} | actual {}", expect, actual);
+            panic!("type mismatch: expect {expect} | actual {actual}");
         }
     }
 
@@ -339,7 +339,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     fn expect_sort_user(sort: &Sort) -> UsrSortId {
         match sort {
             Sort::User(sid) => *sid,
-            _ => panic!("type mismatch: expect $? | actual {}", sort),
+            _ => panic!("type mismatch: expect $? | actual {sort}"),
         }
     }
 
@@ -356,7 +356,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 }
                 tuple
             }
-            dt => panic!("type mismatch: expect <tuple> | actual {}", dt),
+            dt => panic!("type mismatch: expect <tuple> | actual {dt}"),
         }
     }
 
@@ -373,7 +373,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 }
                 record
             }
-            dt => panic!("type mismatch: expect <record> | actual {}", dt),
+            dt => panic!("type mismatch: expect <record> | actual {dt}"),
         }
     }
 
@@ -381,11 +381,11 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     fn expect_type_enum_unit(&self, sort_id: UsrSortId, branch: &str) {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
             DataType::Enum(adt) => match adt.get(branch) {
-                None => panic!("no such branch: {}", branch),
+                None => panic!("no such branch: {branch}"),
                 Some(Variant::Unit) => (),
-                Some(variant) => panic!("type mismatch: expect <enum::unit> | actual {}", variant),
+                Some(variant) => panic!("type mismatch: expect <enum::unit> | actual {variant}"),
             },
-            dt => panic!("type mismatch: expect <enum::unit> | actual {}", dt),
+            dt => panic!("type mismatch: expect <enum::unit> | actual {dt}"),
         }
     }
 
@@ -393,11 +393,11 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     fn expect_type_enum_tuple(&self, sort_id: UsrSortId, branch: &str) -> Vec<Sort> {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
             DataType::Enum(adt) => match adt.get(branch) {
-                None => panic!("no such branch: {}", branch),
+                None => panic!("no such branch: {branch}"),
                 Some(Variant::Tuple(tuple)) => tuple.clone(),
-                Some(variant) => panic!("type mismatch: expect <enum::tuple> | actual {}", variant),
+                Some(variant) => panic!("type mismatch: expect <enum::tuple> | actual {variant}"),
             },
-            dt => panic!("type mismatch: expect <enum::tuple> | actual {}", dt),
+            dt => panic!("type mismatch: expect <enum::tuple> | actual {dt}"),
         }
     }
 
@@ -409,13 +409,13 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     ) -> BTreeMap<String, Sort> {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
             DataType::Enum(adt) => match adt.get(branch) {
-                None => panic!("no such branch: {}", branch),
+                None => panic!("no such branch: {branch}"),
                 Some(Variant::Record(record)) => record.clone(),
                 Some(variant) => {
-                    panic!("type mismatch: expect <enum::record> | actual {}", variant)
+                    panic!("type mismatch: expect <enum::record> | actual {variant}")
                 }
             },
-            dt => panic!("type mismatch: expect <enum::record> | actual {}", dt),
+            dt => panic!("type mismatch: expect <enum::record> | actual {dt}"),
         }
     }
 
@@ -454,10 +454,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         let mut converted = BTreeMap::new();
         for ((name_ref, expr), (name, sort)) in fields.iter().zip(record) {
             if name_ref != name {
-                panic!(
-                    "record field name mismatch: expect {} | actual {}",
-                    name_ref, name
-                );
+                panic!("record field name mismatch: expect {name_ref} | actual {name}");
             }
             let field_eid = self.resolve(expr, Some(sort));
             converted.insert(name.clone(), field_eid);
@@ -477,7 +474,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 let vid = self.registry.add_bound(sym.clone(), sort, exp);
                 match self.namespace.insert(sym, vid) {
                     None => (),
-                    Some(_) => panic!("naming conflict: {}", name),
+                    Some(_) => panic!("naming conflict: {name}"),
                 }
             }
             VarDecl::Pack(elems) => {
@@ -529,7 +526,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             .add_match(sym.clone(), sort, head, sid, branch, selector);
         match self.namespace.insert(sym, vid) {
             None => (),
-            Some(_) => panic!("naming conflict: {}", name),
+            Some(_) => panic!("naming conflict: {name}"),
         }
         vid
     }
@@ -541,12 +538,12 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             Sort::Seq(_) => Sort::Integer,
             Sort::Set(sub) => *sub,
             Sort::Map(key, _) => *key,
-            s => panic!("iterating over a non-iterable type: {}", s),
+            s => panic!("iterating over a non-iterable type: {s}"),
         };
         let vid = self.registry.add_quant_var(sym.clone(), sort);
         match self.namespace.insert(sym, vid) {
             None => (),
-            Some(_) => panic!("naming conflict: {}", name),
+            Some(_) => panic!("naming conflict: {name}"),
         }
         vid
     }
@@ -558,7 +555,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         let vid = self.registry.add_quant_var(sym.clone(), sort.clone());
         match self.namespace.insert(sym, vid) {
             None => (),
-            Some(_) => panic!("naming conflict: {}", name),
+            Some(_) => panic!("naming conflict: {name}"),
         }
         (vid, sort)
     }
@@ -570,12 +567,12 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             Sort::Seq(_) => Sort::Integer,
             Sort::Set(sub) => *sub,
             Sort::Map(key, _) => *key,
-            s => panic!("iterating over a non-iterable type: {}", s),
+            s => panic!("iterating over a non-iterable type: {s}"),
         };
         let vid = self.registry.add_axiom_var(sym.clone(), sort);
         match self.namespace.insert(sym, vid) {
             None => (),
-            Some(_) => panic!("naming conflict: {}", name),
+            Some(_) => panic!("naming conflict: {name}"),
         }
         vid
     }
@@ -587,7 +584,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         let vid = self.registry.add_axiom_var(sym.clone(), sort.clone());
         match self.namespace.insert(sym, vid) {
             None => (),
-            Some(_) => panic!("naming conflict: {}", name),
+            Some(_) => panic!("naming conflict: {name}"),
         }
         (vid, sort)
     }
@@ -621,7 +618,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         let expression = match inst.op.as_ref() {
             Op::Var(name) => {
                 let vid = match self.namespace.get(&name.into()) {
-                    None => panic!("no such variable: {}", name),
+                    None => panic!("no such variable: {name}"),
                     Some(id) => *id,
                 };
                 Expression::Var(vid)
@@ -742,8 +739,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                                 for &k in bind_slots.keys() {
                                     if k >= sort_tuple.len() {
                                         panic!(
-                                            "type {} at branch {} does not have slot {}",
-                                            head_type, branch, k
+                                            "type {head_type} at branch {branch} does not have slot {k}"
                                         );
                                     }
                                 }
@@ -772,8 +768,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                                 for k in bind_fields.keys() {
                                     if !sort_record.contains_key(k) {
                                         panic!(
-                                            "type {} at branch {} does not have field {}",
-                                            head_type, branch, k
+                                            "type {head_type} at branch {branch} does not have field {k}"
                                         );
                                     }
                                 }
@@ -914,7 +909,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 }
             }
             Op::Intrinsic(native) => {
-                let intrinsic = match native {
+                let intrinsic = match native.as_ref() {
                     // boolean
                     Native::BoolVal(v) => Intrinsic::BoolVal(*v),
                     Native::BoolNot { val } => Intrinsic::BoolNot {
@@ -933,6 +928,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         rhs: self.resolve(rhs, Some(&Sort::Boolean)),
                     },
                     Native::BoolImplies { lhs, rhs } => Intrinsic::BoolImplies {
+                        lhs: self.resolve(lhs, Some(&Sort::Boolean)),
+                        rhs: self.resolve(rhs, Some(&Sort::Boolean)),
+                    },
+                    Native::BoolIff { lhs, rhs } => Intrinsic::BoolIff {
                         lhs: self.resolve(lhs, Some(&Sort::Boolean)),
                         rhs: self.resolve(rhs, Some(&Sort::Boolean)),
                     },
@@ -974,6 +973,16 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         lhs: self.resolve(lhs, Some(&Sort::Integer)),
                         rhs: self.resolve(rhs, Some(&Sort::Integer)),
                     },
+                    Native::IntAbs { val } => Intrinsic::IntAbs {
+                        val: self.resolve(val, Some(&Sort::Integer)),
+                    },
+                    Native::IntPow { base, exp } => Intrinsic::IntPow {
+                        base: self.resolve(base, Some(&Sort::Integer)),
+                        exp: self.resolve(exp, Some(&Sort::Integer)),
+                    },
+                    Native::IntToRational { val } => Intrinsic::IntToRational {
+                        val: self.resolve(val, Some(&Sort::Integer)),
+                    },
                     // number
                     Native::NumVal(v) => Intrinsic::NumVal(*v),
                     Native::NumLt { lhs, rhs } => Intrinsic::NumLt {
@@ -1008,6 +1017,22 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         lhs: self.resolve(lhs, Some(&Sort::Rational)),
                         rhs: self.resolve(rhs, Some(&Sort::Rational)),
                     },
+                    Native::NumPow { base, exp } => Intrinsic::NumPow {
+                        base: self.resolve(base, Some(&Sort::Rational)),
+                        exp: self.resolve(exp, Some(&Sort::Rational)),
+                    },
+                    Native::NumAbs { val } => Intrinsic::NumAbs {
+                        val: self.resolve(val, Some(&Sort::Rational)),
+                    },
+                    Native::NumFloor { val } => Intrinsic::NumFloor {
+                        val: self.resolve(val, Some(&Sort::Rational)),
+                    },
+                    Native::NumCeil { val } => Intrinsic::NumCeil {
+                        val: self.resolve(val, Some(&Sort::Rational)),
+                    },
+                    Native::NumRound { val } => Intrinsic::NumRound {
+                        val: self.resolve(val, Some(&Sort::Rational)),
+                    },
                     // string
                     Native::StrVal(v) => Intrinsic::StrVal(v.clone()),
                     Native::StrLt { lhs, rhs } => Intrinsic::StrLt {
@@ -1025,6 +1050,29 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     Native::StrGt { lhs, rhs } => Intrinsic::StrGt {
                         lhs: self.resolve(lhs, Some(&Sort::Text)),
                         rhs: self.resolve(rhs, Some(&Sort::Text)),
+                    },
+                    Native::StrConcat { lhs, rhs } => Intrinsic::StrConcat {
+                        lhs: self.resolve(lhs, Some(&Sort::Text)),
+                        rhs: self.resolve(rhs, Some(&Sort::Text)),
+                    },
+                    Native::StrLength { seq } => Intrinsic::StrLength {
+                        seq: self.resolve(seq, Some(&Sort::Text)),
+                    },
+                    Native::StrAt { seq, idx } => Intrinsic::StrAt {
+                        seq: self.resolve(seq, Some(&Sort::Text)),
+                        idx: self.resolve(idx, Some(&Sort::Integer)),
+                    },
+                    Native::StrIncludes { seq, item } => Intrinsic::StrIncludes {
+                        seq: self.resolve(seq, Some(&Sort::Text)),
+                        item: self.resolve(item, Some(&Sort::Text)),
+                    },
+                    Native::StrStartsWith { seq, item } => Intrinsic::StrStartsWith {
+                        seq: self.resolve(seq, Some(&Sort::Text)),
+                        item: self.resolve(item, Some(&Sort::Text)),
+                    },
+                    Native::StrEndsWith { seq, item } => Intrinsic::StrEndsWith {
+                        seq: self.resolve(seq, Some(&Sort::Text)),
+                        item: self.resolve(item, Some(&Sort::Text)),
                     },
                     // cloak
                     Native::BoxShield { t, val } => {
@@ -1077,6 +1125,14 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                             item: eid_item,
                         }
                     }
+                    Native::SeqIsEmpty { t, seq } => {
+                        let sort = self.parent.resolve_type(t);
+                        let eid_seq = self.resolve(seq, Some(&Sort::Seq(sort.clone().into())));
+                        Intrinsic::SeqIsEmpty {
+                            t: sort,
+                            seq: eid_seq,
+                        }
+                    }
                     // set
                     Native::SetEmpty { t } => {
                         let sort = self.parent.resolve_type(t);
@@ -1115,6 +1171,54 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                             t: sort,
                             set: eid_set,
                             item: eid_item,
+                        }
+                    }
+                    Native::SetUnion { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        let eid_lhs = self.resolve(lhs, Some(&Sort::Set(sort.clone().into())));
+                        let eid_rhs = self.resolve(rhs, Some(&Sort::Set(sort.clone().into())));
+                        Intrinsic::SetUnion {
+                            t: sort,
+                            lhs: eid_lhs,
+                            rhs: eid_rhs,
+                        }
+                    }
+                    Native::SetIntersection { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        let eid_lhs = self.resolve(lhs, Some(&Sort::Set(sort.clone().into())));
+                        let eid_rhs = self.resolve(rhs, Some(&Sort::Set(sort.clone().into())));
+                        Intrinsic::SetIntersection {
+                            t: sort,
+                            lhs: eid_lhs,
+                            rhs: eid_rhs,
+                        }
+                    }
+                    Native::SetDifference { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        let eid_lhs = self.resolve(lhs, Some(&Sort::Set(sort.clone().into())));
+                        let eid_rhs = self.resolve(rhs, Some(&Sort::Set(sort.clone().into())));
+                        Intrinsic::SetDifference {
+                            t: sort,
+                            lhs: eid_lhs,
+                            rhs: eid_rhs,
+                        }
+                    }
+                    Native::SetIsSubset { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        let eid_lhs = self.resolve(lhs, Some(&Sort::Set(sort.clone().into())));
+                        let eid_rhs = self.resolve(rhs, Some(&Sort::Set(sort.clone().into())));
+                        Intrinsic::SetIsSubset {
+                            t: sort,
+                            lhs: eid_lhs,
+                            rhs: eid_rhs,
+                        }
+                    }
+                    Native::SetIsEmpty { t, set } => {
+                        let sort = self.parent.resolve_type(t);
+                        let eid_set = self.resolve(set, Some(&Sort::Set(sort.clone().into())));
+                        Intrinsic::SetIsEmpty {
+                            t: sort,
+                            set: eid_set,
                         }
                     }
                     // map
@@ -1207,6 +1311,19 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                             key: eid_key,
                         }
                     }
+                    Native::MapIsEmpty { k, v, map } => {
+                        let sort_k = self.parent.resolve_type(k);
+                        let sort_v = self.parent.resolve_type(v);
+                        let eid_map = self.resolve(
+                            map,
+                            Some(&Sort::Map(sort_k.clone().into(), sort_v.clone().into())),
+                        );
+                        Intrinsic::MapIsEmpty {
+                            k: sort_k,
+                            v: sort_v,
+                            map: eid_map,
+                        }
+                    }
                     // error
                     Native::ErrFresh => Intrinsic::ErrFresh,
                     Native::ErrMerge { lhs, rhs } => Intrinsic::ErrMerge {
@@ -1235,7 +1352,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         }
                     }
                 };
-                Expression::Intrinsic(intrinsic)
+                Expression::Intrinsic(Box::new(intrinsic))
             }
             Op::Procedure { name, inst, args } => {
                 let callee = self.parent.register_func(name, inst);
@@ -1295,9 +1412,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             Expression::AccessSlot { base, slot } => {
                 let base_sort = self.derive_type(*base);
                 let base_tuple = self.expect_type_tuple(Self::expect_sort_user(&base_sort));
-                base_tuple.into_iter().nth(*slot).unwrap_or_else(|| {
-                    panic!("type mismatch: no slot {} in tuple {}", slot, base_sort)
-                })
+                base_tuple
+                    .into_iter()
+                    .nth(*slot)
+                    .unwrap_or_else(|| panic!("type mismatch: no slot {slot} in tuple {base_sort}"))
             }
             Expression::AccessField { base, field } => {
                 let base_sort = self.derive_type(*base);
@@ -1305,7 +1423,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 base_record
                     .remove(field)
                     .unwrap_or_else(|| {
-                        panic!("type mismatch: no field {} in record {}", field, base_sort)
+                        panic!("type mismatch: no field {field} in record {base_sort}")
                     })
                     .clone()
             }
@@ -1388,21 +1506,27 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     Sort::User(self.parent.lookup_type(None, &inst))
                 }
             }
-            Expression::Intrinsic(intrinsic) => match intrinsic {
+            Expression::Intrinsic(intrinsic) => match intrinsic.as_ref() {
                 // boolean
                 Intrinsic::BoolVal(_)
                 | Intrinsic::BoolNot { .. }
                 | Intrinsic::BoolAnd { .. }
                 | Intrinsic::BoolOr { .. }
                 | Intrinsic::BoolXor { .. }
-                | Intrinsic::BoolImplies { .. } => Sort::Boolean,
+                | Intrinsic::BoolImplies { .. }
+                | Intrinsic::BoolIff { .. } => Sort::Boolean,
                 // integer
                 Intrinsic::IntVal(_)
                 | Intrinsic::IntAdd { .. }
                 | Intrinsic::IntSub { .. }
                 | Intrinsic::IntMul { .. }
                 | Intrinsic::IntDiv { .. }
-                | Intrinsic::IntRem { .. } => Sort::Integer,
+                | Intrinsic::IntRem { .. }
+                | Intrinsic::IntAbs { .. }
+                | Intrinsic::NumCeil { .. }
+                | Intrinsic::NumFloor { .. }
+                | Intrinsic::NumRound { .. }
+                | Intrinsic::IntPow { .. } => Sort::Integer,
                 Intrinsic::IntLt { .. }
                 | Intrinsic::IntLe { .. }
                 | Intrinsic::IntGe { .. }
@@ -1412,14 +1536,23 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::NumAdd { .. }
                 | Intrinsic::NumSub { .. }
                 | Intrinsic::NumMul { .. }
-                | Intrinsic::NumDiv { .. } => Sort::Rational,
+                | Intrinsic::NumDiv { .. }
+                | Intrinsic::NumAbs { .. }
+                | Intrinsic::NumPow { .. }
+                | Intrinsic::IntToRational { .. } => Sort::Rational,
                 Intrinsic::NumLt { .. }
                 | Intrinsic::NumLe { .. }
                 | Intrinsic::NumGe { .. }
                 | Intrinsic::NumGt { .. } => Sort::Boolean,
                 // string
-                Intrinsic::StrVal(_) => Sort::Text,
-                Intrinsic::StrLt { .. }
+                Intrinsic::StrVal(_) | Intrinsic::StrConcat { .. } | Intrinsic::StrAt { .. } => {
+                    Sort::Text
+                }
+                Intrinsic::StrLength { .. } => Sort::Integer,
+                Intrinsic::StrStartsWith { .. }
+                | Intrinsic::StrEndsWith { .. }
+                | Intrinsic::StrIncludes { .. }
+                | Intrinsic::StrLt { .. }
                 | Intrinsic::StrLe { .. }
                 | Intrinsic::StrGe { .. }
                 | Intrinsic::StrGt { .. } => Sort::Boolean,
@@ -1432,12 +1565,18 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 Intrinsic::SeqLength { .. } => Sort::Integer,
                 Intrinsic::SeqAt { t, .. } => t.clone(),
                 Intrinsic::SeqIncludes { .. } => Sort::Boolean,
+                Intrinsic::SeqIsEmpty { .. } => Sort::Boolean,
                 // set
                 Intrinsic::SetEmpty { t }
                 | Intrinsic::SetInsert { t, .. }
                 | Intrinsic::SetRemove { t, .. } => Sort::Set(t.clone().into()),
                 Intrinsic::SetLength { .. } => Sort::Integer,
                 Intrinsic::SetContains { .. } => Sort::Boolean,
+                Intrinsic::SetUnion { t, .. }
+                | Intrinsic::SetIntersection { t, .. }
+                | Intrinsic::SetDifference { t, .. } => Sort::Set(t.clone().into()),
+                Intrinsic::SetIsSubset { .. } => Sort::Boolean,
+                Intrinsic::SetIsEmpty { .. } => Sort::Boolean,
                 // map
                 Intrinsic::MapEmpty { k, v }
                 | Intrinsic::MapPut { k, v, .. }
@@ -1445,6 +1584,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 Intrinsic::MapGet { v, .. } => v.clone(),
                 Intrinsic::MapLength { .. } => Sort::Integer,
                 Intrinsic::MapContainsKey { .. } => Sort::Boolean,
+                Intrinsic::MapIsEmpty { .. } => Sort::Boolean,
                 // error
                 Intrinsic::ErrFresh | Intrinsic::ErrMerge { .. } => Sort::Error,
                 // smt

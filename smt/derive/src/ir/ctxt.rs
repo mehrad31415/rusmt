@@ -124,7 +124,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         for (param, arg) in ty_params.iter().zip(ty_args.iter()) {
             match ty_inst.insert(param.clone(), arg.clone()) {
                 None => (),
-                Some(_) => panic!("duplicated type parameter {}", param),
+                Some(_) => panic!("duplicated type parameter {param}"),
             }
         }
         IRBuilder::new(self.ctxt, ty_inst, self.ir)
@@ -179,7 +179,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             // ty_inst_impl is a map from type parameter name to sort
             match ty_inst_impl.insert(ty_param.clone(), smt_sort) {
                 None => (),
-                Some(_) => panic!("duplicated type parameter {}", ty_param), // can't have duplicate type parameters for a function
+                Some(_) => panic!("duplicated type parameter {ty_param}"), // can't have duplicate type parameters for a function
             }
             // ty_args_impl is a list of types for the function
             ty_args_impl.push(TypeRef::Parameter(ty_param.clone()));
@@ -206,7 +206,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             // ty_inst_spec is a map from type parameter name to sort
             match ty_inst_spec.insert(ty_param.clone(), smt_sort) {
                 None => (),
-                Some(_) => panic!("duplicated type parameter {}", ty_param),
+                Some(_) => panic!("duplicated type parameter {ty_param}"),
             }
             // ty_args_spec is a list of types for the function
             ty_args_spec.push(TypeRef::Parameter(ty_param.clone()));
@@ -219,22 +219,6 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                 .collect::<Vec<_>>()
                 .join(",")
         );
-
-        // initialize the builder
-        // the ir at this point is:
-        // IRContext {
-        //     desc: "<impl> ~> <spec>",
-        //     undef_sorts: {
-        //         SmtSortName { ident: "impl_T" },
-        //         SmtSortName { ident: "impl_U" },
-        //         SmtSortName { ident: "spec_T" },
-        //         SmtSortName { ident: "spec_U" },
-        //         ... for any number of type parameters for the respective impl and spec
-        //     },
-        //     ty_registry: TypeRegistry::new(),
-        //     fn_registry: FunRegistry::new(),
-        //     axiom_registry: AxiomRegistry::new(),
-        // }
 
         // ty_inst_impl is a map from type parameter name to sort for the respective impl
         // for example for T, it would be TypeParamName {ident: "T"} -> Sort::Uninterpreted(SmtSortName { ident: "impl_T" })
@@ -287,7 +271,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
                 let mut all_new_insts = vec![];
                 for inst in insts {
-                    trace!("axiom {}{} is relevant", name, inst);
+                    trace!("axiom {name}{inst} is relevant");
                     let additions = add_instantiation(&axiom.head.generics, existing_insts, inst);
                     all_new_insts.extend(additions.into_iter());
                 }
@@ -299,7 +283,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
                 // register axiom under each new instantiation
                 for inst in all_new_insts {
-                    trace!("processing axiom {}{}", name, inst);
+                    trace!("processing axiom {name}{inst}");
 
                     // first collect unspecified type parameters
                     for ty_arg_inst in &inst.args {
@@ -350,7 +334,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                         };
                         match axiom_ty_inst_impl.insert(ty_param.clone(), ty_arg_sort) {
                             None => (),
-                            Some(_) => panic!("duplicated type parameter {}", ty_param),
+                            Some(_) => panic!("duplicated type parameter {ty_param}"),
                         }
                         axiom_ty_args_impl.push(ty_arg_ref);
                     }
@@ -384,7 +368,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                         };
                         match axiom_ty_inst_spec.insert(ty_param.clone(), ty_arg_sort) {
                             None => (),
-                            Some(_) => panic!("duplicated type parameter {}", ty_param),
+                            Some(_) => panic!("duplicated type parameter {ty_param}"),
                         }
                         axiom_ty_args_spec.push(ty_arg_ref);
                     }

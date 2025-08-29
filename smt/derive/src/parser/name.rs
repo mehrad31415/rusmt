@@ -8,13 +8,12 @@ use crate::parser::func::SysFuncName;
 use crate::parser::generics::SysTrait;
 use crate::parser::ty::SysTypeName;
 use crate::{bail_if_exists, bail_on};
-use std::fmt::{Display, Formatter}; // Imported for implementing the Display trait
-use syn::{Ident, Pat, PatIdent, Path, Result}; // Import syn crate types for parsing Rust code
+use std::fmt::{Display, Formatter};
+use syn::{Ident, Pat, PatIdent, Path, Result};
 
 /// Trait to mark that a type is a reserved identifier.
 /// This trait provides methods to parse reserved identifiers from strings or paths.
 /// SysMacroName (dsl), CastFuncName, SysFuncName, ReservedFuncName (func), SysTrait (generics), and SysTypeName (ty) implement this trait.
-/// The following are the reserved identifiers:
 /// SysMacroName: //* Exists, Forall, Choose
 /// CastFuncName: //* From, Into
 /// SysFuncName: //* Eq, Ne
@@ -356,7 +355,7 @@ impl TypeParamName {
                 ident: name.to_string(),
             },
             // All other names are invalid.
-            _ => panic!("not an intrinsic type parameter: {}", name),
+            _ => panic!("not an intrinsic type parameter: {name}"),
         }
     }
 }
@@ -381,9 +380,15 @@ impl UsrFuncName {
     pub fn intrinsic(name: &str) -> Self {
         match name {
             // Logical operators.
-            "not" | "and" | "or" | "xor" | "implies"
+            "not" | "and" | "or" | "xor" | "implies" | "iff"
             // Arithmetic operators.
-            | "add" | "sub" | "mul" | "div" | "rem"
+            | "add" | "sub" | "mul" | "div" | "pow" | "abs"
+            // Integer operations.
+            | "rem" | "to_rational"
+            // Rational operations.
+            | "round" | "floor" | "ceil"
+            // String operations.
+            | "concat" | "at_index" | "starts_with" | "ends_with"
             // Comparison operators.
             | "lt" | "le" | "ge" | "gt"
             // Error handling.
@@ -395,25 +400,23 @@ impl UsrFuncName {
             // Sequence operations.
             | "append" | "at_unchecked" | "includes"
             // Set operations.
-            | "insert" | "remove" | "contains"
+            | "insert" | "remove" | "contains" | "intersection" | "union" | "difference" | "is_subset"
             // Map operations.
             | "put_unchecked" | "get_unchecked" | "del_unchecked" | "contains_key"
             // All the above are valid intrinsic function names.
             => Self { ident: name.to_string() },
             // All other names are invalid.
-            _ => panic!("not an intrinsic function: {}", name),
+            _ => panic!("not an intrinsic function: {name}"),
         }
     }
 }
 
-// ------------------------------------------------------------------------------------------------ //
-// Unit Tests
 #[cfg(test)]
 mod tests {
     use super::*;
     use proc_macro2::Span;
-    use syn::parse_quote;
     use syn::Token;
+    use syn::parse_quote;
 
     #[test]
     /// Tests the parse_path function of the ReservedIdent trait.
@@ -449,11 +452,12 @@ mod tests {
         let res = validate_user_ident(&ident);
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("reserved trait name (SMT)"));
+        assert!(
+            res.err()
+                .unwrap()
+                .to_string()
+                .contains("reserved trait name (SMT)")
+        );
     }
 
     #[test]
@@ -463,11 +467,12 @@ mod tests {
         let res = validate_user_ident(&ident);
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("reserved type name"));
+        assert!(
+            res.err()
+                .unwrap()
+                .to_string()
+                .contains("reserved type name")
+        );
     }
 
     #[test]
@@ -477,11 +482,12 @@ mod tests {
         let res = validate_user_ident(&ident);
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("reserved method name (eq, ne)"));
+        assert!(
+            res.err()
+                .unwrap()
+                .to_string()
+                .contains("reserved method name (eq, ne)")
+        );
     }
 
     #[test]
@@ -491,11 +497,12 @@ mod tests {
         let res = validate_user_ident(&ident);
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("reserved function name (clone, default)"));
+        assert!(
+            res.err()
+                .unwrap()
+                .to_string()
+                .contains("reserved function name (clone, default)")
+        );
     }
 
     #[test]
@@ -505,11 +512,12 @@ mod tests {
         let res = validate_user_ident(&ident);
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("reserved function name (from, into)"));
+        assert!(
+            res.err()
+                .unwrap()
+                .to_string()
+                .contains("reserved function name (from, into)")
+        );
     }
 
     #[test]
@@ -519,11 +527,12 @@ mod tests {
         let res = validate_user_ident(&ident);
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("reserved macro name (exists, forall, choose)"));
+        assert!(
+            res.err()
+                .unwrap()
+                .to_string()
+                .contains("reserved macro name (exists, forall, choose)")
+        );
     }
 
     #[test]
@@ -533,11 +542,12 @@ mod tests {
         let res = validate_user_ident(&ident);
 
         assert!(res.is_err());
-        assert!(res
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("underscore not allowed as an identifier"));
+        assert!(
+            res.err()
+                .unwrap()
+                .to_string()
+                .contains("underscore not allowed as an identifier")
+        );
     }
 
     #[test]
@@ -548,68 +558,6 @@ mod tests {
 
         assert!(res.is_ok_and(|v| v == "my_var"));
     }
-
-    // #[test]
-    // /// Tests the parse_ident_from_path - bail_if_exists!(leading_colon); is invoked
-    // fn test_parse_ident_from_path_leading_colon_err() {
-    //     let path = parse_quote!(::Boolean);
-    //     let res = parse_ident_from_path(&path);
-
-    //     assert!(res.is_err());
-    //     assert_eq!(res.err().unwrap().to_string(), "unexpected\n::");
-    // }
-
-    // #[test]
-    // /// Tests the parse_ident_from_path - let segment = bail_if_missing!(iter.next(), path, "invalid path with no segments"); is invoked.
-    // fn test_parse_ident_from_path_no_segment() {
-    //     let path = Path {
-    //         leading_colon: None,                          // No leading colon (e.g., `::`).
-    //         segments: syn::punctuated::Punctuated::new(), // No path segments.
-    //     };
-
-    //     let res = parse_ident_from_path(&path);
-
-    //     assert!(res.is_err());
-    //     assert_eq!(
-    //         res.err().unwrap().to_string(),
-    //         "expect invalid path with no segments\n"
-    //     );
-    // }
-
-    // #[test]
-    // /// Tests the parse_ident_from_path - bail_if_exists!(iter.next()); is invoked.
-    // fn test_parse_ident_from_path_more_segments() {
-    //     let path = parse_quote!(Boolean::Integer::Nonsense);
-
-    //     let res = parse_ident_from_path(&path);
-
-    //     assert!(res.is_err());
-    //     assert_eq!(res.err().unwrap().to_string(), "unexpected\nInteger");
-    // }
-
-    // #[test]
-    // /// Tests the parse_ident_from_path - if !matches!(arguments, PathArguments::None) path is covered.
-    // /// bail_on!(arguments, "unexpected argument in path"); is invoked
-    // fn test_parse_ident_from_path_arguments() {
-    //     let path = parse_quote!(Boolean<a>);
-
-    //     let res = parse_ident_from_path(&path);
-
-    //     assert!(res.is_err());
-    //     assert_eq!(
-    //         res.err().unwrap().to_string(),
-    //         "unexpected argument in path\n< a >"
-    //     );
-    // }
-
-    // #[test]
-    // /// tests the happy flow of parse_ident_from_path
-    // fn test_parse_ident_from_path_ok() {
-    //     let path = parse_quote!(Boolean);
-    //     let res = parse_ident_from_path(&path);
-
-    //     assert!(res.is_ok());
-    // }
 
     #[test]
     /// Tests parse_ident_from_pat - _ => bail_on!(pat, "not an identifier pattern")
@@ -698,7 +646,7 @@ mod tests {
             ident: String::from("example var"),
         };
 
-        let res = format!("{}", var);
+        let res = format!("{var}");
         assert_eq!(res, "example var");
     }
 

@@ -1,22 +1,16 @@
 //! Module tree of the parser
 
-pub mod ctxt;
-mod err;
-mod test;
-
+mod adt;
+mod apply;
 mod attr;
-pub mod name;
-
+pub mod ctxt;
+mod dsl;
+mod err;
+pub mod expr;
+pub mod func;
 pub mod generics;
 pub mod infer;
-pub mod ty;
-
-mod apply;
-pub mod func;
-
-pub mod path;
-
-mod adt;
-mod dsl;
-pub mod expr;
 pub mod intrinsics;
+pub mod name;
+pub mod path;
+pub mod ty;

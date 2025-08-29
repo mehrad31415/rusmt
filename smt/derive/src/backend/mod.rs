@@ -1,6 +1,5 @@
 //! Module tree for the SMT backend
 
-pub mod error;
 pub mod codegen;
-pub mod exec;
+pub mod error;
 mod z3;

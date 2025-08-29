@@ -1,19 +1,17 @@
 //! This module parses the rust defined types and converts them to the type tags used in the SMT context.
 
-use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string.
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter};
-use syn::{
-    punctuated::Punctuated, AngleBracketedGenericArguments, Field, FieldMutability, Fields,
-    FieldsNamed, FieldsUnnamed, GenericArgument, Ident, ItemEnum, ItemStruct, Path, PathArguments,
-    PathSegment, Result, Token, Type, TypePath, TypeTuple as TypePack, Variant,
-};
-
-// The ContextWithGenerics are imported to form the TypeDef for each type.
 use crate::parser::ctxt::{ContextWithGenerics, MarkedType};
 use crate::parser::generics::Generics;
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};
 use crate::{bail_if_empty, bail_if_exists, bail_if_missing, bail_on};
+use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string.
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::{Display, Formatter};
+use syn::{
+    AngleBracketedGenericArguments, Field, FieldMutability, Fields, FieldsNamed, FieldsUnnamed,
+    GenericArgument, Ident, ItemEnum, ItemStruct, Path, PathArguments, PathSegment, Result, Token,
+    Type, TypePath, TypeTuple as TypePack, Variant, punctuated::Punctuated,
+};
 
 /// A context suitable for type analysis
 /// Three types implement this trait: TypeParseCtxt (in ty.rs), FuncSigParseCtxt (in func.rs), and ExprParserRoot (in expr.rs)
@@ -135,8 +133,8 @@ impl SysTypeName {
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum TypeName {
     Sys(SysTypeName),
-    Usr(UsrTypeName),     // UsrTypeName is wrapper of string (defined in name.rs).
-    Param(TypeParamName), // TypeParamName is wrapper of string (defined in name.rs).
+    Usr(UsrTypeName),
+    Param(TypeParamName),
 }
 
 impl TypeName {
@@ -207,10 +205,6 @@ pub enum TypeTag {
 impl TypeTag {
     /// Convert from a type argument pack (in type path)
     /// Returns a vector of TypeTags of the arguments
-    ///
-    /// Errors:
-    ///
-    /// If any of the generic arguments are not a type, like a lifetime or a const argument, an error is thrown.
     fn from_args<CTX: CtxtForType>(
         ctxt: &CTX,
         args: &Punctuated<GenericArgument, Token![,]>,
@@ -229,10 +223,6 @@ impl TypeTag {
     }
 
     /// Convert from a type argument pack (in type path)
-    ///
-    /// Errors:
-    ///
-    /// If there is a leading colon, an error is thrown.
     pub fn from_args_in_type_path<CTX: CtxtForType>(
         ctxt: &CTX,
         pack: &AngleBracketedGenericArguments,
@@ -284,11 +274,6 @@ impl TypeTag {
     }
 
     /// Convert from a path to TypeTag
-    ///
-    /// Errors:
-    ///
-    /// If there is a leading colon, an error is thrown. For example, this is not allowed: ::std::collections::HashMap
-    /// If there is more or less than one segment, an error is thrown. For example, this is not allowed: std::collections::HashMap
     fn from_type_path<CTX: CtxtForType>(ctxt: &CTX, path: &Path) -> Result<Self> {
         let Path {
             leading_colon,
@@ -424,13 +409,6 @@ impl TypeTag {
     }
 
     /// Convert a series of generic arguments
-    ///
-    /// Errors:
-    ///
-    /// If the generic arguments are not a type, an error is thrown.
-    /// If the arguments are empty, an error is thrown.
-    /// If the colon2_token is missing, an error is thrown.
-    ///
     /// This function is used when calling a function with generic arguments. like: MyType::<i32, i32>. The function is called on the ::<i32,i32> in this case.
     pub fn from_generics<CTX: CtxtForType>(
         ctxt: &CTX,
@@ -504,10 +482,10 @@ impl Display for TypeTag {
             Self::Integer => write!(f, "Integer"),
             Self::Rational => write!(f, "Rational"),
             Self::Text => write!(f, "Text"),
-            Self::Cloak(sub) => write!(f, "Cloak<{}>", sub),
-            Self::Seq(sub) => write!(f, "Seq<{}>", sub),
-            Self::Set(sub) => write!(f, "Set<{}>", sub),
-            Self::Map(key, val) => write!(f, "Map<{},{}>", key, val),
+            Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
+            Self::Seq(sub) => write!(f, "Seq<{sub}>"),
+            Self::Set(sub) => write!(f, "Set<{sub}>"),
+            Self::Map(key, val) => write!(f, "Map<{key},{val}>"),
             Self::Error => write!(f, "Error"),
             Self::User(name, args) => {
                 if args.is_empty() {
@@ -538,11 +516,6 @@ impl TypeTuple {
     /// This is used to parse the fields of a tuple struct or each of the variants of an enum
     /// for example in enum MyEnum {Variant(i32,String)}, the i32, String part is processed by this function.
     /// or in struct MyStruct(i32, i32), the i32, i32 part is processed by this function.
-    ///
-    /// Errors:
-    ///
-    /// An error is thrown, if the variant field is mutable (never happens).
-    /// If there exists identifiers, an error is thrown.
     fn from_fields<'a, I: Iterator<Item = &'a Field>, CTX: CtxtForType>(
         ctxt: &CTX,
         items: I,
@@ -596,12 +569,6 @@ impl TypeRecord {
     /// This is used to parse the fields of a struct or each of the variants of an enum
     /// for example in enum MyEnum {Variant {a: i32, b: i32}}, the a: i32, b: i32 part is processed by this function.
     /// or in struct MyStruct {a: i32, b: i32}, the a: i32, b: i32 part is processed by this function.
-    ///
-    /// Errors:
-    ///
-    /// An error is thrown, if the variant field is mutable (never happens).
-    /// If there are no identifiers, an error is thrown.
-    /// if there are duplicate names, an error is thrown. for example: enum MyEnum {Variant {a: i32, a: i32}}
     fn from_fields<'b, I: Iterator<Item = &'b Field>, CTX: CtxtForType>(
         ctxt: &CTX,
         items: I,
@@ -648,7 +615,7 @@ impl Display for TypeRecord {
             "{{{}}}",
             self.fields
                 .iter()
-                .format_with(",", |(n, t), p| p(&format_args!("{}:{}", n, t))),
+                .format_with(",", |(n, t), p| p(&format_args!("{n}:{t}"))),
         )
     }
 }
@@ -659,7 +626,7 @@ impl Display for TypeRecord {
 /// - Unit: no fields like Variant1
 /// - Tuple: unnamed fields like Variant2(i32)
 /// - Record: named fields like Variant3 {sub_variant:i32}
-/// These three variations are exactly similar for an empty struct, tuple struct, and record struct respectively.
+///   These three variations are exactly similar for an empty struct, tuple struct, and record struct respectively.
 pub enum EnumVariant {
     Unit,
     Tuple(TypeTuple),
@@ -706,14 +673,6 @@ pub struct TypeEnum {
 
 impl TypeEnum {
     /// Convert from a list of variants
-    ///
-    /// Errors:
-    ///
-    /// If any of the variants have a discriminant, an error is thrown.
-    /// If there are duplicate variant names, an error is thrown.
-    /// If any of the variants are a tuple with no slots, an error is thrown. Like enum MyEnum {A ()}
-    /// If any of the variants are a record with no fields, an error is thrown. Like enum MyEnum {A {}}
-    // ctxt also be TypeParseCtxt instead of a type parameter which implements CtxtForType.
     fn from_variants<'a, I: Iterator<Item = &'a Variant>, CTX: CtxtForType>(
         ctxt: &CTX,
         items: I,
@@ -761,7 +720,7 @@ impl Display for TypeEnum {
             "[{}]",
             self.variants
                 .iter()
-                .format_with("\n", |(n, t), p| p(&format_args!("{}:{}", n, t))),
+                .format_with("\n", |(n, t), p| p(&format_args!("{n}:{t}"))),
         )
     }
 }
@@ -779,15 +738,6 @@ pub enum TypeBody {
 
 impl TypeBody {
     /// Convert from a MarkedType (marked type) to a TypeBody (type body)
-    ///
-    /// Errors:
-    ///
-    /// if marked type is an Enum(ItemEnum), an error will be thrown if no variants exist. enum MyEnum {}
-    /// if marked type is a Struct(ItemStruct) - record struct - , an error will be thrown if no fields exist. struct MyStruct {}
-    /// if marked type is a Struct(ItemStruct) - tuple struct - , an error will be thrown if no slots exist. struct MyStruct();
-    /// in case of tuple struct, an error will be thrown if a semicolon is missing at the end. struct MyStruct(i32). This will be caught by the rust compiler.
-    /// in case of record struct, an error will be thrown if a semicolon exists at the end. struct MyStruct {a:i32}; This will be caught by the rust compiler.
-    /// a unit struct is not allowed. struct MyStruct;
     pub fn from_marked(
         ctxt: &ContextWithGenerics,
         generics: &Generics,

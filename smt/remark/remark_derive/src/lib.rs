@@ -1,3 +1,5 @@
+//! Procedural macros for the SMT remarking framework.
+
 use proc_macro::TokenStream as Syntax;
 use proc_macro2::TokenStream;
 use rusmart_smt_remark::fail_if_error;
@@ -13,7 +15,7 @@ use rusmart_smt_remark::{func, ty};
 pub fn smt_type(attr: Syntax, item: Syntax) -> Syntax {
     let attr: TokenStream = TokenStream::from(attr);
     let item: TokenStream = TokenStream::from(item);
-    fail_if_error!(ty::derive_for_type(attr, item)) // no attributes allowed for smt_type
+    fail_if_error!(ty::derive_for_type(attr, item))
 }
 
 /// Annotation over a Rust function
@@ -40,7 +42,7 @@ pub fn smt_spec(attr: Syntax, item: Syntax) -> Syntax {
 
 /// Annotation over a Rust const
 /// This annotation can only be applied on a Rust const i.e., const as top-level module item (in contrast to const in an impl block)
-/// #[smt_axiom(relations = {(impl1, spec1), (impl2, spec2)})] or  #\[smt_axiom\]
+/// #\[smt_axiom]
 #[proc_macro_attribute]
 #[cfg(not(tarpaulin_include))]
 #[inline]

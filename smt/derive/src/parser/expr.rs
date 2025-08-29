@@ -7,7 +7,7 @@ use crate::parser::{
     dsl::{Quantifier, SysMacroName},
     func::{CastFuncName, FuncName, FuncSig, SysFuncName},
     generics::Generics,
-    infer::{ti_unify, TypeRef, TypeUnifier},
+    infer::{TypeRef, TypeUnifier, ti_unify},
     intrinsics::Intrinsic,
     name::{UsrFuncName, UsrTypeName, VarName},
     path::{ADTBranch, ExprPathAsCallee, ExprPathAsRecord, ExprPathAsTarget, QualifiedPath},
@@ -61,7 +61,7 @@ impl VarDecl {
 impl Display for VarDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::One(name, ty) => write!(f, "{}:{}", name, ty),
+            Self::One(name, ty) => write!(f, "{name}:{ty}"),
             Self::Pack(decls) => {
                 write!(f, "({})", decls.iter().format(","))
             }
@@ -268,13 +268,13 @@ impl Display for Unpack {
                 let content = binds
                     .iter()
                     .format_with(",", |(k, v), f| f(&format_args!("{}:{}", *k, v)));
-                write!(f, "[{}]", content)
+                write!(f, "[{content}]")
             }
             Self::Record(binds) => {
                 let content = binds
                     .iter()
-                    .format_with(",", |(k, v), f| f(&format_args!("{}:{}", k, v)));
-                write!(f, "{{{}}}", content)
+                    .format_with(",", |(k, v), f| f(&format_args!("{k}:{v}")));
+                write!(f, "{{{content}}}")
             }
         }
     }
@@ -397,7 +397,7 @@ pub enum Op {
         body: Expr,
     },
     /// `<class>::<method>(<a1>, <a2>, ...)`
-    Intrinsic(Intrinsic),
+    Intrinsic(Box<Intrinsic>),
     /// `<function>(<a1>, <a2>, ...)`
     Procedure {
         name: UsrFuncName,
@@ -430,7 +430,7 @@ impl Display for Op {
                     inst.iter().format(","),
                     fields
                         .iter()
-                        .format_with(",", |(k, v), p| { p(&format_args!("{}:{}", k, v)) })
+                        .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
                 )
             }
             Self::EnumUnit { branch, inst } => {
@@ -461,28 +461,28 @@ impl Display for Op {
                     inst.iter().format(","),
                     fields
                         .iter()
-                        .format_with(",", |(k, v), p| { p(&format_args!("{}:{}", k, v)) })
+                        .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
                 )
             }
             Self::AccessSlot { base, slot } => {
-                write!(f, "{}.{}", base, slot)
+                write!(f, "{base}.{slot}")
             }
             Self::AccessField { base, field } => {
-                write!(f, "{}.{}", base, field)
+                write!(f, "{base}.{field}")
             }
             Self::Match { heads, combo } => {
                 writeln!(f, "match ({}) {{", heads.iter().format(","))?;
                 for case in combo {
-                    writeln!(f, "  case {}", case)?;
+                    writeln!(f, "  case {case}")?;
                 }
                 write!(f, "}}")
             }
             Self::Phi { nodes, default } => {
                 writeln!(f, "phi {{")?;
                 for node in nodes {
-                    writeln!(f, "  {}", node)?;
+                    writeln!(f, "  {node}")?;
                 }
-                writeln!(f, "  default => {}", default)?;
+                writeln!(f, "  default => {default}")?;
                 write!(f, "}}")
             }
             Self::Forall { vars, body } => {
@@ -490,7 +490,7 @@ impl Display for Op {
                     f,
                     "forall [{}] {}",
                     vars.iter()
-                        .format_with(",", |(n, t), p| p(&format_args!("{}:{}", n, t))),
+                        .format_with(",", |(n, t), p| p(&format_args!("{n}:{t}"))),
                     body
                 )
             }
@@ -499,7 +499,7 @@ impl Display for Op {
                     f,
                     "exists [{}] {}",
                     vars.iter()
-                        .format_with(",", |(n, t), p| p(&format_args!("{}:{}", n, t))),
+                        .format_with(",", |(n, t), p| p(&format_args!("{n}:{t}"))),
                     body
                 )
             }
@@ -508,7 +508,7 @@ impl Display for Op {
                     f,
                     "choose [{}] {}",
                     vars.iter()
-                        .format_with(",", |(n, t), p| p(&format_args!("{}:{}", n, t))),
+                        .format_with(",", |(n, t), p| p(&format_args!("{n}:{t}"))),
                     body
                 )
             }
@@ -517,7 +517,7 @@ impl Display for Op {
                     f,
                     "forall [{}] {}",
                     vars.iter()
-                        .format_with(",", |(n, h), p| p(&format_args!("{} in {}", n, h))),
+                        .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
                 )
             }
@@ -526,7 +526,7 @@ impl Display for Op {
                     f,
                     "exists [{}] {}",
                     vars.iter()
-                        .format_with(",", |(n, h), p| p(&format_args!("{} in {}", n, h))),
+                        .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
                 )
             }
@@ -535,7 +535,7 @@ impl Display for Op {
                     f,
                     "choose [{}] {}",
                     vars.iter()
-                        .format_with(",", |(n, h), p| p(&format_args!("{} in {}", n, h))),
+                        .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
                 )
             }
@@ -714,7 +714,7 @@ impl Expr {
                 }
                 body.visit(ty, pre, post)?;
             }
-            Op::Intrinsic(intrinsic) => match intrinsic {
+            Op::Intrinsic(intrinsic) => match intrinsic.as_mut() {
                 // boolean
                 Intrinsic::BoolVal(_) => (),
                 Intrinsic::BoolNot { val } => val.visit(ty, pre, post)?,
@@ -722,6 +722,10 @@ impl Expr {
                 | Intrinsic::BoolOr { lhs, rhs }
                 | Intrinsic::BoolXor { lhs, rhs }
                 | Intrinsic::BoolImplies { lhs, rhs } => {
+                    lhs.visit(ty, pre, post)?;
+                    rhs.visit(ty, pre, post)?;
+                }
+                Intrinsic::BoolIff { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
@@ -739,6 +743,16 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
+                Intrinsic::IntAbs { val } => {
+                    val.visit(ty, pre, post)?;
+                }
+                Intrinsic::IntPow { base, exp } => {
+                    base.visit(ty, pre, post)?;
+                    exp.visit(ty, pre, post)?;
+                }
+                Intrinsic::IntToRational { val } => {
+                    val.visit(ty, pre, post)?;
+                }
                 // rational
                 Intrinsic::NumVal(_) => (),
                 Intrinsic::NumLt { lhs, rhs }
@@ -752,14 +766,38 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
+                Intrinsic::NumAbs { val }
+                | Intrinsic::NumFloor { val }
+                | Intrinsic::NumCeil { val }
+                | Intrinsic::NumRound { val } => {
+                    val.visit(ty, pre, post)?;
+                }
+                Intrinsic::NumPow { base, exp } => {
+                    base.visit(ty, pre, post)?;
+                    exp.visit(ty, pre, post)?;
+                }
                 // string
                 Intrinsic::StrVal(_) => (),
                 Intrinsic::StrLt { lhs, rhs }
                 | Intrinsic::StrLe { lhs, rhs }
                 | Intrinsic::StrGe { lhs, rhs }
-                | Intrinsic::StrGt { lhs, rhs } => {
+                | Intrinsic::StrGt { lhs, rhs }
+                | Intrinsic::StrConcat { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
+                }
+                Intrinsic::StrLength { seq } => {
+                    seq.visit(ty, pre, post)?;
+                }
+                Intrinsic::StrAt { seq, idx } => {
+                    seq.visit(ty, pre, post)?;
+                    idx.visit(ty, pre, post)?;
+                }
+                Intrinsic::StrStartsWith { seq, item }
+                | Intrinsic::StrEndsWith { seq, item }
+                | Intrinsic::StrIncludes { seq, item } => {
+                    seq.visit(ty, pre, post)?;
+                    item.visit(ty, pre, post)?;
                 }
                 // cloak
                 Intrinsic::BoxReveal { t, val } | Intrinsic::BoxShield { t, val } => {
@@ -782,6 +820,10 @@ impl Expr {
                     seq.visit(ty, pre, post)?;
                     idx.visit(ty, pre, post)?;
                 }
+                Intrinsic::SeqIsEmpty { t, seq } => {
+                    ty(t)?;
+                    seq.visit(ty, pre, post)?;
+                }
                 // set
                 Intrinsic::SetEmpty { t } => ty(t)?,
                 Intrinsic::SetLength { t, set } => {
@@ -794,6 +836,18 @@ impl Expr {
                     ty(t)?;
                     set.visit(ty, pre, post)?;
                     item.visit(ty, pre, post)?;
+                }
+                Intrinsic::SetUnion { t, lhs, rhs }
+                | Intrinsic::SetIntersection { t, lhs, rhs }
+                | Intrinsic::SetDifference { t, lhs, rhs }
+                | Intrinsic::SetIsSubset { t, lhs, rhs } => {
+                    ty(t)?;
+                    lhs.visit(ty, pre, post)?;
+                    rhs.visit(ty, pre, post)?;
+                }
+                Intrinsic::SetIsEmpty { t, set } => {
+                    ty(t)?;
+                    set.visit(ty, pre, post)?;
                 }
                 // map
                 Intrinsic::MapEmpty { k, v } => {
@@ -825,6 +879,11 @@ impl Expr {
                     map.visit(ty, pre, post)?;
                     key.visit(ty, pre, post)?;
                     val.visit(ty, pre, post)?;
+                }
+                Intrinsic::MapIsEmpty { k, v, map } => {
+                    ty(k)?;
+                    ty(v)?;
+                    map.visit(ty, pre, post)?;
                 }
                 // error
                 Intrinsic::ErrFresh => (),
@@ -867,9 +926,9 @@ impl Display for Expr {
             Self::Unit(inst) => inst.fmt(f),
             Self::Block { lets, body } => {
                 for binding in lets {
-                    writeln!(f, "{};", binding)?;
+                    writeln!(f, "{binding};")?;
                 }
-                write!(f, "{}", body)
+                write!(f, "{body}")
             }
         }
     }
@@ -1867,25 +1926,25 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         QualifiedPath::CastFromBool => {
                             let intrinsic = Intrinsic::BoolVal(Intrinsic::unpack_lit_bool(args)?);
                             ti_unify!(unifier, &TypeRef::Boolean, &self.exp_ty, target);
-                            Op::Intrinsic(intrinsic)
+                            Op::Intrinsic(Box::new(intrinsic))
                         }
                         // Integer::from()
                         QualifiedPath::CastFromInt => {
                             let intrinsic = Intrinsic::IntVal(Intrinsic::unpack_lit_int(args)?);
                             ti_unify!(unifier, &TypeRef::Integer, &self.exp_ty, target);
-                            Op::Intrinsic(intrinsic)
+                            Op::Intrinsic(Box::new(intrinsic))
                         }
                         // Rational::from()
                         QualifiedPath::CastFromFloat => {
                             let intrinsic = Intrinsic::NumVal(Intrinsic::unpack_lit_float(args)?);
                             ti_unify!(unifier, &TypeRef::Rational, &self.exp_ty, target);
-                            Op::Intrinsic(intrinsic)
+                            Op::Intrinsic(Box::new(intrinsic))
                         }
                         // Text::from()
                         QualifiedPath::CastFromStr => {
                             let intrinsic = Intrinsic::StrVal(Intrinsic::unpack_lit_str(args)?);
                             ti_unify!(unifier, &TypeRef::Text, &self.exp_ty, target);
-                            Op::Intrinsic(intrinsic)
+                            Op::Intrinsic(Box::new(intrinsic))
                         }
                         // system function
                         // Integer::eq()
@@ -1966,7 +2025,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                     Ok(parsed) => parsed,
                                     Err(e) => bail_on!(target, "{}", e),
                                 };
-                            Op::Intrinsic(intrinsic)
+                            Op::Intrinsic(Box::new(intrinsic))
                         }
                         // user-defined function on a user-defined type
                         QualifiedPath::UsrFuncOnUsrType(ty_name, ty_inst, fn_name, fn_inst) => {
@@ -2082,7 +2141,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                 // the receiver can only be a literal boolean, integer, float, or string
                                 let (intrinsic, ty) = Intrinsic::parse_literal_into(receiver)?;
                                 ti_unify!(unifier, &ty, &self.exp_ty, target);
-                                Op::Intrinsic(intrinsic)
+                                Op::Intrinsic(Box::new(intrinsic))
                             }
                             // from cannot be a method call
                             CastFuncName::From => bail_on!(expr_method, "unexpected"),
@@ -2123,7 +2182,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             },
                         };
 
-                        Op::Intrinsic(intrinsic)
+                        Op::Intrinsic(Box::new(intrinsic))
                     }
                     // user-defined functions
                     FuncName::Usr(name) => {
@@ -2445,16 +2504,16 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
 
         // build the opcode
         let op = match fn_name {
-            SysFuncName::Eq => Op::Intrinsic(Intrinsic::SmtEq {
+            SysFuncName::Eq => Op::Intrinsic(Box::new(Intrinsic::SmtEq {
                 t: operand,
                 lhs: parsed_lhs,
                 rhs: parsed_rhs,
-            }),
-            SysFuncName::Ne => Op::Intrinsic(Intrinsic::SmtNe {
+            })),
+            SysFuncName::Ne => Op::Intrinsic(Box::new(Intrinsic::SmtNe {
                 t: operand,
                 lhs: parsed_lhs,
                 rhs: parsed_rhs,
-            }),
+            })),
         };
         Ok(op)
     }

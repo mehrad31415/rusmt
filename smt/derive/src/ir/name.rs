@@ -2,7 +2,7 @@
 macro_rules! name {
     ($(#[$meta:meta])* $name:ident $(: $parent:ty)?) => {
         $(#[$meta])*
-        #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+        #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
         pub struct $name {
             ident: String,
         }
@@ -59,7 +59,7 @@ impl SmtSortName {
         param: &crate::parser::name::TypeParamName,
     ) -> Self {
         Self {
-            ident: format!("{}_{}", func, param),
+            ident: format!("{func}_{param}"),
         }
     }
 
@@ -70,7 +70,7 @@ impl SmtSortName {
         param: &crate::parser::name::TypeParamName,
     ) -> Self {
         Self {
-            ident: format!("{}_{}", axiom, param),
+            ident: format!("{axiom}_{param}"),
         }
     }
 }

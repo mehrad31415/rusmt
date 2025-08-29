@@ -1,14 +1,11 @@
-//! Module for deriving function annotations for procedural macros.
+//! Provides the two functions `derive_for_impl` and `derive_for_spec`:
 //!
-//! This module ultimately provides the two functions `derive_for_impl` and `derive_for_spec`:
-//!
-//! - `derive_for_impl` is used inside the `smt_impl` procedural macro to derive code for implementation annotations. If the return type of derive_for_impl is an error, the macro will generate a compile-time error. If the return type of derive_for_impl is Ok, the macro will unwrap the result and return the generated code.
-//! - `derive_for_spec` is used inside the `smt_spec` procedural macro to derive code for specification annotations. If the return type of derive_for_spec is an error, the macro will generate a compile-time error. If the return type of derive_for_spec is Ok, the macro will unwrap the result and return the generated code.
-//!
-use crate::attr::{parse_dict, MetaValue};
+//! - `derive_for_impl` is used inside the `smt_impl` procedural macro to derive code for implementation annotations.
+//! - `derive_for_spec` is used inside the `smt_spec` procedural macro to derive code for specification annotations.
+
+use crate::attr::{MetaValue, parse_dict};
 use crate::generics::TypeParamGroup;
 use crate::{bail_if_exists, bail_if_missing, bail_on};
-use log::info;
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::{FnArg, ItemFn, PatType, Path, PathSegment, Result, Signature, Type, TypePath};
@@ -26,19 +23,6 @@ use syn::{FnArg, ItemFn, PatType, Path, PathSegment, Result, Signature, Type, Ty
 /// It then generates an implementation of a method for the type specified by the first
 /// parameter, if a `method` attribute is provided.
 ///
-/// # Arguments
-///
-/// * `target` - The function item to inspect and derive from.
-/// * `method` - An optional identifier for the method name to generate.
-///
-/// # Returns
-///
-/// An `Option<TokenStream>` containing the generated code if derivation occurs, or `None` otherwise.
-///
-/// # Errors
-///
-/// Returns an error if the function signature does not meet the required criteria or if there are
-/// issues with parsing the types or attributes.
 /// */* input
 ///         fn ADD<T:SMT>(a: i32, b: T) -> i32 {
 ///             a
@@ -116,6 +100,7 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
         // Otherwise, get the first parameter.
         (Some(p), _) => p,
     };
+
     // Extract the self type from the first parameter.
     let self_ty = match param0 {
         // If the first parameter is a receiver (e.g., `self`), return an error.
@@ -152,13 +137,12 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
                 segments,
             },
         }) => {
-            // THESE PARTS ARE ALREADY INTERNALLY CHECKED IN THE `collect_type_arguments` FUNCTION //
             let mut iter = segments.iter();
             // Get the first segment (the type name).
             let segment = bail_if_missing!(iter.next(), param0, "type name"); // unreachable invocation
-                                                                              // Ensure there are no additional segments (no nested types).
+
+            // Ensure there are no additional segments (no nested types).
             bail_if_exists!(iter.next());
-            // END OF THE CHECKED PART //
 
             let PathSegment { ident, arguments } = segment;
             // Ensure the type is not a type argument (cannot derive a method for a type argument).
@@ -206,7 +190,7 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
                 let pat = param.pat.as_ref();
                 // Add the parameter to the method parameters.
                 method_params.push(quote!(#param)); // foo: f64
-                                                    // Add the pattern to the function arguments.
+                // Add the pattern to the function arguments.
                 func_args.push(quote!(#pat)); // foo
             }
         }
@@ -240,19 +224,6 @@ enum FnKind {
 ///
 /// This function handles the parsing of attributes and the function item, determines the kind
 /// of derivation to perform (implementation or specification), and generates the appropriate code.
-///
-/// # Arguments
-///
-/// * `attr` - The attribute token stream provided to the macro.
-/// * `item` - The function item token stream to process.
-/// * `kind` - The kind of function derivation to perform (implementation or specification or axiom).
-///
-/// # Returns
-///
-/// A token stream containing the original function and any derived code.
-// Could not previously test because procedural macro API is used outside of a procedural macro error.
-// The function signature is changed to accept proc_macro2::TokenStream instead of proc_macro::TokenStream.
-// attr is key1 = value1, key2 = value2 so in #[my_attr(...)] only the ... part is passed to the attr
 fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result<TokenStream> {
     // Parse the attributes into a dictionary.
     // let attr = TokenStream::from(attr); from proc_macro::TokenStream to proc_macro2::TokenStream
@@ -264,34 +235,7 @@ fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result
     let derived;
     match kind {
         FnKind::Axiom => {
-            info!("derive_for_func: axiom");
-
-            let _ = match dict.remove("relations") {
-                None => info!("axiom {} has no relations", target.sig.ident),
-                Some(MetaValue::One(ident)) => {
-                    bail_on!(attr, "invalid relations attribute: {{ {} }}", ident)
-                }
-                Some(MetaValue::Set(ident)) => bail_on!(
-                    attr,
-                    "invalid relations attribute: {{ {} }}",
-                    ident
-                        .into_iter()
-                        .map(|i| i.to_string())
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-                Some(MetaValue::Map(ident)) => info!(
-                    "axiom {} has relations: {{ {} }}",
-                    target.sig.ident,
-                    ident
-                        .into_iter()
-                        .map(|(k, v)| format!("{} = {}", k, v))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            };
-
-            // the only attribute allowed for axiom is relations
+            // no method attribute is allowed for axioms
             if !dict.is_empty() {
                 bail_on!(attr, "unknown attributes");
             }
@@ -343,15 +287,6 @@ fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result
                         .collect::<Vec<_>>()
                         .join(",")
                 ),
-                Some(MetaValue::Map(ident)) => bail_on!(
-                    attr,
-                    "invalid method attribute: {{ {} }}",
-                    ident
-                        .into_iter()
-                        .map(|(k, v)| format!("{} = {}", k, v))
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
             };
 
             dict.remove("impls"); // smt_spec can only have impls attribute
@@ -377,15 +312,6 @@ fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result
                     ident
                         .into_iter()
                         .map(|i| i.to_string())
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-                Some(MetaValue::Map(ident)) => bail_on!(
-                    attr,
-                    "invalid method attribute: {{ {} }}",
-                    ident
-                        .into_iter()
-                        .map(|(k, v)| format!("{} = {}", k, v))
                         .collect::<Vec<_>>()
                         .join(",")
                 ),
@@ -419,16 +345,6 @@ fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result
 ///
 /// This function is intended to be used as a procedural macro handler for functions annotated
 /// with smt_impl.
-///
-/// # Arguments
-///
-/// * `attr` - The attribute token stream provided to the macro.
-/// * `item` - The function item token stream to process.
-///
-/// # Returns
-///
-/// A token stream containing the original function and any derived code.
-///
 /// example attr : #[method = ADD, specs = [ ... ]]
 /// example item : fn add<T:SMT>(a: i32, b: T) -> i32 { a }
 /// does the implementation of the method ADD for the type i32 using the logic of the function add
@@ -440,15 +356,6 @@ pub fn derive_for_impl(attr: TokenStream, item: TokenStream) -> Result<TokenStre
 ///
 /// This function is intended to be used as a procedural macro handler for functions annotated
 /// with smt_spec attributes.
-///
-/// # Arguments
-///
-/// * `attr` - The attribute token stream provided to the macro.
-/// * `item` - The function item token stream to process.
-///
-/// # Returns
-///
-/// A token stream containing the original function and any derived code.
 pub fn derive_for_spec(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     derive_for_func(attr, item, FnKind::Spec)
 }
@@ -457,16 +364,10 @@ pub fn derive_for_spec(attr: TokenStream, item: TokenStream) -> Result<TokenStre
 ///
 /// This function is intended to be used as a procedural macro handler for functions annotated
 /// with smt_axiom attributes.
-/// # Arguments
-/// * `attr` - The attribute token stream provided to the macro.
-/// * `item` - The function item token stream to process.
-/// # Returns
-/// A token stream containing the original function and any derived code.
 pub fn derive_for_axiom(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     derive_for_func(attr, item, FnKind::Axiom)
 }
 
-// ------------------------------------------------------------------------------------------------//
 #[cfg(test)]
 mod tests {
     use super::*;

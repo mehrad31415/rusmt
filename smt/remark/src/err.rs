@@ -17,12 +17,13 @@
 /// - `fail_on!(item (value), "message {}", arg)` to return a compiler error with a formatted message
 /// - The proc_macro::TokenStream is the input and return type of the top level procedural macros.
 ///
-///     We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the rusmart-smt-remark-derive crate.
+/// We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the rusmart-smt-remark-derive crate.
 // The into_compile_error method converts a syn::Error to proc_macro2::TokenStream.
 // The proc_macro::TokenStream::from is used to convert the proc_macro2::TokenStream to proc_macro::TokenStream.
 // Error has got a method named into_compile_error() which generates a compilation error from the error object.
-// Syn uses spans to represent the location (line and column number) of the expression in the source where it was initially located. This is used mainly for error reporting. All structs (AST elements) implement Spanned. The span can be attached to errors so that the compile renders them on the offending lines.
-// this is only used in the declaration of smt_axiom proc-macro-attribute.
+// Syn uses spans to represent the location (line and column number) of the expression in the source where it was initially located.
+// This is used mainly for error reporting. All structs (AST elements) implement Spanned.
+// this macro is only used in the declaration of smt_axiom proc-macro-attribute.
 #[macro_export]
 macro_rules! fail_on {
     ($item:expr, $msg:literal $(,)?) => {
@@ -37,21 +38,10 @@ macro_rules! fail_on {
     };
 }
 
-// A declarative macro cannot be exported using #[macro_export] in a proc-macro crate (currently).
-// Writing "pub use fail_on;" will not export a declarative macro and we need to use #[macro_export].
-// procedural macros can only be exported from proc-macro crates (not declarative macros).
-// So fail_on! as a declarative macro cannot be exported using #[macro_export] to be used from outside the crate. In other words, fail_on! can only be used inside the err.rs module.
-// However, to make it accessible in other modules in the crate, we can write pub(crate) use fail_on;.
-// This line was previously needed to make the macro accessible in other modules in the crate.
-// It is no longer needed because the crate is no longer a proc-macro crate.
-// pub(crate) use fail_on;
-
 /// Special case on fail: when an error happens
 /// It has two patterns:
 /// - `fail_if_error!(Ok(proc_macro2::TokenStream::from(value)))` to return the value wrapped as token stream if it is Ok
 /// - `fail_if_error!(Err(error))` to return the error as a compiler error
-/// In the second case the `error` is of type syn::Error and the into_compile_error method converts a syn::Error to proc_macro2::TokenStream.
-/// The proc_macro::TokenStream::from is used to convert the proc_macro2::TokenStream to proc_macro::TokenStream.
 #[macro_export]
 macro_rules! fail_if_error {
     ($item:expr) => {
@@ -67,8 +57,8 @@ macro_rules! fail_if_error {
 /// - `bail_on!(item (value), "message")` to return an Error instance with a literal message
 /// - `bail_on!(item (value), "message {}", arg)` to return an Error instance with a formatted message
 ///
-///     This macro is similar to fail_on! but it returns an Error instance instead of a compiler error.
-///     This error instance can be passed on to be used to generate a compiler error later.
+/// This macro is similar to fail_on! but it returns an Error instance instead of a compiler error.
+/// This error instance can be passed on to be used to generate a compiler error later.
 #[macro_export]
 macro_rules! bail_on {
     ($item:expr, $msg:literal $(,)?) => {
@@ -79,12 +69,9 @@ macro_rules! bail_on {
     };
 }
 
-/// Special case on bail: does not expect a token to exist
-/// This macro is used to check if a token exists and if it does, it returns an error.
+/// checks if a token exists and if it does, it returns an error.
 /// It has one pattern:
 /// - `bail_if_exists!(item)` to return an Error instance if the item exists (is Some)
-/// If the item is None, it does nothing.
-/// If the item is Some, it returns Err(syn::Error::new_spanned(item, "unexpected")).
 #[macro_export]
 macro_rules! bail_if_exists {
     ($item:expr) => {
@@ -95,12 +82,9 @@ macro_rules! bail_if_exists {
     };
 }
 
-/// Special case on bail: expects a token to exist
-/// This macro is used to check if a token is missing and if it is, it returns an error.
+/// checks if a token is missing and if it is, it returns an error.
 /// It has one pattern:
-/// - `bail_if_missing!(item, parent, "note")` to return an Error instance if the item is missing
-/// If the item is Some, it returns the value.
-/// If the item is None, it returns Err(syn::Error::new_spanned(parent, format!("expect {}", note))).
+/// - `bail_if_missing!(item, parent, "note")` to return an Error instance if the item is missing (none)
 #[macro_export]
 macro_rules! bail_if_missing {
     ($item:expr, $par:expr, $note:literal) => {

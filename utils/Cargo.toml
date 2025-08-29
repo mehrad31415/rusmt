@@ -1,10 +1,14 @@
 [package]
 name = "rusmart-utils"
-description = "Utility functions shared among Rusmart crates"
 version = "0.1.0"
-edition = "2021"
-authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>"]
-license = "GPL-3.0"
+authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>", "Mehrad Haghshenas <m3haghsh@uwaterloo.ca>"]
+description = "Utility functions shared among Rusmart crates"
+license = "GPL-3.0-or-later"
+keywords = ["utility", "rusmart"]
+categories = ["development-tools::build-utils"]
+edition = "2024"
+homepage = "https://github.com/meng-xu-cs/rusmart"
+repository = "https://github.com/meng-xu-cs/rusmart.git"
 
 [dependencies]
 lazy_static = { workspace = true }

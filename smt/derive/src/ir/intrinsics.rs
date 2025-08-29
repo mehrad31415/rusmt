@@ -1,7 +1,7 @@
 use crate::ir::index::ExpId;
 use crate::ir::sort::Sort;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 /// Intrinsic procedure
 pub enum Intrinsic {
     /// `Boolean::from`
@@ -16,8 +16,10 @@ pub enum Intrinsic {
     BoolXor { lhs: ExpId, rhs: ExpId },
     /// `Boolean::implies`
     BoolImplies { lhs: ExpId, rhs: ExpId },
+    /// `Boolean::iff`
+    BoolIff { lhs: ExpId, rhs: ExpId },
     /// `Integer::from`
-    IntVal(i128),
+    IntVal(i64),
     /// `Integer::lt`
     IntLt { lhs: ExpId, rhs: ExpId },
     /// `Integer::le`
@@ -36,8 +38,14 @@ pub enum Intrinsic {
     IntDiv { lhs: ExpId, rhs: ExpId },
     /// `Integer::rem`
     IntRem { lhs: ExpId, rhs: ExpId },
+    /// `Integer::to_rational`
+    IntToRational { val: ExpId },
+    /// `Integer::pow`
+    IntPow { base: ExpId, exp: ExpId },
+    /// `Integer::abs`
+    IntAbs { val: ExpId },
     /// `Rational::from`
-    NumVal(i128),
+    NumVal(i64), // we don't want to use f64 here because that will cause precision issues instead when we want to present 1/3 for example we use NumDiv(expression id of NumVal(1), expression id of NumVal(3)) for example.
     /// `Rational::lt`
     NumLt { lhs: ExpId, rhs: ExpId },
     /// `Rational::le`
@@ -54,6 +62,16 @@ pub enum Intrinsic {
     NumMul { lhs: ExpId, rhs: ExpId },
     /// `Rational::div`
     NumDiv { lhs: ExpId, rhs: ExpId },
+    /// `Num::pow`
+    NumPow { base: ExpId, exp: ExpId },
+    /// `Num::abs`
+    NumAbs { val: ExpId },
+    /// `Num::round`
+    NumRound { val: ExpId },
+    /// `Num::floor`
+    NumFloor { val: ExpId },
+    /// `Num::ceil`
+    NumCeil { val: ExpId },
     /// `Text::from`
     StrVal(String),
     /// `Text::lt`
@@ -64,6 +82,18 @@ pub enum Intrinsic {
     StrGt { lhs: ExpId, rhs: ExpId },
     /// `Text::ge`
     StrGe { lhs: ExpId, rhs: ExpId },
+    /// `Text::concat`
+    StrConcat { lhs: ExpId, rhs: ExpId },
+    /// `Text::at_index`
+    StrAt { seq: ExpId, idx: ExpId },
+    /// `Text::length`
+    StrLength { seq: ExpId },
+    /// `Text::contains`
+    StrIncludes { seq: ExpId, item: ExpId },
+    /// `Text::starts_with`
+    StrStartsWith { seq: ExpId, item: ExpId },
+    /// `Text::ends_with`
+    StrEndsWith { seq: ExpId, item: ExpId },
     /// `Cloak::shield`
     BoxShield { t: Sort, val: ExpId },
     /// `Cloak::reveal`
@@ -78,6 +108,8 @@ pub enum Intrinsic {
     SeqAt { t: Sort, seq: ExpId, idx: ExpId },
     /// `Seq::includes`
     SeqIncludes { t: Sort, seq: ExpId, item: ExpId },
+    /// `Seq::is_empty`
+    SeqIsEmpty { t: Sort, seq: ExpId },
     /// `Set::empty`
     SetEmpty { t: Sort },
     /// `Set::length`
@@ -88,6 +120,16 @@ pub enum Intrinsic {
     SetRemove { t: Sort, set: ExpId, item: ExpId },
     /// `Set::contains`
     SetContains { t: Sort, set: ExpId, item: ExpId },
+    /// `Set::intersection`
+    SetIntersection { t: Sort, lhs: ExpId, rhs: ExpId },
+    /// `Set::union`
+    SetUnion { t: Sort, lhs: ExpId, rhs: ExpId },
+    /// `Set::difference`
+    SetDifference { t: Sort, lhs: ExpId, rhs: ExpId },
+    /// `Set::is_subset`
+    SetIsSubset { t: Sort, lhs: ExpId, rhs: ExpId },
+    /// `Set::is_empty`
+    SetIsEmpty { t: Sort, set: ExpId },
     /// `Map::empty`
     MapEmpty { k: Sort, v: Sort },
     /// `Map::length`
@@ -121,6 +163,8 @@ pub enum Intrinsic {
         map: ExpId,
         key: ExpId,
     },
+    /// `Map::is_empty`
+    MapIsEmpty { k: Sort, v: Sort, map: ExpId },
     /// `Error::fresh`
     ErrFresh,
     /// `Error::merge`

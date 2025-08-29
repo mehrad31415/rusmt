@@ -1,23 +1,22 @@
 //! This module contains all the configuration settings for the application
 
+use lazy_static::lazy_static;
+use simplelog::{ColorChoice, ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
 use std::env;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use lazy_static::lazy_static;
-use simplelog::{ColorChoice, ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
-
 /// Name of project
 /// This is used to prefix environment variables
-pub static PROJECT: &str = "RUSMART";
+static PROJECT: &str = "RUSMART";
 
 /// Marks whether initialization is completed
 /// This is used to prevent double initialization
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Mode of operation
-pub enum Mode {
+enum Mode {
     /// production mode
     Prod,
     /// development mode
@@ -41,8 +40,8 @@ impl Display for Mode {
 
 lazy_static! {
     /// Which mode to run on (default to development mode)
-    pub static ref MODE: Mode = {
-        let setting = env::var(format!("{}_VERBOSE", PROJECT))
+    static ref MODE: Mode = {
+        let setting = env::var(format!("{PROJECT}_VERBOSE"))
             .or(env::var("VERBOSE"))
             .or(env::var("V"));
         let verbosity = match setting {
@@ -148,7 +147,7 @@ mod tests {
         // Reset INITIALIZED to false before the test
         INITIALIZED.store(false, Ordering::SeqCst);
         // Set the VERBOSE environment variable to 1
-        env::set_var("VERBOSE", "1");
+        unsafe { env::set_var("VERBOSE", "1") };
 
         // Because INITIALIZED is set to false, this assertion should pass
         assert!(!INITIALIZED.load(Ordering::SeqCst));
@@ -165,7 +164,6 @@ mod tests {
         assert!(INITIALIZED.load(Ordering::SeqCst));
 
         // Assert that the logging level is set to Info
-        // Note that other paths cannot be tested because the MODE is a lazy static variable and is defined inside a proc macro
         let expected_level = match *MODE {
             Mode::Dev => LevelFilter::Info,
             _ => unreachable!(),

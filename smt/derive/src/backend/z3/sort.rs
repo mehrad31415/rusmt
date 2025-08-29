@@ -1,60 +1,64 @@
-//! This module contains the conversion functions for converting Rusmart types to SMT-LIB types
+//! Converts a `Sort` to a Z3 `Sort`.
 
-use crate::backend::z3::ty::tyuse_in_smt;
-use crate::ir::exp::{ExpRegistry, Expression};
-use crate::ir::index::{ExpId, UsrSortId};
-use crate::ir::intrinsics::Intrinsic;
-use crate::ir::name::UsrSortName;
-use crate::ir::sort::{DataType, Sort};
-use crate::IRContext;
-use core::panic;
+use crate::ir::{
+    ctxt::IRContext,
+    exp::{ExpRegistry, Expression},
+    index::{ExpId, UsrSortId},
+    intrinsics::Intrinsic,
+    name::UsrSortName,
+    sort::{DataType, Sort},
+};
+use std::collections::HashMap;
+use z3::{Context, DatatypeVariant};
 
-/// Converts a Rust `Sort` into the corresponding SMT-LIB sort as a `String`
-pub fn sort_to_smt(s: &Sort, ir: &IRContext, user_sort_name: Option<&UsrSortName>) -> String {
+/// Converts a `Sort` to a Z3 `Sort`.
+pub fn sort_to_z3(
+    s: &Sort,
+    ctx: &Context,
+    ir: &IRContext,
+    user_sort_name: Option<&UsrSortName>,
+    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+) -> z3::Sort {
     match s {
-        Sort::Boolean => "Bool".to_string(),
-        Sort::Integer => "Int".to_string(),
-        Sort::Rational => "Real".to_string(),
-        Sort::Text => "String".to_string(),
-        Sort::Seq(inner) => format!("(Seq {})", sort_to_smt(inner, ir, user_sort_name)),
-        Sort::Set(inner) => format!("(Set {})", sort_to_smt(inner, ir, user_sort_name)),
-        Sort::Map(key, value) => {
-            format!(
-                "(Array {} {})",
-                sort_to_smt(key, ir, user_sort_name),
-                sort_to_smt(value, ir, user_sort_name)
-            )
+        Sort::Boolean => z3::Sort::bool(ctx),
+        Sort::Integer => z3::Sort::int(ctx),
+        Sort::Rational => z3::Sort::real(ctx),
+        Sort::Text => z3::Sort::string(ctx),
+
+        Sort::Seq(inner) => {
+            let inner_sort = sort_to_z3(inner, ctx, ir, user_sort_name, ty_map);
+            z3::Sort::seq(ctx, &inner_sort)
         }
-        Sort::Error => "undefined_function".to_string(), // triggers an undefined function which leads to a crash assuming that `undefined_function` is not defined!
-        Sort::User(usr_sort_id) => tyuse_in_smt(*usr_sort_id, ir),
+
+        Sort::Set(inner) => {
+            let inner_sort = sort_to_z3(inner, ctx, ir, user_sort_name, ty_map);
+            z3::Sort::set(ctx, &inner_sort)
+        }
+
+        Sort::Map(key, val) => {
+            let key_sort = sort_to_z3(key, ctx, ir, user_sort_name, ty_map);
+            let val_sort = sort_to_z3(val, ctx, ir, user_sort_name, ty_map);
+            z3::Sort::array(ctx, &key_sort, &val_sort)
+        }
+
+        Sort::Error => panic!("cannot convert error sort to Z3 API"),
+
+        Sort::User(sid) => ty_map
+            .get(sid)
+            .expect("user sort not defined before it is used")
+            .0
+            .clone(),
+
         Sort::Uninterpreted(name) => {
-            if let Some(user_sort_name) = user_sort_name {
-                format!("({}_{})", name, user_sort_name)
+            let full = if let Some(parent) = user_sort_name {
+                let n = format!("{parent}_{name}");
+                z3::Sort::uninterpreted(ctx, n.clone().into());
+                n
             } else {
-                format!("{}", name)
-            }
+                name.to_string()
+            };
+            z3::Sort::uninterpreted(ctx, full.into())
         }
-    }
-}
-
-pub fn sort_to_smt_name(s: &Sort, ir: &IRContext) -> String {
-    match s {
-        Sort::Boolean => "Bool".to_string(),
-        Sort::Integer => "Int".to_string(),
-        Sort::Rational => "Real".to_string(),
-        Sort::Text => "String".to_string(),
-        Sort::Seq(inner) => format!("Seq_{}", sort_to_smt(inner, ir, None)),
-        Sort::Set(inner) => format!("Set_{}", sort_to_smt(inner, ir, None)),
-        Sort::Map(key, value) => {
-            format!(
-                "Array_{}_{}",
-                sort_to_smt(key, ir, None),
-                sort_to_smt(value, ir, None)
-            )
-        }
-        Sort::Error => "undefined_function".to_string(), // triggers an undefined function which leads to a crash assuming that `undefined_function` is not defined!
-        Sort::User(usr_sort_id) => tyuse_in_smt(*usr_sort_id, ir),
-        Sort::Uninterpreted(name) => format!("{}", name),
     }
 }
 
@@ -74,30 +78,28 @@ pub fn derive_type(exp_registry: &ExpRegistry, ir: &IRContext, eid: &ExpId) -> S
             let base_sort = derive_type(exp_registry, ir, base);
             let base_tuple = match ir.ty_registry.retrieve(match &base_sort {
                 Sort::User(sid) => *sid,
-                _ => panic!("type mismatch: expect $? | actual {}", base_sort),
+                _ => panic!("type mismatch: expect $? | actual {base_sort}"),
             }) {
                 DataType::Tuple(tuple) => tuple.clone(),
-                dt => panic!("type mismatch: expect <tuple> | actual {}", dt),
+                dt => panic!("type mismatch: expect <tuple> | actual {dt}"),
             };
             base_tuple
                 .into_iter()
                 .nth(*slot)
-                .unwrap_or_else(|| panic!("type mismatch: no slot {} in tuple {}", slot, base_sort))
+                .unwrap_or_else(|| panic!("type mismatch: no slot {slot} in tuple {base_sort}"))
         }
         Expression::AccessField { base, field } => {
             let base_sort = derive_type(exp_registry, ir, base);
             let mut base_record = match ir.ty_registry.retrieve(match &base_sort {
                 Sort::User(sid) => *sid,
-                _ => panic!("type mismatch: expect $? | actual {}", base_sort),
+                _ => panic!("type mismatch: expect $? | actual {base_sort}"),
             }) {
                 DataType::Record(record) => record.clone(),
-                dt => panic!("type mismatch: expect <record> | actual {}", dt),
+                dt => panic!("type mismatch: expect <record> | actual {dt}"),
             };
             base_record
                 .remove(field)
-                .unwrap_or_else(|| {
-                    panic!("type mismatch: no field {} in record {}", field, base_sort)
-                })
+                .unwrap_or_else(|| panic!("type mismatch: no field {field} in record {base_sort}"))
                 .clone()
         }
         Expression::Match { cases } => {
@@ -110,7 +112,7 @@ pub fn derive_type(exp_registry: &ExpRegistry, ir: &IRContext, eid: &ExpId) -> S
                     }
                     Some(s) => {
                         if s != &sort {
-                            panic!("type mismatch: expect {} | actual {}", s, sort);
+                            panic!("type mismatch: expect {s} | actual {sort}");
                         }
                     }
                 }
@@ -128,7 +130,7 @@ pub fn derive_type(exp_registry: &ExpRegistry, ir: &IRContext, eid: &ExpId) -> S
             for case in cases {
                 let sort = derive_type(exp_registry, ir, &case.body);
                 if case_sort != sort {
-                    panic!("type mismatch: expect {} | actual {}", case_sort, sort);
+                    panic!("type mismatch: expect {case_sort} | actual {sort}");
                 }
             }
             case_sort
@@ -185,41 +187,56 @@ pub fn derive_type(exp_registry: &ExpRegistry, ir: &IRContext, eid: &ExpId) -> S
                 Sort::User(lookup_type(ir, None, &inst))
             }
         }
-        Expression::Intrinsic(intrinsic) => match intrinsic {
+        Expression::Intrinsic(intrinsic) => match intrinsic.as_ref() {
             // boolean
             Intrinsic::BoolVal(_)
             | Intrinsic::BoolNot { .. }
             | Intrinsic::BoolAnd { .. }
             | Intrinsic::BoolOr { .. }
             | Intrinsic::BoolXor { .. }
-            | Intrinsic::BoolImplies { .. } => Sort::Boolean,
+            | Intrinsic::BoolImplies { .. }
+            | Intrinsic::BoolIff { .. } => Sort::Boolean,
             // integer
             Intrinsic::IntVal(_)
             | Intrinsic::IntAdd { .. }
             | Intrinsic::IntSub { .. }
             | Intrinsic::IntMul { .. }
             | Intrinsic::IntDiv { .. }
-            | Intrinsic::IntRem { .. } => Sort::Integer,
+            | Intrinsic::IntRem { .. }
+            | Intrinsic::IntPow { .. }
+            | Intrinsic::IntAbs { .. } => Sort::Integer,
             Intrinsic::IntLt { .. }
             | Intrinsic::IntLe { .. }
             | Intrinsic::IntGe { .. }
             | Intrinsic::IntGt { .. } => Sort::Boolean,
+            Intrinsic::IntToRational { .. } => Sort::Rational,
             // rational
             Intrinsic::NumVal(_)
             | Intrinsic::NumAdd { .. }
             | Intrinsic::NumSub { .. }
             | Intrinsic::NumMul { .. }
-            | Intrinsic::NumDiv { .. } => Sort::Rational,
+            | Intrinsic::NumDiv { .. }
+            | Intrinsic::NumAbs { .. }
+            | Intrinsic::NumPow { .. } => Sort::Rational,
+            Intrinsic::NumRound { .. } | Intrinsic::NumFloor { .. } | Intrinsic::NumCeil { .. } => {
+                Sort::Integer
+            }
             Intrinsic::NumLt { .. }
             | Intrinsic::NumLe { .. }
             | Intrinsic::NumGe { .. }
             | Intrinsic::NumGt { .. } => Sort::Boolean,
             // string
-            Intrinsic::StrVal(_) => Sort::Text,
+            Intrinsic::StrVal(_) | Intrinsic::StrConcat { .. } | Intrinsic::StrAt { .. } => {
+                Sort::Text
+            }
             Intrinsic::StrLt { .. }
             | Intrinsic::StrLe { .. }
             | Intrinsic::StrGe { .. }
-            | Intrinsic::StrGt { .. } => Sort::Boolean,
+            | Intrinsic::StrGt { .. }
+            | Intrinsic::StrIncludes { .. }
+            | Intrinsic::StrStartsWith { .. }
+            | Intrinsic::StrEndsWith { .. } => Sort::Boolean,
+            Intrinsic::StrLength { .. } => Sort::Integer,
             // cloak
             Intrinsic::BoxShield { t, .. } | Intrinsic::BoxReveal { t, .. } => t.clone(),
             // seq
@@ -228,20 +245,25 @@ pub fn derive_type(exp_registry: &ExpRegistry, ir: &IRContext, eid: &ExpId) -> S
             }
             Intrinsic::SeqLength { .. } => Sort::Integer,
             Intrinsic::SeqAt { t, .. } => t.clone(),
-            Intrinsic::SeqIncludes { .. } => Sort::Boolean,
+            Intrinsic::SeqIncludes { .. } | Intrinsic::SeqIsEmpty { .. } => Sort::Boolean,
             // set
             Intrinsic::SetEmpty { t }
             | Intrinsic::SetInsert { t, .. }
-            | Intrinsic::SetRemove { t, .. } => Sort::Set(t.clone().into()),
+            | Intrinsic::SetRemove { t, .. }
+            | Intrinsic::SetUnion { t, .. }
+            | Intrinsic::SetIntersection { t, .. }
+            | Intrinsic::SetDifference { t, .. } => Sort::Set(t.clone().into()),
             Intrinsic::SetLength { .. } => Sort::Integer,
-            Intrinsic::SetContains { .. } => Sort::Boolean,
+            Intrinsic::SetContains { .. }
+            | Intrinsic::SetIsEmpty { .. }
+            | Intrinsic::SetIsSubset { .. } => Sort::Boolean,
             // map
             Intrinsic::MapEmpty { k, v }
             | Intrinsic::MapPut { k, v, .. }
             | Intrinsic::MapDel { k, v, .. } => Sort::Map(k.clone().into(), v.clone().into()),
             Intrinsic::MapGet { v, .. } => v.clone(),
             Intrinsic::MapLength { .. } => Sort::Integer,
-            Intrinsic::MapContainsKey { .. } => Sort::Boolean,
+            Intrinsic::MapContainsKey { .. } | Intrinsic::MapIsEmpty { .. } => Sort::Boolean,
             // error
             Intrinsic::ErrFresh | Intrinsic::ErrMerge { .. } => Sort::Error,
             // smt
@@ -264,8 +286,8 @@ fn lookup_type(ir: &IRContext, name: Option<&UsrSortName>, inst: &[Sort]) -> Usr
                 .collect::<Vec<_>>()
                 .join(",");
             match name {
-                None => panic!("anonymous sort not registered ({})", inst_content),
-                Some(n) => panic!("user-defined sort not registered {}<{}>", n, inst_content),
+                None => panic!("anonymous sort not registered ({inst_content})"),
+                Some(n) => panic!("user-defined sort not registered {n}<{inst_content}>"),
             }
         }
         Some(sid) => sid,

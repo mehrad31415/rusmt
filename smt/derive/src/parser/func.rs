@@ -1,25 +1,16 @@
 //! This module defines the function signature and function definition structures
 
-use crate::parser::ctxt::ContextWithType; // Context manager after type analysis is done
-use crate::parser::expr::Expr; // Our own expression type
-use crate::parser::generics::Generics; // Declaration of generics
-use crate::parser::name::{ReservedIdent, TypeParamName, UsrFuncName, UsrTypeName, VarName}; // Name handling
+use crate::parser::ctxt::ContextWithType;
+use crate::parser::expr::Expr;
+use crate::parser::generics::Generics;
+use crate::parser::name::{ReservedIdent, TypeParamName, UsrFuncName, UsrTypeName, VarName};
 use crate::parser::ty::{CtxtForType, TypeTag};
 use crate::{bail_if_exists, bail_if_non_empty, bail_on};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use syn::{
-    Expr as Exp,    // Renaming `Expr` to `Exp` to avoid conflict with our own `Expr`
-    ExprMacro,      // Represents a macro invocation `expression`
-    FnArg, // Represents a function argument in a function signature (either `Receiver` or `Typed`)
-    Ident, // Represents an identifier (e.g., variable or function name)
-    Macro, // Represents a macro invocation
-    MacroDelimiter, // Represents the delimiter used in a macro (e.g., parentheses)
-    PatType, // Represents a pattern with a type annotation
-    Result, // Alias for `Result<T, syn::Error>`
-    ReturnType, // Represents the return type, which is either `Default` or `Type`(Token![->], Box<Type>). Functions default to `()` and closures default to type inference.
-    Signature,  // Represents a function signature
-    Stmt,       // Represents a statement in Rust code
+    Expr as Exp, ExprMacro, FnArg, Ident, Macro, MacroDelimiter, PatType, Result, ReturnType,
+    Signature, Stmt,
 };
 
 /// Represents casting-related function names
@@ -150,18 +141,6 @@ pub enum FuncName {
 
 impl FuncName {
     /// Attempts to convert an identifier into a `FuncName`.
-    ///
-    /// This method checks if the identifier matches any of the reserved, system, or casting function names.
-    /// If it does, it returns the corresponding `FuncName` variant.
-    /// Otherwise, it tries to convert it into a user-defined function name (`UsrFuncName`).
-    ///
-    /// # Arguments
-    ///
-    /// * `ident` - The identifier to convert.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the `FuncName` if successful, or a `syn::Error` if the identifier is a reserved keyword.
     pub fn try_from(ident: &Ident) -> Result<Self> {
         let name = ident.to_string();
         let parsed = match ReservedFuncName::from_str(&name) {
@@ -182,7 +161,6 @@ impl FuncName {
 }
 
 impl Display for FuncName {
-    /// Formats the `FuncName` as a string.
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Cast(name) => name.fmt(f),
@@ -194,12 +172,9 @@ impl Display for FuncName {
 }
 
 /// A context provider for function signature parsing.
-///
-/// This struct provides context information needed when parsing function signatures,
-/// such as generics and type information.
 struct FuncSigParseCtxt<'a> {
     ctxt: &'a ContextWithType, // this field is used to check if a user defined type is present in the ctxt when calling get_type_generics which will give None if the type is not present
-    generics: &'a Generics, // this field is to check if a type is a type parameter (and if it is not, possibly a user defined type)
+    generics: &'a Generics,
 }
 
 impl CtxtForType for FuncSigParseCtxt<'_> {
@@ -215,14 +190,11 @@ impl CtxtForType for FuncSigParseCtxt<'_> {
 
 #[derive(Debug, Clone)]
 /// Represents a function signature.
-///
-/// This struct contains information about a function's signature, including its
-/// generics, parameters, and return type.
 pub struct FuncSig {
     /// The generics associated with the function.
     pub generics: Generics,
     /// The parameters of the function, each with a name and type.
-    pub params: Vec<(VarName, TypeTag)>, // the reason Vec was used not BtreeMap is because the original order of the parameters is important
+    pub params: Vec<(VarName, TypeTag)>,
     /// The return type of the function.
     pub ret_ty: TypeTag,
 }
@@ -230,28 +202,6 @@ pub struct FuncSig {
 impl FuncSig {
     /// Constructs a `FuncSig` from a `syn::Signature`.
     /// Used to create ADT from the signature of a function.
-    ///
-    /// This method parses a function signature from the syntax tree and extracts
-    /// the generics, parameters, and return type.
-    ///
-    /// # Arguments
-    ///
-    /// * `driver` - The context with type information.
-    /// * `sig` - The function signature to parse.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the `FuncSig` if successful, or a `syn::Error` if parsing fails.
-    ///
-    /// # Errors
-    ///
-    /// This method will return an error if:
-    /// - The function is `const`, `async`, or `unsafe`, or has an ABI (these are not supported).
-    /// - The function has a variadic parameter list (e.g., `fn foo(...){}`).
-    /// - The function has a `self` parameter.
-    /// - The function has duplicated parameter names.
-    /// - The function lacks a return type.
-    /// - The return type can only be a tuple or a path otherwise an error is thrown.
     pub fn from_sig(driver: &ContextWithType, sig: &Signature) -> Result<Self> {
         let Signature {
             constness,
@@ -342,17 +292,7 @@ impl FuncSig {
         param
     }
 
-    /// Tests whether two function signatures are type-compatible.
-    ///
-    /// # Arguments
-    ///
-    /// * `sig` - The other `FuncSig` to compare with.
-    ///
-    /// # Returns
-    ///
-    /// `true` if the signatures are compatible, `false` otherwise.
-    ///
-    /// This function is used in ctxt.rs to check that the implementation and the corresponding specification have compatible function signatures.
+    /// Tests whether two function signatures (impl-spec) are type-compatible.
     pub fn is_compatible(&self, sig: &FuncSig) -> bool {
         let FuncSig {
             generics: impl_gens,
@@ -389,7 +329,7 @@ impl FuncSig {
 
         let mut zip_gens = BTreeSet::new();
         for (impl_ty, spec_ty) in impl_types.iter().zip(spec_types.iter()) {
-            if !unify(&impl_ty, &spec_ty, &mut zip_gens) {
+            if !unify(impl_ty, spec_ty, &mut zip_gens) {
                 return false;
             }
         }
@@ -405,7 +345,7 @@ impl FuncSig {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
@@ -421,35 +361,35 @@ pub fn unify(
                 // panic!("unification failed as the types are not compatible on Boolean");
                 return false;
             }
-            return true;
+            true
         }
         TypeTag::Integer => {
             if !matches!(spec_params, TypeTag::Integer) {
                 // panic!("unification failed as the types are not compatible on Integer");
                 return false;
             }
-            return true;
+            true
         }
         TypeTag::Rational => {
             if !matches!(spec_params, TypeTag::Rational) {
                 // panic!("unification failed as the types are not compatible on Rational");
                 return false;
             }
-            return true;
+            true
         }
         TypeTag::Text => {
             if !matches!(spec_params, TypeTag::Text) {
                 // panic!("unification failed as the types are not compatible on Text");
                 return false;
             }
-            return true;
+            true
         }
         TypeTag::Cloak(inside) => {
             if let TypeTag::Cloak(inside_spec) = spec_params {
                 unify(inside, inside_spec, zip_gens)
             } else {
                 // panic!("unification failed as the types are not compatible on Cloak");
-                return false;
+                false
             }
         }
         TypeTag::Seq(inside) => {
@@ -457,7 +397,7 @@ pub fn unify(
                 unify(inside, inside_spec, zip_gens)
             } else {
                 // panic!("unification failed as the types are not compatible on Seq");
-                return false;
+                false
             }
         }
         TypeTag::Set(inside) => {
@@ -465,7 +405,7 @@ pub fn unify(
                 unify(inside, inside_spec, zip_gens)
             } else {
                 // panic!("unification failed as the types are not compatible on Set");
-                return false;
+                false
             }
         }
         TypeTag::Map(key, value) => {
@@ -473,7 +413,7 @@ pub fn unify(
                 unify(key, key_spec, zip_gens) && unify(value, value_spec, zip_gens)
             } else {
                 // panic!("unification failed as the types are not compatible on Map");
-                return false;
+                false
             }
         }
         TypeTag::Error => {
@@ -481,7 +421,7 @@ pub fn unify(
                 // panic!("unification failed as the types are not compatible on Error");
                 return false;
             }
-            return true;
+            true
         }
         TypeTag::User(name, args) => {
             if let TypeTag::User(name_spec, args_spec) = spec_params {
@@ -499,10 +439,10 @@ pub fn unify(
                         return false;
                     }
                 }
-                return true;
+                true
             } else {
                 // panic!("unification failed as the types are not compatible on User");
-                return false;
+                false
             }
         }
         TypeTag::Pack(elems) => {
@@ -517,28 +457,25 @@ pub fn unify(
                         return false;
                     }
                 }
-                return true;
+                true
             } else {
                 // panic!("unification failed as the types are not compatible on Pack");
-                return false;
+                false
             }
         }
         TypeTag::Parameter(x) => {
             if let TypeTag::Parameter(y) = spec_params {
                 zip_gens.insert((x.clone(), y.clone()));
-                return true;
+                true
             } else {
                 // panic!("unification failed as the types are not compatible on Parameter");
-                return false;
+                false
             }
         }
     }
 }
 
 /// Function definition for implementation.
-///
-/// This struct represents a function definition in an implementation block,
-/// containing the function signature and the function body as an expression.
 pub struct ImplFuncDef {
     /// The function signature.
     pub head: FuncSig,
@@ -547,9 +484,6 @@ pub struct ImplFuncDef {
 }
 
 /// Function definition for specification.
-///
-/// This struct represents a function definition in a specification block,
-/// containing the function signature and an optional function body.
 pub struct SpecFuncDef {
     /// The function signature.
     pub head: FuncSig,
@@ -558,9 +492,6 @@ pub struct SpecFuncDef {
 }
 
 /// Function definition for both implementation and specification.
-///
-/// This struct represents a function definition that can be used in both implementation
-/// and specification contexts.
 pub struct FuncDef {
     /// The function signature.
     pub head: FuncSig,
@@ -590,9 +521,6 @@ impl From<SpecFuncDef> for FuncDef {
 }
 
 /// Function definition for an axiom.
-///
-/// This struct represents an axiom, which is a function with a body.
-/// The body of an axiom is an expression that represents the axiom's assertion.
 pub struct Axiom {
     /// The function signature.
     pub head: FuncSig,
@@ -602,21 +530,6 @@ pub struct Axiom {
 
 impl Axiom {
     /// Checks whether the entire function body is `unimplemented!()`.
-    ///
-    /// This method is used to determine if the function body consists solely of a call
-    /// to `unimplemented!()`, indicating that the function has no implementation. This is only used to check for #[smt_spec] marked functions.
-    ///
-    /// # Arguments
-    ///
-    /// * `stmts` - A slice of statements representing the function body.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing `true` if the function body is `unimplemented!()`, or `false` otherwise.
-    ///
-    /// # Errors
-    ///
-    /// This method returns an error if the macro invocation unimplemented!() is not used correctly (with arguments or different delimiters).
     pub fn is_unimplemented(stmts: &[Stmt]) -> Result<bool> {
         // If the function body contains more (or less) than one statement, it is not `unimplemented!()`
         if stmts.len() != 1 {

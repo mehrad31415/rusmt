@@ -26,8 +26,10 @@ pub enum Intrinsic {
     BoolXor { lhs: Expr, rhs: Expr },
     /// `Boolean::implies`
     BoolImplies { lhs: Expr, rhs: Expr },
+    /// `Boolean::iff`
+    BoolIff { lhs: Expr, rhs: Expr },
     /// `Integer::from`
-    IntVal(i128),
+    IntVal(i64),
     /// `Integer::lt`
     IntLt { lhs: Expr, rhs: Expr },
     /// `Integer::le`
@@ -46,8 +48,14 @@ pub enum Intrinsic {
     IntDiv { lhs: Expr, rhs: Expr },
     /// `Integer::rem`
     IntRem { lhs: Expr, rhs: Expr },
+    /// `Integer::to_rational`
+    IntToRational { val: Expr },
+    /// `Integer::pow`
+    IntPow { base: Expr, exp: Expr },
+    /// `Integer::abs`
+    IntAbs { val: Expr },
     /// `Rational::from`
-    NumVal(i128),
+    NumVal(i64),
     /// `Rational::lt`
     NumLt { lhs: Expr, rhs: Expr },
     /// `Rational::le`
@@ -64,6 +72,16 @@ pub enum Intrinsic {
     NumMul { lhs: Expr, rhs: Expr },
     /// `Rational::div`
     NumDiv { lhs: Expr, rhs: Expr },
+    /// `Num::pow`
+    NumPow { base: Expr, exp: Expr },
+    /// `Num::abs`
+    NumAbs { val: Expr },
+    /// `Num::round`
+    NumRound { val: Expr },
+    /// `Num::floor`
+    NumFloor { val: Expr },
+    /// `Num::ceil`
+    NumCeil { val: Expr },
     /// `Text::from`
     StrVal(String),
     /// `Text::lt`
@@ -74,6 +92,18 @@ pub enum Intrinsic {
     StrGt { lhs: Expr, rhs: Expr },
     /// `Text::ge`
     StrGe { lhs: Expr, rhs: Expr },
+    /// `Text::concat`
+    StrConcat { lhs: Expr, rhs: Expr },
+    /// `Text::at_index`
+    StrAt { seq: Expr, idx: Expr },
+    /// `Text::length`
+    StrLength { seq: Expr },
+    /// `Text::contains`
+    StrIncludes { seq: Expr, item: Expr },
+    /// `Text::starts_with`
+    StrStartsWith { seq: Expr, item: Expr },
+    /// `Text::ends_with`
+    StrEndsWith { seq: Expr, item: Expr },
     /// `Cloak::shield`
     BoxShield { t: TypeRef, val: Expr },
     /// `Cloak::reveal`
@@ -88,6 +118,8 @@ pub enum Intrinsic {
     SeqAt { t: TypeRef, seq: Expr, idx: Expr },
     /// `Seq::includes`
     SeqIncludes { t: TypeRef, seq: Expr, item: Expr },
+    /// `Seq::is_empty`
+    SeqIsEmpty { t: TypeRef, seq: Expr },
     /// `Set::empty`
     SetEmpty { t: TypeRef },
     /// `Set::length`
@@ -98,6 +130,16 @@ pub enum Intrinsic {
     SetRemove { t: TypeRef, set: Expr, item: Expr },
     /// `Set::contains`
     SetContains { t: TypeRef, set: Expr, item: Expr },
+    /// `Set::intersection`
+    SetIntersection { t: TypeRef, lhs: Expr, rhs: Expr },
+    /// `Set::union`
+    SetUnion { t: TypeRef, lhs: Expr, rhs: Expr },
+    /// `Set::difference`
+    SetDifference { t: TypeRef, lhs: Expr, rhs: Expr },
+    /// `Set::is_subset`
+    SetIsSubset { t: TypeRef, lhs: Expr, rhs: Expr },
+    /// `Set::is_empty`
+    SetIsEmpty { t: TypeRef, set: Expr },
     /// `Map::empty`
     MapEmpty { k: TypeRef, v: TypeRef },
     /// `Map::length`
@@ -131,6 +173,8 @@ pub enum Intrinsic {
         map: Expr,
         key: Expr,
     },
+    /// `Map::is_empty`
+    MapIsEmpty { k: TypeRef, v: TypeRef, map: Expr },
     /// `Error::fresh`
     ErrFresh,
     /// `Error::merge`
@@ -266,7 +310,7 @@ impl Intrinsic {
     }
 
     /// Convert an argument list to an integer literal
-    pub fn unpack_lit_int(args: &Punctuated<Exp, Comma>) -> Result<i128> {
+    pub fn unpack_lit_int(args: &Punctuated<Exp, Comma>) -> Result<i64> {
         let mut iter = args.iter();
         let expr = bail_if_missing!(iter.next(), args, "argument");
         let parsed = match expr {
@@ -283,11 +327,9 @@ impl Intrinsic {
             Exp::Unary(unary) => {
                 let ExprUnary { attrs: _, op, expr } = unary;
                 let val = match op {
-                    syn::UnOp::Neg(_) => {
-                        -Self::unpack_lit_int(&Punctuated::from_iter(vec![(*expr)
-                            .as_ref()
-                            .clone()]))?
-                    }
+                    syn::UnOp::Neg(_) => -Self::unpack_lit_int(&Punctuated::from_iter(vec![
+                        (*expr).as_ref().clone(),
+                    ]))?,
                     _ => bail_on!(op, "not a unary negation operator"),
                 };
                 val
@@ -299,7 +341,7 @@ impl Intrinsic {
     }
 
     /// Convert an argument list to a floating-point literal
-    pub fn unpack_lit_float(args: &Punctuated<Exp, Comma>) -> Result<i128> {
+    pub fn unpack_lit_float(args: &Punctuated<Exp, Comma>) -> Result<i64> {
         Self::unpack_lit_int(args)
     }
 
@@ -372,6 +414,7 @@ impl Intrinsic {
             (Q::Boolean, "or") => mk2!(BoolOr, ty_args, args),
             (Q::Boolean, "xor") => mk2!(BoolXor, ty_args, args),
             (Q::Boolean, "implies") => mk2!(BoolImplies, ty_args, args),
+            (Q::Boolean, "iff") => mk2!(BoolIff, ty_args, args),
             // integer
             (Q::Integer, "add") => mk2!(IntAdd, ty_args, args),
             (Q::Integer, "sub") => mk2!(IntSub, ty_args, args),
@@ -382,6 +425,13 @@ impl Intrinsic {
             (Q::Integer, "le") => mk2!(IntLe, ty_args, args),
             (Q::Integer, "ge") => mk2!(IntGe, ty_args, args),
             (Q::Integer, "gt") => mk2!(IntGt, ty_args, args),
+            (Q::Integer, "to_rational") => mk1!(IntToRational, ty_args, args),
+            (Q::Integer, "abs") => mk1!(IntAbs, ty_args, args),
+            (Q::Integer, "pow") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                let (base, exp) = Intrinsic::unpack_expr_2(args)?;
+                Intrinsic::IntPow { base, exp }
+            }
             // rational
             (Q::Rational, "add") => mk2!(NumAdd, ty_args, args),
             (Q::Rational, "sub") => mk2!(NumSub, ty_args, args),
@@ -391,11 +441,46 @@ impl Intrinsic {
             (Q::Rational, "le") => mk2!(NumLe, ty_args, args),
             (Q::Rational, "ge") => mk2!(NumGe, ty_args, args),
             (Q::Rational, "gt") => mk2!(NumGt, ty_args, args),
+            (Q::Rational, "round") => mk1!(NumRound, ty_args, args),
+            (Q::Rational, "floor") => mk1!(NumFloor, ty_args, args),
+            (Q::Rational, "ceil") => mk1!(NumCeil, ty_args, args),
+            (Q::Rational, "abs") => mk1!(NumAbs, ty_args, args),
+            (Q::Rational, "pow") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                let (base, exp) = Intrinsic::unpack_expr_2(args)?;
+                Intrinsic::NumPow { base, exp }
+            }
             // text
             (Q::Text, "lt") => mk2!(StrLt, ty_args, args),
             (Q::Text, "le") => mk2!(StrLe, ty_args, args),
             (Q::Text, "gt") => mk2!(StrGt, ty_args, args),
             (Q::Text, "ge") => mk2!(StrGe, ty_args, args),
+            (Q::Text, "concat") => mk2!(StrConcat, ty_args, args),
+            (Q::Text, "at_index") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                let (e1, e2) = Intrinsic::unpack_expr_2(args)?;
+                Intrinsic::StrAt { seq: e1, idx: e2 }
+            }
+            (Q::Text, "length") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                let e1 = Intrinsic::unpack_expr_1(args)?;
+                Intrinsic::StrLength { seq: e1 }
+            }
+            (Q::Text, "contains") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                let (e1, e2) = Intrinsic::unpack_expr_2(args)?;
+                Intrinsic::StrIncludes { seq: e1, item: e2 }
+            }
+            (Q::Text, "starts_with") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                let (e1, e2) = Intrinsic::unpack_expr_2(args)?;
+                Intrinsic::StrStartsWith { seq: e1, item: e2 }
+            }
+            (Q::Text, "ends_with") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                let (e1, e2) = Intrinsic::unpack_expr_2(args)?;
+                Intrinsic::StrEndsWith { seq: e1, item: e2 }
+            }
             // cloak
             (Q::Cloak, "shield") => mk1_t!(BoxShield, ty_args, args, val),
             (Q::Cloak, "reveal") => mk1_t!(BoxReveal, ty_args, args, val),
@@ -405,12 +490,26 @@ impl Intrinsic {
             (Q::Seq, "append") => mk2_t!(SeqAppend, ty_args, args, seq, item),
             (Q::Seq, "at_unchecked") => mk2_t!(SeqAt, ty_args, args, seq, idx),
             (Q::Seq, "includes") => mk2_t!(SeqIncludes, ty_args, args, seq, item),
+            (Q::Seq, "is_empty") => {
+                let t1 = Intrinsic::unpack_ty_arg_1(ty_args)?;
+                let e1 = Intrinsic::unpack_expr_1(args)?;
+                Intrinsic::SeqIsEmpty { t: t1, seq: e1 }
+            }
             // set
             (Q::Set, "new") => mk0_t!(SetEmpty, ty_args, args),
             (Q::Set, "length") => mk1_t!(SetLength, ty_args, args, set),
             (Q::Set, "insert") => mk2_t!(SetInsert, ty_args, args, set, item),
             (Q::Set, "remove") => mk2_t!(SetRemove, ty_args, args, set, item),
             (Q::Set, "contains") => mk2_t!(SetContains, ty_args, args, set, item),
+            (Q::Set, "intersection") => mk2_t!(SetIntersection, ty_args, args, lhs, rhs),
+            (Q::Set, "union") => mk2_t!(SetUnion, ty_args, args, lhs, rhs),
+            (Q::Set, "difference") => mk2_t!(SetDifference, ty_args, args, lhs, rhs),
+            (Q::Set, "is_subset") => mk2_t!(SetIsSubset, ty_args, args, lhs, rhs),
+            (Q::Set, "is_empty") => {
+                let t1 = Intrinsic::unpack_ty_arg_1(ty_args)?;
+                let e1 = Intrinsic::unpack_expr_1(args)?;
+                Intrinsic::SetIsEmpty { t: t1, set: e1 }
+            }
             // map
             (Q::Map, "new") => mk0_kv!(MapEmpty, ty_args, args),
             (Q::Map, "length") => mk1_kv!(MapLength, ty_args, args, map),
@@ -418,6 +517,7 @@ impl Intrinsic {
             (Q::Map, "get_unchecked") => mk2_kv!(MapGet, ty_args, args, map, key),
             (Q::Map, "del_unchecked") => mk2_kv!(MapDel, ty_args, args, map, key),
             (Q::Map, "contains_key") => mk2_kv!(MapContainsKey, ty_args, args, map, key),
+            (Q::Map, "is_empty") => mk1_kv!(MapIsEmpty, ty_args, args, map),
             // error
             (Q::Error, "fresh") => mk0!(ErrFresh, ty_args, args),
             (Q::Error, "merge") => mk2!(ErrMerge, ty_args, args),
@@ -530,62 +630,84 @@ impl Intrinsic {
 impl Display for Intrinsic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::BoolVal(v) => write!(f, "{}", v),
-            Self::BoolNot { val } => write!(f, "!{}", val),
-            Self::BoolAnd { lhs, rhs } => write!(f, "{} & {}", lhs, rhs),
-            Self::BoolOr { lhs, rhs } => write!(f, "{} | {}", lhs, rhs),
-            Self::BoolXor { lhs, rhs } => write!(f, "{} ^ {}", lhs, rhs),
-            Self::BoolImplies { lhs, rhs } => write!(f, "{} => {}", lhs, rhs),
-            Self::IntVal(v) => write!(f, "{}", v),
-            Self::NumVal(v) => write!(f, "{}", v),
+            Self::BoolVal(v) => write!(f, "{v}"),
+            Self::BoolNot { val } => write!(f, "!{val}"),
+            Self::BoolAnd { lhs, rhs } => write!(f, "{lhs} & {rhs}"),
+            Self::BoolOr { lhs, rhs } => write!(f, "{lhs} | {rhs}"),
+            Self::BoolXor { lhs, rhs } => write!(f, "{lhs} ^ {rhs}"),
+            Self::BoolImplies { lhs, rhs } => write!(f, "{lhs} => {rhs}"),
+            Self::BoolIff { lhs, rhs } => write!(f, "{lhs} <=> {rhs}"),
+            Self::IntVal(v) => write!(f, "{v}"),
+            Self::NumVal(v) => write!(f, "{v}"),
             Self::IntLt { lhs, rhs } | Self::NumLt { lhs, rhs } | Self::StrLt { lhs, rhs } => {
-                write!(f, "{} < {}", lhs, rhs)
+                write!(f, "{lhs} < {rhs}")
             }
             Self::IntLe { lhs, rhs } | Self::NumLe { lhs, rhs } | Self::StrLe { lhs, rhs } => {
-                write!(f, "{} <= {}", lhs, rhs)
+                write!(f, "{lhs} <= {rhs}")
             }
             Self::IntGe { lhs, rhs } | Self::NumGe { lhs, rhs } | Self::StrGe { lhs, rhs } => {
-                write!(f, "{} >= {}", lhs, rhs)
+                write!(f, "{lhs} >= {rhs}")
             }
             Self::IntGt { lhs, rhs } | Self::NumGt { lhs, rhs } | Self::StrGt { lhs, rhs } => {
-                write!(f, "{} > {}", lhs, rhs)
+                write!(f, "{lhs} > {rhs}")
             }
-            Self::IntAdd { lhs, rhs } | Self::NumAdd { lhs, rhs } => write!(f, "{} + {}", lhs, rhs),
-            Self::IntSub { lhs, rhs } | Self::NumSub { lhs, rhs } => write!(f, "{} - {}", lhs, rhs),
-            Self::IntMul { lhs, rhs } | Self::NumMul { lhs, rhs } => write!(f, "{} * {}", lhs, rhs),
-            Self::IntDiv { lhs, rhs } | Self::NumDiv { lhs, rhs } => write!(f, "{} / {}", lhs, rhs),
-            Self::IntRem { lhs, rhs } => write!(f, "{} % {}", lhs, rhs),
-            Self::StrVal(v) => write!(f, "{}", v),
-            Self::BoxShield { t, val } => write!(f, "&<{}>({})", t, val),
-            Self::BoxReveal { t, val } => write!(f, "*<{}>({})", t, val),
-            Self::SeqEmpty { t } => write!(f, "vec<{}>[]", t),
-            Self::SeqLength { t, seq } => write!(f, "{}.len<{}>(vec)", seq, t),
-            Self::SeqAppend { t, seq, item } => write!(f, "{}.append<{}>({})", seq, t, item),
-            Self::SeqAt { t, seq, idx } => write!(f, "{}.at<{}>({})", seq, t, idx),
-            Self::SeqIncludes { t, seq, item } => write!(f, "{}.includes<{}>({})", seq, t, item),
-            Self::SetEmpty { t } => write!(f, "set<{}>[]", t),
-            Self::SetLength { t, set } => write!(f, "{}.len<{}>(set)", set, t),
-            Self::SetInsert { t, set, item } => write!(f, "{}.insert<{}>({})", set, t, item),
-            Self::SetRemove { t, set, item } => write!(f, "{}.remove<{}>({})", set, t, item),
-            Self::SetContains { t, set, item } => write!(f, "{}.contains<{}>({})", set, t, item),
-            Self::MapEmpty { k, v } => write!(f, "map<{},{}>[]", k, v),
-            Self::MapLength { k, v, map } => write!(f, "{}.len<{},{}>(map)", map, k, v),
+            Self::IntAdd { lhs, rhs } | Self::NumAdd { lhs, rhs } => write!(f, "{lhs} + {rhs}"),
+            Self::IntSub { lhs, rhs } | Self::NumSub { lhs, rhs } => write!(f, "{lhs} - {rhs}"),
+            Self::IntMul { lhs, rhs } | Self::NumMul { lhs, rhs } => write!(f, "{lhs} * {rhs}"),
+            Self::IntDiv { lhs, rhs } | Self::NumDiv { lhs, rhs } => write!(f, "{lhs} / {rhs}"),
+            Self::IntRem { lhs, rhs } => write!(f, "{lhs} % {rhs}"),
+            Self::IntToRational { val } => write!(f, "(rational){val}"),
+            Self::IntPow { base, exp } | Self::NumPow { base, exp } => {
+                write!(f, "{base} ^ {exp}")
+            }
+            Self::IntAbs { val } | Self::NumAbs { val } => write!(f, "|{val}|"),
+            Self::NumRound { val } => write!(f, "round({val})"),
+            Self::NumFloor { val } => write!(f, "floor({val})"),
+            Self::NumCeil { val } => write!(f, "ceil({val})"),
+            Self::StrVal(v) => write!(f, "{v}"),
+            Self::StrConcat { lhs, rhs } => write!(f, "{lhs} ++ {rhs}"),
+            Self::StrAt { seq, idx } => write!(f, "{seq}.at({idx})"),
+            Self::StrLength { seq } => write!(f, "{seq}.len()"),
+            Self::StrIncludes { seq, item } => write!(f, "{seq}.includes({item})"),
+            Self::StrStartsWith { seq, item } => write!(f, "{seq}.starts_with({item})"),
+            Self::StrEndsWith { seq, item } => write!(f, "{seq}.ends_with({item})"),
+            Self::BoxShield { t, val } => write!(f, "&<{t}>({val})"),
+            Self::BoxReveal { t, val } => write!(f, "*<{t}>({val})"),
+            Self::SeqEmpty { t } => write!(f, "vec<{t}>[]"),
+            Self::SeqLength { t, seq } => write!(f, "{seq}.len<{t}>(vec)"),
+            Self::SeqAppend { t, seq, item } => write!(f, "{seq}.append<{t}>({item})"),
+            Self::SeqAt { t, seq, idx } => write!(f, "{seq}.at<{t}>({idx})"),
+            Self::SeqIncludes { t, seq, item } => write!(f, "{seq}.includes<{t}>({item})"),
+            Self::SeqIsEmpty { t, seq } => write!(f, "{seq}.is_empty<{t}>()"),
+            Self::SetEmpty { t } => write!(f, "set<{t}>[]"),
+            Self::SetLength { t, set } => write!(f, "{set}.len<{t}>(set)"),
+            Self::SetInsert { t, set, item } => write!(f, "{set}.insert<{t}>({item})"),
+            Self::SetRemove { t, set, item } => write!(f, "{set}.remove<{t}>({item})"),
+            Self::SetContains { t, set, item } => write!(f, "{set}.contains<{t}>({item})"),
+            Self::SetIntersection { t, lhs, rhs } => write!(f, "{lhs} ∩<{t}> {rhs}"),
+            Self::SetUnion { t, lhs, rhs } => write!(f, "{lhs} U<{t}> {rhs}"),
+            Self::SetDifference { t, lhs, rhs } => write!(f, "{lhs} -<{t}> {rhs}"),
+            Self::SetIsSubset { t, lhs, rhs } => write!(f, "{lhs} ⊆<{t}> {rhs}"),
+            Self::SetIsEmpty { t, set } => write!(f, "{set}.is_empty<{t}>()"),
+            Self::MapEmpty { k, v } => write!(f, "map<{k},{v}>[]"),
+            Self::MapLength { k, v, map } => write!(f, "{map}.len<{k},{v}>(map)"),
             Self::MapPut {
                 k,
                 v,
                 map,
                 key,
                 val,
-            } => write!(f, "{}.put<{},{}>({},{})", map, k, v, key, val),
-            Self::MapGet { k, v, map, key } => write!(f, "{}.get<{},{}>({})", map, k, v, key),
-            Self::MapDel { k, v, map, key } => write!(f, "{}.del<{},{}>({})", map, k, v, key),
+            } => write!(f, "{map}.put<{k},{v}>({key},{val})"),
+            Self::MapGet { k, v, map, key } => write!(f, "{map}.get<{k},{v}>({key})"),
+            Self::MapDel { k, v, map, key } => write!(f, "{map}.del<{k},{v}>({key})"),
             Self::MapContainsKey { k, v, map, key } => {
-                write!(f, "{}.contains_key<{},{}>({})", map, k, v, key)
+                write!(f, "{map}.contains_key<{k},{v}>({key})")
             }
+            Self::MapIsEmpty { k, v, map } => write!(f, "{map}.is_empty<{k},{v}>()"),
             Self::ErrFresh => write!(f, "error"),
-            Self::ErrMerge { lhs, rhs } => write!(f, "{} ~ {}", lhs, rhs),
-            Self::SmtEq { t: _, lhs, rhs } => write!(f, "{} == {}", lhs, rhs),
-            Self::SmtNe { t: _, lhs, rhs } => write!(f, "{} != {}", lhs, rhs),
+            Self::ErrMerge { lhs, rhs } => write!(f, "{lhs} ~ {rhs}"),
+            Self::SmtEq { t: _, lhs, rhs } => write!(f, "{lhs} == {rhs}"),
+            Self::SmtNe { t: _, lhs, rhs } => write!(f, "{lhs} != {rhs}"),
         }
     }
 }

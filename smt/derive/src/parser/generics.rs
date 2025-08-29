@@ -1,5 +1,4 @@
-//! Generics declaration when the type is generic in functions, structs, and enums
-//! Generics instantiation when the type is inferred in functions, structs, and enums
+//! Generics parsing and instantiation
 
 use crate::parser::ctxt::MarkedType;
 use crate::parser::expr::CtxtForExpr;
@@ -225,7 +224,7 @@ impl Display for Generics {
 /// In BTreeMap<TypeParamName, (usize, Option<TypeTag>)>, the key is the type parameter name, which is the generics used in the type definition. The value is a tuple of the index of the type parameter in the generics and an optional type tag. The type tag is None if the type parameter is not assigned in the argument call, otherwise it is Some(TypeTag). For example:
 /// ```
 /// enum Option<T> {
-///    Some(T),
+///   Some(T),
 ///   None,
 /// }
 /// let x = Option::<i32>::Some(3);
@@ -265,11 +264,11 @@ impl GenericsInstPartial {
                 match inst {
                     PartialInst::Unassigned(n) => {
                         if n != name {
-                            panic!("unassigned type parameter `{}` gets remapped `{}`", name, n);
+                            panic!("unassigned type parameter `{name}` gets remapped `{n}`");
                         }
                     }
                     PartialInst::Assigned(t) => {
-                        panic!("unassigned type parameter `{}` gets assigned `{}`", name, t);
+                        panic!("unassigned type parameter `{name}` gets assigned `{t}`");
                     }
                 }
                 // check passed, mark it as a type variable

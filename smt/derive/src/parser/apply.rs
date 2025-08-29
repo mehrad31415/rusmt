@@ -1,14 +1,14 @@
 //! This module defines the `ApplyDatabase` struct, which is used to store and manage function signatures and their types.
 
-use crate::parser::expr::{CtxtForExpr, Expr, Op}; // Import expression-related types and traits.
-use crate::parser::func::FuncSig; // Import function signature ADT.
-use crate::parser::generics::{Generics, GenericsInstFull, GenericsInstPartial}; // Import generics handling utilities.
-use crate::parser::infer::{TIError, TypeRef, TypeUnifier}; // Import type inference utilities.
-use crate::parser::intrinsics::Intrinsic; // Import intrinsic function handling.
-use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName}; // Import type parameters, user-defined function names, and user-defined type names.
+use crate::parser::expr::{CtxtForExpr, Expr, Op};
+use crate::parser::func::FuncSig;
+use crate::parser::generics::{Generics, GenericsInstFull, GenericsInstPartial};
+use crate::parser::infer::{TIError, TypeRef, TypeUnifier};
+use crate::parser::intrinsics::Intrinsic;
+use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName};
 use crate::parser::ty::{SysTypeName, TypeName, TypeTag};
-use anyhow::{bail, Result};
-use std::collections::BTreeMap; // Import BTreeMap for storing data in a sorted order in the `ApplyDatabase` struct (field `unqualified`, `on_sys_type`, `on_usr_type`).
+use anyhow::{Result, bail};
+use std::collections::BTreeMap;
 
 /// Marks whether this function is for implementation (`Impl`) or specification (`Spec`).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -136,7 +136,7 @@ impl ApplyDatabase {
                 // Duplicate entry found.
                 // This happens if for a particular fn_name, the ty_name already exists in the map, but we are trying to insert it again. So the insert only concerns the map value associated with the key, not the key itself. Basically this happens when for a specific type, there exists multiple implementations of the same function.
                 // we cannot add a specification for a built in type because it only differs in TypeFn::kind. So if we try to add a specification for a built-in type, it will panic.
-                panic!("duplicated built-in: {}::{}", ty_name, fn_name);
+                panic!("duplicated built-in: {ty_name}::{fn_name}");
             }
         }
     }
@@ -152,7 +152,7 @@ impl ApplyDatabase {
     pub fn with_intrinsics() -> Self {
         use SysTypeName as Q; // Alias for system type names.
         use TypeTag::*; // Import type tags.
-                        // Note the similarities and differences between SysTypeName and TypeTag. SysTypeName is for system types like Integer, Boolean, Rational, Text, Cloak, Seq, Set, Map, Error. TypeTag is for all types including system types, user-defined types, type parameters, and tuples. Also in Seq for example, in SysTypeName, it is just Seq. But in TypeTag, it is Seq(Box<TypeTag>). The reason is that in TypeTag, we need to specify the type of the elements in the sequence. But in SysTypeName, we just want to say that Seq is a system reserved type.
+        // Note the similarities and differences between SysTypeName and TypeTag. SysTypeName is for system types like Integer, Boolean, Rational, Text, Cloak, Seq, Set, Map, Error. TypeTag is for all types including system types, user-defined types, type parameters, and tuples. Also in Seq for example, in SysTypeName, it is just Seq. But in TypeTag, it is Seq(Box<TypeTag>). The reason is that in TypeTag, we need to specify the type of the elements in the sequence. But in SysTypeName, we just want to say that Seq is a system reserved type.
 
         // Initialize the database.
         let mut db = Self::new();
@@ -213,15 +213,19 @@ impl ApplyDatabase {
         db.builtin("or", Q::Boolean, fn2_arith(Boolean)); // `or` is the same as `and` but for the `or` operation.
         db.builtin("xor", Q::Boolean, fn2_arith(Boolean)); // `xor` is the same as `and` but for the `xor` operation.
         db.builtin("implies", Q::Boolean, fn2_arith(Boolean)); // `implies` is the same as `and` but for the `implies` operation.
+        db.builtin("iff", Q::Boolean, fn2_arith(Boolean)); // `iff` is the same as `and` but for the `iff` operation.
 
         // Integer arithmetic and comparison.
-        // add, sub, mul, div, rem, are arithmetic operations. They are binary arithmetic functions, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Integer, Integer], ret_ty: Integer, } so the parameters are two Integers and the return type is an Integer.
+        // add, sub, mul, div, rem, pow are arithmetic operations. They are binary arithmetic functions, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Integer, Integer], ret_ty: Integer, } so the parameters are two Integers and the return type is an Integer.
         // lt, le, ge, gt are comparison operations. They are binary comparison functions, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Integer, Integer], ret_ty: Boolean, } so the parameters are two Integers and the return type is a Boolean.
         db.builtin("add", Q::Integer, fn2_arith(Integer));
         db.builtin("sub", Q::Integer, fn2_arith(Integer));
         db.builtin("mul", Q::Integer, fn2_arith(Integer));
         db.builtin("div", Q::Integer, fn2_arith(Integer));
         db.builtin("rem", Q::Integer, fn2_arith(Integer));
+        db.builtin("pow", Q::Integer, fn2_arith(Integer));
+        db.builtin("abs", Q::Integer, fn1_arith(Integer));
+        db.builtin("to_rational", Q::Integer, fn1(Integer, Rational));
         db.builtin("lt", Q::Integer, fn2_cmp(Integer));
         db.builtin("le", Q::Integer, fn2_cmp(Integer));
         db.builtin("ge", Q::Integer, fn2_cmp(Integer));
@@ -234,18 +238,28 @@ impl ApplyDatabase {
         db.builtin("sub", Q::Rational, fn2_arith(Rational));
         db.builtin("mul", Q::Rational, fn2_arith(Rational));
         db.builtin("div", Q::Rational, fn2_arith(Rational));
+        db.builtin("pow", Q::Rational, fn2_arith(Rational));
+        db.builtin("abs", Q::Rational, fn1_arith(Rational));
+        db.builtin("round", Q::Rational, fn1(Rational, Integer));
+        db.builtin("floor", Q::Rational, fn1(Rational, Integer));
+        db.builtin("ceil", Q::Rational, fn1(Rational, Integer));
         db.builtin("lt", Q::Rational, fn2_cmp(Rational));
         db.builtin("le", Q::Rational, fn2_cmp(Rational));
         db.builtin("ge", Q::Rational, fn2_cmp(Rational));
         db.builtin("gt", Q::Rational, fn2_cmp(Rational));
 
-        // Text comparison.
-        // It has the comparison operations but not the arithmetic operations.
+        // Text
         // It is a binary comparison function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Text, Text], ret_ty: Boolean, } so the parameters are two Texts and the return type is a Boolean.
         db.builtin("lt", Q::Text, fn2_cmp(Text));
         db.builtin("le", Q::Text, fn2_cmp(Text));
         db.builtin("ge", Q::Text, fn2_cmp(Text));
         db.builtin("gt", Q::Text, fn2_cmp(Text));
+        db.builtin("concat", Q::Text, fn2_arith(Text)); // `concat` is a binary function that concatenates two Texts. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Text, Text], ret_ty: Text, } so the parameters are two Texts and the return type is a Text.
+        db.builtin("at_index", Q::Text, fn2(Text, Integer, Text)); // `at_index` is a binary function that returns the character at a given index in a Text. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Text, Integer], ret_ty: Text, } so the parameters are a Text and an Integer and the return type is a Text.
+        db.builtin("length", Q::Text, fn1(Text, Integer)); // `length` is a unary function that returns the length of a Text. It is a unary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Text], ret_ty: Integer, } so the parameter is a Text and the return type is an Integer.
+        db.builtin("contains", Q::Text, fn2(Text, Text, Boolean)); // `contains` is a binary function that checks if a Text contains another Text. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Text, Text], ret_ty: Boolean, } so the parameters are two Texts and the return type is a Boolean.
+        db.builtin("starts_with", Q::Text, fn2(Text, Text, Boolean)); // `starts_with` is a binary function that checks if a Text starts with another Text. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Text, Text], ret_ty: Boolean, } so the parameters are two Texts and the return type is a Boolean.
+        db.builtin("ends_with", Q::Text, fn2(Text, Text, Boolean)); // `ends_with` is a binary function that checks if a Text ends with another Text.
 
         // Cloak type operations (e.g., for encapsulation).
         // The `shield` function is a unary function that takes a type and returns a Cloak type. The TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [T], ret_ty: Cloak(T), } so the parameter is a type Parameter(TypeParamName {ident: String::from("T")}) and the return type is a Cloak(Box(Parameter(TypeParamName {ident: String::from("T")})))
@@ -270,6 +284,10 @@ impl ApplyDatabase {
         db.builtin("contains", Q::Set, fn2(set_t(), t(), Boolean)); // contains is the same as includes but for sets.
         db.builtin("is_empty", Q::Set, fn1(set_t(), Boolean)); // is_empty is the same as for Seq.
         db.builtin("iterator", Q::Set, fn1(set_t(), seq_t())); // The iterator is quite different from Seq. It returns a sequence of elements in the set. The sequence is not sorted. It is a unary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Set(Box(Parameter(TypeParamName { ident: String::from("T") }))], ret_ty: Seq(Box(Parameter(TypeParamName { ident: String::from("T") })), } so the parameter is a set of type T and the return type is a sequence of type T.
+        db.builtin("union", Q::Set, fn2(set_t(), set_t(), set_t())); // `union` is a function that returns the union of two sets. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Set(Box(Parameter(TypeParamName { ident: String::from("T") })), Set(Box(Parameter(TypeParamName { ident: String::from("T") })), ret_ty: Set(Box(Parameter(TypeParamName { ident: String::from("T") })), } so the parameters are two sets of type T and the return type is a set of type T.
+        db.builtin("intersection", Q::Set, fn2(set_t(), set_t(), set_t())); // `intersection` is a function that returns the intersection of two sets. It is
+        db.builtin("difference", Q::Set, fn2(set_t(), set_t(), set_t())); // `difference` is a function that returns the difference of two sets. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Set(Box(Parameter(TypeParamName { ident: String::from("T") })), Set(Box(Parameter(TypeParamName { ident: String::from("T") })), ret_ty: Set(Box(Parameter(TypeParamName { ident: String::from("T") })), } so the parameters are two sets of type T and the return type is a set of type T.
+        db.builtin("is_subset", Q::Set, fn2(set_t(), set_t(), Boolean)); // `is_subset` is a function that checks if a set is a subset of another set. It is a binary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Set(Box(Parameter(TypeParamName { ident: String::from("T") })), Set(Box(Parameter(TypeParamName { ident: String::from("T") })), ret_ty: Boolean, } so the parameters are two sets of type T and the return type is a Boolean.
 
         // Map operations.
         db.builtin("new", Q::Map, fn0(map_kv())); // `new` is a function that returns a new map. It is a nullary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [], ret_ty: Map(Box(Parameter(TypeParamName { ident: String::from("K") }), Box(Parameter(TypeParamName { ident: String::from("V") }))), } so it returns a map of type K to type V. K and V can be any types.
@@ -364,7 +382,7 @@ impl ApplyDatabase {
         let func = TypeFn::new_from_sig(sig, kind); // builds a TypeFn from the function signature.
         match self.unqualified.insert(name.clone(), func) {
             None => (), // Successfully inserted.
-            Some(_) => panic!("duplicated registration of user-defined function: {}", name),
+            Some(_) => panic!("duplicated registration of user-defined function: {name}"),
         }
 
         Ok(()) // Return success.
@@ -521,7 +539,7 @@ impl ApplyDatabase {
             // Early filter by number of parameters.
             // the length of the parameters of the function signature should be the same as the length of the arguments. If they are not the same, we move to the next candidate.
             if fty.params.len() != args.len() {
-                println!("name: {:?}", name);
+                println!("name: {name:?}");
                 println!("{:?} {:?}", args, args.len());
                 println!("{:?} {:?}", fty.params, fty.params.len());
                 println!("erased");
@@ -622,7 +640,7 @@ impl ApplyDatabase {
         let op = match ty_name {
             TypeName::Sys(sys_name) => {
                 let intrinsic = Intrinsic::new(&sys_name, name, inst_full.vec(), args)?;
-                Op::Intrinsic(intrinsic)
+                Op::Intrinsic(Box::new(intrinsic))
             }
             TypeName::Usr(_) => Op::Procedure {
                 name: name.clone(),

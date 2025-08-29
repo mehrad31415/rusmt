@@ -1,11 +1,11 @@
 //! Type inference and unification for the SMT parser.
 
-use crate::parser::name::{TypeParamName, UsrTypeName}; // generic type parameter name and user-defined type name.
+use crate::parser::name::{TypeParamName, UsrTypeName};
 use crate::parser::ty::TypeTag;
-use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string for example like args.iter().format(",") will return a string with the elements of args separated by a comma.
-use std::cmp::Ordering; // Imported for comparing type variables.
+use itertools::Itertools;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{Display, Formatter}; // TypeTag provides the variants: Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error, User, Pack, Parameter.
+use std::fmt::{Display, Formatter};
 
 /// An error for type inference
 pub enum TIError {
@@ -68,7 +68,7 @@ pub(crate) use ti_unify; // this makes the ti_unify! macro available to other mo
 /// Each `TypeVar` is identified by a unique `usize` index.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct TypeVar(usize); // usize can only store non-negative values (it cannot represent negative numbers).
-                           // The exact size of usize depends on whether the system is 32-bit or 64-bit.
+// The exact size of usize depends on whether the system is 32-bit or 64-bit.
 
 impl Display for TypeVar {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -217,10 +217,10 @@ impl Display for TypeRef {
             Self::Integer => write!(f, "Integer"),
             Self::Rational => write!(f, "Rational"),
             Self::Text => write!(f, "Text"),
-            Self::Cloak(sub) => write!(f, "Cloak<{}>", sub),
-            Self::Seq(sub) => write!(f, "Seq<{}>", sub),
-            Self::Set(sub) => write!(f, "Set<{}>", sub),
-            Self::Map(key, val) => write!(f, "Map<{},{}>", key, val),
+            Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
+            Self::Seq(sub) => write!(f, "Seq<{sub}>"),
+            Self::Set(sub) => write!(f, "Set<{sub}>"),
+            Self::Map(key, val) => write!(f, "Map<{key},{val}>"),
             Self::Error => write!(f, "Error"),
             Self::User(name, args) => {
                 if args.is_empty() {
@@ -488,7 +488,8 @@ impl Typing {
 
         let inferred = match (lhs, rhs) {
             // Both are type variables.
-            (Var(l), Var(r)) => match Ord::cmp(&l.0, &r.0) { // same variables as they have same ids
+            (Var(l), Var(r)) => match Ord::cmp(&l.0, &r.0) {
+                // same variables as they have same ids
                 // Ord::cmp returns Ordering::Less, Ordering::Equal, or Ordering::Greater. It is used to compare two values and it is part of the standard library (does not need to be imported). &l.0.cmp(&r.0) = Ord::cmp(&l.0, &r.0). Ordering needs to be imported (use std::cmp::Ordering).
                 Ordering::Equal => {
                     // if the indexes of the type variables are equal, return the type variable itself. In this case, the type variables are the same. They are the same variable.

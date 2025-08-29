@@ -1,12 +1,9 @@
-//! Attribute parsing
-//!
 //! The modules provides the following data structures:
 //! - `Mark` enum which represents the SMT-related marking attributes.
 //! - `ImplMark` struct which represents the marking for an annotated impl function.
 //! - `SpecMark` struct which represents the marking for an annotated spec function.
 //! - `parse_attrs` is the main method to parse the attributes and extract the marks. This method is used in the `ctxt` module.
 
-use super::ctxt::Refinement;
 use crate::parser::name::UsrFuncName;
 use crate::{bail_if_missing, bail_on};
 use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
@@ -69,19 +66,12 @@ pub struct SpecMark {
     pub impls: BTreeSet<UsrFuncName>,
 }
 
-#[derive(Debug, Clone)]
-/// A mark for an annotated axiom function
-pub struct SpecAxiom {
-    /// Relation between impl and spec functions
-    pub relations: BTreeSet<Refinement>,
-}
-
 /// SMT-related marking
 pub enum Mark {
     Type,
     Impl(ImplMark),
     Spec(SpecMark),
-    Axiom(SpecAxiom),
+    Axiom,
 }
 
 impl Mark {
@@ -153,7 +143,7 @@ impl Mark {
                     let mut set = BTreeSet::new(); // Stores the set of identifiers in the value
 
                     let mut sub_iter = group.stream().into_iter(); // Iterator over the sub-stream
-                                                                   // sub_cursor will be a None value if we have #[my_attr(key = [])]
+                    // sub_cursor will be a None value if we have #[my_attr(key = [])]
                     let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
                     while sub_cursor.is_some() {
                         // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
@@ -320,9 +310,7 @@ impl Mark {
                     method: None,
                     impls: BTreeSet::new(),
                 }),
-                Some(Annotation::Axiom) => Self::Axiom(SpecAxiom {
-                    relations: BTreeSet::new(),
-                }),
+                Some(Annotation::Axiom) => Self::Axiom,
             },
             // A meta list is like the `derive(Copy)` in `#[derive(Copy)]`
             Meta::List(MetaList {
@@ -339,29 +327,10 @@ impl Mark {
                         )
                     }
                     Some(Annotation::Axiom) => {
-                        if !matches!(delimiter, MacroDelimiter::Paren(_)) {
-                            bail_on!(attr, "not a parenthesis-enclosed list");
-                        }
-
-                        let mut store = Self::parse_dict(tokens)?;
-                        let mut relations = BTreeSet::new();
-                        match store.remove("relations") {
-                            None => (),
-                            Some(MetaValue::Map(items)) => {
-                                for (impl_key, spec_key) in items.iter() {
-                                    relations.insert(Refinement {
-                                        fn_impl: UsrFuncName::try_from(impl_key)?,
-                                        fn_spec: UsrFuncName::try_from(spec_key)?,
-                                    });
-                                }
-                            }
-                            Some(_) => bail_on!(tokens, "invalid relations"),
-                        };
-
-                        if !store.is_empty() {
-                            bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `relations`
-                        }
-                        Self::Axiom(SpecAxiom { relations })
+                        bail_on!(
+                            attr,
+                            "unexpected list\nfor smt_axiom, no attributes are expected"
+                        )
                     }
                     Some(Annotation::Impl) => {
                         // MacroDelimiter is a grouping token that surrounds a macro body: `m!(...)` or `m!{...}` or `m![...]`
@@ -478,7 +447,7 @@ mod tests {
     use super::*;
     use proc_macro2::Span;
     use quote::quote;
-    use syn::{parse_quote, Path};
+    use syn::{Path, parse_quote};
 
     #[test]
     #[should_panic(expected = "path is not an identifier")]
@@ -786,7 +755,7 @@ mod tests {
         let attr: Attribute = parse_quote! { #[smt_axiom] };
 
         let res = Mark::parse_attr(&attr);
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(e, Mark::Axiom(_)))));
+        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(e, Mark::Axiom))));
     }
 
     #[test]
@@ -821,10 +790,7 @@ mod tests {
         let res = Mark::parse_attr(&attr);
 
         assert!(res.is_err());
-        assert_eq!(
-            res.err().unwrap().to_string().as_str(),
-            "expect =\ncopy"
-        );
+        assert_eq!(res.err().unwrap().to_string().as_str(), "expect =\ncopy");
     }
 
     #[test]

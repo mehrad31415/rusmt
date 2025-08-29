@@ -2,7 +2,7 @@
 macro_rules! index {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+        #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
         pub struct $name {
             pub index: usize,
         }

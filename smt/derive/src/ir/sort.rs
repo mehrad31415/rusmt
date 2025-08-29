@@ -34,7 +34,7 @@ pub enum Sort {
     /// user-defined type (including pack-defined type tuple)
     User(UsrSortId),
     /// uninterpreted (used for type parameters that implement the SMT trait)
-    Uninterpreted(SmtSortName), // SmtSortName is the name of a type parameter that implements the SMT trait
+    Uninterpreted(SmtSortName),
 }
 
 impl Display for Sort {
@@ -44,12 +44,12 @@ impl Display for Sort {
             Self::Integer => write!(f, "Integer"),
             Self::Rational => write!(f, "Rational"),
             Self::Text => write!(f, "String"),
-            Self::Seq(sub) => write!(f, "Vec<{}>", sub),
-            Self::Set(sub) => write!(f, "Set<{}>", sub),
-            Self::Map(key, val) => write!(f, "Map<{},{}>", key, val),
+            Self::Seq(sub) => write!(f, "Vec<{sub}>"),
+            Self::Set(sub) => write!(f, "Set<{sub}>"),
+            Self::Map(key, val) => write!(f, "Map<{key},{val}>"),
             Self::Error => write!(f, "Error"),
-            Self::User(sid) => write!(f, "${}", sid),
-            Self::Uninterpreted(name) => write!(f, "#{}", name),
+            Self::User(sid) => write!(f, "${sid}"),
+            Self::Uninterpreted(name) => write!(f, "#{name}"),
         }
     }
 }
@@ -71,7 +71,7 @@ impl Display for Variant {
                 write!(f, "({})", content.join(","))
             }
             Self::Record(fields) => {
-                let content: Vec<_> = fields.iter().map(|(k, v)| format!("{}:{}", k, v)).collect();
+                let content: Vec<_> = fields.iter().map(|(k, v)| format!("{k}:{v}")).collect();
                 write!(f, "{{{}}}", content.join(","))
             }
         }
@@ -95,14 +95,11 @@ impl Display for DataType {
                 write!(f, "({})", content.join(","))
             }
             Self::Record(fields) => {
-                let content: Vec<_> = fields.iter().map(|(k, v)| format!("{}:{}", k, v)).collect();
+                let content: Vec<_> = fields.iter().map(|(k, v)| format!("{k}:{v}")).collect();
                 write!(f, "{{{}}}", content.join(","))
             }
             Self::Enum(variants) => {
-                let content: Vec<_> = variants
-                    .iter()
-                    .map(|(k, v)| format!("{}{}", k, v))
-                    .collect();
+                let content: Vec<_> = variants.iter().map(|(k, v)| format!("{k}{v}")).collect();
                 write!(f, "[{}]", content.join(","))
             }
         }
@@ -148,17 +145,7 @@ impl TypeRegistry {
     }
 
     /// Create a new type signature (i.e. register a type instance) in the registry.
-    ///
     /// If a type with the same name and instantiation is already registered, the function panics.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - An optional user-defined type name.
-    /// * `inst` - A vector of sorts representing the instantiation.
-    ///
-    /// # Returns
-    ///
-    /// * A unique `UsrSortId` for the new type instance.
     fn create(&mut self, name: Option<UsrSortName>, inst: Vec<Sort>) -> UsrSortId {
         // random number depending on both tuple and named types (so if we had 15 registered types, the idx will be 15 (it starts from 0)).
         // it is the sum of the length of the idx_tuple and the sum of the length of the values of idx_named
@@ -171,7 +158,7 @@ impl TypeRegistry {
             Some(n) => self.idx_named.entry(n).or_default().insert(inst, idx),
         };
         if existing.is_some() {
-            panic!("type instance already registered {:#?}", existing);
+            panic!("type instance already registered {existing:#?}");
         }
         idx
     }
@@ -215,17 +202,8 @@ impl TypeRegistry {
 /// Sort-related functions in the IR builder
 impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// Resolve a parser-level type reference into an IR-level sort.
-    ///
     /// This function “unwraps” cloaked types, ensures that no type variables remain, and
     /// registers any user-defined types with the type registry if needed.
-    ///
-    /// # Arguments
-    ///
-    /// * `ty` - A reference to the parser-level type.
-    ///
-    /// # Returns
-    ///
-    /// * The corresponding IR-level `Sort`.
     pub fn resolve_type(&mut self, ty: &TypeRef) -> Sort {
         let sort = match ty {
             TypeRef::Var(_) => panic!("incomplete type inference"), // you cannot have type variables in the IR so all types should be resolved at the parser level that is why the unification is done.
@@ -252,7 +230,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             TypeRef::Parameter(name) => self
                 .ty_inst
                 .get(name) // name is the type parameter from the definition (generics). This gives the corresponding type argument in the call in the Sort IR representation.
-                .unwrap_or_else(|| panic!("no such type parameter {}", name))
+                .unwrap_or_else(|| panic!("no such type parameter {name}"))
                 .clone(),
         };
         sort
@@ -276,18 +254,6 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     }
 
     /// Register a user-defined type in the IR.
-    ///
-    /// This function resolves the type arguments, checks if the type is already registered,
-    /// creates a new type instance if needed, and then processes the type definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `ty_name` - An optional reference to the user-defined type name.
-    /// * `ty_args` - A slice of type references for the type parameters.
-    ///
-    /// # Returns
-    ///
-    /// * The unique `UsrSortId` corresponding to the registered type.
     pub fn register_type(
         &mut self,
         ty_name: Option<&UsrTypeName>,
@@ -365,8 +331,8 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                     .collect::<Vec<_>>()
                     .join(",");
                 match name {
-                    None => panic!("anonymous sort not registered ({})", inst_content),
-                    Some(n) => panic!("user-defined sort not registered {}<{}>", n, inst_content),
+                    None => panic!("anonymous sort not registered ({inst_content})"),
+                    Some(n) => panic!("user-defined sort not registered {n}<{inst_content}>"),
                 }
             }
             Some(sid) => sid,

@@ -1,15 +1,4 @@
 //! Error Handling Utilities
-//!
-//! This `err` module provides six <macros by example> to handle errors in a more concise way:
-//! - `bail_on!` to exit the parsing early with an error
-//! - `bail_on_with_note!` to exit the parsing early with an error and a note
-//! - `bail_if_exists!` to handle the case where a token should not exist
-//! - `bail_if_missing!` to handle the case where a token should exist
-//! - `bail_if_non_empty!` to handle the case where a token should be empty
-//! - `bail_if_empty!` to handle the case where a token should have at least one element
-
-// Note that some of these macros have been defined in the err.rs file in the smt/remark crate.
-// Given that the rusmart-smt-remark crate is a proc-macro crate, it was not possible to export the declarative macros defined in the err.rs file. Now this is possible!
 
 /// Exit the parsing early with an error
 /// It has two patterns:
@@ -40,13 +29,12 @@ macro_rules! bail_on {
         }
     };
 }
-// pub(crate) use bail_on;
 
 /// Exit the parsing early with an error and a note
 /// It has two patterns:
 /// - `bail_on_with_note!(loc, "note", item, "message")` to return an Error instance with a literal message for the item and a note for the loc
 /// - `bail_on_with_note!(loc, "note", item, "message {}", arg)` to return an Error instance with a formatted message for the item and a note for the loc
-/// example: bail_on_with_note!(prev.name(), "previously defined here", item.name(), "duplicated axiom name");
+///   example: bail_on_with_note!(prev.name(), "previously defined here", item.name(), "duplicated axiom name");
 #[macro_export]
 macro_rules! bail_on_with_note {
     ($loc:expr, $note:literal, $item:expr, $msg:literal $(,)?) => {
@@ -82,13 +70,8 @@ macro_rules! bail_on_with_note {
         })
     };
 }
-// pub(crate) use bail_on_with_note;
 
 /// Special case on bail: does not expect a token to exist
-/// This macro is used to check if a token exists and if it does, it returns an error.
-/// It has one pattern:
-/// - `bail_if_exists!(item)` to return an Error instance if the item exists (is Some)
-/// If the item is None, it does nothing.
 #[macro_export]
 macro_rules! bail_if_exists {
     ($item:expr) => {
@@ -98,13 +81,8 @@ macro_rules! bail_if_exists {
         }
     };
 }
-// pub(crate) use bail_if_exists;
 
 /// Special case on bail: expects a token to exist
-/// This macro is used to check if a token is missing and if it is, it returns an error.
-/// It has one pattern:
-/// - `bail_if_missing!(item, parent, "note")` to return an Error instance if the item is missing
-/// If the item is Some, it returns the value.
 #[macro_export]
 macro_rules! bail_if_missing {
     ($item:expr, $par:expr, $note:literal) => {
@@ -114,14 +92,8 @@ macro_rules! bail_if_missing {
         }
     };
 }
-// pub(crate) use bail_if_missing;
 
 /// Special case on bail: expect a token to be empty
-/// This macro is used to check if a token is empty and if it is not, it returns an error.
-/// It has one pattern:
-/// - `bail_if_non_empty!(item)` to return an Error instance if the item is not empty
-/// is_empty() is a method that checks if the length of the item is zero. The item can be a string, a vector, or any other type that implements the is_empty() method.
-/// If the item is not empty, it returns Err(syn::Error::new_spanned(span_of_item, "unexpected \n {item}")).
 #[macro_export]
 macro_rules! bail_if_non_empty {
     ($item:expr) => {{
@@ -131,14 +103,8 @@ macro_rules! bail_if_non_empty {
         }
     }};
 }
-// pub(crate) use bail_if_non_empty;
 
 /// Special case on bail: expect a token to be non-empty
-/// This macro is used to check if a token is non-empty and if it is empty, it returns an error.
-/// It has one pattern:
-/// - `bail_if_empty!(item, parent, "note")` to return an Error instance if the item is empty
-/// If the item is empty, it returns Err(syn::Error::new_spanned(span_of_parent, "expect {note} \n {parent}")).
-/// If the item is not empty, it does nothing.
 #[macro_export]
 macro_rules! bail_if_empty {
     ($item:expr, $parent:expr, $note:literal) => {{
@@ -147,4 +113,3 @@ macro_rules! bail_if_empty {
         }
     }};
 }
-// pub(crate) use bail_if_empty;

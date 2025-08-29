@@ -1,5 +1,6 @@
 //! This module provides the specific implementation of the `CodeGen` trait for Z3.
 
+use crate::backend::codegen::CodeGen;
 use crate::backend::codegen::Response;
 use crate::backend::error::BackendResult;
 use crate::backend::z3::axiom::assert_axioms;
@@ -14,18 +15,15 @@ use crate::ir::fun::FunDef;
 use crate::ir::index::UsrFunId;
 use crate::ir::sort::DataType;
 use crate::parser::ctxt::Refinement;
-use crate::{backend::codegen::CodeGen, ir::index::UsrSortId};
 use core::panic;
 use log::debug;
 use rusmart_utils::config::NUM_CPU_CORES;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use z3::datatype_builder::create_datatypes;
-use z3::{
-    Config, Context, DatatypeBuilder, FuncDecl, SatResult, Solver, Sort, ast, ast::Ast,
-    set_global_param,
-};
+use z3::{Config, Context, FuncDecl, SatResult, Solver, Sort, ast, ast::Ast, set_global_param};
 
 /// A wrapper for Z3 backends that implements the `CodeGen` trait.
 pub struct CodeGenZ3;
@@ -90,112 +88,43 @@ impl CodeGen for CodeGenZ3 {
         // write the user-defined types
         if !ty_registry.data_types().is_empty() {
             debug!("Define user-defined types");
-            let mutually_dependent_types =
-                scc_from_edges(&collect_type_edges(ty_registry.data_types()));
-            for sid_set in &mutually_dependent_types {
-                // not mutually recursive
-                if sid_set.len() == 1 {
-                    let mutually_recursive = false;
-                    let mut iter = sid_set.iter();
-                    let sid = iter.next().expect("set should not be empty");
-                    if iter.next().is_some() {
-                        panic!("set should have only one element");
-                    }
+            let edges = collect_type_edges(ty_registry.data_types());
+            let mut sccs = scc_from_edges(&edges);
+
+            // include truly isolated types
+            let all_ids: BTreeSet<_> = ty_registry.data_types().keys().copied().collect();
+            let covered: BTreeSet<_> = sccs.iter().flat_map(|s| s.iter().copied()).collect();
+            for sid in all_ids.difference(&covered) {
+                sccs.push(BTreeSet::from([*sid]));
+            }
+
+            for scc in sccs.iter().rev() {
+                let mut ids = Vec::new();
+                let mut builders = Vec::new();
+
+                for sid in scc {
                     let dt = ir.ty_registry.retrieve(*sid);
-                    let z3_sort = match dt {
+                    let dt_builder = match dt {
                         DataType::Tuple(elems)
                             if ir.ty_registry.reverse_lookup(*sid).0.is_none() =>
                         {
-                            if ir.ty_registry.reverse_lookup(*sid).1 != elems {
-                                panic!("Tuples elements are not consistent");
-                            }
-                            // it is an unnamed tuple
-                            let dt = mk_unnamed_tuple(
-                                &ctx,
-                                *sid,
-                                elems,
-                                ir,
-                                &ty_map,
-                                mutually_recursive,
-                            )
-                            .finish();
-                            (dt.sort, dt.variants)
+                            // unnamed tuple
+                            mk_unnamed_tuple(&ctx, *sid, elems, ir, &ty_map, scc)
                         }
                         DataType::Tuple(elems) => {
-                            let dt =
-                                mk_named_tuple(&ctx, *sid, elems, ir, &ty_map, mutually_recursive)
-                                    .finish();
-                            (dt.sort, dt.variants)
+                            mk_named_tuple(&ctx, *sid, elems, ir, &ty_map, scc)
                         }
-                        DataType::Record(fields) => {
-                            let dt = mk_record(&ctx, *sid, fields, ir, &ty_map, mutually_recursive)
-                                .finish();
-                            (dt.sort, dt.variants)
-                        }
-                        DataType::Enum(variants) => {
-                            let dt = mk_enum(&ctx, *sid, variants, ir, &ty_map, mutually_recursive)
-                                .finish();
-                            (dt.sort, dt.variants)
-                        }
+                        DataType::Record(fields) => mk_record(&ctx, *sid, fields, ir, &ty_map, scc),
+                        DataType::Enum(variants) => mk_enum(&ctx, *sid, variants, ir, &ty_map, scc),
                     };
-                    ty_map.insert(*sid, z3_sort);
-                } else {
-                    let mutually_recursive = true;
-                    let mut ids: Vec<UsrSortId> = Vec::new();
-                    let mut builders: Vec<DatatypeBuilder> = Vec::new();
-                    for sid in sid_set {
-                        let dt = ir.ty_registry.retrieve(*sid);
-                        match dt {
-                            DataType::Tuple(elems)
-                                if ir.ty_registry.reverse_lookup(*sid).0.is_none() =>
-                            {
-                                if ir.ty_registry.reverse_lookup(*sid).1 != elems {
-                                    panic!("Tuples elements are not consistent");
-                                }
-                                // it is an unnamed tuple
-                                let dt = mk_unnamed_tuple(
-                                    &ctx,
-                                    *sid,
-                                    elems,
-                                    ir,
-                                    &ty_map,
-                                    mutually_recursive,
-                                );
-                                ids.push(*sid);
-                                builders.push(dt);
-                            }
-                            DataType::Tuple(elems) => {
-                                let dt = mk_named_tuple(
-                                    &ctx,
-                                    *sid,
-                                    elems,
-                                    ir,
-                                    &ty_map,
-                                    mutually_recursive,
-                                );
-                                ids.push(*sid);
-                                builders.push(dt);
-                            }
-                            DataType::Record(fields) => {
-                                let dt =
-                                    mk_record(&ctx, *sid, fields, ir, &ty_map, mutually_recursive);
-                                ids.push(*sid);
-                                builders.push(dt);
-                            }
-                            DataType::Enum(variants) => {
-                                let dt =
-                                    mk_enum(&ctx, *sid, variants, ir, &ty_map, mutually_recursive);
-                                ids.push(*sid);
-                                builders.push(dt);
-                            }
-                        };
-                    }
-                    // now finish the data types
-                    let dts = create_datatypes(builders);
-                    for (id, sorts) in ids.into_iter().zip(dts.into_iter()) {
-                        let z3_sort = (sorts.sort, sorts.variants);
-                        ty_map.insert(id, z3_sort);
-                    }
+                    ids.push(*sid);
+                    builders.push(dt_builder);
+                }
+
+                // now finish the data types
+                let dts = create_datatypes(builders);
+                for (id, dt) in ids.into_iter().zip(dts.into_iter()) {
+                    ty_map.insert(id, dt);
                 }
             }
         }

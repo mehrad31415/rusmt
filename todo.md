@@ -82,4 +82,4 @@ cpu cores from initialize
 -------------------------------
 1 - finish off writing the book 
 2 - write new brief report and rusmart programs for documents
-3 - 
+3 - change the panic for panic!("cannot convert error sort to Z3 API"), Error !

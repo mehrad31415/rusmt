@@ -14,7 +14,7 @@ use crate::ir::{
 use log::debug;
 use std::collections::HashMap;
 use z3::ast::Ast;
-use z3::{Context, DatatypeVariant, RecFuncDecl, Solver, ast::Dynamic};
+use z3::{Context, DatatypeSort, RecFuncDecl, Solver, ast::Dynamic};
 
 /// Creates a Z3 function declaration from the function signature
 pub fn create_function_declaration(
@@ -23,7 +23,7 @@ pub fn create_function_declaration(
     generics: &[Sort],
     sig: &FunSig,
     ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &mut HashMap<SmtSortName, z3::Sort>,
 ) -> RecFuncDecl {
     // destructure the function signature
@@ -72,7 +72,7 @@ pub fn process_function_body<'a>(
     root_exp_id: ExpId,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     cloak_manager: &mut CloakManager<'a>,
     map_length_manager: &mut MapLengthManager,

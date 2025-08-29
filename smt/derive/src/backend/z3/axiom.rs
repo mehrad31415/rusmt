@@ -11,7 +11,7 @@ use crate::ir::{
 };
 use std::collections::HashMap;
 use z3::{
-    Context, DatatypeVariant, RecFuncDecl, Solver, Sort,
+    Context, DatatypeSort, RecFuncDecl, Solver, Sort,
     ast::{Ast, Bool, Dynamic, forall_const},
 };
 
@@ -22,7 +22,7 @@ pub fn assert_axioms<'a>(
     solver: &Solver,
     predicate: &Predicate,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, Sort>,
     cloak_manager: &mut CloakManager<'a>,
     map_length_manager: &mut MapLengthManager,

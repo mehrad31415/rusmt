@@ -7,17 +7,21 @@ use crate::ir::{
     sort::{DataType, Sort, Variant},
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeVariant};
+use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort};
 
 /// Converts a tuple type to a Z3 datatype.
 pub fn mk_unnamed_tuple(
     ctx: &Context,
     sid: UsrSortId,
-    elems: &Vec<Sort>,
+    elems: &[Sort],
     ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
-    mutually_recursive: bool,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
+    sid_set: &BTreeSet<UsrSortId>,
 ) -> DatatypeBuilder {
+    if ir.ty_registry.reverse_lookup(sid).1 != elems {
+        panic!("Tuples elements are not consistent");
+    }
+
     let tuple_name = format!(
         "Tuple_{}",
         ir.ty_registry
@@ -41,19 +45,18 @@ pub fn mk_unnamed_tuple(
         .iter()
         .zip(field_names.iter())
         .map(|(sort, field_name)| {
-            if mutually_recursive {
-                (
-                    field_name.as_str(),
-                    DatatypeAccessor::Datatype(
-                        sort_to_z3(sort, ctx, ir, None, ty_map).to_string().into(),
-                    ),
-                )
-            } else {
-                (
-                    field_name.as_str(),
-                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, None, ty_map)),
-                )
-            }
+            (
+                field_name.as_str(),
+                if let Sort::User(x) = sort {
+                    if sid_set.contains(x) {
+                        DatatypeAccessor::Datatype(get_name(&ir, x))
+                    } else {
+                        DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, None, ty_map))
+                    }
+                } else {
+                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, None, ty_map))
+                },
+            )
         })
         .collect();
 
@@ -68,10 +71,10 @@ pub fn mk_unnamed_tuple(
 pub fn mk_named_tuple(
     ctx: &Context,
     sid: UsrSortId,
-    elems: &Vec<Sort>,
+    elems: &[Sort],
     ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
-    mutually_recursive: bool,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
+    sid_set: &BTreeSet<UsrSortId>,
 ) -> DatatypeBuilder {
     let (ty_name, _) = ir.ty_registry.reverse_lookup(sid);
     let ty_name = ty_name.as_ref().expect("type name for named tuple");
@@ -85,21 +88,18 @@ pub fn mk_named_tuple(
         .iter()
         .zip(field_names.iter())
         .map(|(sort, field_name)| {
-            if mutually_recursive {
-                (
-                    field_name.as_str(),
-                    DatatypeAccessor::Datatype(
-                        sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map)
-                            .to_string()
-                            .into(),
-                    ),
-                )
-            } else {
-                (
-                    field_name.as_str(),
-                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map)),
-                )
-            }
+            (
+                field_name.as_str(),
+                if let Sort::User(x) = sort {
+                    if sid_set.contains(x) {
+                        DatatypeAccessor::Datatype(get_name(&ir, x))
+                    } else {
+                        DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
+                    }
+                } else {
+                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
+                },
+            )
         })
         .collect();
 
@@ -114,8 +114,8 @@ pub fn mk_record(
     sid: UsrSortId,
     fields: &BTreeMap<String, Sort>,
     ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
-    mutually_recursive: bool,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
+    sid_set: &BTreeSet<UsrSortId>,
 ) -> DatatypeBuilder {
     let (ty_name, _) = ir.ty_registry.reverse_lookup(sid);
     let ty_name = ty_name.as_ref().expect("type name for record");
@@ -129,22 +129,19 @@ pub fn mk_record(
     let field_defs = fields
         .iter()
         .zip(field_names.iter())
-        .map(|((_, sort), f)| {
-            if mutually_recursive {
-                (
-                    f.as_str(),
-                    DatatypeAccessor::Datatype(
-                        sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map)
-                            .to_string()
-                            .into(),
-                    ),
-                )
-            } else {
-                (
-                    f.as_str(),
-                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map)),
-                )
-            }
+        .map(|((_, sort), field_name)| {
+            (
+                field_name.as_str(),
+                if let Sort::User(x) = sort {
+                    if sid_set.contains(x) {
+                        DatatypeAccessor::Datatype(get_name(&ir, x))
+                    } else {
+                        DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
+                    }
+                } else {
+                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
+                },
+            )
         })
         .collect();
 
@@ -159,8 +156,8 @@ pub fn mk_enum(
     sid: UsrSortId,
     variants: &BTreeMap<String, Variant>,
     ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
-    mutually_recursive: bool,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
+    sid_set: &BTreeSet<UsrSortId>,
 ) -> DatatypeBuilder {
     let (ty_name_opt, _) = ir.ty_registry.reverse_lookup(sid);
     let ty_name = ty_name_opt.as_ref().expect("enums must have a name");
@@ -187,16 +184,31 @@ pub fn mk_enum(
                 let fields: Vec<(&str, DatatypeAccessor)> = slots
                     .iter()
                     .zip(field_names.iter())
-                    .map(|(slot_sort, fname)| {
-                        let z3_sort = sort_to_z3(slot_sort, ctx, ir, Some(ty_name), ty_map);
-                        if mutually_recursive {
-                            (
-                                fname.as_str(),
-                                DatatypeAccessor::Datatype(z3_sort.to_string().into()),
-                            )
-                        } else {
-                            (fname.as_str(), DatatypeAccessor::Sort(z3_sort))
-                        }
+                    .map(|(slot_sort, field_name)| {
+                        (
+                            field_name.as_str(),
+                            if let Sort::User(x) = slot_sort {
+                                if sid_set.contains(x) {
+                                    DatatypeAccessor::Datatype(get_name(&ir, x))
+                                } else {
+                                    DatatypeAccessor::Sort(sort_to_z3(
+                                        slot_sort,
+                                        ctx,
+                                        ir,
+                                        Some(ty_name),
+                                        ty_map,
+                                    ))
+                                }
+                            } else {
+                                DatatypeAccessor::Sort(sort_to_z3(
+                                    slot_sort,
+                                    ctx,
+                                    ir,
+                                    Some(ty_name),
+                                    ty_map,
+                                ))
+                            },
+                        )
                     })
                     .collect();
 
@@ -216,16 +228,31 @@ pub fn mk_enum(
                 let fields: Vec<(&str, DatatypeAccessor)> = rec
                     .iter()
                     .zip(field_names.iter())
-                    .map(|((_, slot_sort), fname)| {
-                        let z3_sort = sort_to_z3(slot_sort, ctx, ir, Some(ty_name), ty_map);
-                        if mutually_recursive {
-                            (
-                                fname.as_str(),
-                                DatatypeAccessor::Datatype(z3_sort.to_string().into()),
-                            )
-                        } else {
-                            (fname.as_str(), DatatypeAccessor::Sort(z3_sort))
-                        }
+                    .map(|((_, slot_sort), field_name)| {
+                        (
+                            field_name.as_str(),
+                            if let Sort::User(x) = slot_sort {
+                                if sid_set.contains(x) {
+                                    DatatypeAccessor::Datatype(get_name(&ir, x))
+                                } else {
+                                    DatatypeAccessor::Sort(sort_to_z3(
+                                        slot_sort,
+                                        ctx,
+                                        ir,
+                                        Some(ty_name),
+                                        ty_map,
+                                    ))
+                                }
+                            } else {
+                                DatatypeAccessor::Sort(sort_to_z3(
+                                    slot_sort,
+                                    ctx,
+                                    ir,
+                                    Some(ty_name),
+                                    ty_map,
+                                ))
+                            },
+                        )
                     })
                     .collect();
 
@@ -233,6 +260,7 @@ pub fn mk_enum(
             }
         }
     }
+
     builder
 }
 
@@ -347,6 +375,28 @@ fn dfs_rev(
     for &v in &g[&u] {
         if !seen.contains(&v) {
             dfs_rev(v, g, seen, acc);
+        }
+    }
+}
+
+fn get_name(ir: &IRContext, sid: &UsrSortId) -> z3::Symbol {
+    let dt = ir.ty_registry.retrieve(*sid);
+    match dt {
+        DataType::Tuple(_) if ir.ty_registry.reverse_lookup(*sid).0.is_none() => format!(
+            "Tuple_{}",
+            ir.ty_registry
+                .reverse_lookup(*sid)
+                .1
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>()
+                .join("_")
+        )
+        .into(),
+        _ => {
+            let (ty_name, _) = ir.ty_registry.reverse_lookup(*sid);
+            let ty_name = ty_name.as_ref().expect("type name for named tuple");
+            ty_name.to_string().into()
         }
     }
 }

@@ -15,7 +15,7 @@ use crate::ir::sort::Sort;
 use core::panic;
 use std::collections::{BTreeMap, HashMap};
 use z3::ast::Ast;
-use z3::{Context, DatatypeVariant, RecFuncDecl, Solver, ast};
+use z3::{Context, DatatypeSort, DatatypeVariant, RecFuncDecl, Solver, ast};
 
 /// Converts an expression to a Z3 AST.
 pub fn process_expression<'a>(
@@ -25,7 +25,7 @@ pub fn process_expression<'a>(
     exp_id: ExpId,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -60,7 +60,7 @@ fn process_expression_rec<'a>(
     exp: &Expression,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -137,7 +137,10 @@ fn process_expression_rec<'a>(
                         axiomatic_parameters,
                     );
 
-                    let (_, dt_variants) = ty_map.get(sort).expect("sort not found in type map");
+                    let dt_variants = &ty_map
+                        .get(sort)
+                        .expect("sort not found in type map")
+                        .variants;
                     let (sort_name, _) = ir.ty_registry.reverse_lookup(*sort);
                     let sort_name = sort_name.expect("sort name not found");
 
@@ -527,7 +530,7 @@ fn phi_to_ite<'a>(
     default: ExpId,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -599,7 +602,7 @@ fn access_field<'a>(
     field: &str,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -609,7 +612,10 @@ fn access_field<'a>(
     let ExpRegistry { vars: _, exps } = exp_registry;
     let type_exp = exps.get(&base).expect("expression not found in registry");
     if let Expression::Record { sort, fields: _ } = type_exp {
-        let variants = &ty_map.get(sort).expect("sort not found in type map").1;
+        let variants = &ty_map
+            .get(sort)
+            .expect("sort not found in type map")
+            .variants;
         let type_name = ir
             .ty_registry
             .reverse_lookup(*sort)
@@ -650,7 +656,7 @@ fn access_slot<'a>(
     slot: usize,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -660,7 +666,10 @@ fn access_slot<'a>(
     let ExpRegistry { vars: _, exps } = exp_registry;
     let type_exp = exps.get(&base).expect("expression not found in registry");
     if let Expression::Tuple { sort, slots: _ } = type_exp {
-        let variants = &ty_map.get(sort).expect("sort not found in type map").1;
+        let variants = &ty_map
+            .get(sort)
+            .expect("sort not found in type map")
+            .variants;
         let type_name = ir
             .ty_registry
             .reverse_lookup(*sort)
@@ -701,7 +710,7 @@ fn pack_to_z3<'a>(
     elems: &[ExpId],
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -712,9 +721,10 @@ fn pack_to_z3<'a>(
     if sort_name.is_some() {
         panic!("tuples are unnamed types");
     }
-    let (_dt_sort, variants) = ty_map
+    let variants = &ty_map
         .get(&sort)
-        .expect("sort not found in type map for Pack");
+        .expect("sort not found in type map for Pack")
+        .variants;
     assert!(
         variants.len() == 1,
         "Tuple sort must have exactly one variant"
@@ -761,7 +771,7 @@ fn tuple_to_z3<'a>(
     slots: &[ExpId],
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -771,9 +781,10 @@ fn tuple_to_z3<'a>(
     let (sort_name, _ty_args) = ir.ty_registry.reverse_lookup(sort);
     let _sort_name = sort_name.expect("struct tuple sort name not found");
 
-    let (_dt_sort, variants) = ty_map
+    let variants = &ty_map
         .get(&sort)
-        .expect("sort not found in type map for Tuple");
+        .expect("sort not found in type map for Tuple")
+        .variants;
     assert!(
         variants.len() == 1,
         "Tuple sort must have exactly one variant"
@@ -821,7 +832,7 @@ fn record_to_z3<'a>(
     fields: &BTreeMap<String, ExpId>,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -831,9 +842,10 @@ fn record_to_z3<'a>(
     let (sort_name, _ty_args) = ir.ty_registry.reverse_lookup(*sort);
     let sort_name = sort_name.expect("record sort name not found");
 
-    let (_dt_sort, variants) = ty_map
+    let variants = &ty_map
         .get(sort)
-        .expect("sort not found in type map for Record");
+        .expect("sort not found in type map for Record")
+        .variants;
     assert!(
         variants.len() == 1,
         "Record sort must have exactly one variant"
@@ -901,7 +913,7 @@ fn enum_to_z3<'a>(
     variant: &VariantCtor,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -911,9 +923,10 @@ fn enum_to_z3<'a>(
     let (sort_name, _ty_args) = ir.ty_registry.reverse_lookup(sort);
     let sort_name = sort_name.expect("enum sort name not found");
 
-    let (_dt_sort, variants) = ty_map
+    let variants = &ty_map
         .get(&sort)
-        .expect("sort not found in type map for Enum");
+        .expect("sort not found in type map for Enum")
+        .variants;
 
     // Find the variant that matches the branch name
     let matching_variant = variants
@@ -1071,7 +1084,7 @@ fn match_to_ite<'a>(
     cases: &Vec<MatchCase>,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -1193,7 +1206,7 @@ fn build_match_condition<'a>(
     atoms: &[MatchAtom],
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -1220,7 +1233,10 @@ fn build_match_condition<'a>(
         );
 
         // Get the datatype variants for this sort
-        let (_dt_sort, variants) = ty_map.get(&atom.sort).expect("sort not found in type map");
+        let variants = &ty_map
+            .get(&atom.sort)
+            .expect("sort not found in type map")
+            .variants;
         let (sort_name, _) = ir.ty_registry.reverse_lookup(atom.sort);
         let _sort_name = sort_name.expect("sort name not found");
 
@@ -1258,7 +1274,7 @@ fn extend_bound_vars_with_patterns<'a>(
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     cloak_manager: &mut CloakManager<'a>,
     map_length_manager: &mut MapLengthManager,
@@ -1284,7 +1300,10 @@ fn extend_bound_vars_with_patterns<'a>(
         );
 
         // Get the datatype variants for this sort
-        let (_dt_sort, variants) = ty_map.get(&atom.sort).expect("sort not found in type map");
+        let variants = &ty_map
+            .get(&atom.sort)
+            .expect("sort not found in type map")
+            .variants;
 
         // Find the matching variant for this branch
         let matching_variant = variants
@@ -1371,7 +1390,7 @@ fn iter_forall_to_z3<'a>(
     body: ExpId,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_env: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,
@@ -1472,7 +1491,7 @@ fn iter_exists_to_z3<'a>(
     body: ExpId,
     ir: &IRContext,
     fn_map: &HashMap<UsrFunId, RecFuncDecl>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_env: &Vec<(Symbol, ast::Dynamic)>,
     cloak_manager: &mut CloakManager<'a>,

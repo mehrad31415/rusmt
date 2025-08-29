@@ -9,7 +9,7 @@ use crate::ir::{
     sort::{DataType, Sort},
 };
 use std::collections::HashMap;
-use z3::{Context, DatatypeVariant};
+use z3::{Context, DatatypeSort};
 
 /// Converts a `Sort` to a Z3 `Sort`.
 pub fn sort_to_z3(
@@ -17,7 +17,7 @@ pub fn sort_to_z3(
     ctx: &Context,
     ir: &IRContext,
     user_sort_name: Option<&UsrSortName>,
-    ty_map: &HashMap<UsrSortId, (z3::Sort, Vec<DatatypeVariant>)>,
+    ty_map: &HashMap<UsrSortId, DatatypeSort>,
 ) -> z3::Sort {
     match s {
         Sort::Boolean => z3::Sort::bool(ctx),
@@ -46,18 +46,16 @@ pub fn sort_to_z3(
         Sort::User(sid) => ty_map
             .get(sid)
             .expect("user sort not defined before it is used")
-            .0
+            .sort
             .clone(),
 
         Sort::Uninterpreted(name) => {
-            let full = if let Some(parent) = user_sort_name {
-                let n = format!("{parent}_{name}");
-                z3::Sort::uninterpreted(ctx, n.clone().into());
-                n
+            let n = if let Some(parent) = user_sort_name {
+                format!("{parent}_{name}")
             } else {
                 name.to_string()
             };
-            z3::Sort::uninterpreted(ctx, full.into())
+            z3::Sort::uninterpreted(ctx, n.into())
         }
     }
 }

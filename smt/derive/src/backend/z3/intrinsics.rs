@@ -19,7 +19,7 @@ use crate::{
     },
 };
 use std::collections::HashMap;
-use z3::{Context, DatatypeSort, RecFuncDecl, Solver, ast, ast::Ast};
+use z3::{Context, DatatypeSort, FuncDecl, Solver, ast, ast::Ast};
 
 pub fn process_intrinsic<'ctx>(
     ctx: &'ctx Context,
@@ -27,7 +27,7 @@ pub fn process_intrinsic<'ctx>(
     exp_registry: &ExpRegistry,
     intrinsic: &Intrinsic,
     ir: &IRContext,
-    fn_map: &HashMap<UsrFunId, RecFuncDecl>,
+    fn_map: &HashMap<UsrFunId, FuncDecl>,
     ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     bound_vars: &Vec<(Symbol, ast::Dynamic)>,

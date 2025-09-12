@@ -73,14 +73,15 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) -> Result<()> {
 
             let res = solver.process(ir, &path_wks);
             match res {
-                Ok(response) => {
+                Ok((response, model)) => {
                     // Log the successful response from the solver.
                     debug!(
-                        "[{}] solving {} with {}: {}",
+                        "[{}] solving {} with {}: {} --- model: {:?}",
                         count,
                         ir.desc,
                         solver.name(),
-                        response
+                        response,
+                        model
                     );
                     // Write the response to a file in the workspace directory.
                     let path = path_wks.join("response.exp");

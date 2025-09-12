@@ -8,26 +8,28 @@ use crate::ir::{
     exp::ExpRegistry,
     fun::FunSig,
     index::{ExpId, UsrFunId, UsrSortId},
-    name::{SmtSortName, UsrFunName},
+    name::SmtSortName,
     sort::Sort,
 };
 use log::debug;
 use std::collections::HashMap;
+use z3::FuncDecl;
 use z3::ast::Ast;
-use z3::{Context, DatatypeSort, RecFuncDecl, Solver, ast::Dynamic};
+use z3::{Context, DatatypeSort, Solver, ast::Dynamic};
 
 /// Creates a Z3 function declaration from the function signature
 pub fn create_function_declaration(
     ctx: &Context,
-    fn_name: &UsrFunName,
+    ir: &IRContext,
+    fn_name: String,
     generics: &[Sort],
     sig: &FunSig,
-    ir: &IRContext,
     ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &mut HashMap<SmtSortName, z3::Sort>,
-) -> RecFuncDecl {
+) -> FuncDecl {
     // destructure the function signature
     let FunSig { params, ret_ty } = sig;
+
     // convert parameter sorts to Z3 sorts
     let param_sorts: Vec<z3::Sort> = params
         .iter()
@@ -36,8 +38,8 @@ pub fn create_function_declaration(
 
     // convert return sort to Z3 sort
     let ret_sort = sort_to_z3(ret_ty, ctx, ir, None, ty_map);
-    let fn_name_str = fn_name.to_string();
 
+    // sanity check
     for generic in generics {
         if let Sort::Uninterpreted(smt_sort_name) = generic {
             // If the generic is an uninterpreted sort, we need to ensure it is defined
@@ -54,10 +56,11 @@ pub fn create_function_declaration(
             panic!("Generic sort must be an uninterpreted sort, found: {generic:?}");
         }
     }
+
     // Create the function declaration
-    RecFuncDecl::new(
+    FuncDecl::new(
         ctx,
-        fn_name_str,
+        fn_name,
         &param_sorts.iter().collect::<Vec<_>>(),
         &ret_sort,
     )
@@ -67,16 +70,16 @@ pub fn create_function_declaration(
 pub fn process_function_body<'a>(
     ctx: &'a Context,
     solver: &Solver,
+    ir: &IRContext,
     fn_id: UsrFunId,
     exp_registry: &ExpRegistry,
     root_exp_id: ExpId,
-    ir: &IRContext,
-    fn_map: &HashMap<UsrFunId, RecFuncDecl>,
     ty_map: &HashMap<UsrSortId, DatatypeSort>,
     sort_map: &HashMap<SmtSortName, z3::Sort>,
     cloak_manager: &mut CloakManager<'a>,
     map_length_manager: &mut MapLengthManager,
     axiomatic_parameters: &mut HashMap<String, Dynamic>,
+    fn_map: &HashMap<UsrFunId, FuncDecl>,
 ) {
     // Get the function signature
     let sig = ir.fn_registry.retrieve_sig(fn_id);
@@ -93,6 +96,7 @@ pub fn process_function_body<'a>(
             )
         })
         .collect();
+    let param_refs: Vec<&dyn Ast> = param_vars.iter().map(|(_, d)| d as &dyn Ast).collect();
 
     // Process the expression tree to create Z3 AST
     let body_ast = process_expression(
@@ -110,10 +114,8 @@ pub fn process_function_body<'a>(
         axiomatic_parameters,
     );
 
-    // Get the function declaration
-    let fn_decl = fn_map.get(&fn_id).expect("Function declaration not found");
-
     // add def
-    let param_refs: Vec<&dyn Ast> = param_vars.iter().map(|(_s, d)| d as &dyn Ast).collect();
-    fn_decl.add_def(&param_refs, &body_ast);
+    let fn_decl = fn_map.get(&fn_id).expect("Function declaration not found");
+    let app = fn_decl.apply(&param_refs);
+    solver.assert(&app._eq(&body_ast));
 }

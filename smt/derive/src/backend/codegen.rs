@@ -7,6 +7,7 @@ use std::{
     fmt::{Display, Formatter},
     path::Path,
 };
+use z3::Model;
 
 #[derive(Debug, Clone)]
 /// The response returned by the backend solver.
@@ -47,7 +48,8 @@ pub trait CodeGen {
     fn flavor(&self) -> &'static str;
 
     /// Given an IRContext, give the response from the backend solver.
-    fn process(&self, ir: &IRContext, workspace: &Path) -> BackendResult<Response>;
+    fn process(&self, ir: &IRContext, workspace: &Path)
+    -> BackendResult<(Response, Option<Model>)>;
 }
 
 /// Available list of backend solvers

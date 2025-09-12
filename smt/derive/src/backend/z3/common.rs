@@ -3,7 +3,7 @@
 use crate::backend::codegen::CodeGen;
 use crate::backend::codegen::Response;
 use crate::backend::error::BackendResult;
-use crate::backend::z3::axiom::assert_axioms;
+use crate::backend::z3::axiom::process_axiom_body;
 use crate::backend::z3::fun::{create_function_declaration, process_function_body};
 use crate::backend::z3::sort::sort_to_z3;
 use crate::backend::z3::ty::{
@@ -12,8 +12,10 @@ use crate::backend::z3::ty::{
 use crate::backend::z3::unimplemented::{CloakManager, MapLengthManager};
 use crate::ir::ctxt::IRContext;
 use crate::ir::fun::FunDef;
+use crate::ir::fun::FunSig;
 use crate::ir::index::UsrFunId;
 use crate::ir::sort::DataType;
+use crate::ir::sort::Sort;
 use crate::parser::ctxt::Refinement;
 use core::panic;
 use log::debug;
@@ -22,8 +24,11 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use z3::Model;
+use z3::ast::Ast;
+use z3::ast::Dynamic;
 use z3::datatype_builder::create_datatypes;
-use z3::{Config, Context, FuncDecl, SatResult, Solver, Sort, ast, ast::Ast, set_global_param};
+use z3::{Config, Context, SatResult, Solver, ast, set_global_param};
 
 /// A wrapper for Z3 backends that implements the `CodeGen` trait.
 pub struct CodeGenZ3;
@@ -45,7 +50,11 @@ impl CodeGen for CodeGenZ3 {
     }
 
     /// Generates the backend source code from the provided `IRContext` and give the response.
-    fn process(&self, ir: &IRContext, workspace: &Path) -> BackendResult<Response> {
+    fn process(
+        &self,
+        ir: &IRContext,
+        workspace: &Path,
+    ) -> BackendResult<(Response, Option<Model>)> {
         // destructure the IRContext
         let IRContext {
             desc,
@@ -63,6 +72,7 @@ impl CodeGen for CodeGenZ3 {
         set_global_param("unsat_core", "false");
         set_global_param("sat.random_seed", "42");
         set_global_param("smt.random_seed", "42");
+        set_global_param("parallel.enable", "true");
         set_global_param("parallel.threads.max", NUM_CPU_CORES.to_string().as_str());
 
         let cfg = Config::new();
@@ -79,7 +89,7 @@ impl CodeGen for CodeGenZ3 {
         if !&undef_sorts.is_empty() {
             debug!("Define Type Parameters of Function Signatures");
             for sort in undef_sorts {
-                let z3_sort = Sort::uninterpreted(&ctx, sort.as_ref().into());
+                let z3_sort = z3::Sort::uninterpreted(&ctx, sort.as_ref().into());
                 sort_map.insert(sort.clone(), z3_sort.clone());
             }
         }
@@ -132,8 +142,9 @@ impl CodeGen for CodeGenZ3 {
         let mut cloak_manager = CloakManager::new(&ctx);
         let mut map_length_manager = MapLengthManager::new();
         let mut axiomatic_parameters: HashMap<String, ast::Dynamic> = HashMap::new();
-
         let mut fn_map = HashMap::new();
+        let mut axiom_map = HashMap::new();
+
         // function registry
         if !fn_registry.lookup.is_empty() {
             debug!("Define user-defined functions");
@@ -145,10 +156,10 @@ impl CodeGen for CodeGenZ3 {
                     // Create function declaration
                     let fn_decl = create_function_declaration(
                         &ctx,
-                        fn_name,
+                        ir,
+                        fn_name.to_string(),
                         generics,
                         sig,
-                        ir,
                         &ty_map,
                         &mut sort_map,
                     );
@@ -168,16 +179,16 @@ impl CodeGen for CodeGenZ3 {
                             process_function_body(
                                 &ctx,
                                 &solver,
+                                ir,
                                 *fn_id,
                                 exp_registry,
                                 *root_exp_id,
-                                ir,
-                                &fn_map,
                                 &ty_map,
                                 &sort_map,
                                 &mut cloak_manager,
                                 &mut map_length_manager,
                                 &mut axiomatic_parameters,
+                                &fn_map,
                             );
                         }
                         FunDef::Uninterpreted => {
@@ -188,23 +199,47 @@ impl CodeGen for CodeGenZ3 {
             }
         }
 
-        // write the axioms
         if !axiom_registry.lookup.is_empty() {
-            debug!("Define axioms");
-            for axiom in axiom_registry.lookup.values() {
-                for axiom_id in axiom.values() {
-                    let predicate = axiom_registry.retrieve(*axiom_id);
-                    assert_axioms(
+            debug!("Define axioms (declare)");
+            for (axiom_name, instantiations) in &axiom_registry.lookup {
+                for (generics, axiom_id) in instantiations {
+                    let p = axiom_registry.retrieve(*axiom_id);
+                    let sig = FunSig {
+                        params: p.params.clone(),
+                        ret_ty: Sort::Boolean,
+                    };
+
+                    let decl = create_function_declaration(
                         &ctx,
                         ir,
+                        axiom_name.to_string(),
+                        generics,
+                        &sig,
+                        &ty_map,
+                        &mut sort_map,
+                    );
+                    axiom_map.insert(*axiom_id, decl);
+                }
+            }
+
+            for (_axiom_name, instantiations) in &axiom_registry.lookup {
+                for axiom_id in instantiations.values() {
+                    let p = axiom_registry.retrieve(*axiom_id);
+                    process_axiom_body(
+                        &ctx,
                         &solver,
-                        predicate,
-                        &fn_map,
+                        ir,
+                        *axiom_id,
+                        &p.params,
+                        &p.body_reg,
+                        p.body_exp,
                         &ty_map,
                         &sort_map,
                         &mut cloak_manager,
                         &mut map_length_manager,
                         &mut axiomatic_parameters,
+                        &axiom_map,
+                        &fn_map,
                     );
                 }
             }
@@ -218,13 +253,11 @@ impl CodeGen for CodeGenZ3 {
             spec_id.len(),
             "impl/spec overload counts differ"
         );
-        let impl_spec_pairs: Vec<(UsrFunId, UsrFunId)> = impl_id
+
+        let impl_spec_pairs: BTreeSet<(UsrFunId, UsrFunId)> = impl_id
             .iter()
             .map(|(sig, &impl_fid)| {
-                let spec_fids: Vec<_> = spec_id
-                    .iter()
-                    .filter(|(k, _)| *k == sig) // Assuming you're looking up by signature
-                    .collect();
+                let spec_fids: Vec<_> = spec_id.iter().filter(|(k, _)| *k == sig).collect();
                 match spec_fids.len() {
                     0 => panic!("spec missing overload for signature {:?}", sig),
                     1 => {
@@ -238,6 +271,27 @@ impl CodeGen for CodeGenZ3 {
                 }
             })
             .collect();
+
+        let spec_impl_pairs: BTreeSet<(UsrFunId, UsrFunId)> = spec_id
+            .iter()
+            .map(|(sig, &spec_fid)| {
+                let impl_fids: Vec<_> = impl_id.iter().filter(|(k, _)| *k == sig).collect();
+                match impl_fids.len() {
+                    0 => panic!("spec missing overload for signature {:?}", sig),
+                    1 => {
+                        let &impl_fid = impl_fids[0].1;
+                        (impl_fid, spec_fid)
+                    }
+                    _ => panic!(
+                        "multiple impl overloads found for signature {:?}, expected exactly one",
+                        sig
+                    ),
+                }
+            })
+            .collect();
+
+        // sanity check
+        assert_eq!(spec_impl_pairs, impl_spec_pairs);
 
         for (impl_id, spec_id) in impl_spec_pairs {
             let impl_func = fn_map
@@ -253,49 +307,33 @@ impl CodeGen for CodeGenZ3 {
             for (i, (param_name, param_type)) in sig.params.iter().enumerate() {
                 let z3_sort = sort_to_z3(param_type, &ctx, ir, None, &ty_map);
                 let arg =
-                    FuncDecl::new(&ctx, format!("arg_{i}_{param_name}"), &[], &z3_sort).apply(&[]);
+                    Dynamic::fresh_const(&ctx, format!("arg_{i}_{param_name}").as_str(), &z3_sort);
                 args.push(arg);
             }
             let arg_refs: Vec<&dyn Ast> = args.iter().map(|a| a as &dyn Ast).collect();
-            let impl_call = impl_func.apply(&arg_refs);
-            let spec_call = spec_func.apply(&arg_refs);
+            let impl_call: Dynamic = impl_func.apply(&arg_refs);
+            let spec_call: Dynamic = spec_func.apply(&arg_refs);
             let equivalence = impl_call._eq(&spec_call).not();
 
             // Assert the equivalence
             solver.assert(&equivalence);
         }
 
-        let res = match solver.check() {
-            SatResult::Unsat => {
-                // let proof = solver.get_proof().expect("proof not available");
-                // println!("Unsat: {proof:?}");
-                Response::Unsat
-            }
+        let (res, model) = match solver.check() {
+            SatResult::Unsat => (Response::Unsat, None),
             SatResult::Sat => {
                 let model = solver.get_model().expect("Model not found");
-                debug!("Sat: {model:?}");
-                Response::Sat
+                (Response::Sat, Some(model))
             }
-            SatResult::Unknown => {
-                // let reason = solver
-                //     .get_reason_unknown()
-                //     .expect("Reason unknown not available");
-                // debug!("Unknown: {reason:?}");
-                Response::Unknown
-            }
+            SatResult::Unknown => (Response::Unknown, None),
         };
 
-        for a in solver.get_assertions() {
-            println!("Assertion: {}", a);
-            let _ = a.simplify(); // will panic if an assertion is invalid/null
-            println!("will panic if an assertion is invalid/null");
-        }
+        fs::write(
+            workspace.join(format!("response.{}", self.flavor())),
+            solver.to_smt2(),
+        )
+        .unwrap();
 
-        // let smt = solver.to_smt2();
-        println!("xxx");
-        println!("solver check: {:?}", solver.check());
-        fs::write(workspace.join(format!("response.{}", self.flavor())), "x").unwrap();
-
-        Ok(Response::Sat)
+        Ok((res, model))
     }
 }

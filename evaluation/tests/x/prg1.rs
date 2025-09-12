@@ -14,5 +14,5 @@ fn _and_spec(_lhs: Boolean, _rhs: Boolean) -> Boolean {
 
 #[smt_axiom]
 fn _and_axiom(lhs: Boolean, rhs: Boolean) -> Boolean {
-    _and_spec(lhs, rhs).eq(if *lhs { Boolean::from(false) } else { rhs })
+    _and_spec(lhs, rhs).eq(_and(lhs, rhs))
 }

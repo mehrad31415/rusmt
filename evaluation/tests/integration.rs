@@ -61,6 +61,10 @@ fn check_mod(path: &Path) -> datatest_stable::Result<()> {
 
         // Check if the entry is a directory
         if entry.file_type()?.is_dir() {
+            let corresponding_rs_file = path_dir.join(format!("{}.rs", name));
+            if corresponding_rs_file.is_file() {
+                continue; // Skip this directory.
+            }
             // For directories, check if they contain a mod.rs file
             if !entry.path().join("mod.rs").is_file() {
                 return Err(

@@ -297,20 +297,12 @@ name! {
         > crate::ir::name::UsrSortName
 }
 
-// Define UsrFuncName using the name! macro (this is used to store user-defined functions marked with smt_impl or smt_spec attribute).
+// Define UsrFuncName using the name! macro (this is used to store user-defined functions marked with smt_impl attribute).
 name! {
     /// Identifier for a user-defined function (i.e., non-reserved).
     /// A user-defined function name is converted to a user function name in the ir (intermediate representation).
     UsrFuncName
         > crate::ir::name::UsrFunName
-}
-
-// Define AxiomName using the name! macro (this is used to store user-defined functions marked with smt_axiom attribute).
-name! {
-    /// Identifier for an axiom.
-    /// An axiom name is converted to a user axiom name in the ir (intermediate representation).
-    AxiomName
-        > crate::ir::name::UsrAxiomName
 }
 
 // Define TypeParamName using the name! macro.

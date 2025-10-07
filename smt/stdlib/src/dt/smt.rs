@@ -20,17 +20,21 @@ use std::hash::Hash;
 /// * `Debug` - The type must be able to be formatted using the `{:?}` formatter
 /// * `Clone` - The type must be cloneable
 pub trait SMT: 'static + Copy + Clone + Default + Hash + Send + Sync + Debug {
+    /// Compare two values of the same type
     fn _cmp(self, rhs: Self) -> Ordering;
 
+    /// Equal operator
     fn eq(self, rhs: Self) -> Boolean {
         (Self::_cmp(self, rhs) == Ordering::Equal).into()
     }
 
+    /// Not equal operator
     fn ne(self, rhs: Self) -> Boolean {
         (Self::_cmp(self, rhs) != Ordering::Equal).into()
     }
 }
 
+/// A macro to implement the SMT trait for a type.
 #[macro_export]
 macro_rules! smt_impl {
     // single types
@@ -38,7 +42,7 @@ macro_rules! smt_impl {
         // any type in SMT can only be compared with the same type (so float cannot be compared with integer)
         impl SMT for $l {
             fn _cmp(self, rhs: Self) -> Ordering {
-                self.inner.cmp(&rhs.inner)
+                 self.inner.cmp(&rhs.inner)
             }
         }
     };

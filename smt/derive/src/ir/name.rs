@@ -37,7 +37,7 @@ macro_rules! name {
     };
 }
 
-// ONLY for type parameters, user types, user functions (impls and specs), axioms, and variables
+// ONLY for type parameters, user types, user functions, and variables
 // equivalent to:
 // #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 // pub struct SmtSortName {
@@ -62,17 +62,6 @@ impl SmtSortName {
             ident: format!("{func}_{param}"),
         }
     }
-
-    /// Create an uninterpreted sort for axiom param
-    /// For function `axiom` and type parameter `param`, the uninterpreted sort is `axiom_param`
-    pub fn new_axiom_param(
-        axiom: &crate::parser::name::AxiomName,
-        param: &crate::parser::name::TypeParamName,
-    ) -> Self {
-        Self {
-            ident: format!("{axiom}_{param}"),
-        }
-    }
 }
 
 // let a = UsrTypeName { ident: "a".to_string() };
@@ -94,12 +83,6 @@ name! {
     /// Name of a variable
     Symbol
         : crate::parser::name::VarName
-}
-
-name! {
-    /// Name of an axiom (user defined function marked with #[smt_axiom])
-    UsrAxiomName
-        : crate::parser::name::AxiomName
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 
 use crate::parser::{
     adt::{MatchAnalyzer, MatchOrganizer},
-    apply::{Kind, TypeFn},
+    apply::TypeFn,
     ctxt::ContextWithSig,
     dsl::{Quantifier, SysMacroName},
     func::{CastFuncName, FuncName, FuncSig, SysFuncName},
@@ -215,9 +215,6 @@ impl Display for LetBinding {
 /// ExprParserRoot is the parser for the function under analysis
 /// CtxtForType is a supertrait of CtxtForExpr meaning that any type that implements CtxtForExpr must also implement CtxtForType
 pub trait CtxtForExpr: CtxtForType {
-    /// Retrieve the kind of the current parsing context (whether the function is an impl or a spec)
-    fn kind(&self) -> Kind;
-
     /// Retrieve the definition of a user-defined type from the whole context
     fn get_type_def(&self, name: &UsrTypeName) -> Option<&TypeDef>;
 
@@ -592,7 +589,6 @@ impl Expr {
     /// pre: function to apply on the current expression before visiting the expression
     /// post: function to apply on the current expression after visiting the expression
     /// This function is used in ExprParserRoot::parse after converting the statements to expressions (convert_stmts function)
-    /// Also used in probe_related_axioms in ctxt.rs
     pub fn visit<TY, PRE, POST>(
         &mut self,
         ty: &mut TY,
@@ -936,14 +932,9 @@ impl Display for Expr {
 
 #[derive(Clone, Debug)]
 /// Root expression parser for each function as a whole
-/// ctxt: contains all the marked types, impls, specs, and axioms of the whole file
-/// kind: whether the current function under analysis is a spec or impl - an axiom is represented as a spec
-/// generics, params, and ret_ty: function generics, parameters, and return type derived from the function signature
 pub struct ExprParserRoot<'ctx> {
     /// context provider
     ctxt: &'ctx ContextWithSig,
-    /// the expression is an spec or impl
-    kind: Kind,
     /// function generics
     generics: Generics,
     /// function parameters
@@ -967,11 +958,10 @@ struct ExprParserCursor<'r, 'ctx: 'r> {
 
 impl<'ctx> ExprParserRoot<'ctx> {
     /// Creating a new context for parsing a single function body
-    /// For each separate function (whether impl or spec or axiom), a new ExprParserRoot is created
-    pub fn new(ctxt: &'ctx ContextWithSig, kind: Kind, sig: &FuncSig) -> Self {
+    /// For each separate function, a new ExprParserRoot is created
+    pub fn new(ctxt: &'ctx ContextWithSig, sig: &FuncSig) -> Self {
         Self {
-            ctxt, // the whole context of the rust file containing all the types, impls, specs, and axioms
-            kind, // the kind of the function (impl or spec) - an axiom is represented as a spec
+            ctxt, // the whole context of the rust file containing all the types, impls
             generics: sig.generics.clone(), // generics, params, ret_ty are derived from the function signature
             params: sig
                 .param_map() // param_map() converts the Vec<(VarName, TypeTag)> to BTreeMap<VarName, TypeTag>
@@ -1004,7 +994,7 @@ impl<'ctx> ExprParserRoot<'ctx> {
         // ExprParserRoot is the root parser for the whole function under consideration
         let exp_ty = self.ret_ty.clone(); // the return type of the function is the expected type of ExprParserCursor at the start (the default expected type). This is because ExprParserCursor is used to parse the current expression. Every function body has some optional local let-binding statements and a mandatory sole expression (which is the return value of the function). Note that every function in `rusmart` must have a return value. Therefore, ExprParserCursor `definitely` parses the sole last expression of the body and the expected type of this expression is the function return type. For other expressions (for example right-hand side of a let-binding), the expected type needs to be altered. The is done by `forking` the parser to the defined type.
         let parser = ExprParserCursor {
-            root: &self, // the root parser which encapsulates the following details: ContextWithSig (the whole context of the rust file), Kind (spec of impl), Generics (generics), BTreeMap<VarName, TypeRef> (Params), and TypeRef (return type)
+            root: &self, // the root parser which encapsulates the following details: ContextWithSig (the whole context of the rust file), Generics (generics), BTreeMap<VarName, TypeRef> (Params), and TypeRef (return type)
             exp_ty, // at the start, the expected type is the return type of the function (the default expected type)
             vars: self.params.clone(), // at the start, the variables in scope are the function parameters
             bindings: vec![],          // no new let-bindings created at the start
@@ -1057,19 +1047,14 @@ impl CtxtForType for ExprParserRoot<'_> {
 
 /// Implementing the CtxtForExpr trait for the ExprParserRoot struct
 impl CtxtForExpr for ExprParserRoot<'_> {
-    /// Retrieve the kind of the current parsing context (whether the function is an impl or a spec)
-    fn kind(&self) -> Kind {
-        self.kind
-    }
-
     /// Retrieve the definition of a user-defined type from the whole context
     fn get_type_def(&self, name: &UsrTypeName) -> Option<&TypeDef> {
         self.ctxt.get_type_def(name)
     }
 
-    /// Retrieve the signature of a user-defined function given the function name and the kind from the current function (a spec marked function cannot be used in an impl & an impl marked function cannot be used in a spec). So, the kind of the functions are the same.
+    /// Retrieve the signature of a user-defined function given the function name.
     fn lookup_unqualified(&self, name: &UsrFuncName) -> Option<&TypeFn> {
-        self.ctxt.fn_db.lookup_unqualified(self.kind, name)
+        self.ctxt.fn_db.lookup_unqualified(name)
     }
 
     /// Retrieve the function type for a user function on a system type (a.k.a., an intrinsic) and inherenting the kind from the current function
@@ -1080,7 +1065,7 @@ impl CtxtForExpr for ExprParserRoot<'_> {
     ) -> Option<&TypeFn> {
         self.ctxt
             .fn_db
-            .lookup_usr_func_on_sys_type(self.kind, ty_name, fn_name)
+            .lookup_usr_func_on_sys_type(ty_name, fn_name)
     }
 
     /// Retrieve the method type for a user function on a user type (entirely user-defined method) and inherenting the kind from the current function
@@ -1091,7 +1076,7 @@ impl CtxtForExpr for ExprParserRoot<'_> {
     ) -> Option<&TypeFn> {
         self.ctxt
             .fn_db
-            .lookup_usr_func_on_usr_type(self.kind, ty_name, fn_name)
+            .lookup_usr_func_on_usr_type(ty_name, fn_name)
     }
 }
 
@@ -1120,7 +1105,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
     /// * unifier: the type unifier
     /// * stmts: the statements in the function body
     ///
-    /// The root parser contains the following details: ContextWithSig (the whole context of the rust file), and the Kind (spec of impl) and Function signature (Generics, Params, and Return type)
+    /// The root parser contains the following details: ContextWithSig (the whole context of the rust file), and Function signature (Generics, Params, and Return type)
     /// The expected type is the return type of the function at the start
     /// The variables in scope are the function parameters at the start and will contain all the local variables in the current scope
     /// The new let-bindings created are empty at the start and will contain all the new let-bindings created inside function body
@@ -1129,7 +1114,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
     ///
     /// Returns:
     ///
-    /// * Result<Expr>: the returning expression of the function (impl or spec) - every function should have a return value
+    /// * Result<Expr>: the returning expression of the function - every function should have a return value
     ///
     /// The Expr is the self-defined expression type which contains the following enum variants: Unit(Inst) and Block{lets: Vec<LetBinding>, body: Inst})
     ///
@@ -2237,13 +2222,6 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 let quant = Quantifier::parse(self.root, expr_macro)?;
                 match quant {
                     Quantifier::Typed { name, vars, body } => {
-                        // early filtering
-                        // so typed quantifiers are only allowed in spec context
-                        // that is in functions marked with #[smt_spec] or #[smt_axiom] not in #[smt_impl]
-                        if !matches!(self.root.kind, Kind::Spec) {
-                            bail_on!(expr_macro, "only allowed in spec context");
-                        }
-
                         // parse body
                         // the return type of the body must be a Boolean
                         let mut new_ctxt = self.fork(TypeRef::Boolean);

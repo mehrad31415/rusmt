@@ -1,9 +1,9 @@
 [book]
+title = "Rusmart Framework"
 authors = ["Meng Xu", "Mehrad Haghshenas"]
+src = "src"
 language = "en"
 multilingual = false
-src = "src"
-title = "Rusmart Language"
 
 [build]
 create-missing = false

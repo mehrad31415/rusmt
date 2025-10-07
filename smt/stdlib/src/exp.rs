@@ -1,4 +1,4 @@
-//! Standard library for SMT expressions in Rusmart.
+//! Standard library for SMT expressions
 //!
 //! quantified expressions:
 //! * `forall`
@@ -37,8 +37,7 @@ macro_rules! forall {
     };
 }
 
-/// `exists`: same as forall with the difference that the any method is used instead of all.
-///    Meaning that the result is true if the constraint is true for at least one pair of values.
+/// `exists`: same as forall but the result is true if the constraint is true for at least one pair of values.
 #[macro_export]
 macro_rules! exists {
     (|$v0:ident : $t0:ty $(, $vn:ident : $tn:ty)* $(,)?| $constraint:expr) => {
@@ -60,7 +59,7 @@ macro_rules! exists {
 /// `choose`: If there `exists` a valid set of values that satisfy the constraint, the values are returned
 ///    In the first pattern, the default values are returned if the constraint is satisfied
 ///    In the second pattern, the first pair of values in the product of the collections that satisfies the constraint is returned
-///    If no pair of values satisfies the constraint, a panic is thrown
+///    Equivalent to (exists ((x T)) (P x)) ... (get-model) ...
 #[macro_export]
 macro_rules! choose {
     (|$v0:ident : $t0:ty $(, $vn:ident : $tn:ty)* $(,)?| $constraint:expr) => {
@@ -85,7 +84,7 @@ macro_rules! choose {
 #[cfg(test)]
 mod test {
     use crate::smt::SMT;
-    use crate::{dt::*, map, set};
+    use crate::{array, dt::*, set};
 
     #[test]
     /// testing the first pattern of the forall macro.
@@ -105,12 +104,13 @@ mod test {
     #[test]
     /// the cartesian product will be (1, 10), (2, 10)
     /// 1 < 10 and 2 < 10 so the result should be true
-    /// Note that the iterator() method on map returns a list of keys
+    /// Note that the iterator() method on array returns a list of keys
     /// and the iterator() method on set returns a list of its elements
     fn test_pattern_two_forall_one() {
-        let m = map!(
-            (Integer::from(1), Text::from("one")),
-            (Integer::from(2), Text::from("two"))
+        let m = array!(
+            String::default();
+            (Integer::from(1), String::from("one")),
+            (Integer::from(2), String::from("two"))
         );
         let s = set!(Integer::from(10));
 
@@ -130,9 +130,10 @@ mod test {
     /// the output of the cartesian product will be (1, 10), (20, 10)
     /// 1 < 10 so the result should be true because at least one pair of values satisfies the constraint
     fn test_pattern_two_exists() {
-        let m = map!(
-            (Integer::from(1), Text::from("one")),
-            (Integer::from(20), Text::from("twenty"))
+        let m = array!(
+            String::default();
+            (Integer::from(1), String::from("one")),
+            (Integer::from(20), String::from("twenty"))
         );
         let s = set!(Integer::from(10));
 
@@ -144,9 +145,10 @@ mod test {
     /// the output of the cartesian product will be (1, 10), (20, 10)
     /// 20 < 10 so the result should be false because not all pairs of values satisfy the constraint
     fn test_pattern_two_forall_two() {
-        let m = map!(
-            (Integer::from(1), Text::from("one")),
-            (Integer::from(20), Text::from("twenty"))
+        let m = array!(
+            String::default();
+            (Integer::from(1), String::from("one")),
+            (Integer::from(20), String::from("twenty"))
         );
         let s = set!(Integer::from(10));
 
@@ -155,6 +157,7 @@ mod test {
     }
 
     #[test]
+    /// Returns the default of the data type
     fn test_pattern_one_choose() {
         let (v1, v2) = choose!(|var1: Integer, var2: Integer| var1.eq(var2));
         assert!(*v1.eq(v2).and(v2.eq(Integer::from(0))));
@@ -162,6 +165,7 @@ mod test {
 
     #[test]
     #[should_panic(expected = "no valid choice")]
+    /// 0>0 is not valid so the operator will panic
     fn test_pattern_one_choose_panic() {
         let _ = choose!(|var1: Integer, var2: Integer| var1.gt(var2));
     }
@@ -170,9 +174,10 @@ mod test {
     /// the output of the cartesian product will be (1, 10), (20, 10)
     /// 1 < 10 so the result should be (1, 10) because the first pair of values that satisfies the constraint is returned
     fn test_pattern_two_choose() {
-        let m = map!(
-            (Integer::from(1), Text::from("one")),
-            (Integer::from(20), Text::from("twenty"))
+        let m = array!(
+            String::default();
+            (Integer::from(1), String::from("one")),
+            (Integer::from(20), String::from("twenty"))
         );
         let s = set!(Integer::from(10));
 
@@ -186,9 +191,10 @@ mod test {
     /// the output of the cartesian product will be (10, 10), (20, 10)
     /// no pair of values satisfies the constraint so a panic is thrown because nothing is returned
     fn test_pattern_two_choose_panic() {
-        let m = map!(
-            (Integer::from(10), Text::from("ten")),
-            (Integer::from(20), Text::from("twenty"))
+        let m = array!(
+            String::default();
+            (Integer::from(10), String::from("ten")),
+            (Integer::from(20), String::from("twenty"))
         );
         let s = set!(Integer::from(10));
 
@@ -196,7 +202,7 @@ mod test {
     }
 
     #[test]
-    /// The forall and choose macros have been combined to set the minimum value of a set in the eval.rs file
+    /// The forall and choose macros have been combined to set the minimum value of a set
     /// fn set_min(set: Set<Value>) -> Value {
     ///     choose!(v in set => forall!(e in set => v.eq(e).or(v.lt(e))))
     /// }
@@ -207,15 +213,16 @@ mod test {
     }
 
     #[test]
-    /// The forall and choose macros have been combined to set the minimum key of a map in the eval.rs file
-    /// fn map_key_min(map: Map<Value, Value>) -> Value {
-    ///    choose!(v in map => forall!(e in map => v.eq(e).or(v.lt(e))))
+    /// The forall and choose macros have been combined to set the minimum key of a array.
+    /// fn array_key_min(array: Array<Value, Value>) -> Value {
+    ///    choose!(v in array => forall!(e in array => v.eq(e).or(v.lt(e))))
     /// }
-    fn test_map_key_min() {
-        let m = map!(
-            (Integer::from(1), Text::from("one")),
-            (Integer::from(2), Text::from("two")),
-            (Integer::from(3), Text::from("three"))
+    fn test_array_key_min() {
+        let m = array!(
+            String::default();
+            (Integer::from(1), String::from("one")),
+            (Integer::from(2), String::from("two")),
+            (Integer::from(3), String::from("three"))
         );
         let v = choose!(v in m => forall!(e in m => v.eq(e).or(v.lt(e))));
         assert!(*v.eq(Integer::from(1)));

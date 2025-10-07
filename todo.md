@@ -83,3 +83,13 @@ cpu cores from initialize
 1 - finish off writing the book 
 2 - write new brief report and rusmart programs for documents
 3 - change the panic for panic!("cannot convert error sort to Z3 API"), Error !
+
+
+
+add linter for equality float in the remark ...
+
+you need to explicitly write the conversion between the types... 
+
+add unsigned integer methods
+
+we only have double tuples ... 

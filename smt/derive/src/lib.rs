@@ -105,7 +105,7 @@ pub fn solve<P: AsRef<Path>>(models: &[IRContext], output: P) -> Result<()> {
 
 /// Create a new parsing context from the input file and run the pipeline.
 pub fn model<P: AsRef<Path>>(input: P) -> Result<Vec<IRContext>> {
-    // the `new` function collects all the smt-marked items from the input file and stores them in the context (types, specs, impls, axioms)
+    // the `new` function collects all the smt-marked items from the input file and stores them in the context (types, impls)
     pipeline(Context::new(input)?)
 }
 

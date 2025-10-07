@@ -2,8 +2,8 @@
 //!
 //! This module provides the `parse_dict` function to parse key-value mappings from a token stream.
 //! The `parse_dict` function is used inside the `derive_for_func` of the `func` module.
-//! The `derive_for_func` function is used inside the `derive_for_impl` and `derive_for_spec` and `derive_for_axiom` functions of the `func` module.
-//! The `derive_for_impl` and `derive_for_spec` and `derive_for_axiom` functions are used inside the `smt_impl` and `smt_spec` and `smt_axiom` procedural macros of the `lib` module.
+//! The `derive_for_func` function is used inside the `derive_for_impl` of the `func` module.
+//! The `derive_for_impl` function is used inside the `smt_impl` procedural macro of the `lib` module.
 //!
 //! Use cases of the `parse_dict` function include parsing attributes and annotations in Rust macros. for example:
 //!

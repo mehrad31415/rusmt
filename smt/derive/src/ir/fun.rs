@@ -3,7 +3,7 @@ use crate::ir::exp::{ExpBuilder, ExpRegistry};
 use crate::ir::index::{ExpId, UsrFunId};
 use crate::ir::name::{Symbol, UsrFunName};
 use crate::ir::sort::Sort;
-use crate::parser::func::{FuncDef, FuncSig};
+use crate::parser::func::{FuncSig, ImplFuncDef};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
 use std::collections::BTreeMap;
@@ -36,8 +36,6 @@ pub enum FunDef {
     /// A function that is defined by an explicit body.
     /// It contains an expression registry (tracking all sub-expressions) and the ID of the root expression
     Defined(ExpRegistry, ExpId),
-    /// uninterpreted and maybe axiomatized function. This is only for functions which are marked with #[smt_spec] and the body is a sole unimplemented!() macro call
-    Uninterpreted,
 }
 
 /// A registry that tracks all functions within the IR.
@@ -127,7 +125,7 @@ impl FunRegistry {
 
 impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// Registers a function with the IR and returns its unique function ID.
-    /// This is called for the specification, implementation, and any function calls in the body of the implementation or specification.
+    /// This is called for the implementation, and any function calls in the body of the implementation.
     pub fn register_func(&mut self, fn_name: &UsrFuncName, ty_args: &[TypeRef]) -> UsrFunId {
         // Convert the parser-level function name into its IR-level UsrFunName (UsrFunName is the IR of UsrFuncName)
         let name = fn_name.into();
@@ -147,7 +145,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
         // Retrieve the function definition from the parser context.
         // This includes both the signature (with generics, parameters, and return type) and an optional body.
-        let FuncDef {
+        let ImplFuncDef {
             head:
                 FuncSig {
                     generics,
@@ -159,7 +157,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
         // prepare the builder for definition processing
         // this creates a new builder with the same parser context (ASTContext) and IR context (IRContext) but the ty_inst which is BTreeMap<TypeParamName, Sort> will be from the generics and the type args which are basically just taken from the generics of the function definition (TypeRef::Parameter(TypeParamName { name: "T" })) and the converted to Sort. So they are the same thing roughly...
-        let mut builder = self.derive(generics, ty_args);
+        let mut builder = self.derive(&generics, ty_args);
 
         // resolve type in function signatures
         let mut resolved_params = vec![];
@@ -177,13 +175,8 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         builder.ir.fn_registry.register_sig(idx, sig.clone());
 
         // materialize the entire function
-        let def = match body.as_ref() {
-            None => FunDef::Uninterpreted, // this is only for functions which are marked with #[smt_spec] and the body is a sole unimplemented!() macro call
-            Some(expr) => {
-                let (exp_reg, exp_id) = ExpBuilder::materialize(builder, &sig, expr);
-                FunDef::Defined(exp_reg, exp_id)
-            }
-        };
+        let (exp_reg, exp_id) = ExpBuilder::materialize(builder, &sig, body);
+        let def = FunDef::Defined(exp_reg, exp_id);
 
         // register the function definition
         self.ir.fn_registry.register_def(idx, def);

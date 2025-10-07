@@ -14,37 +14,47 @@ impl From<bool> for Boolean {
     }
 }
 
+/// true
+pub const TRUE: Boolean = Boolean { inner: true };
+/// false
+pub const FALSE: Boolean = Boolean { inner: false };
+
 /// All methods are defined such that they take ownership of the self parameter.
 impl Boolean {
-    #[allow(clippy::should_implement_trait)]
+    /// logical NOT
     pub fn not(self) -> Self {
         Self { inner: !self.inner }
     }
 
+    /// logical AND
     pub fn and(self, rhs: Self) -> Self {
         Self {
             inner: self.inner && rhs.inner,
         }
     }
 
+    /// logical OR
     pub fn or(self, rhs: Self) -> Self {
         Self {
             inner: self.inner || rhs.inner,
         }
     }
 
+    /// logical XOR
     pub fn xor(self, rhs: Self) -> Self {
         Self {
             inner: self.inner ^ rhs.inner,
         }
     }
 
+    /// logical IMPLIES
     pub fn implies(self, rhs: Self) -> Self {
         Self {
             inner: !self.inner || rhs.inner,
         }
     }
 
+    /// logical IFF
     pub fn iff(self, rhs: Self) -> Self {
         Self {
             inner: (self.inner && rhs.inner) || (!self.inner && !rhs.inner),

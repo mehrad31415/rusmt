@@ -1,13 +1,12 @@
 //! The modules provides the following data structures:
 //! - `Mark` enum which represents the SMT-related marking attributes.
 //! - `ImplMark` struct which represents the marking for an annotated impl function.
-//! - `SpecMark` struct which represents the marking for an annotated spec function.
 //! - `parse_attrs` is the main method to parse the attributes and extract the marks. This method is used in the `ctxt` module.
 
 use crate::parser::name::UsrFuncName;
 use crate::{bail_if_missing, bail_on};
-use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
-use std::collections::{BTreeMap, BTreeSet};
+use proc_macro2::{Ident, TokenStream, TokenTree};
+use std::collections::BTreeMap;
 use syn::{AttrStyle, Attribute, MacroDelimiter, Meta, MetaList, MetaNameValue, Path, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,8 +14,6 @@ use syn::{AttrStyle, Attribute, MacroDelimiter, Meta, MetaList, MetaNameValue, P
 enum Annotation {
     Type,
     Impl,
-    Spec,
-    Axiom,
 }
 
 // the get_ident(&Path) analyzes the path; if the path is not an ident, it will return None.
@@ -33,8 +30,6 @@ impl Annotation {
         {
             "smt_type" => Some(Self::Type),
             "smt_impl" => Some(Self::Impl),
-            "smt_spec" => Some(Self::Spec),
-            "smt_axiom" => Some(Self::Axiom),
             _ => None,
         }
     }
@@ -44,8 +39,6 @@ impl Annotation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MetaValue {
     One(Ident),
-    Set(BTreeSet<Ident>),
-    Map(BTreeSet<(Ident, Ident)>),
 }
 
 #[derive(Debug, Clone)]
@@ -53,25 +46,12 @@ enum MetaValue {
 pub struct ImplMark {
     /// whether to derive a receiver-style method for this function
     pub method: Option<UsrFuncName>,
-    /// which spec functions this impl should conform to
-    pub specs: BTreeSet<UsrFuncName>,
-}
-
-#[derive(Debug, Clone)]
-/// A mark for an annotated spec function
-pub struct SpecMark {
-    /// whether to derive a receiver-style method for this function
-    pub method: Option<UsrFuncName>,
-    /// which impl functions this spec should target at
-    pub impls: BTreeSet<UsrFuncName>,
 }
 
 /// SMT-related marking
 pub enum Mark {
     Type,
     Impl(ImplMark),
-    Spec(SpecMark),
-    Axiom,
 }
 
 impl Mark {
@@ -138,125 +118,6 @@ impl Mark {
             let val = match token {
                 // Single identifier value
                 TokenTree::Ident(ident) => MetaValue::One(ident),
-                // Set of identifiers enclosed in brackets key = [value1, value2]
-                TokenTree::Group(group) if matches!(group.delimiter(), Delimiter::Bracket) => {
-                    let mut set = BTreeSet::new(); // Stores the set of identifiers in the value
-
-                    let mut sub_iter = group.stream().into_iter(); // Iterator over the sub-stream
-                    // sub_cursor will be a None value if we have #[my_attr(key = [])]
-                    let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
-                    while sub_cursor.is_some() {
-                        // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
-                        let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
-                        // Extract the item as an identifier.
-                        let item = match token {
-                            TokenTree::Ident(ident) => ident.clone(),
-                            _ => bail_on!(token, "item not an identifier"), // return an error if the token is not an identifier for example #[my_attr(key = [1, 2])]
-                        };
-
-                        // Check for duplicated items and return an error if found
-                        // for example #[my_attr(key = [value1, value1])] leads to an error
-                        if !set.insert(item.clone()) {
-                            bail_on!(group, "duplicated item");
-                        }
-
-                        // advance the cursor
-                        sub_cursor = sub_iter.next();
-                        // Skip commas between items
-                        if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
-                        {
-                            sub_cursor = sub_iter.next();
-                        } else if sub_cursor.is_some() {
-                            // Return an error if a comma is missing between items
-                            bail_on!(sub_cursor, "expect comma between items");
-                        }
-                    }
-
-                    MetaValue::Set(set)
-                }
-                // Set of identifiers enclosed in braces key = {value1, value2} where each value_i is a tuple
-                TokenTree::Group(group) if matches!(group.delimiter(), Delimiter::Brace) => {
-                    let mut map = BTreeSet::new(); // Stores the set of tuples in the value
-
-                    let sub = group.stream(); // creates a TokenStream
-                    let mut sub_iter = sub.into_iter(); // Iterator over the sub-stream
-
-                    // sub_cursor will be a None value if we have #[my_attr(key = {})]
-                    let mut sub_cursor = sub_iter.next(); // Current token in sub-stream
-
-                    if sub_cursor.is_none() {
-                        bail_on!(group, "expect at least one item in set");
-                    }
-
-                    while sub_cursor.is_some() {
-                        // Extract the item. This will never lead to a compile error because sub_cursor is checked to be Some at the beginning of the loop. So it will only unwrap a Some value.
-                        let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
-                        // Extract the item as an identifier.
-                        let item: (Ident, Ident) = match token {
-                            TokenTree::Group(inner_group)
-                                if matches!(inner_group.delimiter(), Delimiter::Parenthesis) =>
-                            {
-                                let inner_sub = inner_group.stream(); // creates a TokenStream
-                                let mut inner_sub_iter = inner_sub.into_iter(); // Iterator over the sub-stream
-
-                                let mut inner_sub_cursor = inner_sub_iter.next();
-                                if inner_sub_cursor.is_none() {
-                                    bail_on!(group, "expect a tuple");
-                                }
-
-                                let impl_token =
-                                    bail_if_missing!(inner_sub_cursor, inner_group, "item");
-
-                                let impl_key = match impl_token {
-                                    TokenTree::Ident(ident) => ident,
-                                    _ => bail_on!(token, "impl not an identifier"), // return an error if the token is not an identifier
-                                };
-
-                                // advance the cursor
-                                inner_sub_cursor = inner_sub_iter.next();
-
-                                if matches!(inner_sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
-                                {
-                                    inner_sub_cursor = inner_sub_iter.next();
-                                } else {
-                                    // Return an error if a comma is missing between items
-                                    bail_on!(inner_sub_cursor, "expect comma between items");
-                                }
-
-                                let spec_token = bail_if_missing!(
-                                    inner_sub_cursor.as_ref(),
-                                    inner_group,
-                                    "item"
-                                );
-
-                                let spec_key = match spec_token {
-                                    TokenTree::Ident(ident) => ident,
-                                    _ => bail_on!(token, "spec not an identifier"), // return an error if the token is not an identifier
-                                };
-                                (impl_key.clone(), spec_key.clone())
-                            }
-                            _ => bail_on!(token, "item not a tuple of identifiers"), // return an error if the token is not a tuple of identifiers
-                        };
-
-                        // Check for duplicated items and return an error if found
-                        // for example #[my_attr(key = {(value1, value2), (value1, value2)})] leads to an error
-                        if !map.insert(item.clone()) {
-                            bail_on!(group, "duplicated item");
-                        }
-
-                        // Advance the cursor
-                        sub_cursor = sub_iter.next();
-                        // Skip commas between items
-                        if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
-                        {
-                            sub_cursor = sub_iter.next();
-                        } else if sub_cursor.is_some() {
-                            // Return an error if a comma is missing between items
-                            bail_on!(sub_cursor, "expect comma between items");
-                        }
-                    }
-                    MetaValue::Map(map)
-                }
                 _ => bail_on!(token, "expect identifier or set of identifiers as value"),
             };
 
@@ -298,19 +159,11 @@ impl Mark {
             // Path like `test` in #[test]
             // If it is a path, we parse it for Annotations.
             // Basically the parse_path checks if the path is an identifier (not a path with leading colons, only one segment, and no arguments).
-            // If it is an identifier, the acceptable values are "smt_type", "smt_impl", "smt_spec", "smt_axiom".
+            // If it is an identifier, the acceptable values are "smt_type", "smt_impl".
             Meta::Path(path) => match Annotation::parse_path(path) {
                 None => return Ok(None),
                 Some(Annotation::Type) => Self::Type,
-                Some(Annotation::Impl) => Self::Impl(ImplMark {
-                    method: None,
-                    specs: BTreeSet::new(),
-                }),
-                Some(Annotation::Spec) => Self::Spec(SpecMark {
-                    method: None,
-                    impls: BTreeSet::new(),
-                }),
-                Some(Annotation::Axiom) => Self::Axiom,
+                Some(Annotation::Impl) => Self::Impl(ImplMark { method: None }),
             },
             // A meta list is like the `derive(Copy)` in `#[derive(Copy)]`
             Meta::List(MetaList {
@@ -326,12 +179,6 @@ impl Mark {
                             "unexpected list\nfor smt_type, no attributes are expected"
                         )
                     }
-                    Some(Annotation::Axiom) => {
-                        bail_on!(
-                            attr,
-                            "unexpected list\nfor smt_axiom, no attributes are expected"
-                        )
-                    }
                     Some(Annotation::Impl) => {
                         // MacroDelimiter is a grouping token that surrounds a macro body: `m!(...)` or `m!{...}` or `m![...]`
                         // If the delimiter is not Parenthesis (it is a brace or bracket), it will return an error.
@@ -340,65 +187,18 @@ impl Mark {
                         }
 
                         let mut store = Self::parse_dict(tokens)?;
-                        // #[smt_impl(method = my_method, specs = [spec1, spec2])] is valid
+                        // #[smt_impl(method = my_method)] is valid
                         let method = match store.remove("method") {
                             None => None,
                             // if the ident is not a reserved keyword, it will be parsed to a UsrFuncName
                             // reserved keywords are: (SMT), (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error), (eq, ne), (clone, default), (from, into), (exists, forall, choose), _.
                             Some(MetaValue::One(item)) => Some((&item).try_into()?),
-                            Some(_) => bail_on!(tokens, "invalid method"), // at most one method is expected
-                        };
-
-                        let mut specs = BTreeSet::new();
-                        match store.remove("specs") {
-                            None => (),
-                            Some(MetaValue::One(ref item)) => {
-                                specs.insert(UsrFuncName::try_from(item)?);
-                            }
-                            Some(MetaValue::Set(items)) => {
-                                for item in items.iter() {
-                                    specs.insert(UsrFuncName::try_from(item)?);
-                                }
-                            }
-                            Some(_) => bail_on!(tokens, "invalid specs"),
                         };
 
                         if !store.is_empty() {
-                            bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `method` and `specs`
+                            bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `method`
                         }
-                        Self::Impl(ImplMark { method, specs })
-                    }
-                    Some(Annotation::Spec) => {
-                        if !matches!(delimiter, MacroDelimiter::Paren(_)) {
-                            bail_on!(attr, "not a parenthesis-enclosed list");
-                        }
-
-                        let mut store = Self::parse_dict(tokens)?;
-                        let method = match store.remove("method") {
-                            None => None,
-                            Some(MetaValue::One(ref item)) => Some(item.try_into()?),
-                            Some(_) => bail_on!(tokens, "invalid method"),
-                        };
-
-                        let mut impls = BTreeSet::new();
-                        match store.remove("impls") {
-                            None => (),
-                            Some(MetaValue::One(ref item)) => {
-                                impls.insert(item.try_into()?);
-                            }
-                            Some(MetaValue::Set(items)) => {
-                                for item in items.iter() {
-                                    impls.insert(UsrFuncName::try_from(item)?);
-                                }
-                            }
-                            Some(_) => bail_on!(tokens, "invalid impls"),
-                        };
-
-                        if !store.is_empty() {
-                            // no other entries are expected except `method` and `impls`
-                            bail_on!(tokens, "unrecognized entries");
-                        }
-                        Self::Spec(SpecMark { method, impls })
+                        Self::Impl(ImplMark { method })
                     }
                 }
             }
@@ -496,25 +296,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_key_with_set_value() {
-        // Test parsing a key with a set value: key = [value1, value2]
-        let tokens = quote! { key = [value1, value2] };
-        let result = Mark::parse_dict(&tokens).unwrap();
-
-        assert_eq!(result.len(), 1);
-        match result.get("key") {
-            Some(MetaValue::Set(set)) => {
-                let expected: BTreeSet<_> = BTreeSet::from([ident("value1"), ident("value2")]);
-                assert_eq!(set, &expected);
-            }
-            _ => panic!("Expected MetaValue::Set with identifiers 'value1' and 'value2'"),
-        }
-    }
-
-    #[test]
     fn test_parse_mixed_values() {
-        // Test parsing mixed key-value pairs: key1 = value1, key2 = [value2, value3]
-        let tokens = quote! { key1 = value1, key2 = [value2, value3] };
+        let tokens = quote! { key1 = value1 };
         let result = Mark::parse_dict(&tokens).unwrap();
 
         assert_eq!(result.len(), 2);
@@ -522,14 +305,6 @@ mod tests {
         match result.get("key1") {
             Some(MetaValue::One(id)) => assert_eq!(id, &ident("value1")),
             _ => panic!("Expected MetaValue::One with identifier 'value1'"),
-        }
-        // Check key2
-        match result.get("key2") {
-            Some(MetaValue::Set(set)) => {
-                let expected: BTreeSet<_> = BTreeSet::from([ident("value2"), ident("value3")]);
-                assert_eq!(set, &expected);
-            }
-            _ => panic!("Expected MetaValue::Set with identifiers 'value2' and 'value3'"),
         }
     }
 
@@ -726,36 +501,9 @@ mod tests {
             Mark::Impl(
                 ImplMark {
                     method: None,
-                    specs
                 }
-            ) if specs.is_empty()
+            )
         ))));
-    }
-
-    #[test]
-    // smt_spec is a valid annotation and the attribute is parsed to a Mark::Spec with an empty SpecMark
-    fn test_parse_attr_meta_path_spec() {
-        let attr: Attribute = parse_quote! { #[smt_spec] };
-
-        let res = Mark::parse_attr(&attr);
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
-            e,
-            Mark::Spec(
-                SpecMark {
-                    method: None,
-                    impls
-                }
-            ) if impls.is_empty()
-        ))));
-    }
-
-    #[test]
-    // smt_axiom is a valid annotation and the attribute is parsed to a Mark::Axiom
-    fn test_parse_attr_meta_path_axiom() {
-        let attr: Attribute = parse_quote! { #[smt_axiom] };
-
-        let res = Mark::parse_attr(&attr);
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(e, Mark::Axiom))));
     }
 
     #[test]
@@ -863,45 +611,8 @@ mod tests {
             Mark::Impl(
                 ImplMark {
                     method: None,
-                    specs
                 }
-            ) if specs.is_empty()
-        ))));
-    }
-
-    // spec is a set of identifiers and method is an identifier
-    #[test]
-    fn test_parse_attr_meta_list_impl_multi_specs() {
-        let attr: Attribute = parse_quote! { #[smt_impl(method = add, specs = [spec1, spec2])] };
-
-        let res = Mark::parse_attr(&attr);
-
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
-            e,
-            Mark::Impl(
-                ImplMark {
-                    method,
-                    specs
-                }
-            ) if specs.len() == 2 && method == Some(UsrFuncName::try_from(&ident("add")).unwrap())
-        ))));
-    }
-
-    // spec is a single identifier
-    #[test]
-    fn test_parse_attr_meta_list_impl_single_spec() {
-        let attr: Attribute = parse_quote! { #[smt_impl(specs = spec1)] };
-
-        let res = Mark::parse_attr(&attr);
-
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
-            e,
-            Mark::Impl(
-                ImplMark {
-                    method: None,
-                    specs
-                }
-            ) if specs.len() == 1
+            )
         ))));
     }
 
@@ -976,60 +687,6 @@ mod tests {
             res.err().unwrap().to_string().as_str(),
             "reserved method name (eq, ne)\neq"
         );
-    }
-
-    // method None and impls is empty for smt_spec
-    #[test]
-    fn test_parse_attr_meta_list_spec_no_token() {
-        let attr: Attribute = parse_quote! { #[smt_spec()] };
-
-        let res = Mark::parse_attr(&attr);
-
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
-            e,
-            Mark::Spec(
-                SpecMark {
-                    method: None,
-                    impls
-                }
-            ) if impls.is_empty()
-        ))));
-    }
-
-    // impl is a set of identifiers and method is an identifier
-    #[test]
-    fn test_parse_attr_meta_list_spec_multi_impls() {
-        let attr: Attribute = parse_quote! { #[smt_spec(method = add, impls = [impl1, impl2])] };
-
-        let res = Mark::parse_attr(&attr);
-
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
-            e,
-            Mark::Spec(
-                SpecMark {
-                    method,
-                    impls
-                }
-            ) if impls.len() == 2 && method == Some(UsrFuncName::try_from(&ident("add")).unwrap())
-        ))));
-    }
-
-    // impl is a single identifier
-    #[test]
-    fn test_parse_attr_meta_list_spec_single_impl() {
-        let attr: Attribute = parse_quote! { #[smt_spec(impls = impl1)] };
-
-        let res = Mark::parse_attr(&attr);
-
-        assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
-            e,
-            Mark::Spec(
-                SpecMark {
-                    method: None,
-                    impls
-                }
-            ) if impls.len() == 1
-        ))));
     }
 
     // bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `method` and `impls`

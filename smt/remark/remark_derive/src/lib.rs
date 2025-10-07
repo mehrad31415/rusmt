@@ -28,26 +28,3 @@ pub fn smt_impl(attr: Syntax, item: Syntax) -> Syntax {
     let item: TokenStream = TokenStream::from(item);
     fail_if_error!(func::derive_for_impl(attr, item))
 }
-
-/// Annotation over a Rust function
-/// This annotation can only be applied on a Rust function i.e., fn as top-level module item (in contrast to fn in an impl block)
-#[proc_macro_attribute]
-#[cfg(not(tarpaulin_include))]
-#[inline]
-pub fn smt_spec(attr: Syntax, item: Syntax) -> Syntax {
-    let attr: TokenStream = TokenStream::from(attr);
-    let item: TokenStream = TokenStream::from(item);
-    fail_if_error!(func::derive_for_spec(attr, item))
-}
-
-/// Annotation over a Rust const
-/// This annotation can only be applied on a Rust const i.e., const as top-level module item (in contrast to const in an impl block)
-/// #\[smt_axiom]
-#[proc_macro_attribute]
-#[cfg(not(tarpaulin_include))]
-#[inline]
-pub fn smt_axiom(attr: Syntax, item: Syntax) -> Syntax {
-    let attr: TokenStream = TokenStream::from(attr);
-    let item: TokenStream = TokenStream::from(item);
-    fail_if_error!(func::derive_for_axiom(attr, item))
-}

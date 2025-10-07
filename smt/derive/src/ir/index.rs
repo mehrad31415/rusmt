@@ -41,8 +41,3 @@ index! {
     /// Index of an expression
     ExpId
 }
-
-index! {
-    /// A unique identifier for an axiom
-    UsrAxiomId
-}

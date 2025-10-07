@@ -1,7 +1,5 @@
-//! Provides the two functions `derive_for_impl` and `derive_for_spec`:
-//!
-//! - `derive_for_impl` is used inside the `smt_impl` procedural macro to derive code for implementation annotations.
-//! - `derive_for_spec` is used inside the `smt_spec` procedural macro to derive code for specification annotations.
+//! Provides `derive_for_impl`:
+//! used inside the `smt_impl` procedural macro to derive code for implementation annotations.
 
 use crate::attr::{MetaValue, parse_dict};
 use crate::generics::TypeParamGroup;
@@ -213,18 +211,11 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
     Ok(Some(extended))
 }
 
-/// Represents the kind of function derivation to perform.
-enum FnKind {
-    Impl,
-    Spec,
-    Axiom,
-}
-
 /// Derives code for functions based on attributes.
 ///
 /// This function handles the parsing of attributes and the function item, determines the kind
-/// of derivation to perform (implementation or specification), and generates the appropriate code.
-fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result<TokenStream> {
+/// of derivation to perform (implementation), and generates the appropriate code.
+fn derive_for_func(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     // Parse the attributes into a dictionary.
     // let attr = TokenStream::from(attr); from proc_macro::TokenStream to proc_macro2::TokenStream
     let mut dict = parse_dict(&attr)?;
@@ -233,98 +224,31 @@ fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result
     let target = syn::parse2::<ItemFn>(item.clone())?;
 
     let derived;
-    match kind {
-        FnKind::Axiom => {
-            // no method attribute is allowed for axioms
-            if !dict.is_empty() {
-                bail_on!(attr, "unknown attributes");
-            }
+    // Derive the method if requested.
+    derived = match dict.remove("method") {
+        // If no method attribute, check and derive without method.
+        // this just checks the function signature
+        None => check_and_derive(&target, None)?,
+        // If a method attribute is provided with a single identifier, derive with the method name. [method = ident]
+        Some(MetaValue::One(ident)) => check_and_derive(&target, Some(&ident))?,
+        // If method attribute is a set (multiple identifiers), return an error. [method = { ... }]
+        Some(MetaValue::Set(ident)) => bail_on!(
+            attr,
+            "invalid method attribute: {{ {} }}",
+            ident
+                .into_iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+    };
 
-            // if return type not boolean bail
-            let _ = match target.sig.output {
-                syn::ReturnType::Default => bail_on!(target.sig, "return type is default in axiom"),
-                syn::ReturnType::Type(_, ref ty) => {
-                    if let Type::Path(TypePath { qself, path }) = ty.as_ref() {
-                        if qself.is_some() {
-                            bail_on!(target.sig, "return type in axiom has qself");
-                        }
-                        if path.segments.len() != 1 {
-                            bail_on!(target.sig, "return type in axiom has multiple segments");
-                        }
-                        if let Some(PathSegment { ident, arguments }) = path.segments.last() {
-                            if ident == "Boolean" && arguments.is_empty() {
-                                ident
-                            } else {
-                                bail_on!(target.sig, "return type is not boolean");
-                            }
-                        } else {
-                            bail_on!(target.sig, "return type in axiom has no segments");
-                        }
-                    } else {
-                        bail_on!(target.sig, "return type is not a path in axiom");
-                    }
-                }
-            };
+    dict.remove("specs"); // smt_impl can only have specs attribute
 
-            // more extensive check on the function
-            derived = check_and_derive(&target, None)?;
-        }
-        FnKind::Spec => {
-            // Derive the method if requested.
-            derived = match dict.remove("method") {
-                // If no method attribute, check and derive without method.
-                // this just checks the function signature
-                None => check_and_derive(&target, None)?,
-                // If a method attribute is provided with a single identifier, derive with the method name. [method = ident]
-                Some(MetaValue::One(ident)) => check_and_derive(&target, Some(&ident))?,
-                // If method attribute is a set (multiple identifiers), return an error. [method = { ... }]
-                Some(MetaValue::Set(ident)) => bail_on!(
-                    attr,
-                    "invalid method attribute: {{ {} }}",
-                    ident
-                        .into_iter()
-                        .map(|i| i.to_string())
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            };
-
-            dict.remove("impls"); // smt_spec can only have impls attribute
-
-            // If there are any remaining attributes, return an error.
-            // so only method and specs are allowed for smt_spec and method and impls are allowed for smt_impl
-            if !dict.is_empty() {
-                bail_on!(attr, "unknown attributes");
-            }
-        }
-        FnKind::Impl => {
-            // Derive the method if requested.
-            derived = match dict.remove("method") {
-                // If no method attribute, check and derive without method.
-                // this just checks the function signature
-                None => check_and_derive(&target, None)?,
-                // If a method attribute is provided with a single identifier, derive with the method name. [method = ident]
-                Some(MetaValue::One(ident)) => check_and_derive(&target, Some(&ident))?,
-                // If method attribute is a set (multiple identifiers), return an error. [method = { ... }]
-                Some(MetaValue::Set(ident)) => bail_on!(
-                    attr,
-                    "invalid method attribute: {{ {} }}",
-                    ident
-                        .into_iter()
-                        .map(|i| i.to_string())
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            };
-
-            dict.remove("specs"); // smt_impl can only have specs attribute
-
-            // If there are any remaining attributes, return an error.
-            // so only method and specs are allowed for smt_spec and method and impls are allowed for smt_impl
-            if !dict.is_empty() {
-                bail_on!(attr, "unknown attributes");
-            }
-        }
+    // If there are any remaining attributes, return an error.
+    // so only method and specs are allowed for smt_spec and method and impls are allowed for smt_impl
+    if !dict.is_empty() {
+        bail_on!(attr, "unknown attributes");
     }
 
     // Consolidate the extended token stream.
@@ -349,23 +273,7 @@ fn derive_for_func(attr: TokenStream, item: TokenStream, kind: FnKind) -> Result
 /// example item : fn add<T:SMT>(a: i32, b: T) -> i32 { a }
 /// does the implementation of the method ADD for the type i32 using the logic of the function add
 pub fn derive_for_impl(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
-    derive_for_func(attr, item, FnKind::Impl)
-}
-
-/// Derives code for specification annotations.
-///
-/// This function is intended to be used as a procedural macro handler for functions annotated
-/// with smt_spec attributes.
-pub fn derive_for_spec(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
-    derive_for_func(attr, item, FnKind::Spec)
-}
-
-/// Derives code for axiom annotations.
-///
-/// This function is intended to be used as a procedural macro handler for functions annotated
-/// with smt_axiom attributes.
-pub fn derive_for_axiom(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
-    derive_for_func(attr, item, FnKind::Axiom)
+    derive_for_func(attr, item)
 }
 
 #[cfg(test)]
@@ -601,8 +509,7 @@ mod tests {
                 a + b
             }
         };
-        let kind = FnKind::Impl;
-        let result = derive_for_func(attr, item, kind);
+        let result = derive_for_func(attr, item);
 
         assert!(result.is_err());
         assert_eq!(result.err().unwrap().to_string(), "key not an identifier");
@@ -618,8 +525,7 @@ mod tests {
                 ident: i32
             }
         };
-        let kind = FnKind::Impl;
-        let result = derive_for_func(attr, item, kind);
+        let result = derive_for_func(attr, item);
 
         assert!(result.is_err());
     }
@@ -634,8 +540,7 @@ mod tests {
                 a + b
             }
         }; // function should not be const
-        let kind = FnKind::Impl;
-        let result = derive_for_func(attr, item, kind);
+        let result = derive_for_func(attr, item);
 
         assert!(result.is_err());
     }
@@ -650,8 +555,7 @@ mod tests {
                 a + b
             }
         };
-        let kind = FnKind::Impl;
-        let result = derive_for_func(attr, item, kind);
+        let result = derive_for_func(attr, item);
 
         assert!(result.is_err());
         assert_eq!(
@@ -670,8 +574,7 @@ mod tests {
                 a + b
             }
         };
-        let kind = FnKind::Impl;
-        let result = derive_for_func(attr, item, kind);
+        let result = derive_for_func(attr, item);
 
         assert!(result.is_err());
         assert_eq!(result.err().unwrap().to_string(), "unknown attributes");
@@ -688,8 +591,7 @@ mod tests {
                 a + b
             }
         };
-        let kind = FnKind::Impl;
-        let result = derive_for_func(attr, item, kind);
+        let result = derive_for_func(attr, item);
 
         assert!(result.is_ok());
     }
@@ -710,20 +612,6 @@ mod tests {
     //         ADD::<T>(self, b)
     //     }
     // }
-    #[test]
-    fn test_derive_for_func_derivation() {
-        let attr = parse_quote! { method = add };
-        let item = parse_quote! {
-            fn ADD<T:SMT>(a: i32, b: T) -> i32 {
-                a
-            }
-        };
-        let kind = FnKind::Spec;
-        let result = derive_for_func(attr, item, kind);
-
-        assert!(result.is_ok());
-    }
-
     // test derive_for_impl
     // derive_for_func(attr, item, FnKind::Impl); is invoked in the derive_for_impl function
     #[test]
@@ -737,36 +625,5 @@ mod tests {
         let result = derive_for_impl(attr, item);
 
         assert!(result.is_ok());
-    }
-
-    // test derive_for_spec
-    // derive_for_func(attr, item, FnKind::Spec); is invoked in the derive_for_spec function
-    #[test]
-    fn test_derive_for_spec() {
-        let attr = parse_quote! { method = add, impls = yes };
-        let item = parse_quote! {
-            fn ADD<T:SMT>(a: i32, b: T) -> i32 {
-                a
-            }
-        };
-        let result = derive_for_spec(attr, item);
-
-        assert!(result.is_ok());
-    }
-
-    // test derive_for_spec
-    // derive_for_func(attr, item, FnKind::Spec); is invoked in the derive_for_spec function
-    #[test]
-    fn test_derive_for_spec_err() {
-        let attr = parse_quote! { method = add, specs = yes };
-        let item = parse_quote! {
-            fn ADD<T:SMT>(a: i32, b: T) -> i32 {
-                a
-            }
-        };
-        let result = derive_for_spec(attr, item);
-
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unknown attributes");
     }
 }

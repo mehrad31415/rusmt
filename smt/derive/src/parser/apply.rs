@@ -10,22 +10,11 @@ use crate::parser::ty::{SysTypeName, TypeName, TypeTag};
 use anyhow::{Result, bail};
 use std::collections::BTreeMap;
 
-/// Marks whether this function is for implementation (`Impl`) or specification (`Spec`).
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Kind {
-    /// Actual implementation of the function.
-    Impl,
-    /// Formal specification of the function.
-    Spec,
-}
-
 #[derive(Debug, Clone)]
 /// Represents a function type, with inference allowed.
 ///
 /// This struct holds the kind of the function, its generics, parameter types, and return type. The latter three, encapsulate the type signature of the function.
 pub struct TypeFn {
-    /// Indicates whether this function is an implementation or a specification.
-    pub kind: Kind,
     /// Generic parameters of the function.
     pub generics: Generics,
     /// Types of the function's parameters.
@@ -45,9 +34,8 @@ impl TypeFn {
     /// # Returns
     ///
     /// * A new `TypeFn` instance.
-    pub fn new_from_sig(sig: &FuncSig, kind: Kind) -> Self {
+    pub fn new_from_sig(sig: &FuncSig) -> Self {
         Self {
-            kind,
             generics: sig.generics.clone(), // Clone the generics from the signature.
             params: sig.params.iter().map(|(_, ty)| ty.clone()).collect(), // Collect parameter types.
             ret_ty: sig.ret_ty.clone(),                                    // Clone the return type.
@@ -135,7 +123,6 @@ impl ApplyDatabase {
             Some(_) => {
                 // Duplicate entry found.
                 // This happens if for a particular fn_name, the ty_name already exists in the map, but we are trying to insert it again. So the insert only concerns the map value associated with the key, not the key itself. Basically this happens when for a specific type, there exists multiple implementations of the same function.
-                // we cannot add a specification for a built in type because it only differs in TypeFn::kind. So if we try to add a specification for a built-in type, it will panic.
                 panic!("duplicated built-in: {ty_name}::{fn_name}");
             }
         }
@@ -162,28 +149,24 @@ impl ApplyDatabase {
 
         // Utility closures for creating function types. fn0 is a nullary function, fn1 is a unary function, fn2 is a binary function, fn3 is a ternary function. They are all implementation functions.
         let fn0 = |rty: TypeTag| TypeFn {
-            kind: Kind::Impl,
             generics: empty(),
             params: vec![],
             ret_ty: rty,
         };
 
         let fn1 = |a0: TypeTag, rty: TypeTag| TypeFn {
-            kind: Kind::Impl,
             generics: empty(),
             params: vec![a0],
             ret_ty: rty,
         };
 
         let fn2 = |a0: TypeTag, a1: TypeTag, rty: TypeTag| TypeFn {
-            kind: Kind::Impl,
             generics: empty(),
             params: vec![a0, a1],
             ret_ty: rty,
         };
 
         let fn3 = |a0: TypeTag, a1: TypeTag, a2: TypeTag, rty: TypeTag| TypeFn {
-            kind: Kind::Impl,
             generics: empty(),
             params: vec![a0, a1, a2],
             ret_ty: rty,
@@ -320,17 +303,11 @@ impl ApplyDatabase {
     /// A `Result` indicating success or failure.
     ///
     /// Note that the method does not indicate whether the function is a method or a standalone function.
-    // #[smt_impl(method = my_method, specs = [spec1, spec2])]
-    // fn my_impl() {
-    //     some code here
-    // }
-    // In the above example, the function my_impl is an smt annotated function. The name of the function is my_impl. The method is my_method. The specs are spec1 and spec2. The function has a method name. This is what the method parameter is for. If the function has a method in the annotation, the method parameter will be Some(&method). If it does not have a method, the method parameter will be None. A method parameter can ONLY optionally exist for functions marked with smt_impl and smt_spec annotations.
     pub fn register_user_func(
         &mut self,
         name: &UsrFuncName,
         sig: &FuncSig,
         method: Option<&UsrFuncName>,
-        kind: Kind,
     ) -> Result<()> {
         if let Some(method_name) = method {
             // Extract the receiver type (the first parameter). This is the type that the method implements.
@@ -352,7 +329,6 @@ impl ApplyDatabase {
             }
 
             let method = TypeFn {
-                kind,
                 generics: sig.generics.filter(&self_ty_generics), // remove the type parameters used in the receiver type from the function signature.
                 params: sig
                     .params
@@ -379,7 +355,7 @@ impl ApplyDatabase {
         }
 
         // Register the function as unqualified (standalone function).
-        let func = TypeFn::new_from_sig(sig, kind); // builds a TypeFn from the function signature.
+        let func = TypeFn::new_from_sig(sig); // builds a TypeFn from the function signature.
         match self.unqualified.insert(name.clone(), func) {
             None => (), // Successfully inserted.
             Some(_) => panic!("duplicated registration of user-defined function: {name}"),
@@ -388,31 +364,10 @@ impl ApplyDatabase {
         Ok(()) // Return success.
     }
 
-    /// Filters a function type by kind, returning it if it matches.
-    ///
-    /// # Arguments
-    ///
-    /// * `ty` - The function type to filter.
-    /// * `kind` - The desired kind we are looking for (`Impl` or `Spec`).
-    ///
-    /// # Returns
-    ///
-    /// An `Option` containing the function type if it matches the kind.
-    /// If we are looking for a function of kind `Impl`, we can get the type of the function (whether it is a `Spec` or `Impl`).
-    /// If we are looking for a function of kind `Spec`, we can only get the type of the function if it is a `Spec`. If it is an `Impl`, we cannot get the type.
-    fn filter_by_kind(ty: &TypeFn, kind: Kind) -> Option<&TypeFn> {
-        match (kind, ty.kind) {
-            (Kind::Impl, Kind::Impl) => Some(ty),
-            (Kind::Impl, Kind::Spec) => None,
-            (Kind::Spec, Kind::Impl | Kind::Spec) => Some(ty),
-        }
-    }
-
     /// Looks up an unqualified user function by name and kind.
     ///
     /// # Arguments
     ///
-    /// * `kind` - The desired kind (`Impl` or `Spec`).
     /// * `fn_name` - The name of the function.
     ///
     /// # Returns
@@ -422,10 +377,8 @@ impl ApplyDatabase {
     /// This will return None:
     /// - if the function is not found.
     /// - if the function is found and we are looking for a Spec, but the function is an Impl.
-    pub fn lookup_unqualified(&self, kind: Kind, fn_name: &UsrFuncName) -> Option<&TypeFn> {
-        self.unqualified
-            .get(fn_name)
-            .and_then(|ty| Self::filter_by_kind(ty, kind))
+    pub fn lookup_unqualified(&self, fn_name: &UsrFuncName) -> Option<&TypeFn> {
+        self.unqualified.get(fn_name)
     }
 
     /// Looks up a user function on a system type by name and kind.
@@ -443,17 +396,12 @@ impl ApplyDatabase {
     /// This will return None:
     /// - if the function is not found.
     /// - if the function is found but the system type is not found.
-    /// - if the function is found and the system type is found we are looking for a Spec, but the function is an Impl. Basically this should not happen as all functions in the system type are impl so looking for a spec is illogical.
     pub fn lookup_usr_func_on_sys_type(
         &self,
-        kind: Kind,
         ty_name: &SysTypeName,
         fn_name: &UsrFuncName,
     ) -> Option<&TypeFn> {
-        self.on_sys_type
-            .get(fn_name)
-            .and_then(|s| s.get(ty_name))
-            .and_then(|ty| Self::filter_by_kind(ty, kind))
+        self.on_sys_type.get(fn_name).and_then(|s| s.get(ty_name))
     }
 
     /// Looks up a user function on a user-defined type by name and kind.
@@ -471,17 +419,15 @@ impl ApplyDatabase {
     /// This will return None:
     /// - if the function is not found.
     /// - if the function is found but it is not implemented on the user-defined type.
-    /// - if the function is found and it is implemented on the user-defined type, but we are looking for a Spec, but the function is an Impl. A method will only be a spec, if the function which it is annotated on is a spec.
     pub fn lookup_usr_func_on_usr_type(
         &self,
-        kind: Kind,
         ty_name: &UsrTypeName,
         fn_name: &UsrFuncName,
     ) -> Option<&TypeFn> {
         self.on_usr_type
             .get(fn_name)
             .and_then(|s| s.get(ty_name))
-            .and_then(|(_, ty)| Self::filter_by_kind(ty, kind))
+            .map(|(_, v)| v)
     }
 
     /// Queries for a function with type inference, given a function name and arguments.
@@ -512,23 +458,20 @@ impl ApplyDatabase {
         rval: &TypeRef,
     ) -> Result<Op> {
         // Collect candidate functions matching the name and kind.
-        // we first collect all the functions that have the same name as the function we are looking for. We collect all the functions that have the same name as the function we are looking for, because the function we are looking for can be implemented on multiple types. So we need to check all the types that the function is implemented on. It is also possible that the function we are looking for is either a system function or a user-defined function. It cannot be a standalone function because we are looking for method calls. The kind of the method call needs to be the same as the kind of the function the method call is happening inside of. So if the function is a spec, the method call needs to be a spec. If the function is an impl, the method call needs to be an impl. The function we are looking for can be implemented on a system type or a user-defined type. So we need to check both.
-        let kind = ctxt.kind(); // if the kind is an impl, and the function we find is a spec, we cannot use it and we can only use it if the function we find is an impl. If the kind is a spec, we can use the function we find if it is a spec or an impl.
         let mut candidates = vec![];
         // first look at methods defined on the system types.
         match self.on_sys_type.get(name) {
             None => (),
-            Some(options) => candidates.extend(options.iter().filter_map(|(n, t)| {
-                Self::filter_by_kind(t, kind).map(|t: &TypeFn| (TypeName::Sys(*n), t))
-                // TypeName::Sys(*n) is the type the function is defined on. t is the function signature along with kind.
-            })),
+            Some(options) => candidates.extend(options.iter().map(|(n, t)| (TypeName::Sys(*n), t))),
         }
         // then look at methods defined on the user-defined types.
         match self.on_usr_type.get(name) {
             None => (),
-            Some(options) => candidates.extend(options.iter().filter_map(|(n, (_, t))| {
-                Self::filter_by_kind(t, kind).map(|t| (TypeName::Usr(n.clone()), t))
-            })),
+            Some(options) => candidates.extend(
+                options
+                    .iter()
+                    .map(|(n, (_, t))| (TypeName::Usr(n.clone()), t)),
+            ),
         }
 
         // Variable to hold a suitable candidate if found.

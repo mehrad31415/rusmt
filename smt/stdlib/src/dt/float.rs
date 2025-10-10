@@ -10,8 +10,8 @@ use std::{
     marker::PhantomData,
 };
 
-/// Rounding modes for floating-point operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Rounding modes
+#[derive(Debug, Clone, Copy, Hash)]
 pub enum RoundingMode {
     /// Round to Nearest, ties to Even (the default for most hardware).
     RNE,
@@ -25,11 +25,11 @@ pub enum RoundingMode {
     RTZ,
 }
 
-/// This is a software simulation, as Rust does not provide native controls.
+/// Rounding helper function
 fn apply_rounding(val: f64, rm: RoundingMode) -> f64 {
     match rm {
         // Round Nearest, ties to Even is the default behavior of f64 operations.
-        RoundingMode::RNE => val,
+        RoundingMode::RNE => val.round_ties_even(),
         // Round Toward Zero is truncation.
         RoundingMode::RTZ => val.trunc(),
         // Round Toward Positive Infinity is ceiling.
@@ -37,16 +37,7 @@ fn apply_rounding(val: f64, rm: RoundingMode) -> f64 {
         // Round Toward Negative Infinity is floor.
         RoundingMode::RTN => val.floor(),
         // Round to Nearest, ties Away from zero.
-        RoundingMode::RNA => {
-            let frac = val.fract();
-            if frac.abs() != 0.5 {
-                val.round() // .round() is ties-to-even, but correct for non-0.5 fractions.
-            } else if val.is_sign_positive() {
-                val.ceil() // Tie goes away from zero (up for positive).
-            } else {
-                val.floor() // Tie goes away from zero (down for negative).
-            }
-        }
+        RoundingMode::RNA => val.round(),
     }
 }
 
@@ -146,6 +137,38 @@ impl<const EB: usize, const SB: usize> SymbolicFloat<EB, SB> {
             ..self
         }
     }
+
+    /// Floating-point remainder. `(fp.rem t1 t2)`
+    pub fn rem(self, rhs: Self) -> Self {
+        Self {
+            inner: self.inner % rhs.inner,
+            ..self
+        }
+    }
+
+    /// Floating-point square root. `(fp.sqrt rm t)`
+    pub fn sqrt(self, rm: RoundingMode) -> Self {
+        Self {
+            inner: apply_rounding(self.inner.sqrt(), rm),
+            ..self
+        }
+    }
+
+    /// Minimum of floating-point numbers. `(fp.min t1 t2)`
+    pub fn min(self, rhs: Self) -> Self {
+        Self {
+            inner: self.inner.min(rhs.inner),
+            ..self
+        }
+    }
+
+    /// Maximum of floating-point numbers. `(fp.max t1 t2)`
+    pub fn max(self, rhs: Self) -> Self {
+        Self {
+            inner: self.inner.max(rhs.inner),
+            ..self
+        }
+    }
 }
 
 /// Comparison operations for SymbolicFloat.
@@ -170,37 +193,37 @@ impl<const EB: usize, const SB: usize> SymbolicFloat<EB, SB> {
         (self.inner >= rhs.inner).into()
     }
 
-    /// is NaN
+    /// is NaN `(fp.isNaN X)`
     pub fn is_nan(self) -> Boolean {
         self.inner.is_nan().into()
     }
 
-    /// is infinite
+    /// is infinite `(fp.isInfinite X)`
     pub fn is_infinite(self) -> Boolean {
         self.inner.is_infinite().into()
     }
 
-    /// is zero
+    /// is zero `(fp.isZero X)`
     pub fn is_zero(self) -> Boolean {
         (self.inner == 0.0 || self.inner == -0.0).into()
     }
 
-    /// is negative
+    /// is negative `(fp.isNegative X)`
     pub fn is_negative(self) -> Boolean {
         self.inner.is_sign_negative().into()
     }
 
-    /// is positive
+    /// is positive `(fp.isPositive X)`
     pub fn is_positive(self) -> Boolean {
         self.inner.is_sign_positive().into()
     }
 
-    /// is normal
+    /// is normal `(fp.isNormal t)`
     pub fn is_normal(self) -> Boolean {
         self.inner.is_normal().into()
     }
 
-    /// This corresponds to the `(fp.isSubnormal t)` SMT-LIB function.
+    /// `(fp.isSubnormal t)`
     pub fn is_subnormal(self) -> Boolean {
         self.inner.is_subnormal().into()
     }
@@ -228,13 +251,12 @@ impl<const EB: usize, const SB: usize> SMT for SymbolicFloat<EB, SB> {
 
 /// Conversions from SymbolicFloat to other numeric types.
 impl<const EB: usize, const SB: usize> SymbolicFloat<EB, SB> {
-    /// LOSSY (Truncation) & FALLIBLE (NaN/Infinity): Converts a float to an Integer.
+    /// LOSSY (Truncation) & FALLIBLE (NaN/Infinity): Converts a float to an Integer. `Z3_mk_fpa_round_to_integral`
     pub fn to_integer(self) -> Option<Integer> {
         if !self.inner.is_finite() {
             return None; // Cannot convert NaN or Infinity.
         }
-        // `from_f64` handles the conversion from a float to a BigInt.
-        // returns None for non-finite values.
+
         BigInt::from_f64(self.inner.trunc()).map(|bi| Integer {
             inner: Intern::new(bi),
         })
@@ -253,7 +275,7 @@ impl<const EB: usize, const SB: usize> SymbolicFloat<EB, SB> {
 
     /// LOSSY (Truncation/Overflow) & FALLIBLE (NaN/Infinity): Converts a float to a BitVector.
     pub fn to_bitvec<const N: usize>(self) -> Option<SymbolicBitVec<N>> {
-        // This works by chaining the fallible conversions:
+        // This works by chaining the conversions:
         // 1. Try to convert Float -> Integer (handles NaN/Infinity and truncation).
         // 2. If successful, try to convert Integer -> BitVector (handles overflow).
         self.to_integer().and_then(|int| int.to_bitvec::<N>())
@@ -279,3 +301,51 @@ impl From<f64> for F64 {
         }
     }
 }
+
+macro_rules! f32_from_literal_int {
+    ($l:ty $(,$e:ty)* $(,)?) => {
+        impl From<$l> for F32 {
+            fn from(c: $l) -> Self {
+                Self {
+                    inner: c as f64,
+                    _phantom: PhantomData,
+                }
+            }
+        }
+        $(impl From<$e> for F32 {
+            fn from(c: $e) -> Self {
+                Self {
+                    inner: c as f64,
+                    _phantom: PhantomData,
+                }
+            }
+        })*
+    };
+}
+
+f32_from_literal_int!(i8, i16, i32, i64, i128, isize);
+f32_from_literal_int!(u8, u16, u32, u64, u128, usize);
+
+macro_rules! f64_from_literal_int {
+    ($l:ty $(,$e:ty)* $(,)?) => {
+        impl From<$l> for F64 {
+            fn from(c: $l) -> Self {
+                Self {
+                    inner: c as f64,
+                    _phantom: PhantomData,
+                }
+            }
+        }
+        $(impl From<$e> for F64 {
+            fn from(c: $e) -> Self {
+                Self {
+                    inner: c as f64,
+                    _phantom: PhantomData,
+                }
+            }
+        })*
+    };
+}
+
+f64_from_literal_int!(i8, i16, i32, i64, i128, isize);
+f64_from_literal_int!(u8, u16, u32, u64, u128, usize);

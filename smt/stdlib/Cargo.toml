@@ -1,14 +1,13 @@
 [package]
 name = "rusmart-smt-stdlib"
 version = "0.1.0"
-authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>", "Mehrad Haghshenas <m3haghsh@uwaterloo.ca>"]
 description = "Standard Rust library for SMT elements"
+readme = "README.md"
+repository = "https://github.com/meng-xu-cs/rusmart.git"
 license = "GPL-3.0-or-later"
 keywords = ["smt", "types", "modeling"]
 categories = ["compilers"]
 edition = "2024"
-homepage = "https://github.com/meng-xu-cs/rusmart"
-repository = "https://github.com/meng-xu-cs/rusmart.git"
 
 [dependencies]
 anyhow = { workspace = true }

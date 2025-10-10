@@ -1,4 +1,4 @@
-//! Rusmart standard library DSL that contains constructs that cannot be expressed in Rust as they have special semantics in SMT.
+//! Rusmart standard library DSL
 //!
 //! Module Tree:
 //! * dt - SMT-related data types

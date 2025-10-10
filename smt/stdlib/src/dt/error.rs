@@ -16,16 +16,16 @@ impl ErrorContext {
     /// Generate a fresh error
     pub fn fresh_error(&mut self) -> Error {
         let id = self.counter;
+        let result = Error::fresh(id);
         self.counter += 1;
-        Error::fresh(id)
+        result
     }
 }
 
 impl Error {
-    /// Create a new error
     /// Every time the fresh() method is called, a new error state is created with a unique inner value.
     /// The inner values are incremented by one each time a new error state is created.
-    pub fn fresh(id: usize) -> Self {
+    pub(crate) fn fresh(id: usize) -> Self {
         let mut set = BTreeSet::new();
         set.insert(id);
         Self {
@@ -33,8 +33,7 @@ impl Error {
         }
     }
 
-    /// Merge two errors
-    /// The merge method is used to merge two error states where duplicates are not allowed.
+    /// Merge two errors (duplicates are not allowed)
     pub fn merge(self, r: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.union(&r.inner).copied().collect()),

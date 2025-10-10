@@ -21,40 +21,40 @@ pub const FALSE: Boolean = Boolean { inner: false };
 
 /// All methods are defined such that they take ownership of the self parameter.
 impl Boolean {
-    /// logical NOT
+    /// NOT
     pub fn not(self) -> Self {
         Self { inner: !self.inner }
     }
 
-    /// logical AND
+    /// AND
     pub fn and(self, rhs: Self) -> Self {
         Self {
             inner: self.inner && rhs.inner,
         }
     }
 
-    /// logical OR
+    /// OR
     pub fn or(self, rhs: Self) -> Self {
         Self {
             inner: self.inner || rhs.inner,
         }
     }
 
-    /// logical XOR
+    /// XOR
     pub fn xor(self, rhs: Self) -> Self {
         Self {
             inner: self.inner ^ rhs.inner,
         }
     }
 
-    /// logical IMPLIES
+    /// IMPLIES
     pub fn implies(self, rhs: Self) -> Self {
         Self {
             inner: !self.inner || rhs.inner,
         }
     }
 
-    /// logical IFF
+    /// IFF
     pub fn iff(self, rhs: Self) -> Self {
         Self {
             inner: (self.inner && rhs.inner) || (!self.inner && !rhs.inner),

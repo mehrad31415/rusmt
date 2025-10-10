@@ -27,10 +27,24 @@ impl String {
         }
     }
 
+    /// This directly corresponds to the `(str.len s)`
+    pub fn length(self) -> Integer {
+        Integer::from(self.inner.chars().count())
+    }
+
     /// append a character to the end of the string
     pub fn append(self, c: char) -> Self {
         let mut new_str = self.inner.as_ref().clone();
         new_str.push(c);
+        Self {
+            inner: Intern::new(new_str),
+        }
+    }
+
+    /// `(str.++ s1 s2)`
+    pub fn concat(self, rhs: Self) -> Self {
+        let mut new_str = self.inner.as_ref().clone();
+        new_str.push_str(rhs.inner.as_ref());
         Self {
             inner: Intern::new(new_str),
         }
@@ -46,31 +60,17 @@ impl String {
             .map(|char_at| Self::from(char_at.to_string()))
     }
 
-    /// This corresponds to the `(str.++ s1 s2)` SMT-LIB function.
-    pub fn concat(self, rhs: Self) -> Self {
-        let mut new_str = self.inner.as_ref().clone();
-        new_str.push_str(rhs.inner.as_ref());
-        Self {
-            inner: Intern::new(new_str),
-        }
-    }
-
-    /// This directly corresponds to the `(str.len s)` SMT-LIB function.
-    pub fn length(self) -> Integer {
-        Integer::from(self.inner.chars().count())
-    }
-
-    /// This corresponds to the `(str.contains s substr)` SMT-LIB function.
+    ///`(str.contains self rhs)`
     pub fn contains(self, rhs: Self) -> Boolean {
         self.inner.as_ref().contains(rhs.inner.as_ref()).into()
     }
 
-    /// This corresponds to the `(str.prefixof prefix s)` SMT-LIB function.
+    /// `(str.prefixof rhs self)`
     pub fn starts_with(self, rhs: Self) -> Boolean {
         self.inner.as_ref().starts_with(rhs.inner.as_ref()).into()
     }
 
-    /// This corresponds to the `(str.suffixof suffix s)` SMT-LIB function.
+    /// `(str.suffixof rhs self)`
     pub fn ends_with(self, rhs: Self) -> Boolean {
         self.inner.as_ref().ends_with(rhs.inner.as_ref()).into()
     }
@@ -109,7 +109,7 @@ impl String {
             .collect()
     }
 
-    /// This corresponds to the `(seq.extract s offset length)` SMT-LIB function.
+    /// `(seq.extract s offset length)`
     pub fn substr(self, offset: Integer, length: Integer) -> Option<Self> {
         let start = offset.inner.to_usize()?;
         let len = length.inner.to_usize()?;
@@ -124,7 +124,7 @@ impl String {
         }
     }
 
-    /// This corresponds to `(str.replace s src dst)`.
+    /// `(str.replace s src dst)`.
     pub fn replace(self, src: Self, dst: Self) -> Self {
         let replaced = self
             .inner
@@ -132,28 +132,25 @@ impl String {
         Self::from(replaced)
     }
 
-    /// This corresponds to `(str.indexof s substr offset)`.
-    pub fn index_of(self, substr: Self, offset: Integer) -> Integer {
-        let start_char = match offset.inner.to_usize() {
-            Some(i) => i,
-            None => return (-1).into(), // Negative offset is invalid
-        };
+    /// `(str.indexof s substr offset)`.
+    pub fn index_of(self, substr: Self, offset: Integer) -> Option<Integer> {
+        let start_char = offset.inner.to_usize()?;
 
         let start_byte = match self.inner.char_indices().nth(start_char) {
             Some((byte_idx, _)) => byte_idx,
             None if start_char == self.inner.chars().count() => self.inner.len(),
-            None => return (-1).into(), // Offset is out of bounds
+            None => None?,
         };
 
         if let Some(found_byte_idx) = self.inner[start_byte..].find(substr.inner.as_ref()) {
             let total_byte_idx = start_byte + found_byte_idx;
-            Integer::from(self.inner[..total_byte_idx].chars().count())
+            Some(Integer::from(self.inner[..total_byte_idx].chars().count()))
         } else {
-            (-1).into()
+            None
         }
     }
 
-    /// This corresponds to the `(str.to_int s)` SMT-LIB function.
+    /// `(str.to_int s)`
     pub fn to_int(self) -> Option<Integer> {
         match self.inner.parse::<BigInt>() {
             Ok(val) => Some(Integer {
@@ -163,7 +160,7 @@ impl String {
         }
     }
 
-    /// This corresponds to the `(int.to_str i)` SMT-LIB function.
+    /// `(str.from_int i)`
     pub fn from_int(i: Integer) -> Self {
         Self::from(i.inner.to_string())
     }

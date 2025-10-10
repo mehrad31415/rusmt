@@ -1,4 +1,4 @@
-//! Standard library for SMT types in Rusmart.
+//! Standard library for SMT types.
 //!
 //! * `Boolean`
 //! * `Integer`
@@ -47,8 +47,6 @@ pub struct SymbolicFloat<const EB: usize, const SB: usize> {
 pub type F32 = SymbolicFloat<8, 24>;
 /// Floating 64 bits
 pub type F64 = SymbolicFloat<11, 53>;
-/// Floating 128 bits
-pub type F128 = SymbolicFloat<15, 113>;
 /// * SMT BitVector
 #[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct SymbolicBitVec<const N: usize> {
@@ -128,7 +126,6 @@ smt_impl!(Set, T);
 smt_impl!(Array, K, V);
 smt_impl!(Error);
 smt_impl!(Cloak, T);
-
 smt_impl! { A B } // Both a and B need to implement the SMT trait.
 
 /// the SMTWrap is a tuple struct that wraps a SMT type for Rust-semantics enrichment.

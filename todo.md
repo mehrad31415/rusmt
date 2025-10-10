@@ -93,3 +93,11 @@ you need to explicitly write the conversion between the types...
 add unsigned integer methods
 
 we only have double tuples ... 
+
+review the unit test cases ...
+
+
+recheck the test suites
+
+
+limitations f16 is unstable cannot replicate full functionality of floating z3 c api

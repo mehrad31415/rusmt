@@ -46,9 +46,7 @@ impl Real {
         })
     }
 
-    /// Performs exponentiation.
-    ///
-    /// It returns `None` if the exponent is negative or too large.
+    /// exponentiation
     pub fn pow(self, exp: Self) -> Option<Self> {
         // Check if exp is an integer
         if !exp.inner.is_integer() {
@@ -123,42 +121,21 @@ impl Real {
 
 /// conversion operations for Real
 impl Real {
-    /// Lossless & Fallible: Converts a Real to an Integer if it has no fractional part.
+    /// Lossless & Fallible: Converts a Real to an Integer
     pub fn to_int(self) -> Option<Integer> {
-        if self.inner.fract() != BigRational::from_integer(BigInt::from(0)) {
-            return None; // Has a fractional part
+        if !*self.is_integer() {
+            return None;
         }
 
-        let integer_part = self.inner.to_integer();
         Some(Integer {
-            inner: Intern::new(integer_part),
-        })
-    }
-
-    /// LOSSY (Rounding): Converts a Real to an integer
-    pub fn to_int_trunc(self) -> Integer {
-        Integer {
             inner: Intern::new(self.inner.to_integer()),
-        }
-    }
-
-    /// Converts a Real to an F32.
-    /// If the value is too large or too small, it returns +/- infinity.
-    pub fn to_f32(self) -> F32 {
-        let f32_val = self.inner.as_ref().to_f32().unwrap_or_else(|| {
-            if self.inner.is_positive() {
-                f32::INFINITY
-            } else {
-                f32::NEG_INFINITY
-            }
-        });
-        F32::from(f32_val)
+        })
     }
 
     /// Try to convert to f32
     ///
-    /// If the real number is too large to fit in f32, return None
-    pub fn try_to_f32(self) -> Option<F32> {
+    /// If the real is too large to fit in f32, return None
+    pub fn to_f32(self) -> Option<F32> {
         let bigrat = self.inner.as_ref();
         let val_f32 = bigrat.to_f32()?;
 
@@ -170,23 +147,10 @@ impl Real {
         }
     }
 
-    /// Converts a Real to an F64.
-    /// If the value is too large or too small, it returns +/- infinity.
-    pub fn to_f64(self) -> F64 {
-        let f64_val = self.inner.as_ref().to_f64().unwrap_or_else(|| {
-            if self.inner.is_positive() {
-                f64::INFINITY
-            } else {
-                f64::NEG_INFINITY
-            }
-        });
-        F64::from(f64_val)
-    }
-
     /// Try to convert to f64
     ///
     /// If the real number is too large to fit in f64, return None
-    pub fn try_to_f64(self) -> Option<F64> {
+    pub fn to_f64(self) -> Option<F64> {
         let bigrat = self.inner.as_ref();
         let val_f64 = bigrat.to_f64()?;
 

@@ -5,9 +5,7 @@ use std::collections::BTreeMap;
 
 /// SMT methods for symbolic arrays.
 impl<K: SMT, V: SMT> Array<K, V> {
-    /// Creates a new symbolic array where every key maps to a default value.
-    ///
-    /// This directly corresponds to the `(const-array v)` SMT-LIB function.
+    /// Creates a new symbolic array where every key maps to a default value `(const-array v)`.
     pub fn new(default: V) -> Self {
         Self {
             inner: Intern::new(BTreeMap::new()),
@@ -23,7 +21,7 @@ impl<K: SMT, V: SMT> Array<K, V> {
         self.get(k).unwrap_or(self.default)
     }
 
-    /// Performs the low-level SMT `store` operation: `(store self k v)`.
+    /// `(store self k v)`.
     pub fn store(self, k: K, v: V) -> Self {
         let mut new_map = (*self.inner).clone();
         new_map.insert(SMTWrap(k), SMTWrap(v));
@@ -32,12 +30,35 @@ impl<K: SMT, V: SMT> Array<K, V> {
             default: self.default,
         }
     }
+
+    /// Z3_mk_array_default
+    pub fn array_default(self) -> V {
+        self.default
+    }
+
+    /// This corresponds to the `(map f array)` SMT-LIB function. The transpiler
+    /// will need to translate the closure `f` into a Z3 `FuncDecl`.
+    pub fn map<F>(self, f: F) -> Self
+    where
+        F: Fn(V) -> V,
+    {
+        let new_default = f(self.default);
+        let new_map: BTreeMap<_, _> = self
+            .inner
+            .iter()
+            .map(|(k, v)| (*k, SMTWrap(f(v.0))))
+            .collect();
+
+        Self {
+            inner: Intern::new(new_map),
+            default: new_default,
+        }
+    }
 }
 
 /// High-level operations that are not natively supported by SMT-LIB.
-/// The transpiler can translate them by composing the Tier 1 primitives.
 impl<K: SMT, V: SMT> Array<K, V> {
-    /// `v.contains_key(e)`
+    /// `v.contains_key(e)` -- similar to (ne (select self k) default)
     pub fn contains_key(self, k: K) -> Boolean {
         self.inner.contains_key(&SMTWrap(k)).into()
     }
@@ -48,7 +69,6 @@ impl<K: SMT, V: SMT> Array<K, V> {
         self.inner.get(&SMTWrap(k)).map(|wrapped_val| wrapped_val.0)
     }
 
-    /// if the key does not exist, the operation will not do anything
     /// `m.del(k, v)`, will delete the (`k`, `v`) pair only when `k` exists
     ///
     /// This translates to `(store array key default_value)`.

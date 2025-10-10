@@ -47,7 +47,27 @@ impl Integer {
         })
     }
 
-    /// remainder
+    /// mod (will return 0 or the same sign as the divisor (rhs))
+    pub fn modulo(self, rhs: Self) -> Option<Self> {
+        if rhs.inner.is_zero() {
+            return None;
+        }
+        let rem = self.inner.as_ref() % rhs.inner.as_ref();
+        if rem.is_zero()
+            || (rem.is_positive() && rhs.inner.as_ref().is_positive())
+            || (rem.is_negative() && rhs.inner.as_ref().is_negative())
+        {
+            Some(Self {
+                inner: Intern::new(rem),
+            })
+        } else {
+            Some(Self {
+                inner: Intern::new(rem + rhs.inner.as_ref()),
+            })
+        }
+    }
+
+    /// remainder (will return 0 or the same sign as the dividend (self))
     pub fn rem(self, rhs: Self) -> Option<Self> {
         if rhs.inner.is_zero() {
             return None;
@@ -57,9 +77,7 @@ impl Integer {
         })
     }
 
-    /// Performs exponentiation.
-    ///
-    /// It returns `None` if the exponent is negative or too large.
+    /// exponentiation
     pub fn pow(self, exp: Self) -> Option<Self> {
         exp.inner.to_u32().map(|e| Self {
             inner: Intern::new(self.inner.as_ref().pow(e)),
@@ -152,28 +170,11 @@ impl Integer {
         }
     }
 
-    /// Converts an `Integer` to a 32-bit `SymbolicFloat` (`F32`).
-    ///
-    /// This is a lossy conversion. Integers with a magnitude greater than 2^24
-    /// may lose precision due to rounding. Very large integers will be converted
-    /// to `f32::INFINITY` or `f32::NEG_INFINITY`.
-    pub fn to_f32(self) -> F32 {
-        let bigint_ref = self.inner.as_ref();
-
-        let f32_val = bigint_ref.to_f32().unwrap_or_else(|| {
-            if bigint_ref.is_positive() {
-                f32::INFINITY
-            } else {
-                f32::NEG_INFINITY
-            }
-        });
-        F32::from(f32_val)
-    }
-
     /// Try to convert to f32
     ///
     /// If the integer is too large to fit in f32, return None
-    pub fn try_to_f32(self) -> Option<F32> {
+    /// Integers with a magnitude greater than 2^24may lose precision due to rounding.
+    pub fn to_f32(self) -> Option<F32> {
         let bigint = self.inner.as_ref();
         let val_f32 = bigint.to_f32()?;
 
@@ -185,28 +186,11 @@ impl Integer {
         }
     }
 
-    /// Converts an `Integer` to a 64-bit `SymbolicFloat` (`F64`).
-    ///
-    /// This is a lossy conversion. Integers with a magnitude greater than 2^53
-    /// may lose precision due to rounding. Very large integers will be converted
-    /// to `f64::INFINITY` or `f64::NEG_INFINITY`.
-    pub fn to_f64(self) -> F64 {
-        let bigint_ref = self.inner.as_ref();
-
-        let f64_val = bigint_ref.to_f64().unwrap_or_else(|| {
-            if bigint_ref.is_positive() {
-                f64::INFINITY
-            } else {
-                f64::NEG_INFINITY
-            }
-        });
-        F64::from(f64_val)
-    }
-
     /// Try to convert to f64
     ///
     /// If the integer is too large to fit in f64, return None
-    pub fn try_to_f64(self) -> Option<F64> {
+    /// Integers with a magnitude greater than 2^53 may lose precision due to rounding.
+    pub fn to_f64(self) -> Option<F64> {
         let bigint = self.inner.as_ref();
         let val_f64 = bigint.to_f64()?;
 

@@ -74,6 +74,11 @@ impl<T: SMT> Set<T> {
     pub fn is_subset(self, other: Self) -> Boolean {
         self.inner.is_subset(&other.inner).into()
     }
+
+    /// This is a concrete check. Z3's `set.has_size` is a symbolic predicate.
+    pub fn has_size(self, k: Integer) -> Boolean {
+        self.length().eq(k)
+    }
 }
 
 #[macro_export]

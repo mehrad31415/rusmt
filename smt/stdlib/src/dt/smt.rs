@@ -23,12 +23,12 @@ pub trait SMT: 'static + Copy + Clone + Default + Hash + Send + Sync + Debug {
     /// Compare two values of the same type
     fn _cmp(self, rhs: Self) -> Ordering;
 
-    /// Equal operator
+    /// Equal
     fn eq(self, rhs: Self) -> Boolean {
         (Self::_cmp(self, rhs) == Ordering::Equal).into()
     }
 
-    /// Not equal operator
+    /// Not equal
     fn ne(self, rhs: Self) -> Boolean {
         (Self::_cmp(self, rhs) != Ordering::Equal).into()
     }

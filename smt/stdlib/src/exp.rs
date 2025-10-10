@@ -3,7 +3,7 @@
 //! quantified expressions:
 //! * `forall`
 //! * `exists`
-//! * `choose`
+//! * `choose` -- hilbert choice operator (deterministic version)
 
 pub use itertools::iproduct;
 

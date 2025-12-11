@@ -2,4 +2,5 @@
 
 pub mod codegen;
 pub mod error;
+pub mod exec;
 mod z3;

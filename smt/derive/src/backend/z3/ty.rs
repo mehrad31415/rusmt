@@ -8,7 +8,7 @@ use crate::ir::{
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Helper to resolve the SMT name of a Sort ID
-fn resolve_type_name(ir: &IRContext, sid: UsrSortId) -> String {
+pub fn resolve_type_name(ir: &IRContext, sid: UsrSortId) -> String {
     let dt = ir.ty_registry.retrieve(sid);
     match dt {
         DataType::Tuple(_) if ir.ty_registry.reverse_lookup(sid).0.is_none() => {
@@ -252,28 +252,6 @@ fn dfs_rev(
     for &v in &g[&u] {
         if !seen.contains(&v) {
             dfs_rev(v, g, seen, acc);
-        }
-    }
-}
-
-fn get_name(ir: &IRContext, sid: &UsrSortId) -> z3::Symbol {
-    let dt = ir.ty_registry.retrieve(*sid);
-    match dt {
-        DataType::Tuple(_) if ir.ty_registry.reverse_lookup(*sid).0.is_none() => format!(
-            "Tuple_{}",
-            ir.ty_registry
-                .reverse_lookup(*sid)
-                .1
-                .iter()
-                .map(|t| t.to_string())
-                .collect::<Vec<_>>()
-                .join("_")
-        )
-        .into(),
-        _ => {
-            let (ty_name, _) = ir.ty_registry.reverse_lookup(*sid);
-            let ty_name = ty_name.as_ref().expect("type name for named tuple");
-            ty_name.to_string().into()
         }
     }
 }

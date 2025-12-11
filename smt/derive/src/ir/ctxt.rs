@@ -4,8 +4,7 @@ use crate::ir::sort::{Sort, TypeRegistry};
 use crate::parser::ctxt::ContextWithFunc;
 use crate::parser::generics::Generics;
 use crate::parser::infer::TypeRef;
-use crate::parser::name::{TypeParamName, UsrFuncName};
-use crate::parser::ty::TypeTag;
+use crate::parser::name::TypeParamName;
 use log::trace;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -31,51 +30,6 @@ impl IRContext {
             ty_registry: TypeRegistry::new(),
             fn_registry: FunRegistry::new(),
         }
-    }
-
-    /// Reverse resolve a `Sort` (IR-level type) back to a `TypeTag` (parser-level type).
-    /// This is used when you need to map IR types back to their parser-level representations.
-    fn reverse_sort(&self, sort: &Sort) -> TypeTag {
-        match sort {
-            Sort::Boolean => TypeTag::Boolean,
-            Sort::Integer => TypeTag::Integer,
-            Sort::Real => TypeTag::Real,
-            Sort::F32 => TypeTag::F32,
-            Sort::F64 => TypeTag::F64,
-            Sort::I32 => TypeTag::I32,
-            Sort::I64 => TypeTag::I64,
-            Sort::U32 => TypeTag::U32,
-            Sort::U64 => TypeTag::U64,
-            Sort::String => TypeTag::String,
-            Sort::Seq(sub) => TypeTag::Seq(self.reverse_sort(sub).into()),
-            Sort::Set(sub) => TypeTag::Set(self.reverse_sort(sub).into()),
-            Sort::Array(key, val) => {
-                TypeTag::Array(self.reverse_sort(key).into(), self.reverse_sort(val).into())
-            }
-            Sort::Error => TypeTag::Error,
-            Sort::User(sid) => {
-                let (sort_name, sort_inst) = self.ty_registry.reverse_lookup(*sid);
-                let inst = sort_inst.iter().map(|s| self.reverse_sort(s)).collect();
-                match sort_name {
-                    None => TypeTag::Pack(inst),
-                    Some(name) => TypeTag::User(name.into(), inst),
-                }
-            }
-            Sort::Uninterpreted(name) => TypeTag::Parameter(name.into()),
-        }
-    }
-
-    /// Reverse map all registered function instances into a vector of (function name, type instantiation)
-    /// pairs, where the instantiation is expressed as a vector of TypeTags.
-    fn reverse_function_instances(&self) -> Vec<(UsrFuncName, Vec<TypeTag>)> {
-        let mut instances = vec![];
-        for (name, insts) in &self.fn_registry.lookup {
-            for inst in insts.keys() {
-                let tags = inst.iter().map(|e| self.reverse_sort(e)).collect();
-                instances.push((name.into(), tags));
-            }
-        }
-        instances
     }
 }
 

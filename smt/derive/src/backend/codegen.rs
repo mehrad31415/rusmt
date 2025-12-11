@@ -3,32 +3,6 @@
 use crate::backend::error::BackendResult;
 use crate::backend::z3::common::CodeGenZ3;
 use crate::ir::ctxt::IRContext;
-use std::fmt::{Display, Formatter};
-
-#[derive(Debug, Clone)]
-/// The response returned by the backend solver.
-pub enum Response {
-    /// solver does not return anything in the desired time
-    Timeout,
-    /// SMT: unknown
-    Unknown,
-    /// SMT: sat
-    Sat,
-    /// SMT: unsat
-    Unsat,
-}
-
-impl Display for Response {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let text = match self {
-            Self::Timeout => "timeout",
-            Self::Unknown => "unknown",
-            Self::Sat => "sat",
-            Self::Unsat => "unsat",
-        };
-        f.write_str(text)
-    }
-}
 
 /// A generic trait for backend code generators.
 pub trait CodeGen {

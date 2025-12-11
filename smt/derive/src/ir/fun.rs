@@ -3,7 +3,7 @@ use crate::ir::exp::{ExpBuilder, ExpRegistry};
 use crate::ir::index::{ExpId, UsrFunId};
 use crate::ir::name::{Symbol, UsrFunName};
 use crate::ir::sort::Sort;
-use crate::parser::func::FuncSig;
+use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
 use std::collections::BTreeMap;
@@ -145,7 +145,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
         // Retrieve the function definition from the parser context.
         // This includes both the signature (with generics, parameters, and return type) and an optional body.
-        let ImplFuncDef {
+        let FuncDef {
             head:
                 FuncSig {
                     generics,

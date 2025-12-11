@@ -173,7 +173,6 @@ impl ApplyDatabase {
         let k = || Parameter(TypeParamName::intrinsic("K"));
         let v = || Parameter(TypeParamName::intrinsic("V"));
         let map_kv = || Array(k().into(), v().into()); // gives a Array(Box(Parameter(TypeParamName { ident: String::from("K") }), Box(Parameter(TypeParamName { ident: String::from("V") }))) when called.
-        let seq_k = || Seq(k().into()); // gives a Seq(Box(Parameter(TypeParamName { ident: String::from("K") })) when called.
 
         // Boolean operations.
         db.builtin("not", Q::Boolean, fn1_arith(Boolean)); // `not` is for Boolean type. It is a unary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Boolean], ret_ty: Boolean, } so the parameter is a Boolean and the return type is a Boolean.

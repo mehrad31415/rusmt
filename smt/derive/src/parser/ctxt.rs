@@ -509,7 +509,7 @@ impl ContextWithFunc {
     }
 
     /// Get the function definition for a given function name
-    pub fn get_func(&self, name: &UsrFuncName) -> &ImplFuncDef {
+    pub fn get_func(&self, name: &UsrFuncName) -> &FuncDef {
         self.funcs
             .get(name)
             .unwrap_or_else(|| panic!("fn {} does not exist", name))

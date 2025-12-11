@@ -1,2 +1,0 @@
-not a literal
-x . not () . and (false . into ()) . or (true . into ()) . xor (y) . eq (& Boolean :: from (x . ne (& y)))

@@ -159,46 +159,6 @@ impl TypeRef {
             Self::User(_, args) => args.iter().all(|t| t.validate()),
         }
     }
-
-    /// Converts the `TypeRef` back into a `TypeTag`, if possible.
-    ///
-    /// Returns `Some(TypeTag)` if the type contains no type variables; `None` otherwise.
-    pub fn reverse(&self) -> Option<TypeTag> {
-        let reversed = match self {
-            Self::Var(_) => return None, // Cannot reverse a type variable into a concrete type.
-            Self::Boolean => TypeTag::Boolean,
-            Self::Integer => TypeTag::Integer,
-            Self::Real => TypeTag::Real,
-            Self::F32 => TypeTag::F32,
-            Self::F64 => TypeTag::F64,
-            Self::I32 => TypeTag::I32,
-            Self::I64 => TypeTag::I64,
-            Self::U32 => TypeTag::U32,
-            Self::U64 => TypeTag::U64,
-            Self::String => TypeTag::String,
-            Self::Error => TypeTag::Error,
-            Self::Parameter(name) => TypeTag::Parameter(name.clone()),
-            Self::Cloak(sub) => TypeTag::Cloak(Box::new(sub.as_ref().reverse()?)), // as_ref() dereferences the `sub` twice and adds a pointer. The first dereference eliminates the & reference, and the second dereference eliminates the Box reference. Therefore, sub.as_ref() gives &TypeRef, and sub.as_ref().reverse() gives Option<TypeTag>. The ? operator unwraps the Option and returns the value inside the Some variant or returns None.
-            Self::Seq(sub) => TypeTag::Seq(Box::new(sub.as_ref().reverse()?)),
-            Self::Set(sub) => TypeTag::Set(Box::new(sub.as_ref().reverse()?)),
-            Self::Array(key, val) => TypeTag::Array(
-                Box::new(key.as_ref().reverse()?),
-                Box::new(val.as_ref().reverse()?),
-            ),
-            Self::Pack(elems) => {
-                TypeTag::Pack(elems.iter().map(|t| t.reverse()).collect::<Option<_>>()?)
-                // collect() is a method provided by Rust's Iterator trait that transforms an iterator into a collection, such as a Vec, HashMap, an Option, etc.
-                // The ::<Option<_>> part is a type hint that tells the compiler to collect the iterator into an <Option<Vec<TypeRef>>> type. The ? operator then unwraps the Option, returning the value inside if it is Some, or returning None if it is None.
-                // The Option<_> type means that collect() will return Some(collection) if all elements of the iterator successfully produce Some(value). None if any element produces None.
-                // So each element is moved out of the Option (t.reverse() gives Option<TypeRef>) but the whole collection is moved into the outer Option.
-            }
-            Self::User(name, args) => TypeTag::User(
-                name.clone(),
-                args.iter().map(|t| t.reverse()).collect::<Option<_>>()?,
-            ),
-        };
-        Some(reversed)
-    }
 }
 
 impl Display for TypeRef {
@@ -377,7 +337,7 @@ impl Typing {
         if !group_l.vars.is_disjoint(&group_h.vars) {
             panic!("Non-disjoint equivalence sets");
         }
-        group_l.vars.extend(group_h.vars);
+        group_l.vars.extend(group_h.clone().vars);
 
         // check whether they unify to the same type, if any
         // this match basically updates the sort of the lower type variable equivalence group.

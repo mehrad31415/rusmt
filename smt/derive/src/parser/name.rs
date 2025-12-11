@@ -370,6 +370,8 @@ impl UsrFuncName {
     ///
     /// Panics if the provided name is not a recognized intrinsic function.
     /// This function is used in the `builtin` function of the `apply` module to create intrinsic functions.
+    // do not warn unreached patterns because we want to explicitly list all intrinsic function names.
+    #[allow(unreachable_patterns)]
     pub fn intrinsic(name: &str) -> Self {
         match name {
             // Logical operators.

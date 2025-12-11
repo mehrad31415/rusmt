@@ -1,9 +1,13 @@
 //! This module provides the specific implementation of the `CodeGen` trait for Z3.
 
 use crate::backend::codegen::CodeGen;
+use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::BackendResult;
-use crate::backend::z3::ty::{collect_type_edges, scc_from_edges};
+use crate::backend::z3::ty::{collect_type_edges, resolve_type_name, scc_from_edges};
+use crate::backend::z3::ty::{
+    mk_enum_str, mk_named_tuple_str, mk_record_str, mk_unnamed_tuple_str,
+};
 use crate::ir::ctxt::IRContext;
 use crate::ir::sort::DataType;
 use std::collections::BTreeSet;
@@ -57,8 +61,6 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "(set-option :parallel.enable true)");
         l!(x); // add new line
 
-        // mapping from smt sort name to the corresponding z3 sort
-        let mut sort_map = HashMap::new();
         // write the type parameters
         if !&undef_sorts.is_empty() {
             l!(x, "; Define Type Parameters of Function Signatures:");
@@ -123,55 +125,60 @@ impl CodeGen for CodeGenZ3 {
         // let mut fn_map = HashMap::new();
         // let mut axiom_map = HashMap::new();
 
-        // // function registry
+        // // Function registry
         // if !fn_registry.lookup.is_empty() {
-        //     debug!("Define user-defined functions");
-        //     // declare all function signatures
+        //     l!(x, "; Define user-defined functions (Mutually Recursive)");
+
+        //     // We need two parallel lists for `define-funs-rec`:
+        //     // 1. Function headers: (name ((param type) ...) ret_type)
+        //     // 2. Function bodies: (expression)
+        //     let mut decl_headers = Vec::new();
+        //     let mut decl_bodies = Vec::new();
+
+        //     // Iterate over all functions and instantiations
         //     for (fn_name, instantiations) in &fn_registry.lookup {
         //         for (generics, fn_id) in instantiations {
         //             let sig = fn_registry.retrieve_sig(*fn_id);
 
-        //             // Create function declaration
-        //             let fn_decl = create_function_declaration(
-        //                 &ctx,
-        //                 ir,
-        //                 fn_name.to_string(),
-        //                 generics,
-        //                 sig,
-        //                 &ty_map,
-        //                 &mut sort_map,
-        //             );
+        //             // 1. Prepare Header
+        //             // Note: We use the same name string. SMT-LIB allows overloading
+        //             // if the signatures (generics) differ.
+        //             let header_str =
+        //                 create_function_header_str(ir, fn_name.to_string(), generics, sig, &ty_map);
+        //             decl_headers.push(header_str);
 
-        //             fn_map.insert(*fn_id, fn_decl);
-        //         }
-        //     }
-
-        //     // define function bodies
-        //     for (fn_name, instantiations) in &fn_registry.lookup {
-        //         for fn_id in instantiations.values() {
+        //             // 2. Prepare Body
         //             let def = fn_registry.retrieve_def(*fn_id);
-
         //             match def {
         //                 FunDef::Defined(exp_registry, root_exp_id) => {
-        //                     // Process the function body
-        //                     process_function_body(
-        //                         &ctx,
-        //                         &solver,
+        //                     let body_str = process_function_body_str(
         //                         ir,
         //                         *fn_id,
         //                         exp_registry,
         //                         *root_exp_id,
         //                         &ty_map,
-        //                         &sort_map,
         //                         &mut cloak_manager,
         //                         &mut map_length_manager,
         //                         &mut axiomatic_parameters,
-        //                         &fn_map,
         //                     );
+        //                     decl_bodies.push(body_str);
         //                 }
+        //                 // Handle abstract/undefined functions if necessary,
+        //                 // though usually these are just `declare-fun`.
+        //                 _ => panic!("Unsupported function definition type for SMT export"),
         //             }
         //         }
         //     }
+
+        //     // Write the single block command
+        //     // (define-funs-rec ( (header1) (header2) ) ( (body1) (body2) ) )
+        //     l!(
+        //         x,
+        //         "(define-funs-rec ({}) ({}))",
+        //         decl_headers.join(" "),
+        //         decl_bodies.join(" ")
+        //     );
+        //     l!(x); // Empty line
         // }
         Ok(x.build())
     }

@@ -1,2 +1,0 @@
-invalid expression Expr::Lit { attrs: [], lit: Lit::Int { token: 1 } }
-1

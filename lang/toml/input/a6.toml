@@ -1,0 +1,7 @@
+# Quoted keys follow the exact same rules as either basic strings or literal strings and allow you to use a much broader set of key names.
+
+"127.0.0.1" = "value"
+"character encoding" = "value"
+"ʎǝʞ" = "value"
+'key2' = "value"
+'quoted "value"' = "value"

@@ -1,4 +1,6 @@
-use crate::{Boolean, Integer, String};
+//! String datatype and operations
+
+use crate::{Boolean, Integer, String, U32, smt::SMT};
 use internment::Intern;
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -20,7 +22,8 @@ impl From<std::string::String> for String {
 }
 
 impl String {
-    /// Creates a new empty string
+    /// Creates a new empty string `String::new()`
+    /// transpiles to `(declare-const s String) (assert (= s ""))`
     pub fn new() -> Self {
         Self {
             inner: Intern::new(std::string::String::new()),
@@ -32,15 +35,6 @@ impl String {
         Integer::from(self.inner.chars().count())
     }
 
-    /// append a character to the end of the string
-    pub fn append(self, c: char) -> Self {
-        let mut new_str = self.inner.as_ref().clone();
-        new_str.push(c);
-        Self {
-            inner: Intern::new(new_str),
-        }
-    }
-
     /// `(str.++ s1 s2)`
     pub fn concat(self, rhs: Self) -> Self {
         let mut new_str = self.inner.as_ref().clone();
@@ -50,14 +44,14 @@ impl String {
         }
     }
 
-    /// This can be modeled by the transpiler as `(seq.at s i)` for the character,
-    /// wrapped in an `(ite ...)` expression to handle the out-of-bounds case.
-    pub fn at(self, index: Integer) -> Option<Self> {
+    /// `(str.at s offset)`
+    pub fn at(self, index: Integer) -> Self {
         index
             .inner
             .to_usize()
             .and_then(|idx| self.inner.chars().nth(idx))
             .map(|char_at| Self::from(char_at.to_string()))
+            .unwrap()
     }
 
     ///`(str.contains self rhs)`
@@ -97,6 +91,7 @@ impl String {
     }
 
     /// checks if the string is empty: `v.is_empty()`
+    /// transpiles to `(= s "")`
     pub fn is_empty(self) -> Boolean {
         self.inner.is_empty().into()
     }
@@ -105,23 +100,20 @@ impl String {
     pub fn to_chars(self) -> Vec<Self> {
         self.inner
             .chars()
-            .map(|c| Self::from(c.to_string()))
+            .map(|c| String::from(c.to_string()))
             .collect()
     }
 
-    /// `(seq.extract s offset length)`
-    pub fn substr(self, offset: Integer, length: Integer) -> Option<Self> {
-        let start = offset.inner.to_usize()?;
-        let len = length.inner.to_usize()?;
+    /// `(str.indexof s substr offset)`.
+    pub fn index_of(self, substr: Self, offset: Integer) -> Integer {
+        let start_char = offset.inner.to_usize().unwrap();
 
-        let collected: std::string::String = self.inner.chars().skip(start).take(len).collect();
+        let start_byte = self.inner.char_indices().nth(start_char).unwrap().0;
 
-        // If the collected length is less than requested, the range was out of bounds.
-        if collected.chars().count() < len {
-            None
-        } else {
-            Some(Self::from(collected))
-        }
+        let found_byte_idx = self.inner[start_byte..]
+            .find(substr.inner.as_ref())
+            .unwrap();
+        Integer::from(self.inner[..(start_byte + found_byte_idx)].chars().count())
     }
 
     /// `(str.replace s src dst)`.
@@ -132,36 +124,56 @@ impl String {
         Self::from(replaced)
     }
 
-    /// `(str.indexof s substr offset)`.
-    pub fn index_of(self, substr: Self, offset: Integer) -> Option<Integer> {
-        let start_char = offset.inner.to_usize()?;
-
-        let start_byte = match self.inner.char_indices().nth(start_char) {
-            Some((byte_idx, _)) => byte_idx,
-            None if start_char == self.inner.chars().count() => self.inner.len(),
-            None => None?,
-        };
-
-        if let Some(found_byte_idx) = self.inner[start_byte..].find(substr.inner.as_ref()) {
-            let total_byte_idx = start_byte + found_byte_idx;
-            Some(Integer::from(self.inner[..total_byte_idx].chars().count()))
-        } else {
-            None
-        }
+    /// `(str.replace_all s src dst)`
+    pub fn replace_all(self, src: Self, dst: Self) -> Self {
+        let replaced = self.inner.replace(src.inner.as_ref(), dst.inner.as_ref());
+        Self::from(replaced)
     }
 
     /// `(str.to_int s)`
-    pub fn to_int(self) -> Option<Integer> {
-        match self.inner.parse::<BigInt>() {
-            Ok(val) => Some(Integer {
-                inner: Intern::new(val),
-            }),
-            Err(_) => None,
+    pub fn to_int(self) -> Integer {
+        Integer {
+            inner: Intern::new(self.inner.parse::<BigInt>().unwrap()),
         }
     }
 
     /// `(str.from_int i)`
     pub fn from_int(i: Integer) -> Self {
         Self::from(i.inner.to_string())
+    }
+
+    /// `(str.is_digit s)`
+    pub fn is_digit(self) -> Boolean {
+        self.length().eq(Integer::from(1)).and(
+            self.at(Integer::from(0))
+                .inner
+                .as_ref()
+                .chars()
+                .next()
+                .unwrap()
+                .is_ascii_digit()
+                .into(),
+        )
+    }
+
+    /// str.from_code i
+    pub fn from_code(code: U32) -> Self {
+        let raw_val = *code.inner;
+        let c = char::from_u32(raw_val).unwrap();
+        Self::from(c.to_string())
+    }
+
+    /// str.to_code s
+    pub fn to_code(self) -> U32 {
+        if self.inner.as_ref().is_empty() {
+            panic!("Cannot get code point of an empty string");
+        }
+
+        if self.inner.as_ref().chars().count() > 1 {
+            panic!("Cannot get code point of a string with more than one character");
+        }
+
+        let c = self.inner.as_ref().chars().next().unwrap();
+        U32::from(c as u32)
     }
 }

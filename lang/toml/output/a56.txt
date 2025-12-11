@@ -1,0 +1,86 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "table-1",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "key1",
+                                                },
+                                            ): SMTWrap(
+                                                String(
+                                                    String {
+                                                        inner: "some string",
+                                                    },
+                                                ),
+                                            ),
+                                            SMTWrap(
+                                                String {
+                                                    inner: "key2",
+                                                },
+                                            ): SMTWrap(
+                                                Integer(
+                                                    I64 {
+                                                        inner: 123,
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "table-2",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "key1",
+                                                },
+                                            ): SMTWrap(
+                                                String(
+                                                    String {
+                                                        inner: "another string",
+                                                    },
+                                                ),
+                                            ),
+                                            SMTWrap(
+                                                String {
+                                                    inner: "key2",
+                                                },
+                                            ): SMTWrap(
+                                                Integer(
+                                                    I64 {
+                                                        inner: 456,
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

@@ -1,0 +1,2 @@
+# conflicting keys in inline table
+    key = {key=1, key=2}

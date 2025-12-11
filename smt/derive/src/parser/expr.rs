@@ -711,120 +711,215 @@ impl Expr {
                 body.visit(ty, pre, post)?;
             }
             Op::Intrinsic(intrinsic) => match intrinsic.as_mut() {
-                // boolean
+                // -------------------------------------------------------------------------
+                // Boolean
+                // -------------------------------------------------------------------------
                 Intrinsic::BoolVal(_) => (),
                 Intrinsic::BoolNot { val } => val.visit(ty, pre, post)?,
                 Intrinsic::BoolAnd { lhs, rhs }
                 | Intrinsic::BoolOr { lhs, rhs }
                 | Intrinsic::BoolXor { lhs, rhs }
-                | Intrinsic::BoolImplies { lhs, rhs } => {
+                | Intrinsic::BoolImplies { lhs, rhs }
+                | Intrinsic::BoolIff { lhs, rhs }
+                | Intrinsic::BoolNand { lhs, rhs }
+                | Intrinsic::BoolNor { lhs, rhs }
+                | Intrinsic::BoolXnor { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                Intrinsic::BoolIff { lhs, rhs } => {
-                    lhs.visit(ty, pre, post)?;
-                    rhs.visit(ty, pre, post)?;
-                }
-                // integer
+
+                // -------------------------------------------------------------------------
+                // Integer
+                // -------------------------------------------------------------------------
                 Intrinsic::IntVal(_) => (),
-                Intrinsic::IntLt { lhs, rhs }
-                | Intrinsic::IntLe { lhs, rhs }
-                | Intrinsic::IntGe { lhs, rhs }
-                | Intrinsic::IntGt { lhs, rhs }
-                | Intrinsic::IntAdd { lhs, rhs }
+                // Unary
+                Intrinsic::IntNeg { val }
+                | Intrinsic::IntAbs { val }
+                | Intrinsic::IntToReal { val }
+                | Intrinsic::IntToI32 { val }
+                | Intrinsic::IntToI64 { val }
+                | Intrinsic::IntToU32 { val }
+                | Intrinsic::IntToU64 { val }
+                | Intrinsic::IntToF32 { val }
+                | Intrinsic::IntToF64 { val }
+                | Intrinsic::IntFromHex { val }
+                | Intrinsic::IntFromOct { val }
+                | Intrinsic::IntFromBin { val }
+                | Intrinsic::IntIsGtI64Max { val }
+                | Intrinsic::IntIsLtI64Min { val }
+                | Intrinsic::IntIsGtU64Max { val }
+                | Intrinsic::IntIsLtU64Min { val }
+                | Intrinsic::IntIsLtI32Min { val }
+                | Intrinsic::IntIsGtI32Max { val }
+                | Intrinsic::IntIsLtU32Min { val }
+                | Intrinsic::IntIsGtU32Max { val } => {
+                    val.visit(ty, pre, post)?;
+                }
+                // Binary
+                Intrinsic::IntAdd { lhs, rhs }
                 | Intrinsic::IntSub { lhs, rhs }
                 | Intrinsic::IntMul { lhs, rhs }
                 | Intrinsic::IntDiv { lhs, rhs }
-                | Intrinsic::IntRem { lhs, rhs } => {
+                | Intrinsic::IntMod { lhs, rhs }
+                | Intrinsic::IntRem { lhs, rhs }
+                | Intrinsic::IntPow {
+                    base: lhs,
+                    exp: rhs,
+                }
+                | Intrinsic::IntDivides { lhs, rhs }
+                | Intrinsic::IntLt { lhs, rhs }
+                | Intrinsic::IntLe { lhs, rhs }
+                | Intrinsic::IntGt { lhs, rhs }
+                | Intrinsic::IntGe { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                Intrinsic::IntAbs { val } => {
+
+                // -------------------------------------------------------------------------
+                // Real
+                // -------------------------------------------------------------------------
+                Intrinsic::RealVal(_) => (),
+                // Unary
+                Intrinsic::RealNeg { val }
+                | Intrinsic::RealAbs { val }
+                | Intrinsic::RealRound { val }
+                | Intrinsic::RealFloor { val }
+                | Intrinsic::RealCeil { val }
+                | Intrinsic::RealIsInt { val }
+                | Intrinsic::RealToInt { val }
+                | Intrinsic::RealToF32 { val }
+                | Intrinsic::RealToF64 { val }
+                | Intrinsic::RealNumer { val }
+                | Intrinsic::RealDenom { val } => {
                     val.visit(ty, pre, post)?;
                 }
-                Intrinsic::IntPow { base, exp } => {
-                    base.visit(ty, pre, post)?;
-                    exp.visit(ty, pre, post)?;
+                // Binary
+                Intrinsic::RealAdd { lhs, rhs }
+                | Intrinsic::RealSub { lhs, rhs }
+                | Intrinsic::RealMul { lhs, rhs }
+                | Intrinsic::RealDiv { lhs, rhs }
+                | Intrinsic::RealPow {
+                    base: lhs,
+                    exp: rhs,
                 }
-                Intrinsic::IntToRational { val } => {
-                    val.visit(ty, pre, post)?;
-                }
-                // rational
-                Intrinsic::NumVal(_) => (),
-                Intrinsic::NumLt { lhs, rhs }
-                | Intrinsic::NumLe { lhs, rhs }
-                | Intrinsic::NumGe { lhs, rhs }
-                | Intrinsic::NumGt { lhs, rhs }
-                | Intrinsic::NumAdd { lhs, rhs }
-                | Intrinsic::NumSub { lhs, rhs }
-                | Intrinsic::NumMul { lhs, rhs }
-                | Intrinsic::NumDiv { lhs, rhs } => {
+                | Intrinsic::RealLt { lhs, rhs }
+                | Intrinsic::RealLe { lhs, rhs }
+                | Intrinsic::RealGt { lhs, rhs }
+                | Intrinsic::RealGe { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                Intrinsic::NumAbs { val }
-                | Intrinsic::NumFloor { val }
-                | Intrinsic::NumCeil { val }
-                | Intrinsic::NumRound { val } => {
-                    val.visit(ty, pre, post)?;
-                }
-                Intrinsic::NumPow { base, exp } => {
-                    base.visit(ty, pre, post)?;
-                    exp.visit(ty, pre, post)?;
-                }
-                // string
+
+                // -------------------------------------------------------------------------
+                // String
+                // -------------------------------------------------------------------------
                 Intrinsic::StrVal(_) => (),
-                Intrinsic::StrLt { lhs, rhs }
+                // Unary (on seq or val)
+                Intrinsic::StrLen { seq: val }
+                | Intrinsic::StrIsEmpty { seq: val }
+                | Intrinsic::StrIsDigit { seq: val }
+                | Intrinsic::StrToInt { val }
+                | Intrinsic::StrFromInt { val }
+                | Intrinsic::StrFromCode { val }
+                | Intrinsic::StrToCode { val } => {
+                    val.visit(ty, pre, post)?;
+                }
+                // Binary
+                Intrinsic::StrConcat { lhs, rhs }
+                | Intrinsic::StrAt { seq: lhs, idx: rhs }
+                | Intrinsic::StrContains {
+                    seq: lhs,
+                    item: rhs,
+                }
+                | Intrinsic::StrStartsWith {
+                    seq: lhs,
+                    item: rhs,
+                }
+                | Intrinsic::StrEndsWith {
+                    seq: lhs,
+                    item: rhs,
+                }
                 | Intrinsic::StrLe { lhs, rhs }
+                | Intrinsic::StrLt { lhs, rhs }
                 | Intrinsic::StrGe { lhs, rhs }
-                | Intrinsic::StrGt { lhs, rhs }
-                | Intrinsic::StrConcat { lhs, rhs } => {
+                | Intrinsic::StrGt { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                Intrinsic::StrLength { seq } => {
+                // Ternary
+                Intrinsic::StrIndexOf { seq, sub, offset } => {
                     seq.visit(ty, pre, post)?;
+                    sub.visit(ty, pre, post)?;
+                    offset.visit(ty, pre, post)?;
                 }
-                Intrinsic::StrAt { seq, idx } => {
+                Intrinsic::StrReplace { seq, src, dst }
+                | Intrinsic::StrReplaceAll { seq, src, dst } => {
                     seq.visit(ty, pre, post)?;
-                    idx.visit(ty, pre, post)?;
+                    src.visit(ty, pre, post)?;
+                    dst.visit(ty, pre, post)?;
                 }
-                Intrinsic::StrStartsWith { seq, item }
-                | Intrinsic::StrEndsWith { seq, item }
-                | Intrinsic::StrIncludes { seq, item } => {
-                    seq.visit(ty, pre, post)?;
-                    item.visit(ty, pre, post)?;
-                }
-                // cloak
-                Intrinsic::BoxReveal { t, val } | Intrinsic::BoxShield { t, val } => {
+
+                // -------------------------------------------------------------------------
+                // Cloak
+                // -------------------------------------------------------------------------
+                Intrinsic::BoxShield { t, val } | Intrinsic::BoxReveal { t, val } => {
                     ty(t)?;
                     val.visit(ty, pre, post)?;
                 }
-                // seq
-                Intrinsic::SeqEmpty { t } => ty(t)?,
-                Intrinsic::SeqLength { t, seq } => {
+
+                // -------------------------------------------------------------------------
+                // Sequence
+                // -------------------------------------------------------------------------
+                Intrinsic::SeqEmpty { t } => {
                     ty(t)?;
-                    seq.visit(ty, pre, post)?;
                 }
-                Intrinsic::SeqAppend { t, seq, item } | Intrinsic::SeqIncludes { t, seq, item } => {
+                Intrinsic::SeqUnit { t, val }
+                | Intrinsic::SeqLen { t, seq: val }
+                | Intrinsic::SeqIsEmpty { t, seq: val } => {
                     ty(t)?;
-                    seq.visit(ty, pre, post)?;
-                    item.visit(ty, pre, post)?;
+                    val.visit(ty, pre, post)?;
                 }
-                Intrinsic::SeqAt { t, seq, idx } => {
+                Intrinsic::SeqNth { t, seq, idx }
+                | Intrinsic::SeqPush { t, seq, item: idx }
+                | Intrinsic::SeqContains { t, seq, item: idx } => {
                     ty(t)?;
                     seq.visit(ty, pre, post)?;
                     idx.visit(ty, pre, post)?;
                 }
-                Intrinsic::SeqIsEmpty { t, seq } => {
+                Intrinsic::SeqConcat { t, lhs, rhs }
+                | Intrinsic::SeqPrefixOf { t, lhs, rhs }
+                | Intrinsic::SeqSuffixOf { t, lhs, rhs } => {
+                    ty(t)?;
+                    lhs.visit(ty, pre, post)?;
+                    rhs.visit(ty, pre, post)?;
+                }
+                Intrinsic::SeqExtract {
+                    t,
+                    seq,
+                    offset,
+                    len,
+                } => {
                     ty(t)?;
                     seq.visit(ty, pre, post)?;
+                    offset.visit(ty, pre, post)?;
+                    len.visit(ty, pre, post)?;
                 }
-                // set
-                Intrinsic::SetEmpty { t } => ty(t)?,
-                Intrinsic::SetLength { t, set } => {
+                Intrinsic::SeqReplace { t, seq, src, dst } => {
                     ty(t)?;
-                    set.visit(ty, pre, post)?;
+                    seq.visit(ty, pre, post)?;
+                    src.visit(ty, pre, post)?;
+                    dst.visit(ty, pre, post)?;
+                }
+
+                // -------------------------------------------------------------------------
+                // Set
+                // -------------------------------------------------------------------------
+                Intrinsic::SetEmpty { t } => {
+                    ty(t)?;
+                }
+                Intrinsic::SetLen { t, set: val } | Intrinsic::SetIsEmpty { t, set: val } => {
+                    ty(t)?;
+                    val.visit(ty, pre, post)?;
                 }
                 Intrinsic::SetInsert { t, set, item }
                 | Intrinsic::SetRemove { t, set, item }
@@ -833,61 +928,153 @@ impl Expr {
                     set.visit(ty, pre, post)?;
                     item.visit(ty, pre, post)?;
                 }
-                Intrinsic::SetUnion { t, lhs, rhs }
-                | Intrinsic::SetIntersection { t, lhs, rhs }
-                | Intrinsic::SetDifference { t, lhs, rhs }
-                | Intrinsic::SetIsSubset { t, lhs, rhs } => {
+                Intrinsic::SetHasSize { t, set, size } => {
+                    ty(t)?;
+                    set.visit(ty, pre, post)?;
+                    size.visit(ty, pre, post)?;
+                }
+                Intrinsic::SetIntersect { t, lhs, rhs }
+                | Intrinsic::SetUnion { t, lhs, rhs }
+                | Intrinsic::SetDiff { t, lhs, rhs }
+                | Intrinsic::SetSymDiff { t, lhs, rhs }
+                | Intrinsic::SetIsSubset { t, lhs, rhs }
+                | Intrinsic::SetIsProperSubset { t, lhs, rhs }
+                | Intrinsic::SetIsSuperset { t, lhs, rhs }
+                | Intrinsic::SetIsDisjoint { t, lhs, rhs } => {
                     ty(t)?;
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                Intrinsic::SetIsEmpty { t, set } => {
-                    ty(t)?;
-                    set.visit(ty, pre, post)?;
-                }
-                // map
-                Intrinsic::MapEmpty { k, v } => {
+
+                // -------------------------------------------------------------------------
+                // Array / Map
+                // -------------------------------------------------------------------------
+                Intrinsic::ArrayEmpty { k, v } => {
                     ty(k)?;
                     ty(v)?;
                 }
-                Intrinsic::MapLength { k, v, map } => {
+                Intrinsic::ArrayLen { k, v, arr } | Intrinsic::ArrayIsEmpty { k, v, arr } => {
                     ty(k)?;
                     ty(v)?;
-                    map.visit(ty, pre, post)?
+                    arr.visit(ty, pre, post)?;
                 }
-                Intrinsic::MapGet { k, v, map, key }
-                | Intrinsic::MapDel { k, v, map, key }
-                | Intrinsic::MapContainsKey { k, v, map, key } => {
+                Intrinsic::ArraySelect { k, v, arr, key }
+                | Intrinsic::ArrayRemove { k, v, arr, key }
+                | Intrinsic::ArrayContainsKey { k, v, arr, key } => {
                     ty(k)?;
                     ty(v)?;
-                    map.visit(ty, pre, post)?;
+                    arr.visit(ty, pre, post)?;
                     key.visit(ty, pre, post)?;
                 }
-                Intrinsic::MapPut {
+                Intrinsic::ArrayStore {
                     k,
                     v,
-                    map,
+                    arr,
                     key,
                     val,
                 } => {
                     ty(k)?;
                     ty(v)?;
-                    map.visit(ty, pre, post)?;
+                    arr.visit(ty, pre, post)?;
                     key.visit(ty, pre, post)?;
                     val.visit(ty, pre, post)?;
                 }
-                Intrinsic::MapIsEmpty { k, v, map } => {
-                    ty(k)?;
-                    ty(v)?;
-                    map.visit(ty, pre, post)?;
+
+                // -------------------------------------------------------------------------
+                // Bitvector
+                // -------------------------------------------------------------------------
+                Intrinsic::BvVal { t, val: _ } => {
+                    ty(t)?;
                 }
-                // error
+                Intrinsic::BvNot { t, val }
+                | Intrinsic::BvRedAnd { t, val }
+                | Intrinsic::BvRedOr { t, val }
+                | Intrinsic::BvNeg { t, val }
+                | Intrinsic::BvNegNoOverflow { t, val }
+                | Intrinsic::BvToInt { t, val } => {
+                    ty(t)?;
+                    val.visit(ty, pre, post)?;
+                }
+                Intrinsic::BvAnd { t, lhs, rhs }
+                | Intrinsic::BvOr { t, lhs, rhs }
+                | Intrinsic::BvXor { t, lhs, rhs }
+                | Intrinsic::BvNand { t, lhs, rhs }
+                | Intrinsic::BvNor { t, lhs, rhs }
+                | Intrinsic::BvXnor { t, lhs, rhs }
+                | Intrinsic::BvAdd { t, lhs, rhs }
+                | Intrinsic::BvSub { t, lhs, rhs }
+                | Intrinsic::BvMul { t, lhs, rhs }
+                | Intrinsic::BvDiv { t, lhs, rhs }
+                | Intrinsic::BvRem { t, lhs, rhs }
+                | Intrinsic::BvMod { t, lhs, rhs }
+                | Intrinsic::BvAddNoOverflow { t, lhs, rhs }
+                | Intrinsic::BvSubNoOverflow { t, lhs, rhs }
+                | Intrinsic::BvMulNoOverflow { t, lhs, rhs }
+                | Intrinsic::BvDivNoOverflow { t, lhs, rhs }
+                | Intrinsic::BvShl { t, lhs, rhs }
+                | Intrinsic::BvLshr { t, lhs, rhs }
+                | Intrinsic::BvAshr { t, lhs, rhs }
+                | Intrinsic::BvRotLeft { t, lhs, rhs }
+                | Intrinsic::BvRotRight { t, lhs, rhs }
+                | Intrinsic::BvLt { t, lhs, rhs }
+                | Intrinsic::BvLe { t, lhs, rhs }
+                | Intrinsic::BvGt { t, lhs, rhs }
+                | Intrinsic::BvGe { t, lhs, rhs } => {
+                    ty(t)?;
+                    lhs.visit(ty, pre, post)?;
+                    rhs.visit(ty, pre, post)?;
+                }
+
+                // -------------------------------------------------------------------------
+                // Float
+                // -------------------------------------------------------------------------
+                Intrinsic::FloatNaN { t }
+                | Intrinsic::FloatPosInf { t }
+                | Intrinsic::FloatNegInf { t }
+                | Intrinsic::FloatPosZero { t }
+                | Intrinsic::FloatNegZero { t }
+                | Intrinsic::FloatVal { t, val: _ } => {
+                    ty(t)?;
+                }
+                Intrinsic::FloatNeg { t, val }
+                | Intrinsic::FloatAbs { t, val }
+                | Intrinsic::FloatSqrt { t, val }
+                | Intrinsic::FloatIsNaN { t, val }
+                | Intrinsic::FloatIsInf { t, val }
+                | Intrinsic::FloatIsZero { t, val }
+                | Intrinsic::FloatIsNormal { t, val }
+                | Intrinsic::FloatIsSubnormal { t, val }
+                | Intrinsic::FloatIsNeg { t, val }
+                | Intrinsic::FloatIsPos { t, val }
+                | Intrinsic::FloatToInt { t, val }
+                | Intrinsic::FloatToReal { t, val } => {
+                    ty(t)?;
+                    val.visit(ty, pre, post)?;
+                }
+                Intrinsic::FloatAdd { t, lhs, rhs }
+                | Intrinsic::FloatSub { t, lhs, rhs }
+                | Intrinsic::FloatMul { t, lhs, rhs }
+                | Intrinsic::FloatDiv { t, lhs, rhs }
+                | Intrinsic::FloatRem { t, lhs, rhs }
+                | Intrinsic::FloatMin { t, lhs, rhs }
+                | Intrinsic::FloatMax { t, lhs, rhs }
+                | Intrinsic::FloatLt { t, lhs, rhs }
+                | Intrinsic::FloatLe { t, lhs, rhs }
+                | Intrinsic::FloatGt { t, lhs, rhs }
+                | Intrinsic::FloatGe { t, lhs, rhs } => {
+                    ty(t)?;
+                    lhs.visit(ty, pre, post)?;
+                    rhs.visit(ty, pre, post)?;
+                }
+
+                // -------------------------------------------------------------------------
+                // Error / Generic
+                // -------------------------------------------------------------------------
                 Intrinsic::ErrFresh => (),
                 Intrinsic::ErrMerge { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                // smt
                 Intrinsic::SmtEq { t, lhs, rhs } | Intrinsic::SmtNe { t, lhs, rhs } => {
                     ty(t)?;
                     lhs.visit(ty, pre, post)?;
@@ -946,7 +1133,7 @@ pub struct ExprParserRoot<'ctx> {
 #[derive(Clone, Debug)]
 /// Derived expression parser (for one and only one expression)
 struct ExprParserCursor<'r, 'ctx: 'r> {
-    /// parent of the parser (this will always remain the same because we are parsing only inside one function - so the context, the kind, and the signature will remain the same)
+    /// parent of the parser (this will always remain the same because we are parsing only inside one function - so the context and the signature will remain the same)
     root: &'r ExprParserRoot<'ctx>,
     /// expected type (this changes depending on whether the expression is a let-binding, method call, etc.)
     exp_ty: TypeRef,
@@ -961,7 +1148,7 @@ impl<'ctx> ExprParserRoot<'ctx> {
     /// For each separate function, a new ExprParserRoot is created
     pub fn new(ctxt: &'ctx ContextWithSig, sig: &FuncSig) -> Self {
         Self {
-            ctxt, // the whole context of the rust file containing all the types, impls
+            ctxt, // the whole context of the rust file containing all the types and funcs
             generics: sig.generics.clone(), // generics, params, ret_ty are derived from the function signature
             params: sig
                 .param_map() // param_map() converts the Vec<(VarName, TypeTag)> to BTreeMap<VarName, TypeTag>
@@ -975,7 +1162,7 @@ impl<'ctx> ExprParserRoot<'ctx> {
     /// Parse the body of a single function
     ///
     /// This function is called when ContextWithSig::parse_func_body() is called in ctxt.rs
-    /// The self contains the whole context of the rust file, the kind & signature of the current function
+    /// The self contains the whole context of the rust file, signature of the current function
     /// The function also has a body which is a Vec<Stmt> (stmts) and is passed to this function
     /// This function basically converts the body statements to an expression
     pub fn parse(self, stmts: &[Stmt]) -> Result<Expr> {
@@ -1082,7 +1269,7 @@ impl CtxtForExpr for ExprParserRoot<'_> {
 
 impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
     /// Fork a child parser (this basically redefines the expected type)
-    /// The root containing the whole context of the rust file, the kind of the function, and the signature of the function, is retained because we are still processing the same function body
+    /// The root containing the whole context of the rust file, and the signature of the function, is retained because we are still processing the same function body
     /// The expected type can be the return value of a function, the type of a let-binding, etc. When it has to be redefined, we fork the parser.
     /// The variables in scope are retained.
     /// The new let-bindings created are empty. This is because we only fork inside type definitions to redefine the new expected type with the type annotation (if present). If we do pass on the let bindings, it will for example render all the rh side expressions of (let x = expr) to be a Expr::Block. The main purpose of these bindings is to just add the local declarations to the final exp to create the expression tree of the whole body when the convert_expr function is called on the sole expression statement of the function body.
@@ -1240,7 +1427,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
             // A plain identifier like `x` is a path of length 1.
             Exp::Path(expr_path) => {
                 // converts a ExprPath to ExprPathAsTarget
-                // the root contains the whole context of the rust file, the kind & the signature of the function
+                // the root contains the whole context of the rust file & the signature of the function
                 match ExprPathAsTarget::parse(self.root, expr_path)? {
                     // if the path only has one segment
                     ExprPathAsTarget::Var(name) => {
@@ -1273,7 +1460,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         // Through calling the complete function on the ADTPath, the GenericsInstPartial is converted to GenericsInstFull and the ADTBranch is derived
                         // The difference is that each TypeTag is converted to TypeRef, if there is no TypeTag (None), it is converted to TypeRef::Var
                         let (branch, inst) = adt.complete(unifier);
-                        // self.root is ExprParserRoot which contains the whole context of the rust file, the kind of the function and signature of the function
+                        // self.root is ExprParserRoot which contains the whole context of the rust file and signature of the function
                         // get_adt_variant_details converts the ADTBranch to EnumVariant
                         // It first looks up the type name in the context, if not found, it bails
                         // If type found, but not an enum, it bails
@@ -1584,7 +1771,6 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 // if the block has a label, bail (labels are not allowed)
                 // for example { 'a: { let x = 5; } } is not allowed
                 bail_if_exists!(label);
-                // TODO enable shadowing in rusmart
                 return self.convert_stmts(unifier, stmts);
             }
             // An `if` expression with an optional `else` block: `if expr { ... }
@@ -1640,7 +1826,6 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     // convert the then block
                     // the result of the then block should match the expected type on the left side or the function return type
                     // the nested if conditions in the then block are analyzed in here
-                    // TODO enable shadowing in rusmart
                     let new_then = self
                         .fork(self.exp_ty.clone())
                         .convert_stmts(unifier, &then_branch.stmts)?;
@@ -1904,7 +2089,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             args: parsed_args,
                         }
                     }
-                    // like let a = MyType::my_func() where fn my_func() -> i32 { 1 } in this case my)func is either a function on a system type or a method in the smt of a user type (becaue impl blocks are not read into the context)
+                    // like let a = MyType::my_func() where fn my_func() -> i32 { 1 } in this case my)func is either a function on a system type or a method in the smt of a user type
                     ExprPathAsCallee::FuncWithType(path) => match path {
                         // casts
                         // Boolean::from()
@@ -1919,16 +2104,70 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             ti_unify!(unifier, &TypeRef::Integer, &self.exp_ty, target);
                             Op::Intrinsic(Box::new(intrinsic))
                         }
-                        // Rational::from()
-                        QualifiedPath::CastFromFloat => {
-                            let intrinsic = Intrinsic::NumVal(Intrinsic::unpack_lit_float(args)?);
-                            ti_unify!(unifier, &TypeRef::Rational, &self.exp_ty, target);
+                        // Real::from()
+                        QualifiedPath::CastFromReal => {
+                            let intrinsic = Intrinsic::RealVal(Intrinsic::unpack_lit_float(args)?);
+                            ti_unify!(unifier, &TypeRef::Real, &self.exp_ty, target);
                             Op::Intrinsic(Box::new(intrinsic))
                         }
-                        // Text::from()
+                        // String::from()
                         QualifiedPath::CastFromStr => {
                             let intrinsic = Intrinsic::StrVal(Intrinsic::unpack_lit_str(args)?);
-                            ti_unify!(unifier, &TypeRef::Text, &self.exp_ty, target);
+                            ti_unify!(unifier, &TypeRef::String, &self.exp_ty, target);
+                            Op::Intrinsic(Box::new(intrinsic))
+                        }
+                        // U32::from()
+                        QualifiedPath::CastFromU32 => {
+                            let intrinsic = Intrinsic::BvVal {
+                                t: TypeRef::U32,
+                                val: Intrinsic::unpack_lit_int(args)?,
+                            };
+                            ti_unify!(unifier, &TypeRef::U32, &self.exp_ty, target);
+                            Op::Intrinsic(Box::new(intrinsic))
+                        }
+                        // U64::from()
+                        QualifiedPath::CastFromU64 => {
+                            let intrinsic = Intrinsic::BvVal {
+                                t: TypeRef::U64,
+                                val: Intrinsic::unpack_lit_int(args)?,
+                            };
+                            ti_unify!(unifier, &TypeRef::U64, &self.exp_ty, target);
+                            Op::Intrinsic(Box::new(intrinsic))
+                        }
+                        // I32::from()
+                        QualifiedPath::CastFromI32 => {
+                            let intrinsic = Intrinsic::BvVal {
+                                t: TypeRef::I32,
+                                val: Intrinsic::unpack_lit_int(args)?,
+                            };
+                            ti_unify!(unifier, &TypeRef::I32, &self.exp_ty, target);
+                            Op::Intrinsic(Box::new(intrinsic))
+                        }
+                        // I64::from()
+                        QualifiedPath::CastFromI64 => {
+                            let intrinsic = Intrinsic::BvVal {
+                                t: TypeRef::I64,
+                                val: Intrinsic::unpack_lit_int(args)?,
+                            };
+                            ti_unify!(unifier, &TypeRef::I64, &self.exp_ty, target);
+                            Op::Intrinsic(Box::new(intrinsic))
+                        }
+                        // f32::from()
+                        QualifiedPath::CastFromF32 => {
+                            let intrinsic = Intrinsic::FloatVal {
+                                t: TypeRef::F32,
+                                val: Intrinsic::unpack_lit_float(args)?,
+                            };
+                            ti_unify!(unifier, &TypeRef::F32, &self.exp_ty, target);
+                            Op::Intrinsic(Box::new(intrinsic))
+                        }
+                        // f64::from()
+                        QualifiedPath::CastFromF64 => {
+                            let intrinsic = Intrinsic::FloatVal {
+                                t: TypeRef::F64,
+                                val: Intrinsic::unpack_lit_float(args)?,
+                            };
+                            ti_unify!(unifier, &TypeRef::F64, &self.exp_ty, target);
                             Op::Intrinsic(Box::new(intrinsic))
                         }
                         // system function
@@ -2194,7 +2433,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
 
                         // choose the function from function database
                         // the unifier is passed to update the type variables
-                        // the root is passed as it contains the context (kind, function signature, and a context of all the types and funcs marked as smt)
+                        // the root is passed as it contains the context (function signature, and a context of all the types and funcs marked as smt)
                         // the name of the user-defined function
                         // the type arguments of the function
                         // the receiver and the arguments converted to Expr ADT
@@ -2274,7 +2513,6 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     }
                     Quantifier::Iterated { name, vars, body } => {
                         // context for body parsing
-                        // new_ctxt is a new context for parsing the body where the return type must be a Boolean
                         let mut new_ctxt = self.fork(TypeRef::Boolean);
                         // holds the types of the collection expressions for example xs and ys in
                         // forall x in xs, y in ys => x + y == 0
@@ -2290,11 +2528,11 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             let var_ty = match sub_expr.ty() {
                                 TypeRef::Seq(_) => TypeRef::Integer, // because in the stdlib in the iterator of Seq we have integer from 0 to n-1 where n is the length of the Seq
                                 TypeRef::Set(sub) => sub.as_ref().clone(),
-                                TypeRef::Map(key, _) => key.as_ref().clone(),
+                                TypeRef::Array(key, _) => key.as_ref().clone(),
                                 TypeRef::Var(_) => {
                                     bail_on!(&collection, "unable to infer collection type")
                                 }
-                                // only Seq, Set, and Map are allowed
+                                // only Seq, Set, and array are allowed
                                 _ => bail_on!(&collection, "not a collection type"),
                             };
 
@@ -2309,7 +2547,6 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         }
 
                         // parse the constraint
-                        // the return type of the body must be a Boolean
                         let quant_body = new_ctxt.convert_expr(unifier, &body)?;
 
                         // decide return type and opcode

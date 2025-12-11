@@ -1,3 +1,5 @@
+//! SMT Cloak type to prevent cyclic dependencies in ADTs.
+
 use crate::{Cloak, dt::SMTWrap, smt::SMT};
 use internment::Intern;
 

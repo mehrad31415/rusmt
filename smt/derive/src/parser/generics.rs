@@ -429,15 +429,21 @@ impl GenericsInstFull {
         let updated = match tag {
             TypeTag::Boolean => TypeRef::Boolean,
             TypeTag::Integer => TypeRef::Integer,
-            TypeTag::Rational => TypeRef::Rational,
-            TypeTag::Text => TypeRef::Text,
+            TypeTag::Real => TypeRef::Real,
+            TypeTag::String => TypeRef::String,
+            TypeTag::F32 => TypeRef::F32,
+            TypeTag::F64 => TypeRef::F64,
+            TypeTag::U32 => TypeRef::U32,
+            TypeTag::U64 => TypeRef::U64,
+            TypeTag::I32 => TypeRef::I32,
+            TypeTag::I64 => TypeRef::I64,
             TypeTag::Error => TypeRef::Error,
             // the into method is for converting TypeRef to Box<TypeRef>
             TypeTag::Cloak(sub) => TypeRef::Cloak(self.instantiate(sub)?.into()),
             TypeTag::Seq(sub) => TypeRef::Seq(self.instantiate(sub)?.into()),
             TypeTag::Set(sub) => TypeRef::Set(self.instantiate(sub)?.into()),
-            TypeTag::Map(key, val) => {
-                TypeRef::Map(self.instantiate(key)?.into(), self.instantiate(val)?.into())
+            TypeTag::Array(key, val) => {
+                TypeRef::Array(self.instantiate(key)?.into(), self.instantiate(val)?.into())
             }
             TypeTag::User(name, args) => TypeRef::User(
                 name.clone(),

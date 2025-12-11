@@ -1,7 +1,7 @@
 //! Handling Annotation for Types
 
 use crate::generics::TypeParamGroup;
-use crate::{bail_if_exists, bail_if_missing, bail_on};
+use crate::{bail_on, ensure_none, ensure_some};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
@@ -82,11 +82,15 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 
                 // Sanity checks.
                 if !matches!(mutability, FieldMutability::None) {
-                    bail_on!(field, "unexpected field mutability declaration"); //unreachable code as the mutability is always FieldMutability::None (for now)
+                    bail_on!(field, "unexpected field mutability declaration"); // unreachable code
                 }
+
                 // ident and colon_token are None for tuple structs.
-                bail_if_exists!(ident); //unreachable invocation as the rust compiler doesn't allow it.
-                bail_if_exists!(colon_token); //unreachable invocation as the rust compiler doesn't allow it.
+                ensure_none!(ident, "the field of a tuple struct cannot have a name"); //unreachable invocation as the rust compiler doesn't allow it.
+                ensure_none!(
+                    colon_token,
+                    "the field of a tuple struct cannot have a colon token"
+                ); //unreachable invocation as the rust compiler doesn't allow it.
 
                 // Generate comparison expressions for each field.
                 let index = Index::from(i);
@@ -130,8 +134,8 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
                     // unreachable code
                     bail_on!(field, "unexpected field mutability declaration");
                 }
-                let name = bail_if_missing!(ident, field, "name");
-                bail_if_missing!(colon_token, field, "colon");
+                let name = ensure_some!(ident, field, "name");
+                ensure_some!(colon_token, field, "colon");
 
                 // Generate comparison expressions for each field.
                 let cmp_expr = quote! {
@@ -203,11 +207,11 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
     ));
 
     // Generate the `Default::default` function.
-    let variant = bail_if_missing!(variants.first(), item, "variants");
+    let variant = ensure_some!(variants.first(), item, "variants");
     // enum MyEnum { #[my_attr] Variant1, Variant2(i32, T), Variant3 { a: String, b: f64 }, i32 = 42 }
     // attrs = #[my_attr] // Attributes applied to the variant
     // ident = Variant1 or Variant2 or Variant3 or i32 // The name of the variant
-    // fields = Fields::Unit or (i32, T) or { a: String, b: f64 } or Fields::Unit // Fields of the variant
+    // fields = Fields::Unit or (i32, T) or { a: String, b: f64 }
     // discriminant = Some((=, 42)) // Discriminant of the variant
     let Variant {
         attrs: _,
@@ -263,7 +267,10 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
         } = variant;
 
         // Sanity checks: variants should not have discriminants.
-        bail_if_exists!(discriminant.as_ref().map(|(_, e)| e));
+        ensure_none!(
+            discriminant.as_ref().map(|(_, e)| e),
+            "unexpected discriminant in enum variant"
+        );
 
         // Generate patterns to match the variants.
         let lhs_arm_skip = match fields {
@@ -319,7 +326,7 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                         vis: _,
                         mutability,
                         ident,
-                        colon_token: _,
+                        colon_token,
                         ty: _,
                     } = field;
 
@@ -327,7 +334,11 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                     if !matches!(mutability, FieldMutability::None) {
                         bail_on!(field, "unexpected field mutability declaration");
                     }
-                    bail_if_exists!(ident);
+                    ensure_none!(ident, "the field of a tuple struct cannot have a name");
+                    ensure_none!(
+                        colon_token,
+                        "the field of a tuple struct cannot have a colon token"
+                    );
 
                     // Create variable names for pattern matching.
                     let cmp_lhs_var = format_ident!("l{}", f);
@@ -367,7 +378,7 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                         vis: _,
                         mutability,
                         ident,
-                        colon_token: _,
+                        colon_token,
                         ty: _,
                     } = field;
 
@@ -375,7 +386,8 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                     if !matches!(mutability, FieldMutability::None) {
                         bail_on!(field, "unexpected field mutability declaration");
                     }
-                    let field_name = bail_if_missing!(ident, field, "name");
+                    let field_name = ensure_some!(ident, field, "name");
+                    ensure_some!(colon_token, field, "colon");
 
                     // Create variable names for pattern matching.
                     let cmp_lhs_var = format_ident!("l_{}", field_name);
@@ -534,7 +546,7 @@ mod tests {
     }
 
     #[test]
-    //invoke let variant = bail_if_missing!(variants.first(), item, "variants");
+    //invoke let variant = ensure_some!(variants.first(), item, "variants");
     fn test_derive_for_enum_missing_variant() {
         let mut item_enum: ItemEnum = parse_quote! {
             enum TestEnum {
@@ -604,7 +616,7 @@ mod tests {
     }
 
     #[test]
-    // invoke bail_if_exists!(discriminant.as_ref().map(|(_, e)| e));
+    // invoke ensure_none!(discriminant.as_ref().map(|(_, e)| e));
     fn test_derive_for_enum_discriminant() {
         let mut item_enum: ItemEnum = parse_quote! {
             enum TestEnum {

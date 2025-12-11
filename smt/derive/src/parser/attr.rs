@@ -1,7 +1,4 @@
-//! The modules provides the following data structures:
-//! - `Mark` enum which represents the SMT-related marking attributes.
-//! - `ImplMark` struct which represents the marking for an annotated impl function.
-//! - `parse_attrs` is the main method to parse the attributes and extract the marks. This method is used in the `ctxt` module.
+//! The modules provides `Mark` enum which represents the SMT-related marking attributes.
 
 use crate::parser::name::UsrFuncName;
 use crate::{bail_if_missing, bail_on};
@@ -13,12 +10,12 @@ use syn::{AttrStyle, Attribute, MacroDelimiter, Meta, MetaList, MetaNameValue, P
 /// Allowed annotation
 enum Annotation {
     Type,
-    Impl,
+    Func,
 }
 
 // the get_ident(&Path) analyzes the path; if the path is not an ident, it will return None.
-// if the path is an identifier it will return Some(path).
 // a path is an identifier if it does not have leading colons, only has one segment, and has no arguments.
+// if the path is an identifier, the acceptable values are "smt_type", "smt_fn".
 impl Annotation {
     /// Convert a path to an annotation
     pub fn parse_path(path: &Path) -> Option<Self> {
@@ -29,7 +26,7 @@ impl Annotation {
             .as_str()
         {
             "smt_type" => Some(Self::Type),
-            "smt_impl" => Some(Self::Impl),
+            "smt_fn" => Some(Self::Func),
             _ => None,
         }
     }
@@ -42,8 +39,8 @@ enum MetaValue {
 }
 
 #[derive(Debug, Clone)]
-/// A mark for an annotated impl function
-pub struct ImplMark {
+/// A mark for an annotated function
+pub struct FuncMark {
     /// whether to derive a receiver-style method for this function
     pub method: Option<UsrFuncName>,
 }
@@ -51,7 +48,7 @@ pub struct ImplMark {
 /// SMT-related marking
 pub enum Mark {
     Type,
-    Impl(ImplMark),
+    Func(FuncMark),
 }
 
 impl Mark {
@@ -59,8 +56,7 @@ impl Mark {
     ///
     /// This function takes a `TokenStream` and attempts to parse it into a
     /// `BTreeMap<String, MetaValue>`. The expected format is a series of
-    /// key-value pairs, where keys are identifiers and values are either
-    /// identifiers or lists of identifiers enclosed in square brackets.
+    /// key-value pairs, where keys are identifiers and values are a single identifier.
     /// Key-value pairs are separated by commas.
     ///
     /// # Arguments
@@ -70,13 +66,6 @@ impl Mark {
     /// # Returns
     ///
     /// * `Result<BTreeMap<String, MetaValue>>` - A map of keys to values, or an error if parsing fails.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// - A key or value or delimiter is missing.
-    /// - A key or item is duplicated.
-    /// - The syntax does not match the expected format.
     fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
         let mut store = BTreeMap::new(); // Stores the parsed key-value pairs
         let mut iter = stream.clone().into_iter(); // Creates an ownership iterator over the token stream
@@ -114,11 +103,11 @@ impl Mark {
             // Extract value (the format is key = value)
             // if the next token is empty (None), it will be caught in the next iteration
             let token = bail_if_missing!(iter.next(), stream, "val");
-            // Extract the value as an identifier or a set of identifiers
+            // Extract the value as an identifier
             let val = match token {
                 // Single identifier value
                 TokenTree::Ident(ident) => MetaValue::One(ident),
-                _ => bail_on!(token, "expect identifier or set of identifiers as value"),
+                _ => bail_on!(token, "expect identifier as value"),
             };
 
             // add to the key-value store
@@ -159,11 +148,11 @@ impl Mark {
             // Path like `test` in #[test]
             // If it is a path, we parse it for Annotations.
             // Basically the parse_path checks if the path is an identifier (not a path with leading colons, only one segment, and no arguments).
-            // If it is an identifier, the acceptable values are "smt_type", "smt_impl".
+            // If it is an identifier, the acceptable values are "smt_type", "smt_fn".
             Meta::Path(path) => match Annotation::parse_path(path) {
                 None => return Ok(None),
                 Some(Annotation::Type) => Self::Type,
-                Some(Annotation::Impl) => Self::Impl(ImplMark { method: None }),
+                Some(Annotation::Func) => Self::Func(FuncMark { method: None }),
             },
             // A meta list is like the `derive(Copy)` in `#[derive(Copy)]`
             Meta::List(MetaList {
@@ -179,7 +168,7 @@ impl Mark {
                             "unexpected list\nfor smt_type, no attributes are expected"
                         )
                     }
-                    Some(Annotation::Impl) => {
+                    Some(Annotation::Func) => {
                         // MacroDelimiter is a grouping token that surrounds a macro body: `m!(...)` or `m!{...}` or `m![...]`
                         // If the delimiter is not Parenthesis (it is a brace or bracket), it will return an error.
                         if !matches!(delimiter, MacroDelimiter::Paren(_)) {
@@ -187,7 +176,7 @@ impl Mark {
                         }
 
                         let mut store = Self::parse_dict(tokens)?;
-                        // #[smt_impl(method = my_method)] is valid
+                        // #[smt_fn(method = my_method)] is valid
                         let method = match store.remove("method") {
                             None => None,
                             // if the ident is not a reserved keyword, it will be parsed to a UsrFuncName
@@ -198,7 +187,7 @@ impl Mark {
                         if !store.is_empty() {
                             bail_on!(tokens, "unrecognized entries"); // no other entries are expected except `method`
                         }
-                        Self::Impl(ImplMark { method })
+                        Self::Func(FuncMark { method })
                     }
                 }
             }
@@ -209,9 +198,10 @@ impl Mark {
                 value: _,    // value in the above example is `"sys/windows.rs"`
             }) => match Annotation::parse_path(path) {
                 None => return Ok(None),
-                Some(_) => bail_on!(attr, "unexpected dict"), // Name-value pairs are not expected for smt_type, smt_impl, smt_spec, and smt_axiom
+                Some(_) => bail_on!(attr, "unexpected dict"), // Name-value pairs are not expected for smt_type, smt_fn
             },
         };
+
         Ok(Some(mark))
     }
 
@@ -224,7 +214,7 @@ impl Mark {
     ///
     /// # Returns
     ///
-    /// * `Result<Option<Self>>` - The extracted mark, if any, or an error if multiple marks are specified.
+    /// * `Result<Option<Self>>`
     pub fn parse_attrs(attrs: &[Attribute]) -> Result<Option<Self>> {
         let mut mark = None;
         for attr in attrs {
@@ -232,7 +222,7 @@ impl Mark {
                 None => continue,
                 Some(parsed) => {
                     if mark.is_some() {
-                        bail_on!(attr, "multiple marks specified"); // if in one of the attributes there exists smt_type, smt_impl, smt_spec, or smt_axiom, no other attributes containing any of these should exist.
+                        bail_on!(attr, "multiple marks specified"); // if in one of the attributes there exists smt_type, smt_fn, no other attributes containing any of these should exist.
                     }
                     mark = Some(parsed);
                 }
@@ -473,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    // attribute except for smt_type, smt_impl, smt_spec, and smt_axiom should be ignored
+    // attribute except for smt_type, smt_fn, smt_spec, and smt_axiom should be ignored
     fn test_parse_attr_meta_path_none() {
         let attr: Attribute = parse_quote! { #[test] };
 
@@ -491,15 +481,15 @@ mod tests {
     }
 
     #[test]
-    // smt_impl is a valid annotation and the attribute is parsed to a Mark::Impl with an empty ImplMark
+    // smt_fn is a valid annotation and the attribute is parsed to a Mark::Impl with an empty ImplMark
     fn test_parse_attr_meta_path_impl() {
-        let attr: Attribute = parse_quote! { #[smt_impl] };
+        let attr: Attribute = parse_quote! { #[smt_fn] };
 
         let res = Mark::parse_attr(&attr);
         assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
             e,
-            Mark::Impl(
-                ImplMark {
+            Mark::Func(
+                FuncMark {
                     method: None,
                 }
             )
@@ -507,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    // if the attribute is a list, the path should be smt_type, smt_impl, smt_spec, or smt_axiom
+    // if the attribute is a list, the path should be smt_type, smt_fn, smt_spec, or smt_axiom
     // otherwise it should be ignored
     fn test_parse_attr_meta_list_none() {
         let attr: Attribute = parse_quote! {#[derive(copy)]};
@@ -544,14 +534,14 @@ mod tests {
     #[test]
     // if !matches!(delimiter, MacroDelimiter::Paren(_)) { bail_on!(attr, "not a parenthesis-enclosed list"); } is invoked.
     fn test_parse_attr_meta_list_impl_no_paren() {
-        let attr: Attribute = parse_quote! { #[smt_impl{xxx}] };
+        let attr: Attribute = parse_quote! { #[smt_fn{xxx}] };
 
         let res = Mark::parse_attr(&attr);
 
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string().as_str(),
-            "not a parenthesis-enclosed list\n# [smt_impl { xxx }]"
+            "not a parenthesis-enclosed list\n# [smt_fn { xxx }]"
         );
     }
 
@@ -559,7 +549,7 @@ mod tests {
     // let mut store = Self::parse_dict(tokens)?; is invoked with an error.
     // all the keys must be an identifier
     fn test_parse_attr_meta_list_impl_parse_dict_err() {
-        let attr: Attribute = parse_quote! { #[smt_impl(1 = val)] };
+        let attr: Attribute = parse_quote! { #[smt_fn(1 = val)] };
 
         let res = Mark::parse_attr(&attr);
 
@@ -574,7 +564,7 @@ mod tests {
     // Some(_) => bail_on!(tokens, "invalid method"), // at most one method is expected
     #[test]
     fn test_parse_attr_meta_list_impl_multiple_methods() {
-        let attr: Attribute = parse_quote! { #[smt_impl(method = [m1,m2])] };
+        let attr: Attribute = parse_quote! { #[smt_fn(method = [m1,m2])] };
 
         let res = Mark::parse_attr(&attr);
 
@@ -588,7 +578,7 @@ mod tests {
     // Some((&item).try_into()?) is invoked with an error. So the item needs to be a reserved keyword.
     #[test]
     fn test_parse_attr_meta_list_impl_method_reserved_keyword() {
-        let attr: Attribute = parse_quote! { #[smt_impl(method = eq)] };
+        let attr: Attribute = parse_quote! { #[smt_fn(method = eq)] };
 
         let res = Mark::parse_attr(&attr);
 
@@ -599,17 +589,17 @@ mod tests {
         );
     }
 
-    // method None and specs is empty for smt_impl
+    // method None and specs is empty for smt_fn
     #[test]
     fn test_parse_attr_meta_list_impl_no_token() {
-        let attr: Attribute = parse_quote! { #[smt_impl()] };
+        let attr: Attribute = parse_quote! { #[smt_fn()] };
 
         let res = Mark::parse_attr(&attr);
 
         assert!(res.is_ok_and(|f| f.is_some_and(|e| matches!(
             e,
-            Mark::Impl(
-                ImplMark {
+            Mark::Func(
+                FuncMark {
                     method: None,
                 }
             )
@@ -620,7 +610,7 @@ mod tests {
     #[test]
     fn test_parse_attr_meta_list_impl_unrecognized_entries() {
         let attr: Attribute =
-            parse_quote! { #[smt_impl(method = m, specs = [s1, s2], unrecognized = entry)] };
+            parse_quote! { #[smt_fn(method = m, specs = [s1, s2], unrecognized = entry)] };
 
         let res = Mark::parse_attr(&attr);
 
@@ -705,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    // name-value pairs are not expected for smt_type, smt_impl, smt_spec, and smt_axiom
+    // name-value pairs are not expected for smt_type, smt_fn, smt_spec, and smt_axiom
     fn test_parse_attr_meta_name_value() {
         let attr: Attribute = parse_quote! { #[smt_type = "type"] };
 
@@ -730,14 +720,14 @@ mod tests {
     fn test_parse_attrs_multiple_marks() {
         let attr1: Attribute = parse_quote! { #[derive(Debug)] };
         let attr2: Attribute = parse_quote! { #[smt_type] };
-        let attr3: Attribute = parse_quote! { #[smt_impl] };
+        let attr3: Attribute = parse_quote! { #[smt_fn] };
 
         let res = Mark::parse_attrs(&[attr1, attr2, attr3]);
 
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string().as_str(),
-            "multiple marks specified\n# [smt_impl]"
+            "multiple marks specified\n# [smt_fn]"
         );
     }
 

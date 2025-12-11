@@ -1,0 +1,2 @@
+# invalid character after underscore in hex int
+hello = 0xa_$

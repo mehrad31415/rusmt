@@ -1,9 +1,9 @@
 //! Context manager for holding marked items in rust code; the main logic to parse is in this file.
 
 use crate::parser::apply::ApplyDatabase;
-use crate::parser::attr::{ImplMark, Mark};
+use crate::parser::attr::{FuncMark, Mark};
 use crate::parser::expr::ExprParserRoot;
-use crate::parser::func::{FuncSig, ImplFuncDef};
+use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::generics::Generics;
 use crate::parser::name::{UsrFuncName, UsrTypeName};
 use crate::parser::ty::{TypeBody, TypeDef};
@@ -34,13 +34,13 @@ impl MarkedType {
 }
 
 #[derive(Debug, Clone)]
-/// SMT-marked function as impl
-pub struct MarkedImpl {
-    item: ItemFn,   // the function that is marked as smt_impl (here fn my_fn { ... })
-    mark: ImplMark, // the mark that is associated with the function
+/// SMT-marked function
+pub struct MarkedFunc {
+    item: ItemFn,   // the function item
+    mark: FuncMark, // the mark that is associated with the function
 }
 
-impl MarkedImpl {
+impl MarkedFunc {
     pub fn name(&self) -> &Ident {
         &self.item.sig.ident
     }
@@ -49,14 +49,14 @@ impl MarkedImpl {
 /// A helper enum to resolve naming conflicts in sanity check
 enum NamedItem {
     Type,
-    Impl,
+    Func,
 }
 
 impl Display for NamedItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Type => write!(f, "type"),
-            Self::Impl => write!(f, "impl"),
+            Self::Func => write!(f, "function"),
         }
     }
 }
@@ -65,7 +65,7 @@ impl Display for NamedItem {
 /// Context manager for holding marked items in rust code
 pub struct Context {
     types: BTreeMap<UsrTypeName, MarkedType>,
-    impls: BTreeMap<UsrFuncName, MarkedImpl>,
+    funcs: BTreeMap<UsrFuncName, MarkedFunc>,
 }
 
 impl Context {
@@ -75,7 +75,7 @@ impl Context {
         // create fresh context
         let mut ctxt = Self {
             types: BTreeMap::new(),
-            impls: BTreeMap::new(),
+            funcs: BTreeMap::new(),
         };
 
         // scan over the code base
@@ -161,10 +161,10 @@ impl Context {
                         &syntax.ident
                     ),
                 },
-                // a function can be marked with #[smt_impl]
+                // a function can be marked with #[smt_fn]
                 Item::Fn(syntax) => match Mark::parse_attrs(&syntax.attrs)? {
                     None => continue, // the function is not marked with any smt-related attributes
-                    Some(Mark::Impl(mark)) => self.add_impl(MarkedImpl { item: syntax, mark })?,
+                    Some(Mark::Func(mark)) => self.add_func(MarkedFunc { item: syntax, mark })?,
                     _ => bail_on!(
                         syntax,
                         "invalid annotation\n#[smt_type] is not allowed for fn"
@@ -188,8 +188,8 @@ impl Context {
                         Some((_, items)) => self.process_items(items)?,
                     }
                 }
-                // ignore other items
-                _ => (),
+                // throw an error for any other item
+                _ => panic!("unsupported item in smt derive"),
             }
         }
         Ok(())
@@ -215,22 +215,22 @@ impl Context {
         Ok(())
     }
 
-    /// Add an impl function to the context
-    fn add_impl(&mut self, item: MarkedImpl) -> Result<()> {
+    /// Add a function to the context
+    fn add_func(&mut self, item: MarkedFunc) -> Result<()> {
         // check if the function name is a reserved keyword or underscore, return an error if so
         let name = item.name().try_into()?;
 
-        // check for duplicated impl name, return an error if so
-        if let Some(prev) = self.impls.get(&name) {
+        // check for duplicated func name, return an error if so
+        if let Some(prev) = self.funcs.get(&name) {
             bail_on_with_note!(
                 prev.name(),
                 "previously defined here",
                 item.name(),
-                "duplicated impl name"
+                "duplicated func name"
             );
         }
-        trace!("impl found: {name}");
-        self.impls.insert(name, item.clone());
+        trace!("func found: {name}");
+        self.funcs.insert(name, item.clone());
         Ok(())
     }
 
@@ -243,9 +243,9 @@ impl Context {
             .iter()
             .map(|(k, v)| (k.as_ref(), (NamedItem::Type, v.name())))
             .chain(
-                self.impls
+                self.funcs
                     .iter()
-                    .map(|(k, v)| (k.as_ref(), (NamedItem::Impl, v.name()))),
+                    .map(|(k, v)| (k.as_ref(), (NamedItem::Func, v.name()))),
             )
         {
             if let Some((prev_kind, prev_ident)) = names.get(key) {
@@ -264,7 +264,7 @@ impl Context {
         Ok(())
     }
 
-    /// Parse the generics declarations
+    /// Parse the generics declarations of types
     pub fn parse_generics(self) -> Result<ContextWithGenerics> {
         let mut types = BTreeMap::new();
         for (name, marked) in self.types {
@@ -275,16 +275,16 @@ impl Context {
 
         Ok(ContextWithGenerics {
             types,
-            impls: self.impls,
+            funcs: self.funcs,
         })
     }
 }
 
 #[derive(Debug)]
-/// Context manager after analyzing for generics
+/// Context manager after analyzing generics
 pub struct ContextWithGenerics {
     types: BTreeMap<UsrTypeName, (Generics, MarkedType)>,
-    impls: BTreeMap<UsrFuncName, MarkedImpl>,
+    funcs: BTreeMap<UsrFuncName, MarkedFunc>,
 }
 
 impl ContextWithGenerics {
@@ -327,11 +327,11 @@ impl ContextWithGenerics {
         }
 
         // re-packing
-        let Self { types: _, impls } = self;
+        let Self { types: _, funcs } = self;
 
         Ok(ContextWithType {
             types: new_types,
-            impls,
+            funcs,
         })
     }
 }
@@ -346,7 +346,7 @@ impl ContextWithGenerics {
 /// Also the variants and/or fields are stored in the TypeBody.
 pub struct ContextWithType {
     types: BTreeMap<UsrTypeName, TypeDef>,
-    impls: BTreeMap<UsrFuncName, MarkedImpl>,
+    funcs: BTreeMap<UsrFuncName, MarkedFunc>,
 }
 
 impl ContextWithType {
@@ -358,9 +358,9 @@ impl ContextWithType {
 
     /// Parse function signatures
     pub fn parse_func_sigs(self) -> Result<ContextWithSig> {
-        // impl (extracting the function signature)
-        let mut sig_impls = BTreeMap::new();
-        for (name, marked) in &self.impls {
+        // extracting the function signature
+        let mut sig_funcs = BTreeMap::new();
+        for (name, marked) in &self.funcs {
             let ItemFn {
                 attrs: _,
                 vis: _,
@@ -368,22 +368,21 @@ impl ContextWithType {
                 block: _, // handled later
             } = &marked.item; // function item
 
-            trace!("handling impl sig: {name}");
+            trace!("handling func sig: {name}");
             // convert the function signature into a FuncSig struct (abstract syntax tree for function signatures)
             let parsed = FuncSig::from_sig(&self, sig)?;
-            trace!("impl sig analyzed: {name}");
-            // we pass on the sig to bail_on the signature in case they are not compatible in spec and impl
-            sig_impls.insert(name.clone(), (parsed, sig.clone()));
+            trace!("func sig analyzed: {name}");
+            sig_funcs.insert(name.clone(), (parsed, sig.clone()));
         }
 
         let mut fn_db = ApplyDatabase::with_intrinsics(); // a database intialized with the system functions
 
-        for (name, (sig, raw)) in sig_impls.iter() {
-            // this will never throw an error and the `expect` unwraps the MarkedImpl
-            let mark = &self.impls.get(name).expect("impl").mark;
+        for (name, (sig, raw)) in sig_funcs.iter() {
+            // this will never throw an error and the `expect` unwraps the MarkedFunc
+            let mark = &self.funcs.get(name).expect("func").mark;
             // register to type db
             // register_user_func is a function that registers a user-defined function to `fn_db`, which is a database for functions
-            // the function takes the name of the function, the signature of the function, the method name, and the kind of the function (impl or spec)
+            // the function takes the name of the function, the signature of the function, and the method name
             match fn_db.register_user_func(name, sig, mark.method.as_ref()) {
                 Ok(()) => (),
                 Err(e) => bail_on!(raw, "{}", e),
@@ -393,38 +392,36 @@ impl ContextWithType {
         trace!("databases constructed");
 
         // re-packing
-        let Self { types, impls } = self;
+        let Self { types, funcs } = self;
+        let mut func_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = BTreeMap::new();
 
-        let mut impls_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = BTreeMap::new();
-
-        // extract the func sig and body from the impls
-        let unpacked_impls: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = impls
+        // extract the func sig and body
+        let unpacked_funcs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = funcs
             .into_iter()
             .map(|(name, marked)| {
-                // all the impls are stored in sig_impls
-                let (sig, _) = sig_impls.remove(&name).unwrap();
+                let (sig, _) = sig_funcs.remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
 
                 if let Some(method) = &marked.mark.method {
-                    if impls_method.contains_key(method) {
-                        panic!("method {} is already defined in impl {}", method, name);
+                    if func_method.contains_key(method) {
+                        panic!("method {} is already defined in function {}", method, name);
                     }
-                    impls_method.insert(method.clone(), (sig.clone(), stmts.clone()));
+                    func_method.insert(method.clone(), (sig.clone(), stmts.clone())); // the method has the same signature and body as the function
                 }
 
                 (name, (sig, stmts))
             })
             .collect();
 
-        // add the methods to the unpacked impls
-        let unpacked_impls = unpacked_impls
+        // add the methods to the unpacked funcs
+        let unpacked_funcs = unpacked_funcs
             .into_iter()
-            .chain(impls_method)
+            .chain(func_method)
             .collect::<BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>>();
 
         let ctxt = ContextWithSig {
             types,
-            impls: unpacked_impls,
+            funcs: unpacked_funcs,
             fn_db,
         };
 
@@ -437,7 +434,7 @@ impl ContextWithType {
 /// Context manager after type and function signature analysis is done
 pub struct ContextWithSig {
     types: BTreeMap<UsrTypeName, TypeDef>,
-    impls: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>,
+    funcs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>, // all functions and methods with their signatures and bodies
     pub fn_db: ApplyDatabase,
 }
 
@@ -455,18 +452,15 @@ impl ContextWithSig {
     /// Parse function body
     ///
     /// This function will convert a ContextWithSig struct into a ContextWithFunc struct if successful.
-    /// The `types` and `vc_db` fields are passed as is.
+    /// The `types` are passed as is.
     /// The `fn_db` field is ignored as it is not needed anymore. It is only used in the expr module to look up the function names.
-    /// The `impls`, `specs`, and `axioms` fields are converted from `(FuncSig, Vec<Stmt>)` to `ImplFuncDef`, `SpecFuncDef`, and `Axiom` respectively.
-    /// The keys of the `impls`, `specs`, and `axioms` fields remain the same (UsrFuncName, UsrFuncName, and AxiomName).
-    /// The `ImplFuncDef`, `SpecFuncDef`, and `Axiom` are defined in the func.rs file.
-    /// The `ImplFuncDef` struct encapsulates the function signature and the function body as an expression tree. Same goes for `SpecFuncDef` and `Axiom`.
+    /// The `FuncDef` struct encapsulates the function signature and the function body as an expression tree.
     /// The expression tree is built from the statements of the function body => ExprParserRoot::new(&self, Kind::Impl, sig).parse(stmts)?
     pub fn parse_func_body(self) -> Result<ContextWithFunc> {
-        // unpack impls
-        let mut unpacked_impls = BTreeMap::new();
-        for (name, (sig, stmts)) in &self.impls {
-            trace!("handling impl body: {name}");
+        // unpack function bodies
+        let mut unpacked_funcs = BTreeMap::new();
+        for (name, (sig, stmts)) in &self.funcs {
+            trace!("handling function body: {name}");
             // build the expression tree from the statements
             // this is called for each function in `rusmart`
             // The function body can only contain one expression statement (must be at the end) and the rest are Local let-binding statements
@@ -475,37 +469,35 @@ impl ContextWithSig {
             // The `body` expression encapsulates the `instruction` which in turn encapsulates the Op and its type
             // `Op` in `body` is the AST of the sole last expression in the function body and the type is the return type of the function
             let body = ExprParserRoot::new(&self, sig).parse(stmts)?;
-            unpacked_impls.insert(
+            unpacked_funcs.insert(
                 name.clone(),
-                ImplFuncDef {
+                FuncDef {
                     head: sig.clone(),
                     body,
                 },
             );
-            trace!("impl body analyzed: {name}");
+            trace!("function body analyzed: {name}");
         }
 
         // repacking
-        // - fn_db is ignored as it is not needed anymore. It is only used in the expr module to look up the function names
-        // - types and vc_db are passed as is
-        // - impls, specs, and axioms are unpacked
+        // fn_db is ignored as it is not needed anymore. It is only used in the expr module to look up the function names
         let Self {
             types,
-            impls: _,
+            funcs: _,
             fn_db: _,
         } = self;
 
         Ok(ContextWithFunc {
             types,
-            impls: unpacked_impls,
+            funcs: unpacked_funcs,
         })
     }
 }
 
 /// Context manager after type, signature, and expression conversion is done
 pub struct ContextWithFunc {
-    types: BTreeMap<UsrTypeName, TypeDef>,
-    impls: BTreeMap<UsrFuncName, ImplFuncDef>,
+    pub types: BTreeMap<UsrTypeName, TypeDef>,
+    pub funcs: BTreeMap<UsrFuncName, FuncDef>,
 }
 
 impl ContextWithFunc {
@@ -518,7 +510,7 @@ impl ContextWithFunc {
 
     /// Get the function definition for a given function name
     pub fn get_func(&self, name: &UsrFuncName) -> &ImplFuncDef {
-        self.impls
+        self.funcs
             .get(name)
             .unwrap_or_else(|| panic!("fn {} does not exist", name))
     }

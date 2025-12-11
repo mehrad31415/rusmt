@@ -1,0 +1,9 @@
+# Do not do this
+
+[fruit.x]
+
+apple = "red"
+
+[fruit.x]
+
+orange = "orange"

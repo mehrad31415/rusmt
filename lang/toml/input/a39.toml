@@ -1,0 +1,2 @@
+# hexadecimal valid (leading zero allowed after 0x)
+hex1 = 0x0000DEADBEEF

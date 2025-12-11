@@ -9,18 +9,12 @@ use std::fmt::{Display, Formatter};
 
 /// An error for type inference
 pub enum TIError {
-    /// Error indicating a cyclic unification was detected.
-    /// This occurs when a type variable is unified with a type that contains itself. for example, "Type A is equal to a list of Type A." example: type A = [A]
-    /// Cyclic unification errors usually mean that the type relationships are self-referential and cannot be resolved, leading to an infinite loop.
     CyclicUnification,
 }
 
-/// A specialized `Result` type for type inference operations, where the error type is `TIError` and the success type is a generic `T`.
 /// It is only used in this module in the form of TIResult<Option<TypeRef>>.
 type TIResult<T> = Result<T, TIError>;
 
-/// A declarative macro that unwraps a `TIResult<Option<T>>`. item? first checks if `item` is an Err(TIError::CyclicUnification) or Ok(Option<T>). If it is an Err, it returns the TIError::CyclicUnification. If it is not, then `Ok` is unwrapped and Option<T> is checked. If it is None, it early returns Ok(None). If it is Some(value), the value is used. This macro can only be used inside functions which have a return type of TIResult<Option<T>>.
-///
 /// This macro simplifies error handling during type unification.
 /// - If the result is `Ok(Some(value))`, it retrieves the value.
 /// - If the result is `Ok(None)`, it returns `Ok(None)` immediately.
@@ -34,20 +28,7 @@ macro_rules! ti_unwrap {
     };
 }
 
-/// Try to unify the two types, bail on the spanned element if not unified.
-///
-/// If unification fails due to a cyclic unification, it bails with an error message.
-/// If unification yields `None`, it bails with an error message.
-/// Otherwise, it returns the unified type.
-///
-/// # Arguments
-///
-/// * `$unifier` - The type unifier to use, it is of type `&mut TypeUnifier`.
-/// * `$lhs` - The left-hand side type marking the returned type, it is of type `&TypeRef`.
-/// * `$rhs` - The right-hand side type marking the expected type, it is of type `&TypeRef`.
-/// * `$spanned` - The spanned element (e.g., for error reporting).
-///
-/// The return type of `unify` is `TIResult<Option<TypeRef>>`.
+/// This macro simplifies the unification process and error handling.
 macro_rules! ti_unify {
     ($unifier:expr, $lhs:expr, $rhs:expr, $spanned:expr) => {
         match $unifier.unify($lhs, $rhs) {
@@ -79,11 +60,6 @@ impl Display for TypeVar {
 /// Represents a type reference in the type unification process.
 ///
 /// Like TypeTag, but allows type variable for undetermined types.
-/// # Examples
-/// let var = TypeVar(0usize);
-/// let type_ref = TypeRef::Var(var);
-/// println!("Type reference: {}", type_ref); // Type reference: ?0
-/// TypeRef is a superset of TypeTag. It can represent all types that TypeTag can represent, plus type variables, which are used to represent types that are not yet explicitly determined.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum TypeRef {
     /// variable
@@ -92,10 +68,22 @@ pub enum TypeRef {
     Boolean,
     /// integer (unlimited precision)
     Integer,
-    /// rational numbers (unlimited precision)
-    Rational,
+    /// real numbers (unlimited precision)
+    Real,
+    /// floating point 32-bit
+    F32,
+    /// floating point 64-bit
+    F64,
+    /// signed 32-bit integer
+    I32,
+    /// signed 64-bit integer
+    I64,
+    /// unsigned 32-bit integer
+    U32,
+    /// unsigned 64-bit integer
+    U64,
     /// string
-    Text,
+    String,
     /// inductively defined type
     Cloak(Box<TypeRef>),
     /// SMT-sequence
@@ -103,7 +91,7 @@ pub enum TypeRef {
     /// SMT-set
     Set(Box<TypeRef>),
     /// SMT-array
-    Map(Box<TypeRef>, Box<TypeRef>),
+    Array(Box<TypeRef>, Box<TypeRef>),
     /// dynamic error type
     Error,
     /// user-defined type
@@ -122,13 +110,19 @@ impl From<&TypeTag> for TypeRef {
         match ty {
             TypeTag::Boolean => Self::Boolean,
             TypeTag::Integer => Self::Integer,
-            TypeTag::Rational => Self::Rational,
-            TypeTag::Text => Self::Text,
+            TypeTag::Real => Self::Real,
+            TypeTag::F32 => Self::F32,
+            TypeTag::F64 => Self::F64,
+            TypeTag::U32 => Self::U32,
+            TypeTag::U64 => Self::U64,
+            TypeTag::I32 => Self::I32,
+            TypeTag::I64 => Self::I64,
+            TypeTag::String => Self::String,
             TypeTag::Cloak(sub) => Self::Cloak(Box::new(sub.as_ref().into())), // as_ref() dereferences the `sub` twice and adds a pointer. The first dereference eliminates the & reference, and the second dereference eliminates the Box reference. Therefore, sub.as_ref() gives &TypeTag, and sub.as_ref().into() gives TypeRef. The into() method is the same as the From trait. so sub.as_ref().into() is the same as TypeRef::from(sub.as_ref()).
             TypeTag::Seq(sub) => Self::Seq(Box::new(sub.as_ref().into())),
             TypeTag::Set(sub) => Self::Set(Box::new(sub.as_ref().into())),
-            TypeTag::Map(key, val) => {
-                Self::Map(Box::new(key.as_ref().into()), Box::new(val.as_ref().into()))
+            TypeTag::Array(key, val) => {
+                Self::Array(Box::new(key.as_ref().into()), Box::new(val.as_ref().into()))
             }
             TypeTag::Error => Self::Error,
             TypeTag::User(name, tags) => {
@@ -144,25 +138,23 @@ impl TypeRef {
     /// Validates whether the type is complete (i.e., contains no type variables).
     ///
     /// Returns `true` if the type contains no `Var` variants; `false` otherwise.
-    ///
-    /// # Examples
-    /// let int_type = TypeRef::Integer;
-    /// assert!(int_type.validate());
-    ///
-    /// let var = TypeVar(0usize);
-    /// let var_type = TypeRef::Var(var);
-    /// assert!(!var_type.validate());
     pub fn validate(&self) -> bool {
         match self {
             Self::Var(_) => false,
             Self::Boolean
             | Self::Integer
-            | Self::Rational
-            | Self::Text
+            | Self::Real
+            | Self::F32
+            | Self::F64
+            | Self::I32
+            | Self::I64
+            | Self::U32
+            | Self::U64
+            | Self::String
             | Self::Error
             | Self::Parameter(_) => true,
             Self::Cloak(sub) | Self::Seq(sub) | Self::Set(sub) => sub.validate(),
-            Self::Map(key, val) => key.validate() && val.validate(),
+            Self::Array(key, val) => key.validate() && val.validate(),
             Self::Pack(elems) => elems.iter().all(|t| t.validate()), // all() returns true if all elements of the iterator return true when passed to the closure.
             Self::User(_, args) => args.iter().all(|t| t.validate()),
         }
@@ -171,25 +163,25 @@ impl TypeRef {
     /// Converts the `TypeRef` back into a `TypeTag`, if possible.
     ///
     /// Returns `Some(TypeTag)` if the type contains no type variables; `None` otherwise.
-    /// This is because the Var(TypeVar) variant cannot be converted back into a TypeTag.
-    ///
-    /// # Examples
-    /// let int_type = TypeRef::Integer;
-    /// let type_tag = int_type.reverse();
-    /// assert_eq!(type_tag, Some(TypeTag::Integer));
     pub fn reverse(&self) -> Option<TypeTag> {
         let reversed = match self {
             Self::Var(_) => return None, // Cannot reverse a type variable into a concrete type.
             Self::Boolean => TypeTag::Boolean,
             Self::Integer => TypeTag::Integer,
-            Self::Rational => TypeTag::Rational,
-            Self::Text => TypeTag::Text,
+            Self::Real => TypeTag::Real,
+            Self::F32 => TypeTag::F32,
+            Self::F64 => TypeTag::F64,
+            Self::I32 => TypeTag::I32,
+            Self::I64 => TypeTag::I64,
+            Self::U32 => TypeTag::U32,
+            Self::U64 => TypeTag::U64,
+            Self::String => TypeTag::String,
             Self::Error => TypeTag::Error,
             Self::Parameter(name) => TypeTag::Parameter(name.clone()),
             Self::Cloak(sub) => TypeTag::Cloak(Box::new(sub.as_ref().reverse()?)), // as_ref() dereferences the `sub` twice and adds a pointer. The first dereference eliminates the & reference, and the second dereference eliminates the Box reference. Therefore, sub.as_ref() gives &TypeRef, and sub.as_ref().reverse() gives Option<TypeTag>. The ? operator unwraps the Option and returns the value inside the Some variant or returns None.
             Self::Seq(sub) => TypeTag::Seq(Box::new(sub.as_ref().reverse()?)),
             Self::Set(sub) => TypeTag::Set(Box::new(sub.as_ref().reverse()?)),
-            Self::Map(key, val) => TypeTag::Map(
+            Self::Array(key, val) => TypeTag::Array(
                 Box::new(key.as_ref().reverse()?),
                 Box::new(val.as_ref().reverse()?),
             ),
@@ -215,12 +207,18 @@ impl Display for TypeRef {
             Self::Var(var) => var.fmt(f), // like TypeVar, the display is ?<index> where index is the usize value of the TypeVar.
             Self::Boolean => write!(f, "Boolean"),
             Self::Integer => write!(f, "Integer"),
-            Self::Rational => write!(f, "Rational"),
-            Self::Text => write!(f, "Text"),
+            Self::Real => write!(f, "Real"),
+            Self::F32 => write!(f, "F32"),
+            Self::F64 => write!(f, "F64"),
+            Self::I32 => write!(f, "I32"),
+            Self::I64 => write!(f, "I64"),
+            Self::U32 => write!(f, "U32"),
+            Self::U64 => write!(f, "U64"),
+            Self::String => write!(f, "String"),
             Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
             Self::Seq(sub) => write!(f, "Seq<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
-            Self::Map(key, val) => write!(f, "Map<{key},{val}>"),
+            Self::Array(key, val) => write!(f, "Array<{key},{val}>"),
             Self::Error => write!(f, "Error"),
             Self::User(name, args) => {
                 if args.is_empty() {
@@ -239,16 +237,15 @@ impl Display for TypeRef {
 
 /// An equivalence group of type variables.
 ///
-/// Types that are unified together are stored in an equivalence group.
-/// The `vars` field contains the indices of the type variables in the group.
-/// The `sort` field contains the reference type assigned to the group which is the inferred type (if any).
 /// This struct is not public because it is only used internally by the Typing struct.
 #[derive(Clone, Debug)]
 struct TypeEquivGroup {
     /// Set of type variable indices that are equivalent.
-    vars: BTreeSet<usize>,
+    vars: BTreeSet<usize>, // Example: {0, 4, 7} means "Variable 0, Variable 4, and Variable 7 are all the same type.
     /// The reference type assigned to this equivalence group, if any.
     sort: Option<TypeRef>,
+    // Example: Some(Integer). This means "Variables 0, 4, and 7 are ALL Integers."
+    // Example: None. This means "We know 0, 4, and 7 are the same, but we still don't know what type that is."
 }
 
 impl TypeEquivGroup {
@@ -265,8 +262,7 @@ impl TypeEquivGroup {
 
     /// Extracts the representative type of this group.
     ///
-    /// If a concrete type is assigned (`sort` is `Some`), returns that type.
-    /// Otherwise, returns a `TypeRef::Var` using the minimum type variable index.
+    /// "What is the current best name for this group?"
     pub fn repr(&self) -> TypeRef {
         match self.sort.as_ref() {
             // as_ref() Converts from `&Option<T>` to `Option<&T>` to not take ownership of TypeRef.
@@ -281,7 +277,7 @@ impl TypeEquivGroup {
 #[derive(Clone)]
 struct Typing {
     /// A key-value map where the key is the index of a type variable (like 0 in TypeVar(0usize)) and the value is the index of the equivalence group of the type variable.
-    params: BTreeMap<usize, usize>,
+    params: BTreeMap<usize, usize>, // "Where is the file for variable #5?"
     /// Holds the equivalence groups.
     groups: Vec<TypeEquivGroup>,
 }
@@ -324,15 +320,7 @@ impl Typing {
 
     /// Merge the type constraints
     ///
-    /// Unifies the groups of `l` and `h`, updating their types accordingly.
-    /// Returns the inferred type after merging.
-    ///
-    /// # Errors
-    ///
-    /// Returns `TIError::CyclicUnification` if a cyclic unification is detected.
-    ///
-    /// This is only called in the unification process when both types are type variables.
-    /// Here l was created before h so h is merged into l.
+    /// l has the lower index (i.e., l.0 < h.0).
     fn merge_group(
         &mut self,
         l: &TypeVar,
@@ -415,7 +403,12 @@ impl Typing {
         // update the equivalence group of the lower type variable.
         *self.groups.get_mut(idx_l).unwrap() = group_l.clone();
         // update the equivalence group of the higher type variable to the equivalence group of the lower type variable. So both the type variables l and h point to the same equivalence group (have the same group index).
-        *self.params.get_mut(&h.0).unwrap() = idx_l;
+        for var_id in &group_h.vars {
+            *self
+                .params
+                .get_mut(var_id)
+                .expect("Var in group but not params") = idx_l;
+        }
 
         // Pre-calculate the inferred type.
         let inferred = group_l.repr();
@@ -426,11 +419,6 @@ impl Typing {
     /// Assign the constraint (this is only used when one of the types is a type variable and the other is a concrete type).
     ///
     /// Updates the type of the type variable `v` with the concrete type `t`.
-    /// The way this is done is by retrieving the equivalence group of the type variable and assigning the concrete type to the group if it does not have a concrete type already. If the group has a concrete type, the concrete type is unified with the concrete type `t`. This only updates the sort field of the equivalence group.
-    ///
-    /// # Errors
-    ///
-    /// Returns `TIError::CyclicUnification` if a cyclic unification is detected.
     fn update_group(
         &mut self,
         v: &TypeVar,
@@ -490,7 +478,6 @@ impl Typing {
             // Both are type variables.
             (Var(l), Var(r)) => match Ord::cmp(&l.0, &r.0) {
                 // same variables as they have same ids
-                // Ord::cmp returns Ordering::Less, Ordering::Equal, or Ordering::Greater. It is used to compare two values and it is part of the standard library (does not need to be imported). &l.0.cmp(&r.0) = Ord::cmp(&l.0, &r.0). Ordering needs to be imported (use std::cmp::Ordering).
                 Ordering::Equal => {
                     // if the indexes of the type variables are equal, return the type variable itself. In this case, the type variables are the same. They are the same variable.
                     // no knowledge gain in this case
@@ -506,8 +493,14 @@ impl Typing {
             // Both are concrete types.
             (Boolean, Boolean) => Boolean,
             (Integer, Integer) => Integer,
-            (Rational, Rational) => Rational,
-            (Text, Text) => Text,
+            (Real, Real) => Real,
+            (F32, F32) => F32,
+            (F64, F64) => F64,
+            (I32, I32) => I32,
+            (I64, I64) => I64,
+            (U32, U32) => U32,
+            (U64, U64) => U64,
+            (String, String) => String,
             (Error, Error) => Error,
 
             // variadic types
@@ -521,7 +514,7 @@ impl Typing {
             (Set(sub_lhs), Set(sub_rhs)) => {
                 Set(ti_unwrap!(self.unify(sub_lhs, sub_rhs, involved)).into())
             }
-            (Map(key_lhs, val_lhs), Map(key_rhs, val_rhs)) => Map(
+            (Array(key_lhs, val_lhs), Array(key_rhs, val_rhs)) => Array(
                 ti_unwrap!(self.unify(key_lhs, key_rhs, involved)).into(),
                 ti_unwrap!(self.unify(val_lhs, val_rhs, involved)).into(),
             ),
@@ -576,13 +569,6 @@ impl Typing {
     }
 
     /// Retrieve the type behind the type variable
-    ///
-    /// Returns the concrete type assigned to the variable's equivalence group, or the variable itself.
-    ///
-    /// When we have a TypeVar, it is like TypeVar(usize). var.0 gives the usize of the TypeVar.
-    /// In this case, self.params.get(&var.0) returns the `usize value` of the corresponding TypeVar in the `params` BTreeMap. This is because each TypeVar is stored in the params BTreeMap with its usize as the key. Look at mk_var method for more clarification. The `usize value` is the index of the equivalence group of the TypeVar (idx).
-    /// self.groups.get(idx).unwrap() returns the equivalence group of the TypeVar.
-    /// the repr() method of the TypeEquivGroup struct returns the representative type of the equivalence group (that can be from the sort field of the group and if it is None, it returns the minimum index of the vars field of the group like TypeRef::Var(TypeVar(0usize)) etc.).
     fn retrieve_type(&self, var: &TypeVar) -> TypeRef {
         let idx = *self
             .params
@@ -666,13 +652,19 @@ impl TypeUnifier {
             TypeRef::Var(var) => self.retrieve_type(var), // calls the TypeUnifier::retrieve_type method which in turn calls the Typing::retrieve_type method. It retrieves the equivalence group of the TypeVar and returns the representative type of the group (that can be from the sort field of the group and if it is None, it returns the minimum index of the vars field of the group like TypeRef::Var(TypeVar(0usize)) etc.).
             TypeRef::Boolean => TypeRef::Boolean,
             TypeRef::Integer => TypeRef::Integer,
-            TypeRef::Rational => TypeRef::Rational,
-            TypeRef::Text => TypeRef::Text,
+            TypeRef::Real => TypeRef::Real,
+            TypeRef::F32 => TypeRef::F32,
+            TypeRef::F64 => TypeRef::F64,
+            TypeRef::I32 => TypeRef::I32,
+            TypeRef::I64 => TypeRef::I64,
+            TypeRef::U32 => TypeRef::U32,
+            TypeRef::U64 => TypeRef::U64,
+            TypeRef::String => TypeRef::String,
             TypeRef::Cloak(sub) => TypeRef::Cloak(self.refresh_type(sub).into()), // the into() method converts the TypeRef into a Box<TypeRef>.
             TypeRef::Seq(sub) => TypeRef::Seq(self.refresh_type(sub).into()),
             TypeRef::Set(sub) => TypeRef::Set(self.refresh_type(sub).into()),
-            TypeRef::Map(key, val) => {
-                TypeRef::Map(self.refresh_type(key).into(), self.refresh_type(val).into())
+            TypeRef::Array(key, val) => {
+                TypeRef::Array(self.refresh_type(key).into(), self.refresh_type(val).into())
             }
             TypeRef::Error => TypeRef::Error,
             TypeRef::User(name, args) => TypeRef::User(

@@ -1,267 +1,144 @@
 //! Converts a type definition to a Z3 datatype.
 
-use crate::backend::z3::sort::sort_to_z3;
 use crate::ir::{
     ctxt::IRContext,
     index::UsrSortId,
     sort::{DataType, Sort, Variant},
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort};
 
-/// Converts a tuple type to a Z3 datatype.
-pub fn mk_unnamed_tuple(
-    ctx: &Context,
-    sid: UsrSortId,
-    elems: &[Sort],
-    ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, DatatypeSort>,
-    sid_set: &BTreeSet<UsrSortId>,
-) -> DatatypeBuilder {
-    if ir.ty_registry.reverse_lookup(sid).1 != elems {
-        panic!("Tuples elements are not consistent");
+/// Helper to resolve the SMT name of a Sort ID
+fn resolve_type_name(ir: &IRContext, sid: UsrSortId) -> String {
+    let dt = ir.ty_registry.retrieve(sid);
+    match dt {
+        DataType::Tuple(_) if ir.ty_registry.reverse_lookup(sid).0.is_none() => {
+            // Unnamed tuple naming logic
+            format!(
+                "Tuple_{}",
+                ir.ty_registry
+                    .reverse_lookup(sid)
+                    .1
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join("_")
+            )
+        }
+        _ => {
+            let (ty_name, _) = ir.ty_registry.reverse_lookup(sid);
+            ty_name.as_ref().expect("type name").to_string()
+        }
     }
+}
 
-    let tuple_name = format!(
-        "Tuple_{}",
-        ir.ty_registry
-            .reverse_lookup(sid)
-            .1
-            .iter()
-            .map(|t| t.to_string())
-            .collect::<Vec<_>>()
-            .join("_")
-    );
-    let constructor_name = format!("mk-{tuple_name}");
+/// Helper to format a Sort into its SMT string representation.
+fn format_sort(sort: &Sort, ir: &IRContext) -> String {
+    match sort {
+        Sort::User(sid) => resolve_type_name(ir, *sid),
+        // Assuming other sorts (Int, Bool, etc) implement Display correctly for SMT-LIB
+        _ => sort.to_string(),
+    }
+}
 
-    // Generate field names: field_Tuple_Integer_Bool_1_, field_Tuple_Integer_Bool_2_, etc.
-    // tuple_name gives the field a unique name accross all tuples and the i+1 gives the field a unique name within the tuple
-    let field_names: Vec<String> = (0..elems.len())
-        .map(|i| format!("field_{}_{}_", tuple_name, i + 1))
-        .collect();
+/// Converts an unnamed tuple to SMT-LIB string body.
+/// Output format: ((mk-Name (field_1 Type) (field_2 Type)))
+pub fn mk_unnamed_tuple_str(type_name: String, elems: &[Sort], ir: &IRContext) -> String {
+    let constructor_name = format!("mk-{type_name}");
 
-    // Combine fields with their respective sorts
-    let field_defs = elems
+    let fields: Vec<String> = elems
         .iter()
-        .zip(field_names.iter())
-        .map(|(sort, field_name)| {
-            (
-                field_name.as_str(),
-                if let Sort::User(x) = sort {
-                    if sid_set.contains(x) {
-                        DatatypeAccessor::Datatype(get_name(&ir, x))
-                    } else {
-                        DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, None, ty_map))
-                    }
-                } else {
-                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, None, ty_map))
-                },
-            )
+        .enumerate()
+        .map(|(i, sort)| {
+            let field_name = format!("field_{}_{}_", type_name, i + 1);
+            format!("({} {})", field_name, format_sort(sort, ir))
         })
         .collect();
 
-    // for tuple (Integer, Bool):
-    // (declare-datatypes () ((Tuple_Integer_Bool (mk-Tuple_Integer_Bool (field_Tuple_Integer_Bool_1_ Int) (field_Tuple_Integer_Bool_2_ Bool)))))
-    let dt = DatatypeBuilder::new(ctx, tuple_name.as_str())
-        .variant(constructor_name.as_str(), field_defs);
-    dt
+    format!("(({} {}))", constructor_name, fields.join(" "))
 }
 
-/// Converts a named tuple type to a Z3 datatype.
-pub fn mk_named_tuple(
-    ctx: &Context,
-    sid: UsrSortId,
-    elems: &[Sort],
-    ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, DatatypeSort>,
-    sid_set: &BTreeSet<UsrSortId>,
-) -> DatatypeBuilder {
-    let (ty_name, _) = ir.ty_registry.reverse_lookup(sid);
-    let ty_name = ty_name.as_ref().expect("type name for named tuple");
-    let constructor_name = format!("mk-{ty_name}");
+/// Converts a named tuple to SMT-LIB string body.
+pub fn mk_named_tuple_str(type_name: String, elems: &[Sort], ir: &IRContext) -> String {
+    let constructor_name = format!("mk-{type_name}");
 
-    let field_names: Vec<String> = (0..elems.len())
-        .map(|i| format!("field_{}_{}_", ty_name, i + 1))
-        .collect();
-
-    let field_defs = elems
+    let fields: Vec<String> = elems
         .iter()
-        .zip(field_names.iter())
-        .map(|(sort, field_name)| {
-            (
-                field_name.as_str(),
-                if let Sort::User(x) = sort {
-                    if sid_set.contains(x) {
-                        DatatypeAccessor::Datatype(get_name(&ir, x))
-                    } else {
-                        DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
-                    }
-                } else {
-                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
-                },
-            )
+        .enumerate()
+        .map(|(i, sort)| {
+            let field_name = format!("field_{}_{}_", type_name, i + 1);
+            format!("({} {})", field_name, format_sort(sort, ir))
         })
         .collect();
 
-    let dt = DatatypeBuilder::new(ctx, ty_name.to_string().as_str())
-        .variant(constructor_name.as_str(), field_defs);
-    dt
+    format!("(({} {}))", constructor_name, fields.join(" "))
 }
 
-/// Converts a record type to a Z3 datatype.
-pub fn mk_record(
-    ctx: &Context,
-    sid: UsrSortId,
-    fields: &BTreeMap<String, Sort>,
-    ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, DatatypeSort>,
-    sid_set: &BTreeSet<UsrSortId>,
-) -> DatatypeBuilder {
-    let (ty_name, _) = ir.ty_registry.reverse_lookup(sid);
-    let ty_name = ty_name.as_ref().expect("type name for record");
-    let constructor_name = format!("mk-{ty_name}");
+/// Converts a record to SMT-LIB string body.
+pub fn mk_record_str(type_name: String, fields: &BTreeMap<String, Sort>, ir: &IRContext) -> String {
+    let constructor_name = format!("mk-{type_name}");
 
-    let field_names: Vec<String> = fields
+    let field_strs: Vec<String> = fields
         .iter()
-        .map(|(field_name, _)| format!("record_{ty_name}_{field_name}_"))
-        .collect();
-
-    let field_defs = fields
-        .iter()
-        .zip(field_names.iter())
-        .map(|((_, sort), field_name)| {
-            (
-                field_name.as_str(),
-                if let Sort::User(x) = sort {
-                    if sid_set.contains(x) {
-                        DatatypeAccessor::Datatype(get_name(&ir, x))
-                    } else {
-                        DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
-                    }
-                } else {
-                    DatatypeAccessor::Sort(sort_to_z3(sort, ctx, ir, Some(ty_name), ty_map))
-                },
-            )
+        .map(|(field_name, sort)| {
+            let smt_field_name = format!("record_{type_name}_{field_name}_");
+            format!("({} {})", smt_field_name, format_sort(sort, ir))
         })
         .collect();
 
-    let dt = DatatypeBuilder::new(ctx, ty_name.to_string().as_str())
-        .variant(constructor_name.as_str(), field_defs);
-    dt
+    format!("(({} {}))", constructor_name, field_strs.join(" "))
 }
 
-/// Converts an enum type to a Z3 datatype.
-pub fn mk_enum(
-    ctx: &Context,
-    sid: UsrSortId,
+/// Converts an enum to SMT-LIB string body.
+/// Output format: ((Unit) (TupleVariant (f1 Int)) (RecordVariant (f1 Int)))
+pub fn mk_enum_str(
+    type_name: String,
     variants: &BTreeMap<String, Variant>,
     ir: &IRContext,
-    ty_map: &HashMap<UsrSortId, DatatypeSort>,
-    sid_set: &BTreeSet<UsrSortId>,
-) -> DatatypeBuilder {
-    let (ty_name_opt, _) = ir.ty_registry.reverse_lookup(sid);
-    let ty_name = ty_name_opt.as_ref().expect("enums must have a name");
-
-    let mut builder = DatatypeBuilder::new(ctx, ty_name.to_string().as_str());
+) -> String {
+    let mut variant_strs = Vec::new();
 
     for (vname, vdef) in variants {
         match vdef {
             Variant::Unit => {
-                builder = builder.variant(vname.as_str(), vec![]);
+                variant_strs.push(format!("({})", vname));
             }
             Variant::Tuple(slots) => {
-                assert!(
-                    !slots.is_empty(),
-                    "tuple variant `{vname}` must have at least one slot"
-                );
-
-                let field_names: Vec<String> = slots
+                let fields: Vec<String> = slots
                     .iter()
                     .enumerate()
-                    .map(|(i, _)| format!("field_{ty_name}_{vname}_{idx}_", idx = i + 1))
-                    .collect();
-
-                let fields: Vec<(&str, DatatypeAccessor)> = slots
-                    .iter()
-                    .zip(field_names.iter())
-                    .map(|(slot_sort, field_name)| {
-                        (
-                            field_name.as_str(),
-                            if let Sort::User(x) = slot_sort {
-                                if sid_set.contains(x) {
-                                    DatatypeAccessor::Datatype(get_name(&ir, x))
-                                } else {
-                                    DatatypeAccessor::Sort(sort_to_z3(
-                                        slot_sort,
-                                        ctx,
-                                        ir,
-                                        Some(ty_name),
-                                        ty_map,
-                                    ))
-                                }
-                            } else {
-                                DatatypeAccessor::Sort(sort_to_z3(
-                                    slot_sort,
-                                    ctx,
-                                    ir,
-                                    Some(ty_name),
-                                    ty_map,
-                                ))
-                            },
-                        )
+                    .map(|(i, sort)| {
+                        let field_name = format!(
+                            "field_{ty_name}_{vname}_{idx}_",
+                            ty_name = type_name,
+                            vname = vname,
+                            idx = i + 1
+                        );
+                        format!("({} {})", field_name, format_sort(sort, ir))
                     })
                     .collect();
 
-                builder = builder.variant(vname.as_str(), fields);
+                variant_strs.push(format!("({} {})", vname, fields.join(" ")));
             }
             Variant::Record(rec) => {
-                assert!(
-                    !rec.is_empty(),
-                    "record variant `{vname}` must have at least one field"
-                );
-
-                let field_names: Vec<String> = rec
+                let fields: Vec<String> = rec
                     .iter()
-                    .map(|(field, _)| format!("record_{ty_name}_{vname}_{field}_"))
-                    .collect();
-
-                let fields: Vec<(&str, DatatypeAccessor)> = rec
-                    .iter()
-                    .zip(field_names.iter())
-                    .map(|((_, slot_sort), field_name)| {
-                        (
-                            field_name.as_str(),
-                            if let Sort::User(x) = slot_sort {
-                                if sid_set.contains(x) {
-                                    DatatypeAccessor::Datatype(get_name(&ir, x))
-                                } else {
-                                    DatatypeAccessor::Sort(sort_to_z3(
-                                        slot_sort,
-                                        ctx,
-                                        ir,
-                                        Some(ty_name),
-                                        ty_map,
-                                    ))
-                                }
-                            } else {
-                                DatatypeAccessor::Sort(sort_to_z3(
-                                    slot_sort,
-                                    ctx,
-                                    ir,
-                                    Some(ty_name),
-                                    ty_map,
-                                ))
-                            },
-                        )
+                    .map(|(field_key, sort)| {
+                        let field_name = format!(
+                            "record_{ty_name}_{vname}_{field}_",
+                            ty_name = type_name,
+                            vname = vname,
+                            field = field_key
+                        );
+                        format!("({} {})", field_name, format_sort(sort, ir))
                     })
                     .collect();
 
-                builder = builder.variant(vname.as_str(), fields);
+                variant_strs.push(format!("({} {})", vname, fields.join(" ")));
             }
         }
     }
 
-    builder
+    format!("({})", variant_strs.join(" "))
 }
 
 /// Collects type edges from the definitions to build a graph of dependencies.
@@ -307,7 +184,7 @@ fn visit_sort(sort: &Sort, src: UsrSortId, edges: &mut Vec<(UsrSortId, UsrSortId
     match sort {
         Sort::User(target) => edges.push((src, *target)),
         Sort::Seq(elem) | Sort::Set(elem) => visit_sort(elem, src, edges),
-        Sort::Map(k, v) => {
+        Sort::Array(k, v) => {
             visit_sort(k, src, edges);
             visit_sort(v, src, edges);
         }

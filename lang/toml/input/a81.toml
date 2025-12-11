@@ -1,0 +1,6 @@
+[[fruits]]
+name = "apple"
+
+[fruits.physical]  # subtable
+color = "red"
+shape = "round"

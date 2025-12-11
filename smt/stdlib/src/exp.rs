@@ -108,7 +108,6 @@ mod test {
     /// and the iterator() method on set returns a list of its elements
     fn test_pattern_two_forall_one() {
         let m = array!(
-            String::default();
             (Integer::from(1), String::from("one")),
             (Integer::from(2), String::from("two"))
         );
@@ -131,7 +130,6 @@ mod test {
     /// 1 < 10 so the result should be true because at least one pair of values satisfies the constraint
     fn test_pattern_two_exists() {
         let m = array!(
-            String::default();
             (Integer::from(1), String::from("one")),
             (Integer::from(20), String::from("twenty"))
         );
@@ -146,7 +144,6 @@ mod test {
     /// 20 < 10 so the result should be false because not all pairs of values satisfy the constraint
     fn test_pattern_two_forall_two() {
         let m = array!(
-            String::default();
             (Integer::from(1), String::from("one")),
             (Integer::from(20), String::from("twenty"))
         );
@@ -175,7 +172,6 @@ mod test {
     /// 1 < 10 so the result should be (1, 10) because the first pair of values that satisfies the constraint is returned
     fn test_pattern_two_choose() {
         let m = array!(
-            String::default();
             (Integer::from(1), String::from("one")),
             (Integer::from(20), String::from("twenty"))
         );
@@ -192,7 +188,6 @@ mod test {
     /// no pair of values satisfies the constraint so a panic is thrown because nothing is returned
     fn test_pattern_two_choose_panic() {
         let m = array!(
-            String::default();
             (Integer::from(10), String::from("ten")),
             (Integer::from(20), String::from("twenty"))
         );
@@ -219,7 +214,6 @@ mod test {
     /// }
     fn test_array_key_min() {
         let m = array!(
-            String::default();
             (Integer::from(1), String::from("one")),
             (Integer::from(2), String::from("two")),
             (Integer::from(3), String::from("three"))

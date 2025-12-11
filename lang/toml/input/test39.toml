@@ -1,0 +1,2 @@
+# newlines are not allowed in literal strings
+hello = ' salam

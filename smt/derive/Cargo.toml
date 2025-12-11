@@ -1,16 +1,17 @@
 [package]
 name = "rusmart-smt-derive"
 version = "0.1.0"
-authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>", "Mehrad Haghshenas <m3haghsh@uwaterloo.ca>"]
 description = "SMT model derivation from Rust code"
+readme = "README.md"
+repository = "https://github.com/meng-xu-cs/rusmart.git"
 license = "GPL-3.0-or-later"
 keywords = ["smt", "model", "derivation"]
 categories = ["compilers", "parser-implementations"]
 edition = "2024"
-homepage = "https://github.com/meng-xu-cs/rusmart"
-repository = "https://github.com/meng-xu-cs/rusmart.git"
  
 [dependencies]
+num-bigint = { workspace = true }
+num-rational = { workspace = true }
 anyhow = { workspace = true }
 command-group = { workspace = true }
 itertools = { workspace = true }
@@ -22,7 +23,4 @@ proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }
 walkdir = { workspace = true }
-z3 = { workspace = true }
-z3-sys = { workspace = true }
-
 rusmart-utils = { workspace = true }

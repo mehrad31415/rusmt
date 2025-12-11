@@ -3,7 +3,7 @@ use crate::ir::exp::{ExpBuilder, ExpRegistry};
 use crate::ir::index::{ExpId, UsrFunId};
 use crate::ir::name::{Symbol, UsrFunName};
 use crate::ir::sort::Sort;
-use crate::parser::func::{FuncSig, ImplFuncDef};
+use crate::parser::func::FuncSig;
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
 use std::collections::BTreeMap;

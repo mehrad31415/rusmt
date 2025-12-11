@@ -1,0 +1,2 @@
+# invalid INF casing after minus sign
+key = -INF

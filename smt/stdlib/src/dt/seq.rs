@@ -1,24 +1,27 @@
-use crate::Boolean;
-use crate::smt::SMT;
-use crate::{Integer, Seq, dt::SMTWrap};
+//! Sequence (list) data type and operations
 
+use crate::smt::SMT;
+use crate::{Boolean, Integer, Seq, dt::SMTWrap};
 use internment::Intern;
 use num_traits::cast::ToPrimitive;
 
 impl<T: SMT> Seq<T> {
-    /// create a new sequence: `Seq::new()`
+    /// create a new sequence
+    /// let s: Seq<Type> = Seq::new(); traspiles to
+    /// (declare-const s (Seq Type))
+    /// (assert (= s (as seq.empty (Seq Type))))
     pub fn new() -> Self {
         Self {
             inner: Intern::new(vec![]),
         }
     }
 
-    /// `v.length()`
+    /// `s.length()` transpiles to `(seq.len s)`
     pub fn length(self) -> Integer {
         self.inner.len().into()
     }
 
-    /// `(seq.unit e)`
+    /// `(seq.unit e)` -- creates a sequence with a single element
     pub fn unit(e: T) -> Self {
         let mut new_vec = Vec::with_capacity(1);
         new_vec.push(SMTWrap(e));
@@ -27,7 +30,7 @@ impl<T: SMT> Seq<T> {
         }
     }
 
-    /// `(seq.++ self (seq.unit e))`
+    /// `(seq.++ (seq.unit e))`
     pub fn append(self, e: T) -> Self {
         let mut new_seq = (*self.inner).clone();
         new_seq.push(SMTWrap(e));
@@ -46,48 +49,26 @@ impl<T: SMT> Seq<T> {
     }
 
     /// `(seq.nth s i)`
-    pub fn at(self, i: Integer) -> Option<T> {
+    pub fn at(self, i: Integer) -> T {
         i.inner
             .to_usize()
             .and_then(|idx| self.inner.get(idx))
             .map(|wrapped_val| wrapped_val.0)
+            .unwrap()
     }
 
     /// `(seq.at s i)`
-    pub fn at_seq(self, i: Integer) -> Option<Self> {
-        if let Some(elem) = self.at(i) {
-            let mut new_vec = Vec::with_capacity(1);
-            new_vec.push(SMTWrap(elem));
-            Some(Self {
-                inner: Intern::new(new_vec),
-            })
-        } else {
-            None
-        }
+    pub fn at_seq(self, i: Integer) -> Self {
+        Self::unit(self.at(i))
     }
 
     /// `(seq.extract s offset length)`
-    pub fn extract(self, offset: Integer, length: Integer) -> Option<Self> {
-        let start = offset.inner.to_usize()?;
-        let len = length.inner.to_usize()?;
-        let end = start.checked_add(len)?;
-
-        if end > self.inner.len() {
-            return None;
-        }
+    pub fn extract(self, offset: Integer, length: Integer) -> Self {
+        let start = offset.inner.to_usize().unwrap();
+        let len = length.inner.to_usize().unwrap();
+        let end = start.checked_add(len).unwrap();
 
         let new_vec = self.inner[start..end].to_vec();
-        Some(Self {
-            inner: Intern::new(new_vec),
-        })
-    }
-
-    /// `(seq.map f s)`
-    pub fn map<F>(self, f: F) -> Self
-    where
-        F: Fn(T) -> T,
-    {
-        let new_vec = self.inner.iter().map(|v| SMTWrap(f(v.0))).collect();
         Self {
             inner: Intern::new(new_vec),
         }
@@ -108,16 +89,36 @@ impl<T: SMT> Seq<T> {
         other.inner.ends_with(&self.inner).into()
     }
 
-    /// iterator
+    /// iterator over the indices of the sequence: `s.iterator()`
+    /// This is mainly useful for testing and translates to forall k >= 0 and k < (seq.len s).
     pub fn iterator(self) -> Vec<Integer> {
         (0..self.inner.len()).map(Integer::from).collect()
     }
 
     /// checks if the sequence is empty: `v.is_empty()`
+    /// This translates to `(= (seq.len s) 0)`
     pub fn is_empty(self) -> Boolean {
         self.inner.is_empty().into()
     }
+
+    /// Replace the first occurrence of src by dst in s: `s.replace(src, dst)`
+    pub fn replace(self, src: T, dst: T) -> Self {
+        let mut new_vec = Vec::with_capacity(self.inner.len());
+        let mut replaced = false;
+        for item in self.inner.iter() {
+            if !replaced && *item.0.eq(src) {
+                new_vec.push(SMTWrap(dst));
+                replaced = true;
+            } else {
+                new_vec.push(item.clone());
+            }
+        }
+        Self {
+            inner: Intern::new(new_vec),
+        }
+    }
 }
+
 /// this is a sequence (list) of SMT values of type T where T is a type that implements the SMT trait.
 #[macro_export]
 /// Example: seq!(Integer::from(1), Integer::from(2));

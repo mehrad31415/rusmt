@@ -175,11 +175,12 @@ struct FuncSigParseCtxt<'a> {
 }
 
 impl CtxtForType for FuncSigParseCtxt<'_> {
-    /// Returns the generics associated with the type.
+    /// Returns the generics associated with the function signature.
     fn generics(&self) -> &Generics {
         self.generics
     }
 
+    /// Retrieves the generics for a given user-defined type name.
     fn get_type_generics(&self, name: &UsrTypeName) -> Option<&Generics> {
         self.ctxt.get_type_generics(name)
     }
@@ -291,7 +292,7 @@ impl FuncSig {
 }
 
 /// Function definition for implementation.
-pub struct ImplFuncDef {
+pub struct FuncDef {
     /// The function signature.
     pub head: FuncSig,
     /// The function body as an expression.

@@ -2,17 +2,8 @@
 //!
 //! This module provides the `parse_dict` function to parse key-value mappings from a token stream.
 //! The `parse_dict` function is used inside the `derive_for_func` of the `func` module.
-//! The `derive_for_func` function is used inside the `derive_for_impl` of the `func` module.
-//! The `derive_for_impl` function is used inside the `smt_impl` procedural macro of the `lib` module.
-//!
-//! Use cases of the `parse_dict` function include parsing attributes and annotations in Rust macros. for example:
-//!
-//! #[my_attr(key1 = value1, key2 = [value2, value3])]
-//! fn my_function() {}
-//!
-//! The (key1 = value1, key2 = [value2, value3]) part is a key-value mapping that can be parsed using the `parse_dict` function.
 
-use crate::{bail_if_missing, bail_on};
+use crate::{bail_on, ensure_some};
 use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::Result;
@@ -40,7 +31,7 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
 
     while cursor.is_some() {
         // Extract key
-        let token = bail_if_missing!(cursor.as_ref(), stream, "key"); // never panics!
+        let token = ensure_some!(cursor.as_ref(), stream, "key"); // never panics!
 
         // Extract the key as an identifier
         // A key must be an identifier for example in #[my_attr(key = value)]
@@ -56,7 +47,7 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
         }
 
         // Extract equal sign (the format is key = value)
-        let token = bail_if_missing!(iter.next(), stream, "=");
+        let token = ensure_some!(iter.next(), stream, "=");
         // Check if the token is an equal sign
         match &token {
             TokenTree::Punct(punct) if punct.as_char() == '=' => (),
@@ -65,7 +56,7 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
 
         // Extract value (the format is key = value)
         // if the next token is empty (None), it will be caught in the next iteration
-        let token = bail_if_missing!(iter.next(), stream, "val");
+        let token = ensure_some!(iter.next(), stream, "val");
         // Extract the value as an identifier or a set of identifiers
         let val = match token {
             // Single identifier value
@@ -86,7 +77,7 @@ pub fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
 
                 while sub_cursor.is_some() {
                     // Extract the item.
-                    let token = bail_if_missing!(sub_cursor.as_ref(), group, "item"); // never panics!
+                    let token = ensure_some!(sub_cursor.as_ref(), group, "item"); // never panics!
                     // Extract the item as an identifier.
                     let item = match token {
                         TokenTree::Ident(ident) => ident.clone(),
@@ -253,7 +244,7 @@ mod tests {
     #[test]
     fn test_no_tokens_after_key() {
         // Test parsing when there are no tokens after the key: key
-        // this gets invoked here: let token = bail_if_missing!(iter.next(), stream, "=");
+        // this gets invoked here: let token = ensure_some!(iter.next(), stream, "=");
         let tokens = quote! { key };
         let result = parse_dict(&tokens);
 
@@ -304,7 +295,7 @@ mod tests {
     #[test]
     fn test_parse_missing_value() {
         // Test parsing when the value is missing: key =
-        // this gets invoked here: let token = bail_if_missing!(iter.next(), stream, "val");
+        // this gets invoked here: let token = ensure_some!(iter.next(), stream, "val");
         let tokens = quote! { key = };
         let result = parse_dict(&tokens);
 

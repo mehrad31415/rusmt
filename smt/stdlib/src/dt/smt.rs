@@ -1,3 +1,5 @@
+//! SMT Trait and Implementations.
+
 use crate::Boolean;
 use std::cmp::Ordering;
 use std::fmt::Debug;

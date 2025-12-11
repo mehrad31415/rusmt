@@ -1,0 +1,2 @@
+# invalid character after underscore in float part
+key = 112.1_#

@@ -1,5 +1,4 @@
-//! This module defines the `ReservedIdent` trait and its implementations for various reserved identifiers in the SMT-LIB language.
-//! It provides functionality to parse and validate reserved identifiers, including type names, function names, and macro names.
+//! This module defines the `ReservedIdent` trait. It provides functionality to parse and validate reserved identifiers, including type names, function names, and macro names.
 
 use crate::parser::dsl::SysMacroName;
 use crate::parser::func::CastFuncName;
@@ -19,7 +18,7 @@ use syn::{Ident, Pat, PatIdent, Path, Result};
 /// SysFuncName: //* Eq, Ne
 /// ReservedFuncName: //* Clone, Default
 /// SysTrait: //* SMT
-/// SysTypeName: //* Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error
+/// SysTypeName: //* Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Error
 /// Sized is a supertrait of ReservedIdent, meaning that all types implementing ReservedIdent must also implement Sized.
 /// - ? This trait is not object safe. It cannot be used as a trait object because it is not DST (Dynamically Sized Type). For example, Box<dyn ReservedIdent> is not allowed. https://doc.rust-lang.org/std/marker/trait.Sized.html
 pub trait ReservedIdent: Sized {
@@ -50,7 +49,9 @@ pub trait ReservedIdent: Sized {
     /// The path must not have a leading colon, the number of path segments must be 1, and the first path segment must not have angle bracketed or parenthesized; otherwise an error is returned.
     fn parse_path(path: &Path) -> Result<Self> {
         // Parse the identifier from the path.
-        let ident = path.get_ident().expect("expect an identifier in the path");
+        let ident = path
+            .get_ident()
+            .expect(stringify!("The path <{}> is not an identifier", path));
         // Try to convert the identifier to the reserved type.
         match Self::from_str(ident.to_string().as_str()) {
             None => bail_on!(ident, "not a reserved identifier"),
@@ -84,7 +85,7 @@ fn validate_user_ident(ident: &Ident) -> Result<String> {
     if SysTypeName::from_str(&name).is_some() {
         bail_on!(
             ident,
-            "reserved type name (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error)"
+            "reserved type name (Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Error)"
         );
     }
     // Check for reserved function names.
@@ -297,7 +298,7 @@ name! {
         > crate::ir::name::UsrSortName
 }
 
-// Define UsrFuncName using the name! macro (this is used to store user-defined functions marked with smt_impl attribute).
+// Define UsrFuncName using the name! macro (this is used to store user-defined functions marked with smt_fn attribute).
 name! {
     /// Identifier for a user-defined function (i.e., non-reserved).
     /// A user-defined function name is converted to a user function name in the ir (intermediate representation).
@@ -372,33 +373,73 @@ impl UsrFuncName {
     pub fn intrinsic(name: &str) -> Self {
         match name {
             // Logical operators.
-            "not" | "and" | "or" | "xor" | "implies" | "iff"
-            // Arithmetic operators.
-            | "add" | "sub" | "mul" | "div" | "pow" | "abs"
+            "not" | "and" | "or" | "xor" | "nand" | "nor" | "xnor" | "implies" | "iff"
+            // bit vectors operations.
+            | "bv_not" | "bv_redand" | "bv_redor" | "bv_and" | "bv_or" | "bv_xor" | "bv_nand" | "bv_nor" | "bv_xnor" 
+            | "bv_neg" | "bv_add" | "bv_sub" | "bv_mul" | "bv_div" | "bv_rem" | "bv_mod" 
+            | "checked_bvadd_no_overflow" | "checked_bvsub_no_overflow" | "checked_bvneg_no_overflow" | "checked_bvmul_no_overflow" | "checked_bvsdiv_no_overflow" | "bv_shl" | "bv_lshr" | "bv_ashr" | "bv_rotate_left" | "bv_rotate_right" 
+            | "bv_lt" | "bv_le" | "bv_gt" | "bv_ge" | "to_int"
+            // float 
+            | "add" | "sub" | "mul" | "div" | "neg" | "abs" | "rem" | "sqrt" | "min" | "max" | "is_nan" | "is_infinite" | "is_zero" | "is_normal" | "is_subnormal" | "is_negative" | "is_positive" | "lt" | "le" | "gt" | "ge" | "nan" | "infinity" | "neg_infinity" | "pos_zero" | "neg_zero" | "to_integer" | "to_real"
             // Integer operations.
-            | "rem" | "to_rational"
-            // Rational operations.
-            | "round" | "floor" | "ceil"
+            | "add" | "mul" | "sub" | "neg" | "div" | "modulo" | "rem" | "pow" | "abs" | "divides" | "lt" | "le" | "gt" | "ge" | "to_real" | "to_i32" | "to_i64" | "to_u32" | "to_u64" | "to_f32" | "to_f64" | "from_hex_str" | "from_oct_str" | "from_bin_str" | "is_gt_i64_max" | "is_lt_i64_min" | "is_gt_u64_max" | "is_lt_u64_min" | "is_lt_i32_min" | "is_gt_i32_max" | "is_lt_u32_min" | "is_gt_u32_max"
+            // Real operations.
+            | "add" | "mul" | "sub" | "neg" | "div" | "pow" | "abs" | "round" | "floor" | "ceil" | "is_integer" | "lt" | "le" | "gt" | "ge" | "to_int" | "to_f32" | "to_f64" | "numerator" | "denominator"
             // String operations.
-            | "concat" | "at_index" | "starts_with" | "ends_with"
-            // Comparison operators.
-            | "lt" | "le" | "ge" | "gt"
+            | "new" | "length" | "concat" | "at" | "contains" | "starts_with" | "ends_with" | "le" | "lt" | "ge" | "gt" | "is_empty" | "to_chars" | "index_of" | "replace" | "replace_all" | "to_int" | "from_int" | "is_digit" | "from_code" | "to_code"
             // Error handling.
             | "fresh" | "merge"
             // Cloak operations.
             | "shield" | "reveal"
-            // Collections (common).
-            | "new" | "is_empty" | "length" | "iterator"
             // Sequence operations.
-            | "append" | "at_unchecked" | "includes"
+            | "new" | "length" | "unit" | "append" | "concat" | "at" | "at_seq" | "extract" | "contains" | "prefix_of" | "suffix_of" | "iterator" | "is_empty" | "replace"
             // Set operations.
-            | "insert" | "remove" | "contains" | "intersection" | "union" | "difference" | "is_subset"
-            // Map operations.
-            | "put_unchecked" | "get_unchecked" | "del_unchecked" | "contains_key"
+            | "new" | "length" | "insert" | "remove" | "contains" | "iterator" | "is_empty" | "intersection" | "union" | "difference" | "is_subset" | "has_size" | "is_disjoint" | "symmetric_difference" | "is_proper_subset" | "is_superset"
+            // Array operations.
+            | "new" | "store" | "contains_key" | "select" | "del" | "length" | "iterator" | "is_empty"
             // All the above are valid intrinsic function names.
             => Self { ident: name.to_string() },
             // All other names are invalid.
             _ => panic!("not an intrinsic function: {name}"),
+        }
+    }
+}
+
+impl UsrTypeName {
+    /// Creates a sort name for intrinsic types.
+    ///
+    /// Only allows specific type names; panics otherwise.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - A string slice representing the intrinsic type name.
+    ///
+    /// # Returns
+    ///
+    /// * `Self` - A new instance of `UsrTypeName`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided name is not a recognized intrinsic type.
+    /// This function is used in the `builtin` function of the `apply` module to create intrinsic types.
+    pub fn intrinsic(name: &str) -> Self {
+        match name {
+            // Logical types.
+            "Boolean"
+            // Numeric types.
+            | "Integer" | "Real" | "F32" | "F64" | "I32" | "I64" | "U32" | "U64"
+            // String type.
+            | "String"
+            // Cloak type.
+            | "Cloak"
+            // Collection types.
+            | "Seq" | "Set" | "Array"
+            // Error type.
+            | "Error"
+            // All the above are valid intrinsic type names.
+            => Self { ident: name.to_string() },
+            // All other names are invalid.
+            _ => panic!("not an intrinsic type: {name}"),
         }
     }
 }

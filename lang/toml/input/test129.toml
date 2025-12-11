@@ -1,0 +1,2 @@
+# expected newline after comment in ws-comment-newline
+key = [ 1, #. 2

@@ -250,10 +250,22 @@ pub enum QualifiedPath {
     CastFromBool,
     /// `Integer::from(<literal>)`
     CastFromInt,
-    /// `Rational::from(<literal>)`
-    CastFromFloat,
-    /// `Text::from(<literal>)`
+    /// `Real::from(<literal>)`
+    CastFromReal,
+    /// `String::from(<literal>)`
     CastFromStr,
+    /// `U32::from(<literal>)`
+    CastFromU32,
+    /// `U64::from(<literal>)`
+    CastFromU64,
+    /// `I32::from(<literal>)`
+    CastFromI32,
+    /// `I64::from(<literal>)`
+    CastFromI64,
+    /// `F32::from(<literal>)`
+    CastFromF32,
+    /// `F64::from(<literal>)`
+    CastFromF64,
     /// `<sys-type>::[type-inst]::<sys-func>(<args>)`
     SysFuncOnSysType(SysTypeName, GenericsInstPartial, SysFuncName),
     /// `<usr-type>::[type-inst]::<sys-func>(<args>)`
@@ -317,8 +329,14 @@ impl QualifiedPath {
                     match ty_name {
                         TypeName::Sys(SysTypeName::Boolean) => Self::CastFromBool,
                         TypeName::Sys(SysTypeName::Integer) => Self::CastFromInt,
-                        TypeName::Sys(SysTypeName::Rational) => Self::CastFromFloat,
-                        TypeName::Sys(SysTypeName::Text) => Self::CastFromStr,
+                        TypeName::Sys(SysTypeName::Real) => Self::CastFromReal,
+                        TypeName::Sys(SysTypeName::String) => Self::CastFromStr,
+                        TypeName::Sys(SysTypeName::U32) => Self::CastFromU32,
+                        TypeName::Sys(SysTypeName::U64) => Self::CastFromU64,
+                        TypeName::Sys(SysTypeName::I32) => Self::CastFromI32,
+                        TypeName::Sys(SysTypeName::I64) => Self::CastFromI64,
+                        TypeName::Sys(SysTypeName::F32) => Self::CastFromF32,
+                        TypeName::Sys(SysTypeName::F64) => Self::CastFromF64,
                         _ => bail_on!(ident, "not a literal type {:?}", fn_name),
                     }
                 }

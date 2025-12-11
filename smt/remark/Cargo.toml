@@ -1,14 +1,13 @@
 [package]
 name = "rusmart-smt-remark"
 version = "0.1.0"
-authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>", "Mehrad Haghshenas <m3haghsh@uwaterloo.ca>"]
-description = "Annotations for remarking Rust syntax into SMT constructs"
+description = "Annotations and macros for SMT modeling in Rust"
+readme = "README.md"
+repository = "https://github.com/meng-xu-cs/rusmart.git"
 license = "GPL-3.0-or-later"
 keywords = ["smt", "annotation", "macros"]
 categories = ["compilers", "development-tools::procedural-macro-helpers", "parser-implementations"]
 edition = "2024"
-homepage = "https://github.com/meng-xu-cs/rusmart"
-repository = "https://github.com/meng-xu-cs/rusmart.git"
 
 [dependencies]
 proc-macro2 = { workspace = true }

@@ -1,3 +1,5 @@
+//! SMT Boolean type and operations.
+
 use crate::Boolean;
 use std::ops::Deref;
 
@@ -47,6 +49,21 @@ impl Boolean {
         }
     }
 
+    /// NAND: NOT AND
+    pub fn nand(self, rhs: Self) -> Self {
+        self.and(rhs).not()
+    }
+
+    /// NOR: NOT OR
+    pub fn nor(self, rhs: Self) -> Self {
+        self.or(rhs).not()
+    }
+
+    /// XNOR: NOT XOR (equivalence)
+    pub fn xnor(self, rhs: Self) -> Self {
+        self.xor(rhs).not()
+    }
+
     /// IMPLIES
     pub fn implies(self, rhs: Self) -> Self {
         Self {
@@ -57,7 +74,7 @@ impl Boolean {
     /// IFF
     pub fn iff(self, rhs: Self) -> Self {
         Self {
-            inner: (self.inner && rhs.inner) || (!self.inner && !rhs.inner),
+            inner: self.inner == rhs.inner,
         }
     }
 }

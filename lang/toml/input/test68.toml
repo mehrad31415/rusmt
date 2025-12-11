@@ -1,0 +1,2 @@
+# double underscore error in hex int
+hello = 0xa__

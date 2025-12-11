@@ -1,0 +1,3 @@
+# Control characters other than tab (U+0000 to U+0008, U+000A to U+001F, U+007F) are not permitted in comments.
+
+key = "value" # This is bad 

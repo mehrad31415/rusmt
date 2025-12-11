@@ -12,15 +12,16 @@
 
 use crate::smt::SMT;
 use crate::smt_impl;
+use crate::wrap::SMTWrap;
 use internment::Intern;
 use num_bigint::BigInt;
 use num_rational::BigRational;
+use ordered_float::OrderedFloat;
 use paste::paste;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::marker::PhantomData;
 
 /// ** SMT Bool
 #[derive(Debug, Clone, Copy, Default, Hash)]
@@ -37,26 +38,36 @@ pub struct Integer {
 pub struct Real {
     inner: Intern<BigRational>,
 }
-/// ** SMT Float
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SymbolicFloat<const EB: usize, const SB: usize> {
-    inner: f64,
-    _phantom: PhantomData<(usize, usize)>,
-}
-/// Floating 32 bits
-pub type F32 = SymbolicFloat<8, 24>;
-/// Floating 64 bits
-pub type F64 = SymbolicFloat<11, 53>;
-/// * SMT BitVector
+/// ** SMT Float 32
 #[derive(Debug, Clone, Copy, Default, Hash)]
-pub struct SymbolicBitVec<const N: usize> {
-    inner: i128,
-    _phantom: PhantomData<usize>,
+pub struct F32 {
+    inner: Intern<OrderedFloat<f32>>,
 }
-/// Integer 32 bits
-pub type I32 = SymbolicBitVec<32>;
-/// Integer 64 bits
-pub type I64 = SymbolicBitVec<64>;
+/// ** SMT Float 64
+#[derive(Debug, Clone, Copy, Default, Hash)]
+pub struct F64 {
+    inner: Intern<OrderedFloat<f64>>,
+}
+/// ** SMT BitVector32
+#[derive(Debug, Clone, Copy, Default, Hash)]
+pub struct I32 {
+    inner: Intern<i32>,
+}
+/// ** SMT Unsigned BitVector32
+#[derive(Debug, Clone, Copy, Default, Hash)]
+pub struct U32 {
+    inner: Intern<u32>,
+}
+/// ** SMT BitVector64
+#[derive(Debug, Clone, Copy, Default, Hash)]
+pub struct I64 {
+    inner: Intern<i64>,
+}
+/// ** SMT Unsigned BitVector64
+#[derive(Debug, Clone, Copy, Default, Hash)]
+pub struct U64 {
+    inner: Intern<u64>,
+}
 /// ** SMT String
 #[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct String {
@@ -75,10 +86,7 @@ pub struct Set<T: SMT> {
 /// ** SMT Array
 #[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct Array<K: SMT, V: SMT> {
-    /// The explicit key-value pairs that have been stored.
     inner: Intern<BTreeMap<SMTWrap<K>, SMTWrap<V>>>,
-    /// The default value for all keys not present in the `inner` map.
-    default: V,
 }
 /// ** Error state
 #[derive(Debug, Clone, Copy, Default, Hash)]
@@ -114,12 +122,18 @@ pub mod set;
 pub mod smt;
 /// * string module
 pub mod string;
+/// * smt wrap module
+pub mod wrap;
 
 smt_impl!(Boolean);
 smt_impl!(Integer);
 smt_impl!(Real);
 smt_impl!(I32);
 smt_impl!(I64);
+smt_impl!(U32);
+smt_impl!(U64);
+smt_impl!(F32);
+smt_impl!(F64);
 smt_impl!(String);
 smt_impl!(Seq, T);
 smt_impl!(Set, T);
@@ -128,42 +142,11 @@ smt_impl!(Error);
 smt_impl!(Cloak, T);
 smt_impl! { A B } // Both a and B need to implement the SMT trait.
 
-/// the SMTWrap is a tuple struct that wraps a SMT type for Rust-semantics enrichment.
-// In SMTWrap, instead of using #[derive(Eq)] we implement the trait manually to avoid imposing the T: Eq constraint.
-// this is because T does not necessarily need to implement the Eq trait as the eq method is a method in the SMT trait.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct SMTWrap<T: SMT>(T);
-impl<T: SMT> PartialEq for SMTWrap<T> {
-    fn eq(&self, other: &Self) -> bool {
-        *self.0.eq(other.0)
-    }
-}
-impl<T: SMT> Eq for SMTWrap<T> {}
-// because we manually implement the PartialEq for SMTWrap
-// we need to manually implement the Hash trait as well
-// see https://rust-lang.github.io/rust-clippy/master/index.html#derived_hash_with_manual_eq
-impl<T: SMT> Hash for SMTWrap<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
-impl<T: SMT> PartialOrd for SMTWrap<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl<T: SMT> Ord for SMTWrap<T> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0._cmp(other.0)
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use std::collections::HashSet;
-
     use super::*;
     use num_traits::cast::ToPrimitive;
+    use std::collections::HashSet;
 
     /// checking the implementation of the the arith_operator macro on Integer types
     #[test]
@@ -174,13 +157,13 @@ mod test {
         let res = num1.add(num2);
         assert!(*res.eq(Integer::from(9))); // 7 + 2 = 9
 
-        let res = num1.div(num2).unwrap();
+        let res = num1.div(num2);
         assert!(*res.eq(Integer::from(3))); // 7 / 2 = 3
 
         let res = num1.mul(num2);
         assert!(*res.eq(Integer::from(14))); // 7 * 2 = 14
 
-        let res = num1.rem(num2).unwrap();
+        let res = num1.rem(num2);
         assert!(*res.eq(Integer::from(1))); // 7 % 2 = 1
 
         let res = num1.sub(num2);
@@ -190,20 +173,20 @@ mod test {
     /// checking the implementation of the the arith_operator macro on Real types
     #[test]
     fn test_arith_operator_macro_real() {
-        let num1 = Real::try_from_f32(7.5).unwrap();
-        let num2 = Real::try_from_f32(2.0).unwrap();
+        let num1 = Real::from(7.5);
+        let num2 = Real::from(2.0);
 
         let res = num1.add(num2);
-        assert!(*res.eq(Real::try_from_f32(9.5).unwrap())); // 7.5 + 2 = 9.5
+        assert!(*res.eq(Real::from(9.5))); // 7.5 + 2 = 9.5
 
-        let res = num1.div(num2).unwrap();
-        assert!(*res.eq(Real::try_from_f32(3.75).unwrap())); // 7.5 / 2 = 3.75
+        let res = num1.div(num2);
+        assert!(*res.eq(Real::from(3.75))); // 7.5 / 2 = 3.75
 
         let res = num1.mul(num2);
-        assert!(*res.eq(Real::try_from_f32(15.0).unwrap())); // 7.5 * 2 = 15
+        assert!(*res.eq(Real::from(15.0))); // 7.5 * 2 = 15
 
         let res = num1.sub(num2);
-        assert!(*res.eq(Real::try_from_f32(5.5).unwrap())); // 7.5 - 2 = 5.5
+        assert!(*res.eq(Real::from(5.5))); // 7.5 - 2 = 5.5
     }
 
     /// testing the cmp method of the SMT trait on the Boolean type
@@ -229,8 +212,8 @@ mod test {
     /// testing the cmp method of the SMT trait on the Real type
     #[test]
     fn test_smt_impl_macro_real() {
-        let var1 = Real::try_from_f32(1.75).unwrap();
-        let var2 = Real::try_from_f32(3.0).unwrap();
+        let var1 = Real::from(1.75);
+        let var2 = Real::from(3.0);
 
         let res = var1._cmp(var2); // 1.75 < 3
         assert_eq!(res, Ordering::Less);
@@ -250,16 +233,16 @@ mod test {
     /// testing the cmp method of the SMT trait on the Error type
     #[test]
     fn test_smt_impl_macro_error() {
-        use crate::error::ErrorContext;
-        let mut context = ErrorContext::new();
-        let var1 = context.fresh_error(); // 0
-        let var2 = context.fresh_error(); // 1
-        let var3 = context.fresh_error(); // 2
+        let var1 = Error::fresh(); // 0
+        let var2 = Error::fresh(); // 1
+        let var3 = Error::fresh(); // 2
 
+        let res0 = var1.inner.first().unwrap().eq(&0); // 0 == 0
         let res1 = var1._cmp(var2); // 0 < 1
         let res2 = var2._cmp(var3); // 1 < 2
         let res3 = var1._cmp(var3); // 0 < 2
 
+        assert!(res0);
         assert_eq!(res1, Ordering::Less);
         assert_eq!(res2, Ordering::Less);
         assert_eq!(res3, Ordering::Less);
@@ -310,13 +293,13 @@ mod test {
     /// the keys are compared in lexicographical order
     #[test]
     fn test_smt_impl_macro_array() {
-        let var1 = Array::new(String::default());
+        let var1 = Array::new();
 
         let var2 = var1.store(Integer::from(1), String::from("one"));
         let var3 = var2.store(Integer::from(2), String::from("two"));
         let var4 = var3.store(Integer::from(3), String::from("three"));
 
-        let var5 = Array::new(String::default());
+        let var5 = Array::new();
         let var6 = var5.store(Integer::from(0), String::from("zero"));
 
         let res = var4._cmp(var6); // 1 > 0
@@ -343,8 +326,8 @@ mod test {
     /// checking the implementation of the the order_operator macro on Real types
     #[test]
     fn test_order_operator_macro_real() {
-        let var1 = Real::try_from_f32(1.5).unwrap();
-        let var2 = Real::try_from_f32(3.0).unwrap();
+        let var1 = Real::from(1.5);
+        let var2 = Real::from(3.0);
 
         let res1 = var1.lt(var2); // 1.5 < 3
         let res2 = var1.le(var2); // 1.5 <= 3
@@ -388,7 +371,7 @@ mod test {
         let d = Real::from(1i64);
         let e = Real::from(1i128);
         let f = Real::from(1isize);
-        let g = Real::try_from_f32(1f32).unwrap();
+        let g = Real::from(1f32);
 
         assert!(
             *a.eq(b)
@@ -449,12 +432,11 @@ mod test {
     fn test_array_macro() {
         use crate::array;
         let var1 = array![
-            String::default();
             (Integer::from(1), String::from("Value 1")),
             (Integer::from(2), String::from("Value 2"))
         ];
 
-        let var2 = Array::new(String::default());
+        let var2 = Array::new();
         let var3 = var2.store(Integer::from(1), String::from("Value 1"));
         let var4 = var3.store(Integer::from(2), String::from("Value 2"));
 
@@ -559,8 +541,8 @@ mod test {
     /// testing the from method of Real
     #[test]
     fn test_from_real() {
-        let var1 = Real::try_from_f32(1.5f32).unwrap();
-        let var2 = Real::try_from_f32(1.6f32).unwrap();
+        let var1 = Real::from(1.5f32);
+        let var2 = Real::from(1.6f32);
 
         assert!(*var1.eq(Real {
             inner: Intern::new(
@@ -577,8 +559,8 @@ mod test {
     /// testing the ne/eq/_cmp methods of real
     #[test]
     fn test_cmp_real() {
-        let var1 = Real::try_from_f32(1.0).unwrap();
-        let var2 = Real::try_from_f32(243.3).unwrap();
+        let var1 = Real::from(1.0);
+        let var2 = Real::from(243.3);
 
         assert_eq!(var1._cmp(var2), Ordering::Less);
     }
@@ -586,7 +568,7 @@ mod test {
     #[test]
     fn test_eq_real() {
         let var1 = Real::from(1);
-        let var2 = Real::try_from_f32(243.3).unwrap();
+        let var2 = Real::from(243.3);
 
         assert!(*var1.eq(var2).eq(false.into())); // equivalent to *var1.ne(var2)
     }
@@ -594,7 +576,7 @@ mod test {
     #[test]
     fn test_ne_real() {
         let var1 = Real::from(1);
-        let var2 = Real::try_from_f32(243.3).unwrap();
+        let var2 = Real::from(243.3);
 
         assert!(*var1.ne(var2));
     }
@@ -611,10 +593,8 @@ mod test {
     /// testing the new method of Error
     #[test]
     fn test_error() {
-        use crate::error::ErrorContext;
-        let mut context = ErrorContext::new();
-        let var1 = context.fresh_error();
-        let var2 = context.fresh_error();
+        let var1 = Error::fresh();
+        let var2 = Error::fresh();
 
         // each newly created error only has one element.
         assert_eq!(var1.inner.len(), 1);
@@ -728,17 +708,18 @@ mod test {
         let seq = seq.append(Integer::from(1));
         let seq = seq.append(Integer::from(2));
         let seq = seq.append(Integer::from(3));
-        assert!(*seq.at(Integer::from(1)).unwrap().eq(Integer::from(2)));
+        assert!(*seq.at(Integer::from(1)).eq(Integer::from(2)));
     }
 
     /// this test checks that the at method gives none when the index is out of bounds
     #[test]
+    #[should_panic]
     fn test_at_unchecked_seq_out_of_bounds() {
         let seq = Seq::new();
         let seq = seq.append(Integer::from(1));
         let seq = seq.append(Integer::from(2));
         let seq = seq.append(Integer::from(3));
-        assert!(seq.at(Integer::from(3)).is_none());
+        assert!(*seq.at(Integer::from(3)).eq(Integer::from(10)));
     }
 
     /// the sequence includes the value 2
@@ -851,14 +832,14 @@ mod test {
     /// a new array is created and the length of the array should be 0
     #[test]
     fn test_array_length() {
-        let array: Array<Integer, Integer> = Array::new(Integer::default());
+        let array: Array<Integer, Integer> = Array::new();
         assert!(*array.length().eq(0.into()));
     }
 
     /// When adding a key-value pair to the array, the length of the array should increase by 1
     #[test]
     fn test_array_put() {
-        let array = Array::new(Integer::default()).store(Integer::from(1), Integer::from(2));
+        let array = Array::new().store(Integer::from(1), Integer::from(2));
         assert!(*array.length().eq(1.into()));
     }
 
@@ -866,14 +847,14 @@ mod test {
     /// and the value should be the same as the one that was added
     #[test]
     fn test_array_get() {
-        let array = Array::new(Integer::default()).store(Integer::from(1), Integer::from(2));
+        let array = Array::new().store(Integer::from(1), Integer::from(2));
         assert!(*array.select(Integer::from(1)).eq(Integer::from(2)));
     }
 
     /// When deleting an existent key from the array, the length of the array should decrease by 1
     #[test]
     fn test_array_del() {
-        let array = Array::new(Integer::default()).store(Integer::from(1), Integer::from(2));
+        let array = Array::new().store(Integer::from(1), Integer::from(2));
         let array = array.del(Integer::from(1));
         assert!(*array.length().eq(0.into()));
     }
@@ -881,7 +862,7 @@ mod test {
     /// Deleting a key that does not exist in the array should not change the array.
     #[test]
     fn test_array_del_non_existent() {
-        let array = Array::new(Integer::default()).store(Integer::from(1), Integer::from(2));
+        let array = Array::new().store(Integer::from(1), Integer::from(2));
         assert!(*array.length().eq(1.into()));
         let array = array.del(Integer::from(2));
         assert!(*array.length().eq(1.into()));
@@ -889,23 +870,24 @@ mod test {
 
     /// getting an element that does not exist in the array should give None
     #[test]
+    #[should_panic]
     fn test_array_get_non_existent() {
-        let array = Array::new(Integer::default()).store(Integer::from(1), Integer::from(2));
-        assert!(array.get(Integer::from(2)).is_none());
+        let array = Array::new().store(Integer::from(1), Integer::from(2));
+        assert!(*array.select(Integer::from(2)).eq(Integer::default()));
     }
 
     /// checking if a key exists in the array
     /// a key should only exist if it was added to the array
     #[test]
     fn test_array_contains_key() {
-        let array = Array::new(Integer::default()).store(Integer::from(1), Integer::from(2));
+        let array = Array::new().store(Integer::from(1), Integer::from(2));
         assert!(*array.contains_key(Integer::from(1)));
     }
 
     /// getting an iterator over the keys of the array
     #[test]
     fn test_array_iterator() {
-        let array = Array::new(Integer::default()).store(String::from("one"), Integer::from(1));
+        let array = Array::new().store(String::from("one"), Integer::from(1));
         assert!(*array.iterator()[0].eq(String::from("one")));
     }
 
@@ -987,7 +969,6 @@ mod test {
         let var1 = Array::<Integer, Integer>::default();
         let var2 = Array {
             inner: Intern::new(BTreeMap::<SMTWrap<Integer>, SMTWrap<Integer>>::new()),
-            default: Integer::default(),
         };
         assert!(*var1.eq(var2));
         assert!(*var1.is_empty());

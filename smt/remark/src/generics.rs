@@ -1,7 +1,6 @@
-//! Utility for parsing and manipulating generic type parameters.
 //! The `TypeParamGroup` struct is used to collect and manage type parameters in generic definitions.
 
-use crate::{bail_if_exists, bail_if_missing, bail_on};
+use crate::{bail_on, ensure_none, ensure_some};
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use std::collections::BTreeSet;
@@ -31,16 +30,16 @@ impl TypeParamGroup {
         // Sanity check: Ensure that the angle brackets are used correctly
         if params.is_empty() {
             // If there are no parameters, there should be no angle brackets
-            bail_if_exists!(lt_token);
-            bail_if_exists!(gt_token); // unreachable
+            ensure_none!(lt_token, "expecting no angle brackets"); // unreachable
+            ensure_none!(gt_token, "expecting no angle brackets"); // unreachable
         } else {
             // If there are parameters, angle brackets must exist
-            bail_if_missing!(lt_token, generics, "<"); // unreachable
-            bail_if_missing!(gt_token, generics, ">"); // unreachable code as the rust compiler catches it beforehand. you cannot have fn temp T:SMT (x:T) {....}
+            ensure_some!(lt_token, generics, "<"); // unreachable
+            ensure_some!(gt_token, generics, ">"); // unreachable code as the rust compiler catches it beforehand. you cannot have fn temp T:SMT (x:T) {....}
         }
 
         // The where clause is not expected in this context
-        bail_if_exists!(where_clause);
+        ensure_none!(where_clause, "unexpected");
 
         // Collect type parameters
         let mut ty_params_set = BTreeSet::new(); // To ensure uniqueness
@@ -58,21 +57,18 @@ impl TypeParamGroup {
                     default,
                 }) => {
                     // Colon token must be present (e.g., `T: Trait`) so basically the bound is expected
-                    bail_if_missing!(colon_token, param, ":");
+                    ensure_some!(colon_token, param, ":");
 
                     // Equal token and default should not be present
-                    bail_if_exists!(eq_token);
-                    bail_if_exists!(default); // unreachable invocation because it cannot exist if the = doesnt exist according to rust compiler
+                    ensure_none!(eq_token, "no equal sign expected");
+                    ensure_none!(default, "no default value expected"); // unreachable invocation because it cannot exist if the = doesnt exist according to rust compiler
 
                     // The rest check that the `SMT` trait is enforced as a bound
                     let mut iter = bounds.iter();
-                    // return Err(syn::Error::new_spanned(param, "expect trait"));
-                    // bound will be an error if there is no trait bound
-                    let bound = bail_if_missing!(iter.next(), param, "trait");
+                    let bound = ensure_some!(iter.next(), param, "trait");
 
                     //  only one bound is expected and it should be the SMT trait
-                    bail_if_exists!(iter.next()); // No extra bounds expected
-
+                    ensure_none!(iter.next(), "no extra bounds expected");
                     match bound {
                         TypeParamBound::Trait(TraitBound {
                             paren_token,
@@ -92,15 +88,15 @@ impl TypeParamGroup {
                                 // Modifier should be none (e.g., no `?` or `for<>`)
                                 bail_on!(modifier, "invalid modifier");
                             }
-                            bail_if_exists!(lifetimes); // Lifetimes are not expected for example for<'a> Foo<&'a T> Higher ranked trait bounds are not expected
+                            ensure_none!(lifetimes, "no lifetimes expected"); // Lifetimes are not expected for example for<'a> Foo<&'a T> Higher ranked trait bounds are not expected
 
                             // HRTB are the same as lifetimes but they mean that the trait is generic over all lifetimes 'a but if we wrote Foo<&'a T> it would mean that the trait is generic over a specific lifetime 'a
-                            bail_if_exists!(leading_colon); // Leading colon is not expected for example T: ::std
+                            ensure_none!(leading_colon, "no leading colon expected"); // Leading colon is not expected for example T: ::std
 
                             // Check the path segments
                             let mut iter = segments.iter();
-                            let segment = bail_if_missing!(iter.next(), bound, "trait name"); // never panics!
-                            bail_if_exists!(iter.next()); // Only one segment is expected and the trait name is expected to be SMT
+                            let segment = ensure_some!(iter.next(), bound, "trait name"); // never panics!
+                            ensure_none!(iter.next(), "no extra segments expected"); // Only one segment is expected and the trait name is expected to be SMT
 
                             let PathSegment { ident, arguments } = segment;
                             if !matches!(arguments, PathArguments::None) {
@@ -220,13 +216,16 @@ fn collect_type_arguments_recursive(
             },
         }) => {
             // Qualified Self types and leading colons are not expected
-            bail_if_exists!(qself.as_ref().map(|q| q.ty.as_ref()));
-            bail_if_exists!(leading_colon);
+            ensure_none!(
+                qself.as_ref().map(|q| q.ty.as_ref()),
+                "type with qualified self is not expected"
+            );
+            ensure_none!(leading_colon, "no leading colon expected");
 
             // We expect exactly one segment in the path
             let mut iter = segments.iter();
-            let segment = bail_if_missing!(iter.next(), ty, "type name");
-            bail_if_exists!(iter.next()); // should only have one
+            let segment = ensure_some!(iter.next(), ty, "type name");
+            ensure_none!(iter.next(), "no extra segments expected"); // should only have one
             segment
         }
         _ => bail_on!(ty, "expect type path"), // can be invoked with tuple (A,B)
@@ -252,7 +251,7 @@ fn collect_type_arguments_recursive(
             args,
             gt_token: _,
         }) => {
-            bail_if_exists!(colon2_token); // Double colon is not expected
+            ensure_none!(colon2_token, "no double colon expected"); // Double colon is not expected
             if ty_params.contains(ident) {
                 // Type parameters should not have arguments
                 bail_on!(arguments, "type parameter should not have arguments");
@@ -286,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_parse_generics_params_empty_bail() {
-        // this invokes bail_if_exists!(lt_token); inside is param empty.
+        // this invokes ensure_none!(lt_token); inside is param empty.
         let generics: Generics = parse_quote! {<>};
         let type_param_group: Result<TypeParamGroup> = TypeParamGroup::parse_generics(&generics);
 
@@ -305,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_parse_generics_bail_where() {
-        // this invokes bail_if_exists!(where_clause);
+        // this invokes ensure_none!(where_clause);
         let item_fn: syn::ItemFn = parse_quote! {
             fn foo<T: Default>(x: T) -> T
             where T: std::fmt::Debug
@@ -321,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_missing!(colon_token, param, ":"); is invoked
+    // ensure_some!(colon_token, param, ":"); is invoked
     fn test_parse_generics_colon_missing() {
         let item_fn: syn::ItemFn = parse_quote! {
             fn temp<T>(x:T) -> String {
@@ -337,7 +336,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_exists!(eq_token); is invoked
+    // ensure_none!(eq_token); is invoked
     fn test_parse_generics_eq_token() {
         let item_fn: syn::ItemFn = parse_quote! {
             fn temp<T : SMT = String >(x:T) -> String {
@@ -353,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    // let bound = bail_if_missing!(iter.next(), param, "trait"); will be invoked
+    // let bound = ensure_some!(iter.next(), param, "trait"); will be invoked
     fn test_parse_generics_no_trait() {
         let item_fn: syn::ItemFn = parse_quote! {
             fn temp<T : >(x:T) -> String {
@@ -369,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_exists!(iter.next()); // No extra bounds expected is invoked
+    // ensure_none!(iter.next()); // No extra bounds expected is invoked
     //* so only one bound is expected and it should be the SMT trait
     fn test_parse_generics_one_trait() {
         let item_fn: syn::ItemFn = parse_quote! {
@@ -420,7 +419,7 @@ mod tests {
         );
     }
 
-    // bail_if_exists!(lifetimes); // Lifetimes are not expected
+    // ensure_none!(lifetimes); // Lifetimes are not expected
     // for<'a> Foo<&'a T>
     #[test]
     fn test_parse_generics_lifetimes() {
@@ -435,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_exists!(leading_colon); // Leading colon is not expected is invoked
+    // ensure_none!(leading_colon); // Leading colon is not expected is invoked
     fn test_parse_generics_leading_colon() {
         let item_fn: syn::ItemFn = parse_quote! {
             fn temp<T: ::std>(x:T) -> String {
@@ -451,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    //bail_if_exists!(iter.next()); // Only one segment is expected and the trait name is expected to be SMT
+    //ensure_none!(iter.next()); // Only one segment is expected and the trait name is expected to be SMT
     fn test_parse_generics_one_segment() {
         let item_fn: syn::ItemFn = parse_quote! {
             fn temp<T: std::SMT > (x:T) -> String {
@@ -695,7 +694,7 @@ mod tests {
         assert_eq!(params[1].to_string(), "U");
     }
 
-    // bail_if_exists!(qself.as_ref().map(|q| q.ty.as_ref()));
+    // ensure_none!(qself.as_ref().map(|q| q.ty.as_ref()));
     #[test]
     fn test_collect_type_arguments_qself() {
         let group = TypeParamGroup {
@@ -707,7 +706,7 @@ mod tests {
         assert_eq!(result.err().unwrap().to_string(), "unexpected");
     }
 
-    // bail_if_exists!(leading_colon);
+    // ensure_none!(leading_colon);
     #[test]
     fn test_collect_type_arguments_leading_colon() {
         let group = TypeParamGroup {
@@ -763,7 +762,7 @@ mod tests {
         assert_eq!(collected.params[0].to_string(), "T");
     }
 
-    // bail_if_exists!(colon2_token); // Double colon is not expected
+    // ensure_none!(colon2_token); // Double colon is not expected
     #[test]
     fn test_collect_type_arguments_colon2_token() {
         let group = TypeParamGroup {
@@ -805,7 +804,7 @@ mod tests {
         assert_eq!(result.err().unwrap().to_string(), "expect type argument");
     }
 
-    // bail_if_exists!(iter.next()); // should only have one
+    // ensure_none!(iter.next()); // should only have one
     // segment
     #[test]
     fn test_collect_type_arguments_more_segments() {

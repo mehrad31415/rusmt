@@ -1,0 +1,2 @@
+# hexadecimal invalid (underscores not allowed after 0x)
+hex3 = 0x_deadbeef

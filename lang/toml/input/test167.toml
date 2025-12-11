@@ -1,0 +1,2 @@
+# expect colon after time-hour in time-numoffset
+key = 1977-11-12 23:50:32+01a

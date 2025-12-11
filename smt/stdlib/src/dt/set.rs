@@ -1,3 +1,5 @@
+//! Set<K> -- Array<K,Bool> datatype and operations
+
 use crate::smt::SMT;
 use crate::{Boolean, Integer, Set, dt::SMTWrap};
 use internment::Intern;
@@ -78,6 +80,31 @@ impl<T: SMT> Set<T> {
     /// This is a concrete check. Z3's `set.has_size` is a symbolic predicate.
     pub fn has_size(self, k: Integer) -> Boolean {
         self.length().eq(k)
+    }
+
+    /// Checks if two sets are disjoint (no common elements)
+    pub fn is_disjoint(self, other: Self) -> Boolean {
+        self.inner.is_disjoint(&other.inner).into()
+    }
+
+    /// Symmetric difference (elements in either but not both)
+    pub fn symmetric_difference(self, other: Self) -> Self {
+        let diff1 = self.difference(other.clone());
+        let diff2 = other.difference(self.clone());
+        diff1.union(diff2)
+    }
+
+    /// Checks if this is a proper subset (⊂, not ⊆)
+    pub fn is_proper_subset(self, other: Self) -> Boolean {
+        (self
+            .is_subset(other.clone())
+            .and(self.length().lt(other.length())))
+        .into()
+    }
+
+    /// Checks for superset
+    pub fn is_superset(self, other: Self) -> Boolean {
+        other.is_subset(self).into()
     }
 }
 

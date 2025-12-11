@@ -1,9 +1,8 @@
-//! Provides `derive_for_impl`:
-//! used inside the `smt_impl` procedural macro to derive code for implementation annotations.
+//! Provides function restriction checks and code derivation for SMT conversion.
 
 use crate::attr::{MetaValue, parse_dict};
 use crate::generics::TypeParamGroup;
-use crate::{bail_if_exists, bail_if_missing, bail_on};
+use crate::{bail_on, ensure_none, ensure_some};
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::{FnArg, ItemFn, PatType, Path, PathSegment, Result, Signature, Type, TypePath};
@@ -58,9 +57,6 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
     // extern "C" const unsafe async fn example<T: Copy>(a: i32, b: i32, ...) -> Result<T, &'static str> {
     //      function body
     // }
-    // constness: Option<Const>, asyncness: Option<Async>, unsafety: Option<Unsafe>, abi: Option<Abi>
-    // fn_token: Fn, ident: Ident, generics: Generics, paren_token: Paren, inputs: Punctuated<FnArg, Comma>
-    // variadic: Option<Variadic>, output: ReturnType
     // in the above example, constness is const, asyncness is async, unsafety is unsafe, abi is "C"
     // fn_token is fn, ident is example, generics is <T: Copy>, paren_token is (), inputs is a: i32, b: i32
     // variadic is ... (this can only be used in external code - from C for example - as Rust does not support variadics - that is why macros exist), output is Result<T, &'static str>
@@ -79,11 +75,14 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
     } = sig;
 
     // Ensure the function is not const, async, unsafe, has an ABI, or is variadic.
-    bail_if_exists!(constness);
-    bail_if_exists!(asyncness);
-    bail_if_exists!(unsafety);
-    bail_if_exists!(abi);
-    bail_if_exists!(variadic);
+    ensure_none!(constness, "unexpected constness in function declaration");
+    ensure_none!(asyncness, "unexpected asyncness in function declaration");
+    ensure_none!(unsafety, "unexpected unsafety in function declaration");
+    ensure_none!(abi, "unexpected ABI in function declaration");
+    ensure_none!(
+        variadic,
+        "unexpected variadic parameters in function declaration"
+    );
 
     // Extract the function generics.
     // this only gives an error if the generics are not of the form <T:SMT, U:SMT ...>
@@ -114,7 +113,6 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
 
     // Collect and validate type arguments involved.
     // self_ty_consumed_params will contain all the generics used in the type of the first argument of the function.
-    // also if self_ty is a struct tuple it will give an error. Other error cases can be found in the function.
     let self_ty_consumed_params = ty_params.collect_type_arguments(self_ty)?;
 
     // Decide whether to early terminate.
@@ -137,15 +135,14 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
         }) => {
             let mut iter = segments.iter();
             // Get the first segment (the type name).
-            let segment = bail_if_missing!(iter.next(), param0, "type name"); // unreachable invocation
+            let segment = ensure_some!(iter.next(), param0, "type name"); // unreachable invocation
 
             // Ensure there are no additional segments (no nested types).
-            bail_if_exists!(iter.next());
+            ensure_none!(iter.next(), "unexpected nested type segments");
 
             let PathSegment { ident, arguments } = segment;
             // Ensure the type is not a type argument (cannot derive a method for a type argument).
             // so basically the first argument cannot be like x:T because in that case, T should implement the SMT trait, thus it is in the self_ty_consumed_params and ident is T.
-            // the reason is that if it is T, then the method should be implemented for the generic type T, but that not possible as type T does not exist.
             if self_ty_consumed_params.contains(ident) {
                 bail_on!(ident, "cannot derive a method for a type argument");
             }
@@ -212,12 +209,8 @@ fn check_and_derive(target: &ItemFn, method: Option<&Ident>) -> Result<Option<To
 }
 
 /// Derives code for functions based on attributes.
-///
-/// This function handles the parsing of attributes and the function item, determines the kind
-/// of derivation to perform (implementation), and generates the appropriate code.
-fn derive_for_func(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
+pub fn derive_for_func(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     // Parse the attributes into a dictionary.
-    // let attr = TokenStream::from(attr); from proc_macro::TokenStream to proc_macro2::TokenStream
     let mut dict = parse_dict(&attr)?;
 
     // Ensure that the underlying item is a function.
@@ -243,10 +236,7 @@ fn derive_for_func(attr: TokenStream, item: TokenStream) -> Result<TokenStream> 
         ),
     };
 
-    dict.remove("specs"); // smt_impl can only have specs attribute
-
-    // If there are any remaining attributes, return an error.
-    // so only method and specs are allowed for smt_spec and method and impls are allowed for smt_impl
+    // If there are any remaining attributes, return an error so only method is allowed
     if !dict.is_empty() {
         bail_on!(attr, "unknown attributes");
     }
@@ -265,24 +255,13 @@ fn derive_for_func(attr: TokenStream, item: TokenStream) -> Result<TokenStream> 
     Ok(output)
 }
 
-/// Derives code for implementation annotations.
-///
-/// This function is intended to be used as a procedural macro handler for functions annotated
-/// with smt_impl.
-/// example attr : #[method = ADD, specs = [ ... ]]
-/// example item : fn add<T:SMT>(a: i32, b: T) -> i32 { a }
-/// does the implementation of the method ADD for the type i32 using the logic of the function add
-pub fn derive_for_impl(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
-    derive_for_func(attr, item)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use syn::parse_quote;
 
     #[test]
-    // bail_if_exists!(constness); is invoked in the check_and_derive function
+    // ensure_none!(constness); is invoked in the check_and_derive function
     fn test_check_and_derive_bail_constness() {
         let item_fn: syn::ItemFn = parse_quote! {
             const fn add(a: i32, b: i32) -> i32 {
@@ -297,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_exists!(asyncness); is invoked in the check_and_derive function
+    // ensure_none!(asyncness); is invoked in the check_and_derive function
     fn test_check_and_derive_bail_asyncness() {
         let item_fn: syn::ItemFn = parse_quote! {
             async fn add(a: i32, b: i32) -> i32 {
@@ -312,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_exists!(unsafety); is invoked in the check_and_derive function
+    // ensure_none!(unsafety); is invoked in the check_and_derive function
     fn test_check_and_derive_bail_unsafety() {
         let item_fn: syn::ItemFn = parse_quote! {
             unsafe fn add(a: i32, b: i32) -> i32 {
@@ -327,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_exists!(abi); is invoked in the check_and_derive function
+    // ensure_none!(abi); is invoked in the check_and_derive function
     // extern "C" is typically used for FFI (Foreign Function Interface).
     fn test_check_and_derive_bail_abi() {
         let item_fn: syn::ItemFn = parse_quote! {
@@ -343,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    // bail_if_exists!(variadic); is invoked in the check_and_derive function
+    // ensure_none!(variadic); is invoked in the check_and_derive function
     fn test_check_and_derive_bail_variadic() {
         let item_fn: syn::ItemFn = parse_quote! {
             fn add(a: i32, b: i32, ...) -> i32 {
@@ -592,37 +571,6 @@ mod tests {
             }
         };
         let result = derive_for_func(attr, item);
-
-        assert!(result.is_ok());
-    }
-
-    // test derive_for_func
-    // Some(extended) => { let mut output = item; output.extend(extended); output }, this pattern is covered in the test case
-    // the result will be:
-    // fn ADD<T:SMT>(a: i32, b: T) -> i32 {
-    //     a
-    // }
-    // impl #tokenized_impl_generics(empty) #self_ty_name(i32) #self_ty_args(empty) {
-    //     #vis(empty) fn #method(add) #tokenized_method_generics(<T:SMT>) /(#tokenized_method_params)(self, b: T) #output(-> i32) {
-    //         #func_name(ADD) #tokenized_func_ty_args(#tokenized_func_args)
-    //     }
-    // }
-    // impl i32 {
-    //     fn add<T:SMT>(self, b: T) -> i32 {
-    //         ADD::<T>(self, b)
-    //     }
-    // }
-    // test derive_for_impl
-    // derive_for_func(attr, item, FnKind::Impl); is invoked in the derive_for_impl function
-    #[test]
-    fn test_derive_for_impl() {
-        let attr = parse_quote! { method = add, specs = yes };
-        let item = parse_quote! {
-            fn ADD<T:SMT>(a: i32, b: T) -> i32 {
-                a
-            }
-        };
-        let result = derive_for_impl(attr, item);
 
         assert!(result.is_ok());
     }

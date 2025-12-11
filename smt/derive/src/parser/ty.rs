@@ -1,4 +1,4 @@
-//! This module parses the rust defined types and converts them to the type tags used in the SMT context.
+//! This module parses the rust defined types and converts them to the type tags of Rusmart.
 
 use crate::parser::ctxt::{ContextWithGenerics, MarkedType};
 use crate::parser::generics::Generics;
@@ -45,12 +45,18 @@ impl CtxtForType for TypeParseCtxt<'_> {
 pub enum SysTypeName {
     Boolean,
     Integer,
-    Rational,
-    Text,
+    Real,
+    F32,
+    F64,
+    I32,
+    I64,
+    U32,
+    U64,
+    String,
     Cloak,
     Seq,
     Set,
-    Map,
+    Array,
     Error,
 }
 
@@ -59,12 +65,18 @@ impl Display for SysTypeName {
         let name = match self {
             Self::Boolean => "Boolean",
             Self::Integer => "Integer",
-            Self::Rational => "Rational",
-            Self::Text => "Text",
+            Self::Real => "Real",
+            Self::F32 => "F32",
+            Self::F64 => "F64",
+            Self::I32 => "I32",
+            Self::I64 => "I64",
+            Self::U32 => "U32",
+            Self::U64 => "U64",
+            Self::String => "String",
             Self::Cloak => "Cloak",
             Self::Seq => "Seq",
             Self::Set => "Set",
-            Self::Map => "Map",
+            Self::Array => "Array",
             Self::Error => "Error",
         };
         f.write_str(name)
@@ -77,12 +89,18 @@ impl ReservedIdent for SysTypeName {
         let matched = match ident.to_string().as_str() {
             "Boolean" => Self::Boolean,
             "Integer" => Self::Integer,
-            "Rational" => Self::Rational,
-            "Text" => Self::Text,
+            "Real" => Self::Real,
+            "F32" => Self::F32,
+            "F64" => Self::F64,
+            "I32" => Self::I32,
+            "I64" => Self::I64,
+            "U32" => Self::U32,
+            "U64" => Self::U64,
+            "String" => Self::String,
             "Cloak" => Self::Cloak,
             "Seq" => Self::Seq,
             "Set" => Self::Set,
-            "Map" => Self::Map,
+            "Array" => Self::Array,
             "Error" => Self::Error,
             _ => return None,
         };
@@ -95,13 +113,21 @@ impl SysTypeName {
     /// This is used because initially all the generics of the function delcaration in the db are empty.
     pub fn generics(&self) -> Generics {
         match self {
-            Self::Boolean | Self::Integer | Self::Rational | Self::Text | Self::Error => {
-                Generics::intrinsic(vec![])
-            }
+            Self::Boolean
+            | Self::Integer
+            | Self::Real
+            | Self::String
+            | Self::I32
+            | Self::I64
+            | Self::U32
+            | Self::U64
+            | Self::F32
+            | Self::F64
+            | Self::Error => Generics::intrinsic(vec![]),
             Self::Cloak | Self::Seq | Self::Set => {
                 Generics::intrinsic(vec![TypeParamName::intrinsic("T")])
             }
-            Self::Map => Generics::intrinsic(vec![
+            Self::Array => Generics::intrinsic(vec![
                 TypeParamName::intrinsic("K"),
                 TypeParamName::intrinsic("V"),
             ]),
@@ -117,12 +143,18 @@ impl SysTypeName {
         match self {
             Self::Boolean => TypeTag::Boolean,
             Self::Integer => TypeTag::Integer,
-            Self::Rational => TypeTag::Rational,
-            Self::Text => TypeTag::Text,
+            Self::Real => TypeTag::Real,
+            Self::F32 => TypeTag::F32,
+            Self::F64 => TypeTag::F64,
+            Self::I32 => TypeTag::I32,
+            Self::I64 => TypeTag::I64,
+            Self::U32 => TypeTag::U32,
+            Self::U64 => TypeTag::U64,
+            Self::String => TypeTag::String,
             Self::Cloak => TypeTag::Cloak(t()),
             Self::Seq => TypeTag::Seq(t()),
             Self::Set => TypeTag::Set(t()),
-            Self::Map => TypeTag::Map(k(), v()),
+            Self::Array => TypeTag::Array(k(), v()),
             Self::Error => TypeTag::Error,
         }
     }
@@ -141,7 +173,7 @@ impl TypeName {
     /// Try to convert an ident into a type name
     pub fn try_from(generics: &Generics, ident: &Ident) -> Result<Self> {
         let name = ident.to_string();
-        // see if it is a reserved type name (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error)
+        // see if it is a reserved type name (Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Error)
         let parsed = match SysTypeName::from_str(&name) {
             // if it is not a reserved type name, we try to convert it to a type parameter
             None => {
@@ -181,9 +213,21 @@ pub enum TypeTag {
     /// integer (unlimited precision)
     Integer,
     /// rational numbers (unlimited precision)
-    Rational,
+    Real,
+    /// floating point 32-bit
+    F32,
+    /// floating point 64-bit
+    F64,
+    /// signed 32-bit integer
+    I32,
+    /// signed 64-bit integer
+    I64,
+    /// unsigned 32-bit integer
+    U32,
+    /// unsigned 64-bit integer
+    U64,
     /// string
-    Text,
+    String,
     /// inductively defined type
     Cloak(Box<TypeTag>),
     /// SMT-sequence
@@ -191,7 +235,7 @@ pub enum TypeTag {
     /// SMT-set
     Set(Box<TypeTag>),
     /// SMT-array
-    Map(Box<TypeTag>, Box<TypeTag>),
+    Array(Box<TypeTag>, Box<TypeTag>),
     /// dynamic error type
     Error,
     /// user-defined type with type parameters as a list
@@ -290,14 +334,20 @@ impl TypeTag {
         let PathSegment { ident, arguments } = segment;
 
         // try to convert the identifier of the path into a TypeName & ctxt.generics() is used to get the generics of the current type
-        // This checks if the type name is a reserved name (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error) or a user-defined name or a type parameter
+        // This checks if the type name is a reserved type name or a user-defined name or a type parameter
         let tag = match TypeName::try_from(ctxt.generics(), ident)? {
             TypeName::Sys(intrinsic) => match (intrinsic, arguments) {
                 // a boolean, integer, rational, text, or error type cannot have any arguments
                 (SysTypeName::Boolean, PathArguments::None) => Self::Boolean,
                 (SysTypeName::Integer, PathArguments::None) => Self::Integer,
-                (SysTypeName::Rational, PathArguments::None) => Self::Rational,
-                (SysTypeName::Text, PathArguments::None) => Self::Text,
+                (SysTypeName::Real, PathArguments::None) => Self::Real,
+                (SysTypeName::F32, PathArguments::None) => Self::F32,
+                (SysTypeName::F64, PathArguments::None) => Self::F64,
+                (SysTypeName::I32, PathArguments::None) => Self::I32,
+                (SysTypeName::I64, PathArguments::None) => Self::I64,
+                (SysTypeName::U32, PathArguments::None) => Self::U32,
+                (SysTypeName::U64, PathArguments::None) => Self::U64,
+                (SysTypeName::String, PathArguments::None) => Self::String,
                 // a cloak, seq, set type must have exactly one argument
                 (SysTypeName::Cloak, PathArguments::AngleBracketed(pack)) => {
                     let sub = Self::from_args_expect_1(ctxt, pack)?;
@@ -312,9 +362,9 @@ impl TypeTag {
                     Self::Set(sub.into())
                 }
                 // a map type must have exactly two arguments
-                (SysTypeName::Map, PathArguments::AngleBracketed(pack)) => {
+                (SysTypeName::Array, PathArguments::AngleBracketed(pack)) => {
                     let (key, val) = Self::from_args_expect_2(ctxt, pack)?;
-                    Self::Map(key.into(), val.into())
+                    Self::Array(key.into(), val.into())
                 }
                 (SysTypeName::Error, PathArguments::None) => Self::Error,
                 _ => bail_on!(segment, "invalid type tag for intrinsic type"),
@@ -439,11 +489,21 @@ impl TypeTag {
     /// Collect type parameters involved in this type tag (recursive function)
     fn type_params_used_recursive(&self, params: &mut BTreeSet<TypeParamName>) {
         match self {
-            Self::Boolean | Self::Integer | Self::Rational | Self::Text | Self::Error => (),
+            Self::Boolean
+            | Self::Integer
+            | Self::Real
+            | Self::F32
+            | Self::F64
+            | Self::I32
+            | Self::I64
+            | Self::U32
+            | Self::U64
+            | Self::String
+            | Self::Error => {}
             Self::Cloak(sub) => sub.type_params_used_recursive(params),
             Self::Seq(sub) => sub.type_params_used_recursive(params),
             Self::Set(sub) => sub.type_params_used_recursive(params),
-            Self::Map(key, val) => {
+            Self::Array(key, val) => {
                 key.type_params_used_recursive(params);
                 val.type_params_used_recursive(params);
             }
@@ -480,12 +540,18 @@ impl Display for TypeTag {
         match self {
             Self::Boolean => write!(f, "Boolean"),
             Self::Integer => write!(f, "Integer"),
-            Self::Rational => write!(f, "Rational"),
-            Self::Text => write!(f, "Text"),
+            Self::Real => write!(f, "Real"),
+            Self::F32 => write!(f, "F32"),
+            Self::F64 => write!(f, "F64"),
+            Self::I32 => write!(f, "I32"),
+            Self::I64 => write!(f, "I64"),
+            Self::U32 => write!(f, "U32"),
+            Self::U64 => write!(f, "U64"),
+            Self::String => write!(f, "String"),
             Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
             Self::Seq(sub) => write!(f, "Seq<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
-            Self::Map(key, val) => write!(f, "Map<{key},{val}>"),
+            Self::Array(key, val) => write!(f, "Array<{key},{val}>"),
             Self::Error => write!(f, "Error"),
             Self::User(name, args) => {
                 if args.is_empty() {

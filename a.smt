@@ -1,0 +1,4 @@
+
+(assert (str.< "]" "~"))
+
+(check-sat)

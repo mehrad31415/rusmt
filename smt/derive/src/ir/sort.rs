@@ -19,16 +19,28 @@ pub enum Sort {
     Boolean,
     /// integer (unlimited precision)
     Integer,
-    /// rational numbers (unlimited precision)
-    Rational,
+    /// real
+    Real,
+    /// F32
+    F32,
+    /// F64
+    F64,
+    /// I32
+    I32,
+    /// I64
+    I64,
+    /// U32
+    U32,
+    /// U64
+    U64,
     /// string
-    Text,
+    String,
     /// SMT-sequence
     Seq(Box<Sort>),
     /// SMT-set
     Set(Box<Sort>),
     /// SMT-array
-    Map(Box<Sort>, Box<Sort>),
+    Array(Box<Sort>, Box<Sort>),
     /// dynamic error type
     Error,
     /// user-defined type (including pack-defined type tuple)
@@ -42,11 +54,17 @@ impl Display for Sort {
         match self {
             Self::Boolean => write!(f, "Boolean"),
             Self::Integer => write!(f, "Integer"),
-            Self::Rational => write!(f, "Rational"),
-            Self::Text => write!(f, "String"),
+            Self::Real => write!(f, "Real"),
+            Self::F32 => write!(f, "F32"),
+            Self::F64 => write!(f, "F64"),
+            Self::I32 => write!(f, "I32"),
+            Self::I64 => write!(f, "I64"),
+            Self::U32 => write!(f, "U32"),
+            Self::U64 => write!(f, "U64"),
+            Self::String => write!(f, "String"),
             Self::Seq(sub) => write!(f, "Vec<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
-            Self::Map(key, val) => write!(f, "Map<{key},{val}>"),
+            Self::Array(key, val) => write!(f, "Array<{key},{val}>"),
             Self::Error => write!(f, "Error"),
             Self::User(sid) => write!(f, "${sid}"),
             Self::Uninterpreted(name) => write!(f, "#{name}"),
@@ -209,15 +227,21 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             TypeRef::Var(_) => panic!("incomplete type inference"), // you cannot have type variables in the IR so all types should be resolved at the parser level that is why the unification is done.
             TypeRef::Boolean => Sort::Boolean,
             TypeRef::Integer => Sort::Integer,
-            TypeRef::Rational => Sort::Rational,
-            TypeRef::Text => Sort::Text,
+            TypeRef::Real => Sort::Real,
+            TypeRef::F32 => Sort::F32,
+            TypeRef::F64 => Sort::F64,
+            TypeRef::I32 => Sort::I32,
+            TypeRef::I64 => Sort::I64,
+            TypeRef::U32 => Sort::U32,
+            TypeRef::U64 => Sort::U64,
+            TypeRef::String => Sort::String,
             TypeRef::Cloak(sub) => {
                 // unwrap the cloak
                 self.resolve_type(sub.as_ref())
             }
             TypeRef::Seq(sub) => Sort::Seq(self.resolve_type(sub.as_ref()).into()),
             TypeRef::Set(sub) => Sort::Set(self.resolve_type(sub.as_ref()).into()),
-            TypeRef::Map(key, val) => Sort::Map(
+            TypeRef::Array(key, val) => Sort::Array(
                 self.resolve_type(key.as_ref()).into(),
                 self.resolve_type(val.as_ref()).into(),
             ),

@@ -1,0 +1,2 @@
+fruit.x.key = "value"
+[fruit.x.key]          # key cannot be a String and a Table at the same time. In TOML, a name refers to exactly one thing.

@@ -19,12 +19,12 @@ pub fn smt_type(attr: Syntax, item: Syntax) -> Syntax {
 }
 
 /// Annotation over a Rust function
-/// This annotation can only be applied on a Rust function i.e., fn as top-level module item (in contrast to fn in an impl block)
+/// This annotation can only be applied on a Rust function i.e., fn as top-level module item
 #[proc_macro_attribute]
 #[cfg(not(tarpaulin_include))]
 #[inline]
-pub fn smt_impl(attr: Syntax, item: Syntax) -> Syntax {
+pub fn smt_fn(attr: Syntax, item: Syntax) -> Syntax {
     let attr: TokenStream = TokenStream::from(attr);
     let item: TokenStream = TokenStream::from(item);
-    fail_if_error!(func::derive_for_impl(attr, item))
+    fail_if_error!(func::derive_for_func(attr, item))
 }

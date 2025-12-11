@@ -1,0 +1,3 @@
+# If an integer cannot be represented losslessly, an error must be thrown.
+
+big = 9223372036854775808  # INVALID

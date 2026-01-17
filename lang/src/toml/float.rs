@@ -5,36 +5,20 @@ use crate::toml::{
     integer::{is_hex_digit, is_minus, is_plus, is_underscore, parse_integer},
     is_dec_digit, parse_literal,
 };
+use rusmart_smt_remark_derive::smt_fn;
+use rusmart_smt_remark_derive::smt_type;
 use rusmart_smt_stdlib::{
     Error, F64, I64, Integer, Real, String, bitvector::BitvectorOps, float::FloatOps, smt::SMT,
 };
 
-#[derive(Clone, Copy, Debug, Hash)] // TODO: remove and add smt_type
+#[smt_type]
 pub enum Number {
     F64(F64),
     Integer(I64),
 }
 
-// TODO: remove
-impl Default for Number {
-    fn default() -> Self {
-        Number::Integer(I64::default())
-    }
-}
-
-// TODO: remove
-impl SMT for Number {
-    fn _cmp(self, other: Self) -> core::cmp::Ordering {
-        match (self, other) {
-            (Number::Integer(i1), Number::Integer(i2)) => i1._cmp(i2),
-            (Number::F64(f1), Number::F64(f2)) => f1._cmp(f2),
-            (Number::Integer(_), Number::F64(_)) => core::cmp::Ordering::Less,
-            (Number::F64(_), Number::Integer(_)) => core::cmp::Ordering::Greater,
-        }
-    }
-}
-
 /// `float = float-int-part ( exp / frac [ exp ] ) / special-float`
+#[smt_fn]
 pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
     // try special float
     let res = parse_special_float(input);
@@ -271,6 +255,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
 /// float-int-part = dec-int
 /// `frac = decimal-point zero-prefixable-int`
 /// `zero-prefixable-int = DIGIT *( DIGIT / underscore DIGIT )`
+#[smt_fn]
 fn parse_unsigned_dec_rest(input: State, number: Integer) -> ParseResult<Integer> {
     // Get the first character.
     let first_char = match current_char(input) {
@@ -296,6 +281,7 @@ fn parse_unsigned_dec_rest(input: State, number: Integer) -> ParseResult<Integer
 }
 
 /// *( DIGIT / underscore DIGIT )
+#[smt_fn]
 fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => {
@@ -369,6 +355,7 @@ fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<S
 }
 
 /// `special-float = [ minus / plus ] ( inf / nan )`
+#[smt_fn]
 fn parse_special_float(input: State) -> ParseResult<F64> {
     match current_char(input) {
         Optional::Some(c) => {
@@ -463,6 +450,7 @@ fn parse_special_float(input: State) -> ParseResult<F64> {
 }
 
 /// `inf = %x69.6e.66  ; inf`
+#[smt_fn]
 fn is_inf(input: State) -> ParseResult<F64> {
     match parse_literal(input, "inf".into()) {
         ParseResult::Ok(_x, remaining_input) => {
@@ -475,6 +463,7 @@ fn is_inf(input: State) -> ParseResult<F64> {
 }
 
 /// `nan = %x6e.61.6e  ; nan`
+#[smt_fn]
 fn is_nan(input: State) -> ParseResult<F64> {
     match parse_literal(input, "nan".into()) {
         ParseResult::Ok(_x, remaining_input) => ParseResult::Ok(F64::nan(), remaining_input),
@@ -485,6 +474,7 @@ fn is_nan(input: State) -> ParseResult<F64> {
 
 /// exp = "e" float-exp-part
 /// float-exp-part = [ minus / plus ] zero-prefixable-int
+#[smt_fn]
 fn parse_float_exp_part(input: State) -> ParseResult<Integer> {
     match current_char(input) {
         Optional::Some(c) => {
@@ -515,11 +505,13 @@ fn parse_float_exp_part(input: State) -> ParseResult<Integer> {
 }
 
 /// Returns the number of digits in the given integer.
+#[smt_fn]
 fn number_of_digits(i: Integer) -> Integer {
     return recursive_count_digits(i, Integer::from(10), Integer::from(0));
 }
 
 /// Helper function to recursively count digits.
+#[smt_fn]
 fn recursive_count_digits(i: Integer, divisor: Integer, acc: Integer) -> Integer {
     if *i.lt(divisor) {
         return acc.add(Integer::from(1));

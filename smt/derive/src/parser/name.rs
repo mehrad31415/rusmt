@@ -382,7 +382,7 @@ impl UsrFuncName {
             | "checked_bvadd_no_overflow" | "checked_bvsub_no_overflow" | "checked_bvneg_no_overflow" | "checked_bvmul_no_overflow" | "checked_bvsdiv_no_overflow" | "bv_shl" | "bv_lshr" | "bv_ashr" | "bv_rotate_left" | "bv_rotate_right" 
             | "bv_lt" | "bv_le" | "bv_gt" | "bv_ge" | "to_int"
             // float 
-            | "add" | "sub" | "mul" | "div" | "neg" | "abs" | "rem" | "sqrt" | "min" | "max" | "is_nan" | "is_infinite" | "is_zero" | "is_normal" | "is_subnormal" | "is_negative" | "is_positive" | "lt" | "le" | "gt" | "ge" | "nan" | "infinity" | "neg_infinity" | "pos_zero" | "neg_zero" | "to_integer" | "to_real"
+            | "add" | "sub" | "mul" | "div" | "neg" | "abs" | "rem" | "sqrt" | "min" | "max" | "is_nan" | "is_infinite" | "is_zero" | "is_normal" | "is_subnormal" | "is_negative" | "is_positive" | "lt" | "le" | "gt" | "ge" | "nan" | "infinity" | "neg_infinity" | "pos_zero" | "neg_zero" | "to_integer" | "to_real" | "from_string"
             // Integer operations.
             | "add" | "mul" | "sub" | "neg" | "div" | "modulo" | "rem" | "pow" | "abs" | "divides" | "lt" | "le" | "gt" | "ge" | "to_real" | "to_i32" | "to_i64" | "to_u32" | "to_u64" | "to_f32" | "to_f64" | "from_hex_str" | "from_oct_str" | "from_bin_str" | "is_gt_i64_max" | "is_lt_i64_min" | "is_gt_u64_max" | "is_lt_u64_min" | "is_lt_i32_min" | "is_gt_i32_max" | "is_lt_u32_min" | "is_gt_u32_max"
             // Real operations.
@@ -394,11 +394,11 @@ impl UsrFuncName {
             // Cloak operations.
             | "shield" | "reveal"
             // Sequence operations.
-            | "new" | "length" | "unit" | "append" | "concat" | "at" | "at_seq" | "extract" | "contains" | "prefix_of" | "suffix_of" | "iterator" | "is_empty" | "replace"
+            | "new" | "length" | "unit" | "append" | "concat" | "at" | "at_seq" | "extract" | "contains" | "prefix_of" | "suffix_of"  | "is_empty" | "replace"
             // Set operations.
-            | "new" | "length" | "insert" | "remove" | "contains" | "iterator" | "is_empty" | "intersection" | "union" | "difference" | "is_subset" | "has_size" | "is_disjoint" | "symmetric_difference" | "is_proper_subset" | "is_superset"
+            | "new" | "length" | "insert" | "remove" | "contains"  | "is_empty" | "intersection" | "union" | "difference" | "is_subset" | "has_size" | "is_disjoint" | "symmetric_difference" | "is_proper_subset" | "is_superset"
             // Array operations.
-            | "new" | "store" | "contains_key" | "select" | "del" | "length" | "iterator" | "is_empty"
+            | "new" | "store" | "contains_key" | "select" | "del" | "length"  | "is_empty"
             // All the above are valid intrinsic function names.
             => Self { ident: name.to_string() },
             // All other names are invalid.

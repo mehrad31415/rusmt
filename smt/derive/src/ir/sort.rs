@@ -285,6 +285,8 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     ) -> UsrSortId {
         // UsrSortName is the name of a user-defined type in the IR
         let name = ty_name.map(|n| n.into());
+        // Resolve type arguments: TypeRef::Parameter(T) -> Sort (using ty_inst)
+        // For type definitions, ty_inst should already have bindings created before calling this
         let ty_args = self.resolve_type_ref_vec(ty_args);
 
         // check if we have already processed the data type

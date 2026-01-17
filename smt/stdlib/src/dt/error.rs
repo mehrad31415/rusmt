@@ -15,7 +15,7 @@ impl Error {
     /// The inner values are incremented by one each time a new error state is created.
     pub fn fresh() -> Self {
         let id = _ERROR_COUNTER_.fetch_add(1, atomic::Ordering::SeqCst);
-        
+
         // Panic on overflow (practical limit is 2^63 errors)
         if id == usize::MAX {
             panic!("Error counter overflow: generated 2^64 unique errors");

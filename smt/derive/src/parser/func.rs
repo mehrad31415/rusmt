@@ -291,6 +291,7 @@ impl FuncSig {
     }
 }
 
+#[derive(Debug)]
 /// Function definition for implementation.
 pub struct FuncDef {
     /// The function signature.

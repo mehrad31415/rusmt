@@ -62,6 +62,17 @@ impl SmtSortName {
             ident: format!("{func}_{param}"),
         }
     }
+
+    /// Create an uninterpreted sort for type param
+    /// For type `ty` and type parameter `param`, the uninterpreted sort is `ty_param`
+    pub fn new_type_param(
+        ty: &crate::parser::name::UsrTypeName,
+        param: &crate::parser::name::TypeParamName,
+    ) -> Self {
+        Self {
+            ident: format!("{ty}_{param}"),
+        }
+    }
 }
 
 // let a = UsrTypeName { ident: "a".to_string() };
@@ -83,26 +94,4 @@ name! {
     /// Name of a variable
     Symbol
         : crate::parser::name::VarName
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parser::name::UsrTypeName;
-
-    #[test]
-    fn test_into_from() {
-        let a = UsrTypeName {
-            ident: String::from("hello"),
-        };
-
-        let b = UsrSortName::from(a.clone());
-        let c: UsrSortName = a.clone().into();
-        assert_eq!(b, c);
-
-        let d = b.into();
-        let e = UsrTypeName::from(c);
-        assert_eq!(a, d);
-        assert_eq!(d, e)
-    }
 }

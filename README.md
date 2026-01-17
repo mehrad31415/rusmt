@@ -1,90 +1,215 @@
 <h1 style="text-align: center;">Rusmart</h1>
-<p style="text-align: center;">Programming Language | Implemented in Rust | Formulated in SMT</p>
+<p style="text-align: center;">Implemented in Rust | Transpiled to SMT</p>
 
 ## Introduction
 
-**Rusmart** is a Rust to Satisfiability Modulo Theories (SMT) formulae transpiler
-that is implemented mostly via [Rust procedural macros](https://doc.rust-lang.org/reference/procedural-macros.html). 
-Rusmart is also a programming language that empathizes on the modeling of program semantics, in particular:
+**Rusmart** is a domain-specific language (DSL) embedded in Rust that enables writing language interpreters with **dual semantics**:
 
-- the _operational semantics_ of a Rusmart program is represented by Rust code
-  which is concretely executable, while
-- the _denotational semantics_ of the program is seamlessly transpiled into SMT
-  which can be symbolically reasoned.
+- The _operational semantics_ is represented by executable Rust code that can run concrete programs
+- The _denotational semantics_ is automatically transpiled into SMT-LIB formulas for symbolic reasoning
 
-## The Pitch
+This dual nature is achieved through a custom standard library (`rusmart-smt-stdlib`) and a transpiler (`rusmart-smt-derive`) that converts annotated Rust code into SMT constraints.
 
-Formal verification provides the utmost correctness assurance to programs
-while satisfiability modulo theories (SMT) solvers (e.g., [Z3](https://github.com/Z3Prover/z3))
-are at the backend core of most *push-button style* formal verification tools. Software verification requires scaffolding to
+## The Problem
 
-- Transpile code to SMT: `C`
-- Transpile specification (i.e., correctness properties) to SMT: `S`
-- Prove `S => C` (i.e., the specification implies the code) using an SMT solver: `P`
+Testing language implementations (parsers, interpreters, compilers) is challenging:
+- Hand-written test suites have limited coverage
+- Fuzzing produces random inputs but misses edge cases
+- Formal verification requires manually writing specifications in theorem provers
 
-While (automated) theorem proving is an independent line of research and
-has seen tremendous progress in recent years, the transpilers are still limiting factors to the adoption of formal verification. 
-Rusmart aims to remove the scaffolding transpilers by seamlessly blending operational and denotational semantics of a program into a single Rust codebase.
+**Rusmart solves this** by letting you write a reference interpreter _once_ in Rust, then:
+1. **Execute it** on concrete inputs like a normal program
+2. **Transpile it** to SMT formulas for symbolic analysis
+3. **Synthesize test programs** using an SMT solver (Z3)
+4. **Find bugs** in real-world implementations through automated conformance testing
 
-Rusmart is based on the insight that: **most if not all sorts of SMT formulae can be constructed in Rust**.
-Therefore, we can develop both code and specification in a subset of Rust (i.e., the fragments that we know how to transpile),
-use glue macros to tie them together, and leave the proving work to SMT solvers.
+## How It Works
 
-In this repository, you can find examples that elaborate this insight.
-These examples showcase how to develop complex SMT formulae with Rust syntax in Rusmart,
-including:
+### 1. Write an Interpreter in the Rusmart DSL
 
-- Generic type system (including native SMT types such as `Set` and `Array`)
-- Expressions allowed (including quantified expressions to replace loops)
-- Declarative constructs in imperative programs (e.g., uninterpreted function, axiomatization)
+```rust
+use rusmart_smt_stdlib::{Integer, String, Seq, Boolean};
 
-## The Rusmart Book
-
-The Rusmart book aims to be a comprehensive documentation about both
-
-- the Rusmart language features from a user perspective
-  (e.g., type system, native expressions, etc.), and
-- the internal design and implementation details of the Rusmart transpiler
-  which lift a subset of Rust into SMT formulae.
-
-With [mdBook](https://rust-lang.github.io/mdBook/) installed,
-the Rusmart book can be built and viewed locally via:
-
-```bash
-make docs
+fn parse_toml(input: Seq<String>) -> Result<TomlValue, Error> {
+    // Implementation uses only DSL types and methods
+    // This code is BOTH executable AND transpilable to SMT
+}
 ```
 
-However, as Rusmart is still under active development,
-changes, even major refactorings, are constantly pushed to the codebase.
-Therefore, expect the book to be incomplete for a foreseeable amount of time. There are also some documents in the `documents/` directory that explain the design decisions and implementation details. These will be updated as the project evolves.
+### 2. Transpile to SMT-LIB
 
-## Workflow
+```bash
+cargo run -p rusmart-smt-derive
+```
 
-Rusmart will be used to implement interpreters and model the conceptual specifications of programs. 
-Suppose the goal is to *stress-test* a specific implementation of the language interpreter `I`; the workflow will be:
+This generates SMT formulas representing the interpreter's semantics.
 
-- Develop a reference implementation of the language interpreter in Rusmart (a subset of Rust that can be converted to SMT representations).
-  - A concrete interpreter: `C`
-  - A symbolic interpreter: `S`
+### 3. Synthesize Test Programs
 
-[Enumerative testing]
+Query the SMT solver to generate programs that:
+- Trigger specific error conditions
+- Produce particular output values
+- Exercise edge cases
 
-- For each possible error code `c`:
-  - Query SMT solver for `exists p: Program` s.t. `S(p) -> Error(c)`
-  - Send `p` to `I` (i.e., `r <- I(p)`) and compare `r` and `c`
+```smt2
+(assert (exists ((p Program)) 
+  (= (parse_toml p) (Error ParseError))))
+```
 
-- For each possible non-error result `v`:
-  - Query SMT solver for `exists p: Program` s.t. `S(p) -> v`
-  - Send `p` to `I` (i.e., `r <- I(p)`) and compare `r` and `v`
+### 4. Conformance Testing
 
-[Equivalence testing]
+Feed synthesized programs to the implementation under test:
 
-Collect a corpus of programs that are deemed interesting (e.g., by fuzzing)
+```
+[SMT Solver] → Synthesized Program → [Your TOML Reference Parser]
+                                   ↓
+                              Compare with
+                                   ↓
+                            [Other Parsers]
+```
 
-- For each program `p` in the corpus:
-  - Query SMT solver for `exists p2: Program` s.t. `S(p) == S(p2)`
-  - Send `p2` to `I` and compare `I(p)` and `I(p2)`
+## Architecture
 
-Scalability
-  - use propoerties of the domain to do fast / early filtering
-  - decompose SMT queries (SAT-sweeping)
+```
+┌─────────────────────────────────────────────────────────┐
+│  Rusmart DSL Interpreter (e.g., TOML parser)           │
+│  Written using rusmart-smt-stdlib types                 │
+└─────────────────┬───────────────────────────────────────┘
+                  │
+         ┌────────┴────────┐
+         │                 │
+         ▼                 ▼
+   Concrete Exec      SMT Transpiler
+   (cargo run)      (rusmart-smt-derive)
+         │                 │
+         │                 ▼
+         │         SMT-LIB Formula
+         │                 │
+         │                 ▼
+         │         Z3 SMT Solver
+         │                 │
+         │                 ▼
+         │        Synthesized Programs
+         │                 │
+         └────────┬────────┘
+                  │
+                  ▼
+ Feed to Other Parsers & Conformance Testing
+      (Compare outputs & find bugs)
+```
+
+## Project Structure
+
+```
+rusmart/
+├── smt/
+│   ├── stdlib/       # SMT-backed Rust types (Integer, String, Seq, etc.)
+│   ├── remark/       # Annotation system marking functions and types
+│   └── derive/       # Parser + IR + SMT-LIB code generator
+├── lang/             # Language interpreters (TOML, WASM, Rego, etc.)
+├── programs/         # Example programs for testing
+└── solver/           # Bundled Z3 solver (self-contained build)
+```
+
+## Current Implementation
+
+### TOML v1.0.0 Parser
+
+The first language implementation is a complete TOML parser demonstrating the full Rusmart workflow:
+
+**Execute concrete programs:**
+```bash
+cargo run -p rusmart-lang toml lang/toml/input/example.toml
+```
+
+**Transpile to SMT:**
+```bash
+cargo run -p rusmart-smt-derive
+# Outputs SMT-LIB formulas to smt/derive/z3_synthesis/
+```
+
+**Future:** Planned Languages:
+- WebAssembly interpreter
+- WHILE language (pedagogical)
+- Rego policy language
+- EBNF grammar processor
+
+## Key Features
+
+### The Rusmart Standard Library
+
+Provides SMT-compatible types that work in both concrete and symbolic contexts:
+
+- **Primitive types**: `Boolean`, `Integer`, `Real`, `String`
+- **Bitvectors & Floats**: `I32`, `I64`, `F32`, `F64`
+- **Collections**: `Seq<T>`, `Set<T>`, `Array<K,V>`
+- **Quantifiers**: `forall`, `exists`, `choice`
+- **Recursive types**: `Cloak<T>` for defining recursive data structures
+
+### Constraints
+
+To ensure transpilability, the DSL enforces:
+- No mutable or global variables
+- No pointers or references
+- All types are `Copy`
+- Limited statement types: `match`, `if-else`, `let`, `return`
+- No loops (use quantifiers or recursion instead)
+
+## Build & Run
+
+### Prerequisites
+- Rust (edition 2024)
+- CMake (for building bundled Z3)
+
+### Build
+```bash
+cargo build --workspace
+```
+
+### Run TOML Parser
+```bash
+cargo run -p rusmart-lang toml lang/toml/input/example.toml
+```
+
+### Generate SMT Formulas
+```bash
+cargo run -p rusmart-smt-derive
+```
+
+### Documentation
+```bash
+make docs  # Requires mdBook
+```
+
+## Why Rusmart?
+
+Traditional approaches to language testing require:
+- Writing test cases manually (limited coverage)
+- Writing specifications in theorem provers like Coq (steep learning curve)
+- Maintaining separate reference implementations (duplicated effort)
+
+**Rusmart gives you:**
+- ✅ One codebase for both execution and verification
+- ✅ Automatic test generation via SMT solving
+- ✅ Familiar Rust syntax with type safety
+- ✅ Push-button conformance testing
+
+## Development Status
+
+Rusmart is under active development. The core infrastructure is in place:
+- ✅ SMT standard library
+- ✅ Parser and IR
+- ✅ SMT-LIB code generator
+- ✅ TOML parser implementation
+- ✅ Z3 query interface for program synthesis
+- ✅ Automated conformance testing framework
+
+Expect API changes and refactorings as the design evolves.
+
+## Contributing
+
+Rusmart is a research project. Documentation in `documents/` and the Rusmart Book (via `make docs`) explain design decisions and implementation details.
+
+## License
+
+GPL-3.0-or-later

@@ -8,6 +8,7 @@ use crate::toml::{
     parse_comment, parse_newline, parse_ws,
     table::{parse_array_table, parse_std_table},
 };
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{
     Array, Boolean, Cloak, Error, Integer, Seq, String,
     boolean::{FALSE, TRUE},
@@ -15,6 +16,7 @@ use rusmart_smt_stdlib::{
 };
 
 /// `expression = ws [ comment ] / ws keyval ws [ comment ] / ws table ws [ comment ]`
+#[smt_fn]
 pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>> {
     let state_after_ws = parse_ws(state);
     // now we are at the first non-whitespace character - take a peek
@@ -378,6 +380,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
 }
 
 /// Helper function to create nested tables from dotted keys.
+#[smt_fn]
 pub(crate) fn make_nested_table(keys: Seq<String>, value: Value) -> Array<String, Value> {
     if *keys.length().eq(0.into()) {
         return Array::new(); // empty table name which is the root
@@ -401,6 +404,7 @@ pub(crate) fn make_nested_table(keys: Seq<String>, value: Value) -> Array<String
 }
 
 /// delete last element from a Seq<String>
+#[smt_fn]
 pub(crate) fn drop_last_element(seq: Seq<String>) -> Seq<String> {
     let len = seq.length();
     if *len.eq(0.into()) {
@@ -411,6 +415,7 @@ pub(crate) fn drop_last_element(seq: Seq<String>) -> Seq<String> {
 }
 
 /// for a Seq<String> keep on deleting last element and concatenating with "." until empty
+#[smt_fn]
 pub(crate) fn make_tables_from_key(
     table_keyname: Seq<String>,
     key_parts: Seq<String>,
@@ -424,6 +429,7 @@ pub(crate) fn make_tables_from_key(
 }
 
 /// inner recursive function for make_tables_from_key
+#[smt_fn]
 fn make_tables_from_key_inner(
     table_keyname: Seq<String>,
     key_parts: Seq<String>,
@@ -441,6 +447,7 @@ fn make_tables_from_key_inner(
 }
 
 /// check for intersection between two Seq<Seq<String>>
+#[smt_fn]
 pub(crate) fn has_intersection(seq1: Seq<Seq<String>>, seq2: Seq<Seq<String>>) -> Boolean {
     if *seq2.length().eq(0.into()) {
         return FALSE;
@@ -465,6 +472,7 @@ pub(crate) fn has_intersection(seq1: Seq<Seq<String>>, seq2: Seq<Seq<String>>) -
 }
 
 /// make tables from std table and array table names
+#[smt_fn]
 pub(crate) fn make_tables_from_table_names(
     name: Seq<String>,
     acc: Seq<Seq<String>>,

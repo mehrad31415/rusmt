@@ -1,7 +1,7 @@
 //! Context manager for holding marked items in rust code; the main logic to parse is in this file.
 
 use crate::parser::apply::ApplyDatabase;
-use crate::parser::attr::{FuncMark, Mark};
+use crate::parser::attr::Mark;
 use crate::parser::expr::ExprParserRoot;
 use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::generics::Generics;
@@ -36,8 +36,7 @@ impl MarkedType {
 #[derive(Debug, Clone)]
 /// SMT-marked function
 pub struct MarkedFunc {
-    item: ItemFn,   // the function item
-    mark: FuncMark, // the mark that is associated with the function
+    item: ItemFn, // the function item
 }
 
 impl MarkedFunc {
@@ -164,7 +163,7 @@ impl Context {
                 // a function can be marked with #[smt_fn]
                 Item::Fn(syntax) => match Mark::parse_attrs(&syntax.attrs)? {
                     None => continue, // the function is not marked with any smt-related attributes
-                    Some(Mark::Func(mark)) => self.add_func(MarkedFunc { item: syntax, mark })?,
+                    Some(Mark::Func) => self.add_func(MarkedFunc { item: syntax })?,
                     _ => bail_on!(
                         syntax,
                         "invalid annotation\n#[smt_type] is not allowed for fn"
@@ -188,8 +187,10 @@ impl Context {
                         Some((_, items)) => self.process_items(items)?,
                     }
                 }
+                // a use item is ignored
+                Item::Use(_) => (),
                 // throw an error for any other item
-                _ => panic!("unsupported item in smt derive"),
+                _other => panic!("unsupported item in smt derive: {:?}", _other),
             }
         }
         Ok(())
@@ -248,14 +249,12 @@ impl Context {
                     .map(|(k, v)| (k.as_ref(), (NamedItem::Func, v.name()))),
             )
         {
-            if let Some((prev_kind, prev_ident)) = names.get(key) {
+            if let Some((_prev_kind, prev_ident)) = names.get(key) {
                 bail_on_with_note!(
                     prev_ident,
                     "previously defined here",
                     ident,
-                    "naming conflict between {} and {}",
-                    kind,
-                    prev_kind,
+                    "naming conflict",
                 );
             }
             names.insert(key, (kind, ident));
@@ -378,12 +377,10 @@ impl ContextWithType {
         let mut fn_db = ApplyDatabase::with_intrinsics(); // a database intialized with the system functions
 
         for (name, (sig, raw)) in sig_funcs.iter() {
-            // this will never throw an error and the `expect` unwraps the MarkedFunc
-            let mark = &self.funcs.get(name).expect("func").mark;
             // register to type db
             // register_user_func is a function that registers a user-defined function to `fn_db`, which is a database for functions
-            // the function takes the name of the function, the signature of the function, and the method name
-            match fn_db.register_user_func(name, sig, mark.method.as_ref()) {
+            // the function takes the name of the function and the signature of the function
+            match fn_db.register_user_func(name, sig) {
                 Ok(()) => (),
                 Err(e) => bail_on!(raw, "{}", e),
             }
@@ -393,7 +390,6 @@ impl ContextWithType {
 
         // re-packing
         let Self { types, funcs } = self;
-        let mut func_method: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = BTreeMap::new();
 
         // extract the func sig and body
         let unpacked_funcs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = funcs
@@ -402,22 +398,9 @@ impl ContextWithType {
                 let (sig, _) = sig_funcs.remove(&name).unwrap();
                 let stmts = marked.item.block.stmts;
 
-                if let Some(method) = &marked.mark.method {
-                    if func_method.contains_key(method) {
-                        panic!("method {} is already defined in function {}", method, name);
-                    }
-                    func_method.insert(method.clone(), (sig.clone(), stmts.clone())); // the method has the same signature and body as the function
-                }
-
                 (name, (sig, stmts))
             })
             .collect();
-
-        // add the methods to the unpacked funcs
-        let unpacked_funcs = unpacked_funcs
-            .into_iter()
-            .chain(func_method)
-            .collect::<BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>>();
 
         let ctxt = ContextWithSig {
             types,
@@ -455,7 +438,6 @@ impl ContextWithSig {
     /// The `types` are passed as is.
     /// The `fn_db` field is ignored as it is not needed anymore. It is only used in the expr module to look up the function names.
     /// The `FuncDef` struct encapsulates the function signature and the function body as an expression tree.
-    /// The expression tree is built from the statements of the function body => ExprParserRoot::new(&self, Kind::Impl, sig).parse(stmts)?
     pub fn parse_func_body(self) -> Result<ContextWithFunc> {
         // unpack function bodies
         let mut unpacked_funcs = BTreeMap::new();
@@ -494,6 +476,7 @@ impl ContextWithSig {
     }
 }
 
+#[derive(Debug)]
 /// Context manager after type, signature, and expression conversion is done
 pub struct ContextWithFunc {
     pub types: BTreeMap<UsrTypeName, TypeDef>,

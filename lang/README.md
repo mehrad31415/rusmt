@@ -1,6 +1,6 @@
 ## Rusmart Language Implementations
 
-This crate provides declarative implementations of interpreters for various programming languages.
+This crate provides implementations of interpreters for various programming languages.
 
 ### Purpose
 The primary goal of this crate is to define the semantics of languages using only the data types provided by the `rusmart-smt-stdlib` crate. Each language implementation in this crate is designed to be:
@@ -27,7 +27,7 @@ graph TD
     end
 
     subgraph "Conformance Testing"
-        I --> J[Reference Concrete Implementation];
+        I --> J[Our Reference Implementation];
         I --> K[Commercial Implementations];
         J --> L{Compare};
         L -->|Divergence| M[Bug Report];

@@ -5,7 +5,7 @@ use crate::parser::func::FuncSig;
 use crate::parser::generics::{Generics, GenericsInstFull, GenericsInstPartial};
 use crate::parser::infer::{TIError, TypeRef, TypeUnifier};
 use crate::parser::intrinsics::Intrinsic;
-use crate::parser::name::{TypeParamName, UsrFuncName, UsrTypeName};
+use crate::parser::name::{TypeParamName, UsrFuncName};
 use crate::parser::ty::{SysTypeName, TypeName, TypeTag};
 use anyhow::{Result, bail};
 use std::collections::BTreeMap;
@@ -31,22 +31,11 @@ impl TypeFn {
         }
     }
 
-    /// Instantiates a function type by substituting generics with concrete types refs.
-    ///
-    /// # Arguments
-    ///
-    /// * `subst` - A full mapping from generic parameters to concrete types.
-    ///
+    /// Instantiates a function type by substituting generics with concrete types refs
     /// GenericsInstFull is a struct that holds a full mapping from generic parameters to concrete types.
     /// pub struct GenericsInstFull {
     ///     args: BTreeMap<TypeParamName, (usize, TypeRef)>,
     /// }
-    ///
-    /// # Returns
-    ///
-    /// An `Option` containing a tuple of instantiated parameter types and return type. By instantiating, we mean converting the TypeTag to TypeRef.
-    ///
-    /// This function returns None if any of the type tags contain a type parameter that is not assigned; meaning that the type parameter is not present in the GenericsInstFull. If it is present, it is replaced with the assigned type reference. Through this process, all TypeTags in the parameter list and return type are converted to TypeRefs.
     pub fn instantiate(&self, subst: &GenericsInstFull) -> Option<(Vec<TypeRef>, TypeRef)> {
         // Instantiate parameter types.
         let params: Vec<TypeRef> = self
@@ -54,11 +43,6 @@ impl TypeFn {
             .iter()
             .map(|t| subst.instantiate(t))
             .collect::<Option<Vec<TypeRef>>>()?;
-        // collect() is a method provided by Rust's Iterator trait that transforms an iterator into a collection, such as a Vec, HashMap, an Option, etc.
-        // The ::<Option<_>> part is a type hint that tells the compiler to collect the iterator into an <Option<Vec<TypeRef>>> type. The ? operator then unwraps the Option, returning the value inside if it is Some, or returning None if it is None.
-        // The Option<_> type means that collect() will return Some(collection) if all elements of the iterator successfully produce Some(value). None if any element produces None.
-        // So each element is moved out of the Option (subst.instantiate(t) gives Option<TypeRef>) but the whole collection is moved into the outer Option.
-        // Instantiate return type.
         let ret_ty = subst.instantiate(&self.ret_ty)?;
         Some((params, ret_ty)) // Return instantiated types.
     }
@@ -76,9 +60,6 @@ pub struct ApplyDatabase {
     /// SysTypeName is the system type name that the method is associated with.
     /// TypeFn is the function type encapsulating the function signature.
     on_sys_type: BTreeMap<UsrFuncName, BTreeMap<SysTypeName, TypeFn>>,
-    /// User-defined functions with a user-defined type qualifier (methods on custom types).
-    /// The `UsrFuncName` is the name of the method. A method can be implemented for multiple types. So the value is a map from the method name to a map. The value map is from the user-defined type name to their respective arguments (Vec<TypeTag>) and function signature (TypeFn).
-    pub on_usr_type: BTreeMap<UsrFuncName, BTreeMap<UsrTypeName, (Vec<TypeTag>, TypeFn)>>,
 }
 
 impl ApplyDatabase {
@@ -87,7 +68,6 @@ impl ApplyDatabase {
         Self {
             unqualified: BTreeMap::new(),
             on_sys_type: BTreeMap::new(),
-            on_usr_type: BTreeMap::new(),
         }
     }
 
@@ -193,7 +173,7 @@ impl ApplyDatabase {
         db.builtin("sub", Q::Integer, fn2_arith(Integer)); // Binary: Integer - Integer -> Integer
         db.builtin("mul", Q::Integer, fn2_arith(Integer)); // Binary: Integer * Integer -> Integer
         db.builtin("div", Q::Integer, fn2_arith(Integer)); // Binary: Integer / Integer -> Integer
-        db.builtin("mod", Q::Integer, fn2_arith(Integer)); // Binary: Integer % Integer -> Integer (modulo)
+        db.builtin("modulo", Q::Integer, fn2_arith(Integer)); // Binary: Integer % Integer -> Integer (modulo)
         db.builtin("rem", Q::Integer, fn2_arith(Integer)); // Binary: Integer % Integer -> Integer (remainder)
         db.builtin("pow", Q::Integer, fn2_arith(Integer)); // Binary: Integer ^ Integer -> Integer
         db.builtin("neg", Q::Integer, fn1_arith(Integer)); // Unary: -Integer -> Integer
@@ -280,6 +260,7 @@ impl ApplyDatabase {
         db.builtin("contains", Q::String, fn2_cmp(String)); // Binary: contains(String, String) -> Boolean
         db.builtin("starts_with", Q::String, fn2_cmp(String)); // Binary: starts_with(String, String) -> Boolean
         db.builtin("ends_with", Q::String, fn2_cmp(String)); // Binary: ends_with(String, String) -> Boolean
+        db.builtin("to_chars", Q::String, fn1(String, seq_t())); // Unary: to_chars(String) -> Seq<String> (sequence of characters)
 
         // at(self, index) -> char_as_string
         db.builtin("at", Q::String, fn2(String, Integer, String));
@@ -947,67 +928,8 @@ impl ApplyDatabase {
         db // Return the populated database.
     }
 
-    /// Registers a user-defined function (either a method or a standalone function).
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the function.
-    /// * `sig` - The function signature.
-    /// * `method` - An optional method name if exists.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` indicating success or failure.
-    pub fn register_user_func(
-        &mut self,
-        name: &UsrFuncName,
-        sig: &FuncSig,
-        method: Option<&UsrFuncName>,
-    ) -> Result<()> {
-        if let Some(method_name) = method {
-            // Extract the receiver type (the first parameter). This is the type that the method implements.
-            let (self_ty, self_ty_name, self_ty_args) = match sig.params.first() {
-                None => bail!("no receiver argument"), // Error if there's no receiver. A method cannot be in the annotation for a function with no parameters.
-                Some((_, t)) => match t {
-                    TypeTag::User(ty_name, ty_args) => (t, ty_name.clone(), ty_args.clone()), // the type of the first parameter, the name of the type, the arguments of the type are extracted.
-                    _ => bail!("the receiver argument is not a user-defined type"), // because the method is implemented on the type, the receiver argument must be a user-defined type. Rust does not allow methods on primitive types. so if we want to write impl TYPE { fn my_method() {} }, we need to define TYPE first in the SAME crate.
-                },
-            };
-            // Extract all the type parameters used in the receiver type.
-            let self_ty_generics = self_ty.type_params_used();
-
-            let ty_params = &sig.generics.params;
-            // the functions signature has a list of type parameters, which surely includes the type parameters used in the receiver type. The type parameters used in the receiver type are a subset of the type parameters in the function signature. So the function signature must have at least the type parameters used in the receiver type.
-            if self_ty_generics.len() > ty_params.len() {
-                bail!("[invariant] the receiver argument takes too many type arguments");
-            }
-
-            let method = TypeFn {
-                generics: sig.generics.filter(&self_ty_generics), // remove the type parameters used in the receiver type from the function signature.
-                params: sig
-                    .params
-                    .iter()
-                    .map(|(_, ty)| ty.clone())
-                    .collect::<Vec<_>>(),
-                ret_ty: sig.ret_ty.clone(),
-            };
-
-            // Register the method under the user-defined type.
-            match self
-                .on_usr_type
-                .entry(method_name.clone())
-                .or_default()
-                .insert(self_ty_name, (self_ty_args, method))
-            {
-                None => (), // Successfully inserted.
-                Some(_) => bail!(
-                    "duplicated registration of user-defined function: {}::{}",
-                    self_ty,
-                    method_name,
-                ), // error will be caused if we try to implement the same method on the same type more than once. So for example this is wrong: #[smt_impl(method = my_method)] fn my_impl_1(Type_1) {} #[smt_impl(method = my_method)] fn my_impl_2(Type_1, Type_2) {} because my_method is implemented on Type_1 twice. (also different signatures in this case)
-            }
-        }
-
+    /// Registers a user-defined function.
+    pub fn register_user_func(&mut self, name: &UsrFuncName, sig: &FuncSig) -> Result<()> {
         // Register the function as unqualified (standalone function).
         let func = TypeFn::new_from_sig(sig); // builds a TypeFn from the function signature.
         match self.unqualified.insert(name.clone(), func) {
@@ -1032,18 +954,6 @@ impl ApplyDatabase {
         self.on_sys_type.get(fn_name).and_then(|s| s.get(ty_name))
     }
 
-    /// Looks up a user function on a user-defined type by name.
-    pub fn lookup_usr_func_on_usr_type(
-        &self,
-        ty_name: &UsrTypeName,
-        fn_name: &UsrFuncName,
-    ) -> Option<&TypeFn> {
-        self.on_usr_type
-            .get(fn_name)
-            .and_then(|s| s.get(ty_name))
-            .map(|(_, v)| v)
-    }
-
     /// Queries for a function with type inference, given a function name and arguments.
     pub fn query_with_inference<T: CtxtForExpr>(
         &self,
@@ -1060,15 +970,6 @@ impl ApplyDatabase {
         match self.on_sys_type.get(name) {
             None => (),
             Some(options) => candidates.extend(options.iter().map(|(n, t)| (TypeName::Sys(*n), t))),
-        }
-        // then look at methods defined on the user-defined types.
-        match self.on_usr_type.get(name) {
-            None => (),
-            Some(options) => candidates.extend(
-                options
-                    .iter()
-                    .map(|(n, (_, t))| (TypeName::Usr(n.clone()), t)),
-            ),
         }
 
         // Variable to hold a suitable candidate if found.

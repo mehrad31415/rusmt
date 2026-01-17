@@ -252,6 +252,7 @@ pub fn derive_for_func(attr: TokenStream, item: TokenStream) -> Result<TokenStre
             output
         }
     };
+
     Ok(output)
 }
 

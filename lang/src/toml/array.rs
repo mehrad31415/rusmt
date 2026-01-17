@@ -4,9 +4,11 @@ use crate::toml::{
     Optional, ParseResult, ParserContext, State, advance, ast::Value, current_char,
     key_value::parse_value, parse_comment, parse_newline, parse_wschar,
 };
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{Boolean, Error, Seq, String, smt::SMT};
 
 /// array = array-open [ array-values ] ws-comment-newline array-close
+#[smt_fn]
 pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Value>> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch,
@@ -83,22 +85,26 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
 }
 
 /// array-open =  %x5B ; [
+#[smt_fn]
 fn is_array_open(c: String) -> Boolean {
     c.eq("[".into())
 }
 
 /// array-close = %x5D ; ]
+#[smt_fn]
 fn is_array_close(c: String) -> Boolean {
     c.eq("]".into())
 }
 
 /// array-sep = %x2C  ; , Comma
+#[smt_fn]
 fn is_array_sep(c: String) -> Boolean {
     c.eq(",".into())
 }
 
 /// array-values =  ws-comment-newline val ws-comment-newline array-sep array-values
 /// array-values =/ ws-comment-newline val ws-comment-newline [ array-sep ]
+#[smt_fn]
 fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>> {
     match parse_value(key, input) {
         ParseResult::Err(e) => ParseResult::Err(e),
@@ -135,7 +141,10 @@ fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>>
                                             Optional::Some(newnew) => {
                                                 if *is_array_close(newnew) {
                                                     // trailing comma case is okay
-                                                    return ParseResult::Ok(Seq::new().append(val), advance(after_ws3));
+                                                    return ParseResult::Ok(
+                                                        Seq::new().append(val),
+                                                        advance(after_ws3),
+                                                    );
                                                 } else {
                                                     match parse_array_values(key, after_ws3) {
                                                         ParseResult::Err(e) => ParseResult::Err(e),
@@ -155,7 +164,10 @@ fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>>
                                 }
                             } else {
                                 if *is_array_close(next_c) {
-                                    return ParseResult::Ok(Seq::new().append(val), advance(after_ws2));
+                                    return ParseResult::Ok(
+                                        Seq::new().append(val),
+                                        advance(after_ws2),
+                                    );
                                 } else {
                                     // println!(
                                     //     "expect array-close or separator after array value"
@@ -172,6 +184,7 @@ fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>>
 }
 
 /// ws-comment-newline = *( wschar / [ comment ] newline )
+#[smt_fn]
 fn parse_ws_comment_newline(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::Ok(String::from(""), input),

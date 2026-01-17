@@ -12,9 +12,11 @@ use crate::toml::{
     string::{parse_basic_string, parse_literal_string, parse_string},
     table::parse_inline_table,
 };
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{Cloak, Error, Seq, String, smt::SMT};
 
 /// `keyval = key keyval-sep val`
+#[smt_fn]
 pub fn parse_key_value(state: State) -> ParseResult<(Seq<String>, Value)> {
     match parse_key(state) {
         ParseResult::Ok(key, state_after_key) => {
@@ -51,6 +53,7 @@ pub fn parse_key_value(state: State) -> ParseResult<(Seq<String>, Value)> {
 /// `key = simple-key / dotted-key`
 /// `dotted-key = simple-key 1*( dot-sep simple-key )`
 /// `key = simple-key *( dot-sep simple-key )`
+#[smt_fn]
 pub(crate) fn parse_key(state: State) -> ParseResult<Seq<String>> {
     match parse_simple_key(state) {
         ParseResult::Ok(first_key, state_after_first) => {
@@ -75,6 +78,7 @@ pub(crate) fn parse_key(state: State) -> ParseResult<Seq<String>> {
 }
 
 /// `keyval-sep = ws %x3D ws ; =`
+#[smt_fn]
 fn parse_keyval_sep(state: State) -> ParseResult<String> {
     let state_after_ws = parse_ws(state);
     let c = current_char(state_after_ws);
@@ -99,6 +103,7 @@ fn parse_keyval_sep(state: State) -> ParseResult<String> {
 }
 
 /// Helper function to parse the rest of a dotted key.
+#[smt_fn]
 fn parse_dotted_key_loop(acc: Seq<String>, state: State) -> ParseResult<Seq<String>> {
     match parse_dot_sep(state) {
         ParseResult::Ok(_dot, state_after_dot) => match parse_simple_key(state_after_dot) {
@@ -119,6 +124,7 @@ fn parse_dotted_key_loop(acc: Seq<String>, state: State) -> ParseResult<Seq<Stri
 }
 
 /// `dot-sep   = ws %x2E ws  ; . Period`
+#[smt_fn]
 fn parse_dot_sep(state: State) -> ParseResult<String> {
     let state_after_ws = parse_ws(state);
     let c = current_char(state_after_ws);
@@ -137,6 +143,7 @@ fn parse_dot_sep(state: State) -> ParseResult<String> {
 }
 
 /// `simple-key = quoted-key / unquoted-key`
+#[smt_fn]
 fn parse_simple_key(state: State) -> ParseResult<String> {
     match parse_quoted_key(state) {
         ParseResult::Ok(quoted_key, state_after_quoted) => {
@@ -148,6 +155,7 @@ fn parse_simple_key(state: State) -> ParseResult<String> {
 }
 
 /// `unquoted-key = 1*( ALPHA / DIGIT / %x2D / %x5F ) ; A-Z / a-z / 0-9 / - / _`
+#[smt_fn]
 fn parse_unquoted_key(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(first_char) => {
@@ -175,6 +183,7 @@ fn parse_unquoted_key(state: State) -> ParseResult<String> {
 }
 
 /// Helper function to parse the rest of an unquoted key.
+#[smt_fn]
 fn parse_rest_of_unquoted_key(state: State, acc: String) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(c) => {
@@ -205,6 +214,7 @@ fn parse_rest_of_unquoted_key(state: State, acc: String) -> ParseResult<String> 
 }
 
 /// `quoted-key = basic-string / literal-string`
+#[smt_fn]
 fn parse_quoted_key(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(c) => {
@@ -224,6 +234,7 @@ fn parse_quoted_key(state: State) -> ParseResult<String> {
 
 /// The main dispatcher for parsing any TOML value.
 /// `val = string / boolean / array / inline-table / date-time / float / integer`
+#[smt_fn]
 pub(crate) fn parse_value(key: Seq<String>, input: State) -> ParseResult<Value> {
     // first we match boolean because it is more restrictive than string
     match parse_boolean(input) {

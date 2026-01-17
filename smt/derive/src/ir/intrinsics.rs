@@ -934,8 +934,10 @@ pub enum Intrinsic {
         t: Sort,
         val: ExpId,
     },
-    /// `Error::fresh`
-    ErrFresh,
+    /// `Error::fresh` with unique error ID
+    ErrFresh {
+        error_id: usize,
+    },
     /// `Error::merge`
     ErrMerge {
         lhs: ExpId,

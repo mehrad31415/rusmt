@@ -240,13 +240,6 @@ pub trait CtxtForExpr: CtxtForType {
         ty_name: &SysTypeName,
         fn_name: &UsrFuncName,
     ) -> Option<&TypeFn>;
-
-    /// Retrieve the signature for a user function on a user type (entirely user-defined method)
-    fn lookup_usr_func_on_usr_type(
-        &self,
-        ty_name: &UsrTypeName,
-        fn_name: &UsrFuncName,
-    ) -> Option<&TypeFn>;
 }
 
 /// Bindings through unpacking during match
@@ -1070,7 +1063,7 @@ impl Expr {
                 // -------------------------------------------------------------------------
                 // Error / Generic
                 // -------------------------------------------------------------------------
-                Intrinsic::ErrFresh => (),
+                Intrinsic::ErrFresh { .. } => (),
                 Intrinsic::ErrMerge { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
@@ -1203,7 +1196,14 @@ impl<'ctx> ExprParserRoot<'ctx> {
                 // if there are still any TypeRef::Var left, the type is incomplete and we return an error
                 // this will happen when the type variable is not unified to a concrete type
                 if !refreshed.validate() {
-                    bail_on!(refreshed.to_string(), "incomplete type") // if the type is incomplete, we return an error
+                    // Return an error - it will be caught and re-thrown with proper span info below
+                    return Err(syn::Error::new(
+                        syn::spanned::Spanned::span(&stmts.last().expect("at least one statement")),
+                        format!(
+                            "incomplete type: {} (some type variables could not be inferred)",
+                            refreshed
+                        ),
+                    ));
                 }
                 *ty = refreshed; // replace the type with the inferred type in `parsed` expression
                 Ok(())
@@ -1253,17 +1253,6 @@ impl CtxtForExpr for ExprParserRoot<'_> {
         self.ctxt
             .fn_db
             .lookup_usr_func_on_sys_type(ty_name, fn_name)
-    }
-
-    /// Retrieve the method type for a user function on a user type (entirely user-defined method) and inherenting the kind from the current function
-    fn lookup_usr_func_on_usr_type(
-        &self,
-        ty_name: &UsrTypeName,
-        fn_name: &UsrFuncName,
-    ) -> Option<&TypeFn> {
-        self.ctxt
-            .fn_db
-            .lookup_usr_func_on_usr_type(ty_name, fn_name)
     }
 }
 
@@ -1374,11 +1363,11 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     });
                 }
                 Stmt::Expr(expr, semi_token) => {
-                    // expecting a unit expression (this is the return value of the function)
-                    // so expressions which throw away their return value are not allowed
-                    // this is because every expression in rusmart is pure (it should not have side effects meaning modifying the state of the program like mutable variables)
-                    // therefore there is no point in having an expression that does not return its value
-                    bail_if_exists!(semi_token);
+                    // For return statements, semicolon is allowed and expected
+                    // For other expressions (last expression), semicolon is not allowed
+                    if !matches!(expr, Exp::Return(_)) {
+                        bail_if_exists!(semi_token);
+                    }
 
                     // mark that we have found the main expression in the statements
                     expr_found = Some(expr);
@@ -2226,8 +2215,8 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                     Some(fty) => fty,
                                 };
 
-                            // for simplicity, require type generics be the first set of type parameters
-                            // TODO: relax this requirement
+                            // Merge type instantiations from both type and function generics
+                            // The order doesn't matter since instantiation is name-based
                             let inst =
                                 match ty_inst.complete(unifier).merge(&fn_inst.complete(unifier)) {
                                     None => bail_on!(func, "conflicting type parameter name"),
@@ -2243,46 +2232,21 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             let parsed_args =
                                 self.parse_call_arguments(unifier, &params, &ret_ty, expr_call)?;
 
+                            // Extract type arguments in the order expected by the function's generics
+                            // This ensures type arguments are provided in the correct order regardless
+                            // of how they were merged
+                            let ty_args = match inst.vec_for_generics(&fty.generics) {
+                                None => bail_on!(func, "missing type parameter in instantiation"),
+                                Some(args) => args,
+                            };
+
                             // build the opcode
                             let intrinsic =
-                                match Intrinsic::new(&ty_name, &fn_name, inst.vec(), parsed_args) {
+                                match Intrinsic::new(&ty_name, &fn_name, ty_args, parsed_args) {
                                     Ok(parsed) => parsed,
                                     Err(e) => bail_on!(target, "{}", e),
                                 };
                             Op::Intrinsic(Box::new(intrinsic))
-                        }
-                        // user-defined function on a user-defined type
-                        QualifiedPath::UsrFuncOnUsrType(ty_name, ty_inst, fn_name, fn_inst) => {
-                            // derive type param substitutions
-                            let fty =
-                                match self.root.lookup_usr_func_on_usr_type(&ty_name, &fn_name) {
-                                    None => bail_on!(func, "[invariant] no such function"),
-                                    Some(fty) => fty,
-                                };
-
-                            // for simplicity, require type generics be the first set of type parameters
-                            // TODO: relax this requirement
-                            let inst =
-                                match ty_inst.complete(unifier).merge(&fn_inst.complete(unifier)) {
-                                    None => bail_on!(func, "conflicting type parameter name"),
-                                    Some(inst) => inst,
-                                };
-
-                            let (params, ret_ty) = match fty.instantiate(&inst) {
-                                None => bail_on!(func, "no such type parameter"),
-                                Some(instantiated) => instantiated,
-                            };
-
-                            // parse the arguments
-                            let parsed_args =
-                                self.parse_call_arguments(unifier, &params, &ret_ty, expr_call)?;
-
-                            // build the opcode
-                            Op::Procedure {
-                                name: fn_name.clone(),
-                                inst: inst.vec(),
-                                args: parsed_args,
-                            }
                         }
                     },
                     // like let a = MyTuple(1) where struct MyTuple(i32);
@@ -2589,7 +2553,22 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     }
                 }
             }
-            // array, assign, async, await, binary, break, cast, closure, const, continue, forloop, group, index, infer, let, lit, loop, range, reference, repeat, return, try, tryblock, unary, unsafe, verbatim, while, yield, are not supported
+            // Return expressions - unwrap and convert the inner expression
+            Exp::Return(expr_return) => {
+                match &expr_return.expr {
+                    Some(inner_expr) => {
+                        // Recursively convert the inner expression - return x becomes x
+                        // This returns early from the match, unpacking the Result
+                        return self.convert_expr(unifier, inner_expr);
+                    }
+                    None => {
+                        // return without value - not allowed in SMT functions
+                        bail_on!(expr_return, "return without value not supported")
+                    }
+                }
+            }
+
+            // array, assign, async, await, binary, break, cast, closure, const, continue, forloop, group, index, infer, let, lit, loop, range, reference, repeat, try, tryblock, unary, unsafe, verbatim, while, yield, are not supported
             _ => bail_on!(target, "invalid expression {:?}", target),
         };
 

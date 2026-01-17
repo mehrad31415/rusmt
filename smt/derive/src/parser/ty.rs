@@ -5,7 +5,7 @@ use crate::parser::generics::Generics;
 use crate::parser::name::{ReservedIdent, TypeParamName, UsrTypeName};
 use crate::{bail_if_empty, bail_if_exists, bail_if_missing, bail_on};
 use itertools::Itertools; // imported to use the format method on iterators (std::slice::Iter types). This method does not exist on iterators by default, but itertools provides it. The format method takes an iterator and returns a string with the elements of the iterator separated by a separator string.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use syn::{
     AngleBracketedGenericArguments, Field, FieldMutability, Fields, FieldsNamed, FieldsUnnamed,
@@ -272,12 +272,11 @@ impl TypeTag {
         pack: &AngleBracketedGenericArguments,
     ) -> Result<Vec<Self>> {
         let AngleBracketedGenericArguments {
-            colon2_token,
+            colon2_token: _,  // Allow turbofish syntax (::) - just ignore it
             lt_token: _,
             args,
             gt_token: _,
         } = pack;
-        bail_if_exists!(colon2_token);
         Self::from_args(ctxt, args)
     }
 
@@ -484,54 +483,6 @@ impl TypeTag {
             }
         }
         Ok(arguments)
-    }
-
-    /// Collect type parameters involved in this type tag (recursive function)
-    fn type_params_used_recursive(&self, params: &mut BTreeSet<TypeParamName>) {
-        match self {
-            Self::Boolean
-            | Self::Integer
-            | Self::Real
-            | Self::F32
-            | Self::F64
-            | Self::I32
-            | Self::I64
-            | Self::U32
-            | Self::U64
-            | Self::String
-            | Self::Error => {}
-            Self::Cloak(sub) => sub.type_params_used_recursive(params),
-            Self::Seq(sub) => sub.type_params_used_recursive(params),
-            Self::Set(sub) => sub.type_params_used_recursive(params),
-            Self::Array(key, val) => {
-                key.type_params_used_recursive(params);
-                val.type_params_used_recursive(params);
-            }
-            Self::User(_, args) => {
-                for arg in args {
-                    arg.type_params_used_recursive(params);
-                }
-            }
-            Self::Pack(elems) => {
-                for elem in elems {
-                    elem.type_params_used_recursive(params);
-                }
-            }
-            Self::Parameter(name) => {
-                params.insert(name.clone());
-            }
-        }
-    }
-
-    /// Collect type parameters involved in this type tag
-    ///
-    /// This function is used to collect all the type parameters used for the first parameter of a user-defined function.
-    /// After doing so, we filter out these type parameters from the generics of the function.
-    /// The rest are used to declare a method implementation for the type of the first parameter.
-    pub fn type_params_used(&self) -> BTreeSet<TypeParamName> {
-        let mut params = BTreeSet::new();
-        self.type_params_used_recursive(&mut params);
-        params
     }
 }
 

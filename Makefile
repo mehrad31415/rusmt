@@ -4,7 +4,6 @@ Please choose one of the specific commands:
   - lint	: lint and format the code
   - cloc	: count total number of lines of code
   - docs	: build and display the documentation
-  - rego	: semantics for language: rego
 endef
 export cmdline
 
@@ -17,17 +16,13 @@ lint:
 
 cloc:
 	@cloc \
-		utils \
+		--include-lang=Rust \
 		smt \
-		evaluation \
-		lang \
+		programs \
+		lang
 
 docs:
 	@cd doc/book && \
 		mdbook clean && mdbook build && mdbook serve --open
 
-rego:
-	@cd lang/src/rego && \
-	cargo run rego
-
-.PHONY: help lint cloc docs rego
+.PHONY: help lint cloc docs

@@ -8,6 +8,7 @@ use crate::toml::{
     is_exclamation, is_htab, is_newline, is_non_ascii, is_quotation_mark, is_wschar, parse_newline,
     parse_ws, parse_wschar,
 };
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{
     Boolean, Error, Integer, String, U32,
     bitvector::BitvectorOps,
@@ -16,6 +17,7 @@ use rusmart_smt_stdlib::{
 };
 
 /// `string = ml-basic-string / basic-string / ml-literal-string / literal-string`
+#[smt_fn]
 pub(crate) fn parse_string(state: State) -> ParseResult<String> {
     match parse_ml_basic_string(state) {
         ParseResult::Err(e) => return ParseResult::Err(e),
@@ -35,6 +37,7 @@ pub(crate) fn parse_string(state: State) -> ParseResult<String> {
 }
 
 /// ml-basic-string = ml-basic-string-delim [ newline ] ml-basic-body ml-basic-string-delim
+#[smt_fn]
 fn parse_ml_basic_string(state: State) -> ParseResult<String> {
     if *is_ml_basic_string_delim(state) {
         let after_opening = advance(advance(advance(state))); // Advance past the 3 quotation marks
@@ -93,6 +96,7 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
 }
 
 /// ml-basic-string-delim = 3quotation-mark
+#[smt_fn]
 fn is_ml_basic_string_delim(state: State) -> Boolean {
     match current_char(state) {
         Optional::Some(c1) => {
@@ -127,6 +131,7 @@ fn is_ml_basic_string_delim(state: State) -> Boolean {
 }
 
 /// ml-basic-body = *mlb-content *( mlb-quotes 1*mlb-content ) [ mlb-quotes ]
+#[smt_fn]
 fn parse_ml_body(state: State) -> ParseResult<String> {
     match parse_mlb_content(state) {
         ParseResult::Err(e) => return ParseResult::Err(e),
@@ -150,6 +155,7 @@ fn parse_ml_body(state: State) -> ParseResult<String> {
 
 /// *mlb-content
 /// mlb-content = mlb-char / newline / mlb-escaped-nl
+#[smt_fn]
 fn parse_mlb_content(state: State) -> ParseResult<String> {
     match parse_mlb_char(state) {
         ParseResult::Ok(s, new_state) => {
@@ -212,6 +218,7 @@ fn parse_mlb_content(state: State) -> ParseResult<String> {
 }
 
 /// mlb-char = mlb-unescaped / escaped
+#[smt_fn]
 fn parse_mlb_char(state: State) -> ParseResult<String> {
     match parse_mlb_unescaped(state) {
         ParseResult::Ok(s, new_state) => return ParseResult::Ok(s, new_state),
@@ -221,6 +228,7 @@ fn parse_mlb_char(state: State) -> ParseResult<String> {
 }
 
 /// mlb-unescaped = wschar / %x21 / %x23-5B / %x5D-7E / non-ascii
+#[smt_fn]
 fn parse_mlb_unescaped(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -256,6 +264,7 @@ fn parse_mlb_unescaped(state: State) -> ParseResult<String> {
 }
 
 /// escaped = escape escape-seq-char
+#[smt_fn]
 fn parse_escaped(state: State, val: Integer) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -277,11 +286,13 @@ fn parse_escaped(state: State, val: Integer) -> ParseResult<String> {
 }
 
 /// escape = %x5C ; \
+#[smt_fn]
 fn is_escape_char(c: String) -> Boolean {
     c.eq(String::from("\\"))
 }
 
 /// Helper to parse exactly `count` hex digits and return them as a String
+#[smt_fn]
 fn parse_n_hex_digits(state: State, count: Integer, acc: String) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(c) => {
@@ -305,6 +316,7 @@ fn parse_n_hex_digits(state: State, count: Integer, acc: String) -> ParseResult<
 }
 
 /// escape-seq-char =  %x22 / %x5C / %x62 / %x66 / %x6E / %x72 / %x74 ; (", \, b, f, n, r, t)
+#[smt_fn]
 fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -408,6 +420,7 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
     }
 }
 
+#[smt_fn]
 fn is_valid_unicode_scalar(value: U32) -> Boolean {
     // Range 1: 0x0000 to 0xD7FF (Standard Unicode)
     let is_low_range = value.bv_le(U32::from(0xD7FF));
@@ -422,6 +435,7 @@ fn is_valid_unicode_scalar(value: U32) -> Boolean {
 }
 
 /// mlb-escaped-nl = escape ws newline *( wschar / newline )
+#[smt_fn]
 fn parse_mlb_escaped_nl(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -455,6 +469,7 @@ fn parse_mlb_escaped_nl(state: State) -> ParseResult<String> {
 }
 
 /// *( wschar / newline )
+#[smt_fn]
 fn parse_wschar_newline_sequence(state: State) -> ParseResult<String> {
     match parse_wschar(state) {
         ParseResult::Err(e) => return ParseResult::Err(e),
@@ -486,6 +501,7 @@ fn parse_wschar_newline_sequence(state: State) -> ParseResult<String> {
 }
 
 /// *( mlb-quotes 1*mlb-content ) [ mlb-quotes ]
+#[smt_fn]
 fn parse_mlb_quote_content(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -528,6 +544,7 @@ fn parse_mlb_quote_content(state: State) -> ParseResult<String> {
 }
 
 /// mlb-quotes = 1*2quotation-mark
+#[smt_fn]
 fn parse_mlb_quotes(state: State) -> ParseResult<String> {
     let first_char = current_char(state);
     match first_char {
@@ -611,6 +628,7 @@ fn parse_mlb_quotes(state: State) -> ParseResult<String> {
 }
 
 /// ml-literal-string = ml-literal-string-delim [ newline ] ml-literal-body ml-literal-string-delim
+#[smt_fn]
 fn parse_ml_literal_string(state: State) -> ParseResult<String> {
     if *is_ml_literal_string_delim(state) {
         let after_opening = advance(advance(advance(state))); // Advance past the 3 apostrophes
@@ -667,6 +685,7 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
 }
 
 /// ml-literal-string-delim = 3apostrophe
+#[smt_fn]
 fn is_ml_literal_string_delim(state: State) -> Boolean {
     match current_char(state) {
         Optional::Some(c1) => {
@@ -701,6 +720,7 @@ fn is_ml_literal_string_delim(state: State) -> Boolean {
 }
 
 /// ml-literal-body = *mll-content *( mll-quotes 1*mll-content ) [ mll-quotes ]
+#[smt_fn]
 fn parse_ml_literal_body(state: State) -> ParseResult<String> {
     match parse_ml_literal_content(state) {
         ParseResult::Err(e) => return ParseResult::Err(e),
@@ -722,6 +742,7 @@ fn parse_ml_literal_body(state: State) -> ParseResult<String> {
 
 /// *mll-content
 /// mll-content = mll-char / newline
+#[smt_fn]
 fn parse_ml_literal_content(state: State) -> ParseResult<String> {
     match parse_ml_literal_char(state) {
         ParseResult::Ok(s, new_state) => {
@@ -763,6 +784,7 @@ fn parse_ml_literal_content(state: State) -> ParseResult<String> {
 }
 
 /// mll-char = %x09 / %x20-26 / %x28-7E / non-ascii
+#[smt_fn]
 fn parse_ml_literal_char(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -789,6 +811,7 @@ fn parse_ml_literal_char(state: State) -> ParseResult<String> {
 }
 
 /// *( mll-quotes 1*mll-content ) [ mll-quotes ]
+#[smt_fn]
 fn parse_ml_literal_quote_content(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -831,6 +854,7 @@ fn parse_ml_literal_quote_content(state: State) -> ParseResult<String> {
 }
 
 /// mll-quotes = 1*2apostrophe
+#[smt_fn]
 fn parse_ml_literal_quotes(state: State) -> ParseResult<String> {
     let first_char = current_char(state);
     match first_char {
@@ -914,6 +938,7 @@ fn parse_ml_literal_quotes(state: State) -> ParseResult<String> {
 }
 
 /// `basic-string = quotation-mark *basic-char quotation-mark``
+#[smt_fn]
 pub(crate) fn parse_basic_string(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -950,6 +975,7 @@ pub(crate) fn parse_basic_string(state: State) -> ParseResult<String> {
 
 /// The content inside a basic string, after the opening quotation mark.
 /// *basic-char
+#[smt_fn]
 fn parse_basic_string_content(state: State, acc: String) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => ParseResult::Ok(acc, state), // empty string content
@@ -988,6 +1014,7 @@ fn parse_basic_string_content(state: State, acc: String) -> ParseResult<String> 
 }
 
 /// basic-char = basic-unescaped / escaped
+#[smt_fn]
 fn parse_basic_char(state: State) -> ParseResult<String> {
     match parse_basic_unescaped(state) {
         ParseResult::Ok(s, new_state) => return ParseResult::Ok(s, new_state),
@@ -997,6 +1024,7 @@ fn parse_basic_char(state: State) -> ParseResult<String> {
 }
 
 /// basic-unescaped = wschar / %x21 / %x23-5B / %x5D-7E / non-ascii
+#[smt_fn]
 fn parse_basic_unescaped(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -1031,18 +1059,19 @@ fn parse_basic_unescaped(state: State) -> ParseResult<String> {
 }
 
 /// %x23-5B range: # through [
-#[allow(non_snake_case)] //TODO: remove
+#[smt_fn]
 fn is_range_23_5B(c: String) -> Boolean {
     c.ge(String::from("#")).and(c.le(String::from("[")))
 }
 
 /// %x5D-7E range: ] through ~
-#[allow(non_snake_case)] //TODO: remove
+#[smt_fn]
 fn is_range_5D_7E(c: String) -> Boolean {
     c.ge(String::from("]")).and(c.le(String::from("~")))
 }
 
 /// literal-string = apostrophe *literal-char apostrophe
+#[smt_fn]
 pub(crate) fn parse_literal_string(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -1078,6 +1107,7 @@ pub(crate) fn parse_literal_string(state: State) -> ParseResult<String> {
 }
 
 /// *literal-char
+#[smt_fn]
 fn parse_literal_string_content(state: State, acc: String) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => ParseResult::Ok(acc, state), // empty string content
@@ -1115,6 +1145,7 @@ fn parse_literal_string_content(state: State, acc: String) -> ParseResult<String
 }
 
 /// literal-char = %x09 / %x20-26 / %x28-7E / non-ascii
+#[smt_fn]
 fn parse_literal_char(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
@@ -1141,12 +1172,13 @@ fn parse_literal_char(state: State) -> ParseResult<String> {
 }
 
 /// %x20-26 range: space through &
+#[smt_fn]
 fn is_range_20_26(c: String) -> Boolean {
     c.ge(String::from(" ")).and(c.le(String::from("&")))
 }
 
 /// %x28-7E range: ( through ~
-#[allow(non_snake_case)] //TODO: remove
+#[smt_fn]
 fn is_range_28_7E(c: String) -> Boolean {
     c.ge(String::from("(")).and(c.le(String::from("~")))
 }

@@ -294,6 +294,449 @@ impl ExpRegistry {
     pub fn lookup_exp(&self, idx: &ExpId) -> &Expression {
         self.exps.get(idx).expect("no such exp id")
     }
+
+    pub fn collect_called_functions(&self, exp_id: &ExpId) -> Vec<UsrFunId> {
+        let mut called_fns = vec![];
+        let exp = self.lookup_exp(exp_id);
+        // recursively traverse the expression to find called functions
+        match exp {
+            Expression::Var(_) => (),
+            Expression::Pack { sort: _, elems } => {
+                for e in elems {
+                    called_fns.append(&mut self.collect_called_functions(e));
+                }
+            }
+            Expression::Tuple { sort: _, slots } => {
+                for s in slots {
+                    called_fns.append(&mut self.collect_called_functions(s));
+                }
+            }
+            Expression::Record { sort: _, fields } => {
+                for (_, f) in fields {
+                    called_fns.append(&mut self.collect_called_functions(f));
+                }
+            }
+            Expression::Enum {
+                sort: _,
+                branch: _,
+                variant,
+            } => match variant {
+                VariantCtor::Unit => (),
+                VariantCtor::Tuple(elems) => {
+                    for e in elems {
+                        called_fns.append(&mut self.collect_called_functions(e));
+                    }
+                }
+                VariantCtor::Record(fields) => {
+                    for (_, f) in fields {
+                        called_fns.append(&mut self.collect_called_functions(f));
+                    }
+                }
+            },
+            Expression::AccessSlot { base, slot: _ } => {
+                called_fns.append(&mut self.collect_called_functions(base));
+            }
+            Expression::AccessField { base, field: _ } => {
+                called_fns.append(&mut self.collect_called_functions(base));
+            }
+            Expression::Match { cases } => {
+                for case in cases {
+                    for atom in &case.atoms {
+                        called_fns.append(&mut self.collect_called_functions(&atom.head));
+                    }
+                    called_fns.append(&mut self.collect_called_functions(&case.body));
+                }
+            }
+            Expression::Phi { cases, default } => {
+                for case in cases {
+                    called_fns.append(&mut self.collect_called_functions(&case.cond));
+                    called_fns.append(&mut self.collect_called_functions(&case.body));
+                }
+                called_fns.append(&mut self.collect_called_functions(default));
+            }
+            Expression::Forall { vars: _, body } => {
+                called_fns.append(&mut self.collect_called_functions(body));
+            }
+            Expression::Exists { vars: _, body } => {
+                called_fns.append(&mut self.collect_called_functions(body));
+            }
+            Expression::Choose {
+                vars: _,
+                body,
+                rets: _,
+            } => {
+                called_fns.append(&mut self.collect_called_functions(body));
+            }
+            Expression::IterForall { vars, body } => {
+                for (_, e) in vars {
+                    called_fns.append(&mut self.collect_called_functions(e));
+                }
+                called_fns.append(&mut self.collect_called_functions(body));
+            }
+            Expression::IterExists { vars, body } => {
+                for (_, e) in vars {
+                    called_fns.append(&mut self.collect_called_functions(e));
+                }
+                called_fns.append(&mut self.collect_called_functions(body));
+            }
+            Expression::IterChoose {
+                vars,
+                body,
+                rets: _,
+            } => {
+                for (_, e) in vars {
+                    called_fns.append(&mut self.collect_called_functions(e));
+                }
+                called_fns.append(&mut self.collect_called_functions(body));
+            }
+            Expression::Procedure { callee, args } => {
+                called_fns.push(*callee);
+                for a in args {
+                    called_fns.append(&mut self.collect_called_functions(a));
+                }
+            }
+            Expression::Intrinsic(intrinsic) => {
+                // collect from intrinsic
+                called_fns.append(&mut self.collect_fn_from_intrinsic(intrinsic));
+            }
+        }
+        called_fns
+    }
+
+    fn collect_fn_from_intrinsic(&self, intrinsic: &Intrinsic) -> Vec<UsrFunId> {
+        use crate::ir::intrinsics::Intrinsic::*;
+        let mut called_fns = vec![];
+
+        match intrinsic {
+            // --- Boolean ---
+            BoolVal(_) => {}
+            BoolNot { val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+            BoolAnd { lhs, rhs }
+            | BoolOr { lhs, rhs }
+            | BoolXor { lhs, rhs }
+            | BoolImplies { lhs, rhs }
+            | BoolIff { lhs, rhs }
+            | BoolNand { lhs, rhs }
+            | BoolNor { lhs, rhs }
+            | BoolXnor { lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+
+            // --- Integer ---
+            IntVal(_) => {}
+            IntNeg { val }
+            | IntoToReal { val }
+            | IntAbs { val }
+            | IntToI32 { val }
+            | IntToI64 { val }
+            | IntToU32 { val }
+            | IntToU64 { val }
+            | IntToF32 { val }
+            | IntToF64 { val }
+            | IntFromHex { val }
+            | IntFromOct { val }
+            | IntFromBin { val }
+            | IntIsGtI64Max { val }
+            | IntIsLtI64Min { val }
+            | IntIsGtU64Max { val }
+            | IntIsLtU64Min { val }
+            | IntIsLtI32Min { val }
+            | IntIsGtI32Max { val }
+            | IntIsLtU32Min { val }
+            | IntIsGtU32Max { val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+            IntLt { lhs, rhs }
+            | IntLe { lhs, rhs }
+            | IntGe { lhs, rhs }
+            | IntGt { lhs, rhs }
+            | IntAdd { lhs, rhs }
+            | IntSub { lhs, rhs }
+            | IntMul { lhs, rhs }
+            | IntDiv { lhs, rhs }
+            | IntMod { lhs, rhs }
+            | IntRem { lhs, rhs }
+            | IntDivides { lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+            IntPow { base, exp } => {
+                called_fns.append(&mut self.collect_called_functions(base));
+                called_fns.append(&mut self.collect_called_functions(exp));
+            }
+
+            // --- Rational / Real ---
+            RealVal(_) => {}
+            RealNeg { val }
+            | RealAbs { val }
+            | RealRound { val }
+            | RealFloor { val }
+            | RealCeil { val }
+            | RealIsInt { val }
+            | RealToInt { val }
+            | RealToF32 { val }
+            | RealToF64 { val }
+            | RealRealer { val }
+            | RealDenom { val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+            RealLt { lhs, rhs }
+            | RealLe { lhs, rhs }
+            | RealGe { lhs, rhs }
+            | RealGt { lhs, rhs }
+            | RealAdd { lhs, rhs }
+            | RealSub { lhs, rhs }
+            | RealMul { lhs, rhs }
+            | RealDiv { lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+            RealPow { base, exp } => {
+                called_fns.append(&mut self.collect_called_functions(base));
+                called_fns.append(&mut self.collect_called_functions(exp));
+            }
+
+            // --- String ---
+            StrVal(_) => {}
+            StrLt { lhs, rhs }
+            | StrLe { lhs, rhs }
+            | StrGt { lhs, rhs }
+            | StrGe { lhs, rhs }
+            | StrConcat { lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+            StrAt { seq, idx } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(idx));
+            }
+            StrLength { seq } | StrIsEmpty { seq } | StrIsDigit { seq } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+            }
+            StrIncludes { seq, item } | StrStartsWith { seq, item } | StrEndsWith { seq, item } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(item));
+            }
+            StrIndexOf { seq, sub, offset } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(sub));
+                called_fns.append(&mut self.collect_called_functions(offset));
+            }
+            StrReplace { seq, src, dst } | StrReplaceAll { seq, src, dst } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(src));
+                called_fns.append(&mut self.collect_called_functions(dst));
+            }
+            StrToInt { val } | StrFromInt { val } | StrFromCode { val } | StrToCode { val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+
+            // --- Cloak ---
+            BoxShield { t: _, val } | BoxReveal { t: _, val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+
+            // --- Sequence ---
+            SeqEmpty { t: _ } => {}
+            SeqUnit { t: _, val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+            SeqLength { t: _, seq } | SeqIsEmpty { t: _, seq } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+            }
+            SeqNth { t: _, seq, idx } | SeqAt { t: _, seq, idx } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(idx));
+            }
+            SeqExtract {
+                t: _,
+                seq,
+                offset,
+                len,
+            } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(offset));
+                called_fns.append(&mut self.collect_called_functions(len));
+            }
+            SeqAppend { t: _, seq, item } | SeqIncludes { t: _, seq, item } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(item));
+            }
+            SeqConcat { t: _, lhs, rhs }
+            | SeqPrefixOf { t: _, lhs, rhs }
+            | SeqSuffixOf { t: _, lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+            SeqReplace {
+                t: _,
+                seq,
+                src,
+                dst,
+            } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(src));
+                called_fns.append(&mut self.collect_called_functions(dst));
+            }
+
+            // --- Set ---
+            SetEmpty { t: _ } => {}
+            SetLength { t: _, set } | SetIsEmpty { t: _, set } => {
+                called_fns.append(&mut self.collect_called_functions(set));
+            }
+            SetInsert { t: _, set, item }
+            | SetRemove { t: _, set, item }
+            | SetContains { t: _, set, item } => {
+                called_fns.append(&mut self.collect_called_functions(set));
+                called_fns.append(&mut self.collect_called_functions(item));
+            }
+            SetIntersection { t: _, lhs, rhs }
+            | SetUnion { t: _, lhs, rhs }
+            | SetDifference { t: _, lhs, rhs }
+            | SetSymDiff { t: _, lhs, rhs }
+            | SetIsSubset { t: _, lhs, rhs }
+            | SetIsProperSubset { t: _, lhs, rhs }
+            | SetIsSuperset { t: _, lhs, rhs }
+            | SetIsDisjoint { t: _, lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+            SetHasSize { t: _, set, size } => {
+                called_fns.append(&mut self.collect_called_functions(set));
+                called_fns.append(&mut self.collect_called_functions(size));
+            }
+
+            // --- Map ---
+            MapEmpty { k: _, v: _ } => {}
+            MapLength { k: _, v: _, map } | MapIsEmpty { k: _, v: _, map } => {
+                called_fns.append(&mut self.collect_called_functions(map));
+            }
+            MapPut {
+                k: _,
+                v: _,
+                map,
+                key,
+                val,
+            } => {
+                called_fns.append(&mut self.collect_called_functions(map));
+                called_fns.append(&mut self.collect_called_functions(key));
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+            MapGet {
+                k: _,
+                v: _,
+                map,
+                key,
+            }
+            | MapDel {
+                k: _,
+                v: _,
+                map,
+                key,
+            }
+            | MapContainsKey {
+                k: _,
+                v: _,
+                map,
+                key,
+            } => {
+                called_fns.append(&mut self.collect_called_functions(map));
+                called_fns.append(&mut self.collect_called_functions(key));
+            }
+
+            // --- BitVector (Bv) ---
+            BvVal { .. } => {}
+            BvNot { t: _, val }
+            | BvNeg { t: _, val }
+            | BvRedAnd { t: _, val }
+            | BvRedOr { t: _, val }
+            | BvToInt { t: _, val }
+            | BvNegNoOverflow { t: _, val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+            BvAnd { t: _, lhs, rhs }
+            | BvOr { t: _, lhs, rhs }
+            | BvXor { t: _, lhs, rhs }
+            | BvNand { t: _, lhs, rhs }
+            | BvNor { t: _, lhs, rhs }
+            | BvXnor { t: _, lhs, rhs }
+            | BvAdd { t: _, lhs, rhs }
+            | BvSub { t: _, lhs, rhs }
+            | BvMul { t: _, lhs, rhs }
+            | BvDiv { t: _, lhs, rhs }
+            | BvRem { t: _, lhs, rhs }
+            | BvMod { t: _, lhs, rhs }
+            | BvShl { t: _, lhs, rhs }
+            | BvLshr { t: _, lhs, rhs }
+            | BvAshr { t: _, lhs, rhs }
+            | BvRotLeft { t: _, lhs, rhs }
+            | BvRotRight { t: _, lhs, rhs }
+            | BvLt { t: _, lhs, rhs }
+            | BvLe { t: _, lhs, rhs }
+            | BvGt { t: _, lhs, rhs }
+            | BvGe { t: _, lhs, rhs }
+            | BvAddNoOverflow { t: _, lhs, rhs }
+            | BvSubNoOverflow { t: _, lhs, rhs }
+            | BvMulNoOverflow { t: _, lhs, rhs }
+            | BvDivNoOverflow { t: _, lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+
+            // --- Float ---
+            FloatVal { .. }
+            | FloatNaN { .. }
+            | FloatPosInf { .. }
+            | FloatNegInf { .. }
+            | FloatPosZero { .. }
+            | FloatNegZero { .. } => {}
+            FloatNeg { t: _, val }
+            | FloatAbs { t: _, val }
+            | FloatSqrt { t: _, val }
+            | FloatIsNaN { t: _, val }
+            | FloatIsInf { t: _, val }
+            | FloatIsZero { t: _, val }
+            | FloatIsNormal { t: _, val }
+            | FloatIsSubnormal { t: _, val }
+            | FloatIsNeg { t: _, val }
+            | FloatIsPos { t: _, val }
+            | FloatToInt { t: _, val }
+            | FloatToReal { t: _, val } => {
+                called_fns.append(&mut self.collect_called_functions(val));
+            }
+            FloatAdd { t: _, lhs, rhs }
+            | FloatSub { t: _, lhs, rhs }
+            | FloatMul { t: _, lhs, rhs }
+            | FloatDiv { t: _, lhs, rhs }
+            | FloatRem { t: _, lhs, rhs }
+            | FloatMin { t: _, lhs, rhs }
+            | FloatMax { t: _, lhs, rhs }
+            | FloatLt { t: _, lhs, rhs }
+            | FloatLe { t: _, lhs, rhs }
+            | FloatGt { t: _, lhs, rhs }
+            | FloatGe { t: _, lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+
+            // --- Error ---
+            ErrFresh { .. } => {}
+            ErrMerge { lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+
+            // --- Generic SMT ---
+            SmtEq { t: _, lhs, rhs } | SmtNe { t: _, lhs, rhs } => {
+                called_fns.append(&mut self.collect_called_functions(lhs));
+                called_fns.append(&mut self.collect_called_functions(rhs));
+            }
+        }
+        called_fns
+    }
 }
 
 /// A context builder originated from a refinement relation
@@ -1846,7 +2289,21 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     // ---------------------------------------------------------
                     // Error / Generic
                     // ---------------------------------------------------------
-                    Native::ErrFresh => Intrinsic::ErrFresh,
+                    Native::ErrFresh => {
+                        // Assign a unique error ID for this Error::fresh() call
+                        let error_id = self.parent.ir.error_locations.len();
+                        
+                        // TODO: Track source location information if available
+                        // For now, we use placeholder values
+                        self.parent.ir.error_locations.push(crate::ir::ctxt::ErrorLocation {
+                            error_id,
+                            file_name: "unknown".to_string(),
+                            line_number: 0,
+                            function_name: "unknown".to_string(),
+                        });
+                        
+                        Intrinsic::ErrFresh { error_id }
+                    }
                     Native::ErrMerge { lhs, rhs } => Intrinsic::ErrMerge {
                         lhs: self.resolve(lhs, None),
                         rhs: self.resolve(rhs, None),
@@ -2269,7 +2726,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 // -------------------------------------------------------------
                 // Error / Generic
                 // -------------------------------------------------------------
-                Intrinsic::ErrFresh
+                Intrinsic::ErrFresh { .. }
                 | Intrinsic::ErrMerge { .. } => Sort::Error,
 
                 Intrinsic::SmtEq { .. }

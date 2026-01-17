@@ -1,8 +1,10 @@
 //! Generic `CodeGen` trait for backend solvers
 
 use crate::backend::error::BackendResult;
+use crate::backend::response::Response;
 use crate::backend::z3::common::CodeGenZ3;
 use crate::ir::ctxt::IRContext;
+use std::path::Path;
 
 /// A generic trait for backend code generators.
 pub trait CodeGen {
@@ -21,6 +23,9 @@ pub trait CodeGen {
     ///
     /// Returns a `BackendResult<String>` containing either the full source code or a BackendError::NotSupported error.
     fn process(&self, ir: &IRContext) -> BackendResult<String>;
+
+    /// Invokes the backend solver with the given source code file.
+    fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response>;
 }
 
 /// A utility for source code builder

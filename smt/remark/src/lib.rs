@@ -1,7 +1,7 @@
 //! # Rusmart SMT Remark
 //!
 //! The `rusmart_smt_remark` package contains one library crate.
-//! 
+//!
 //! ## Module Tree
 //!
 //! - [`func`]: Function annotation
@@ -18,7 +18,7 @@
 #![warn(missing_docs)]
 
 mod attr;
-mod generics;
 pub mod err;
 pub mod func;
+mod generics;
 pub mod ty;

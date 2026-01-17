@@ -1,27 +1,25 @@
 [workspace]
 members = [
-    "utils",
     "smt/stdlib",
     "smt/remark",
     "smt/remark/remark_derive",
     "smt/derive",
     "lang",
+    "programs",
 ]
 resolver = "2"
 
 [workspace.dependencies]
+datatest-stable = "0.3.3"
 anyhow = "1.0.100"
 command-group = "5.0.1"
-datatest-stable = "0.3.2"
 lazy_static = "1.5.0"
 log = "0.4.29"
-num_cpus = "1.17.0"
 petgraph = "0.8.3"
-proc-macro2 = "1.0.103"
-quote = "1.0.42"
-syn = { version = "2.0.111", features = ["full", "extra-traits"] }
-tempfile = "3.23.0"
-simplelog = "0.12.2"
+proc-macro2 = "1.0.105"
+quote = "1.0.43"
+syn = { version = "2.0.114", features = ["full", "extra-traits"] }
+tempfile = "3.24.0"
 walkdir = "2.5.0"
 bitvec = "1.0.1"
 internment = { version = "0.8.4", features = ["arc"] }
@@ -31,11 +29,10 @@ num-rational = "0.4.2"
 num-traits = "0.2.19"
 paste = "1"
 ordered-float = "5.1.0"
-clap = { version = "4.5.53", features = ["derive"] }
-z3     = { path = "solver/z3.rs/z3"}
-z3-sys = { path = "solver/z3.rs/z3-sys"}
+clap = { version = "4.5.54", features = ["derive"] }
+z3     = { path = "solver/z3.rs/z3", features = ["bundled"] }
+z3-sys = { path = "solver/z3.rs/z3-sys", features = ["bundled"] }
 
-rusmart-utils = { path = "utils" }
 rusmart-smt-stdlib = { path = "smt/stdlib" }
 rusmart-smt-remark = { path = "smt/remark" }
 rusmart-smt-remark-derive = { path = "smt/remark/remark_derive" }

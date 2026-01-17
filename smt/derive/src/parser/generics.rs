@@ -196,18 +196,6 @@ impl Generics {
         };
         Self::from_generics(generics)
     }
-
-    /// Filter another set of type parameters
-    /// Keep only those elements that are not in the `names` set
-    pub fn filter(&self, names: &BTreeSet<TypeParamName>) -> Self {
-        let filtered = self
-            .params
-            .iter()
-            .filter(|n| !names.contains(*n)) // only includes those where the predicate is true
-            .cloned()
-            .collect();
-        Self { params: filtered }
-    }
 }
 
 impl Display for Generics {
@@ -363,6 +351,16 @@ impl GenericsInstFull {
     /// Make a type ref combined with type name
     pub fn make_ty(&self, name: UsrTypeName) -> TypeRef {
         TypeRef::User(name, self.vec())
+    }
+
+    /// Extract type arguments in the order specified by a list of parameter names
+    /// Returns None if any parameter name is missing from the instantiation
+    pub fn vec_for_generics(&self, generics: &Generics) -> Option<Vec<TypeRef>> {
+        generics
+            .params
+            .iter()
+            .map(|param_name| self.args.get(param_name).map(|(_, ty)| ty.clone()))
+            .collect()
     }
 
     /// Merge two generics into one

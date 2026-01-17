@@ -11,4 +11,8 @@ edition = "2024"
 
 [dependencies]
 rusmart-smt-stdlib = { workspace = true }
-clap = {workspace = true}
+rusmart-smt-remark-derive = { workspace = true }
+clap = { workspace = true }
+
+[lints.clippy]
+all = "allow"

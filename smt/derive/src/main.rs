@@ -3,96 +3,60 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Navigate to the TOML source directory
     let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = root_crate_dir
         .parent()
         .expect("Failed to find workspace root")
         .parent()
         .expect("Failed to find project root");
-    let toml_src_dir = workspace_root.join("lang").join("src").join("toml");
 
-    // Define where we want the Z3 output files to live
-    let output_dir = root_crate_dir.join("z3_synthesis");
+    // Path to lang/src which contains the parsers/interpreters
+    let lang_src_dir = workspace_root.join("lang").join("src");
+    let synthesis_base = workspace_root.join("lang").join("synthesis");
 
-    // 2. Clean up previous runs
-    if output_dir.exists() {
-        println!("Cleaning previous output directory: {:?}", output_dir);
-        fs::remove_dir_all(&output_dir)?;
-    }
+    // Check if we got a specific parser argument
+    let args: Vec<String> = std::env::args().collect();
 
-    // 3. Define the maximum error ID you want to solve for
-    let max_errors = 10; // Change this to match the highest error ID in your parser
+    if args.len() > 1 {
+        // Test a specific parser
+        let parser_name = &args[1];
+        let parser_dir = lang_src_dir.join(parser_name);
 
-    println!("--- Starting Synthesis Pipeline ---");
-    println!("Input Source: {:?}", toml_src_dir);
-    println!("Output Dir:   {:?}", output_dir);
-    println!("Target Errors: 1..={}", max_errors);
-    println!("-----------------------------------");
+        if !parser_dir.exists() {
+            return Err(format!("Parser '{}' not found at {:?}", parser_name, parser_dir).into());
+        }
 
-    // 4. Run the Derive & Solve Pipeline
-    // This will generate folders like: z3_synthesis/z3/error_1/
-    match derive(&toml_src_dir, &output_dir, max_errors) {
-        Ok(_) => println!("\n[Pipeline Complete] Solvers finished executing.\n"),
-        Err(e) => {
-            eprintln!("\n[Fatal Error] Pipeline failed: {:?}", e);
-            std::process::exit(1);
+        let output_dir = synthesis_base.join(parser_name);
+        test_parser(&parser_dir, &output_dir)?;
+    } else {
+        // Test all parsers
+        if !lang_src_dir.exists() {
+            return Err(format!("Lang source directory not found at {:?}", lang_src_dir).into());
+        }
+
+        for entry in fs::read_dir(&lang_src_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Only process directories (each parser is in its own directory)
+            if path.is_dir() {
+                let parser_name = path.file_name().unwrap().to_str().unwrap();
+                let output_dir = synthesis_base.join(parser_name);
+                test_parser(&path, &output_dir)?;
+            }
         }
     }
-    inspect_results(&output_dir, max_errors);
 
     Ok(())
 }
 
-fn inspect_results(output_root: &Path, max_errors: usize) {
-    let z3_dir = output_root.join("z3");
-
-    if !z3_dir.exists() {
-        println!("No Z3 output directory found. Did the solver run?");
-        return;
+fn test_parser(parser_dir: &Path, output_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    // Clean up this parser's previous outputs (not the entire synthesis directory)
+    // E.g., deletes lang/synthesis/toml/ but not lang/synthesis/wasm/
+    if output_dir.exists() {
+        fs::remove_dir_all(&output_dir)?;
     }
-
-    println!("--- Synthesis Results ---");
-
-    for id in 1..=max_errors {
-        let error_dir = z3_dir.join(format!("error_{}", id));
-        let response_file = error_dir.join("response.exp");
-
-        if response_file.exists() {
-            // Read the output from the file written by `solve`
-            let content = fs::read_to_string(&response_file).unwrap_or_default();
-            let trimmed = content.trim();
-
-            if trimmed.contains("unsat") {
-                println!(
-                    "Error #{:<3} : [UNREACHABLE] (Input cannot trigger this error)",
-                    id
-                );
-            } else if trimmed.contains("sat") {
-                println!("Error #{:<3} : [SUCCESS]     Found triggering input!", id);
-                println!("---------------------------------------------------");
-                println!("{}", extract_model(trimmed));
-                println!("---------------------------------------------------\n");
-            } else if trimmed.contains("unknown") {
-                println!("Error #{:<3} : [UNKNOWN]     Solver gave up (timeout?)", id);
-            } else {
-                println!(
-                    "Error #{:<3} : [ERROR]       Backend crashed or invalid output",
-                    id
-                );
-            }
-        } else {
-            println!("Error #{:<3} : [SKIPPED]     No response file found.", id);
-        }
-    }
-}
-
-// Helper to strip "sat" and whitespace to make the output clean
-fn extract_model(z3_out: &str) -> String {
-    if let Some(idx) = z3_out.find("sat") {
-        // "sat" is usually at the start, take everything after it
-        let model_part = &z3_out[idx + 3..];
-        return model_part.trim().to_string();
-    }
-    z3_out.to_string()
+    // Generate SMT from the parser implementation
+    derive(parser_dir, output_dir)?;
+    Ok(())
 }

@@ -1,16 +1,8 @@
 # artifacts
-/studio/
 /target/
 
-# IDE
-/.idea/
-*.sln
-
-# MacOS
+# macOS
 .DS_Store
 
-# Z3 trace files
-.z3-trace
-
-# vscode
-.vscode/
+# visual studio code
+*.sln

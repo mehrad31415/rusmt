@@ -3,9 +3,11 @@
 use crate::toml::{
     Optional, ParseResult, State, advance, current_char, is_alpha, is_dec_digit, peek,
 };
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{Boolean, Error, I64, Integer, String, boolean::FALSE, smt::SMT};
 
 /// `hex prefix = "0x"`
+#[smt_fn]
 fn is_hex_prefix(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
@@ -20,6 +22,7 @@ fn is_hex_prefix(input: State) -> Boolean {
 }
 
 /// fake hex prefix: `0X`
+#[smt_fn]
 fn is_hex_prefix_upper(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
@@ -34,6 +37,7 @@ fn is_hex_prefix_upper(input: State) -> Boolean {
 }
 
 /// `oct prefix = "0o"`
+#[smt_fn]
 fn is_oct_prefix(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
@@ -48,6 +52,7 @@ fn is_oct_prefix(input: State) -> Boolean {
 }
 
 /// fake oct prefix: `0O`
+#[smt_fn]
 fn is_oct_prefix_upper(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
@@ -62,6 +67,7 @@ fn is_oct_prefix_upper(input: State) -> Boolean {
 }
 
 /// `bin prefix = "0b"`
+#[smt_fn]
 fn is_bin_prefix(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
@@ -76,6 +82,7 @@ fn is_bin_prefix(input: State) -> Boolean {
 }
 
 /// fake bin prefix: `0B`
+#[smt_fn]
 fn is_bin_prefix_upper(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
@@ -90,6 +97,7 @@ fn is_bin_prefix_upper(input: State) -> Boolean {
 }
 
 /// Checks if a character is a hexadecimal digit (0-9, a-f, A-F).
+#[smt_fn]
 pub(crate) fn is_hex_digit(c: String) -> Boolean {
     is_dec_digit(c)
         .or(c.ge("a".into()).and(c.le("f".into())))
@@ -97,32 +105,38 @@ pub(crate) fn is_hex_digit(c: String) -> Boolean {
 }
 
 /// Checks if a character is an octal digit (0-7).
+#[smt_fn]
 fn is_oct_digit(c: String) -> Boolean {
     c.ge("0".into()).and(c.le("7".into()))
 }
 
 /// Checks if a character is a binary digit (0 or 1).
+#[smt_fn]
 fn is_bin_digit(c: String) -> Boolean {
     c.eq("0".into()).or(c.eq("1".into()))
 }
 
 /// Checks if a character is +
+#[smt_fn]
 pub(crate) fn is_plus(c: String) -> Boolean {
     c.eq("+".into())
 }
 
 /// Checks if a character is -
+#[smt_fn]
 pub(crate) fn is_minus(c: String) -> Boolean {
     c.eq("-".into())
 }
 
 /// Checks if a character is an underscore (_)
+#[smt_fn]
 pub(crate) fn is_underscore(c: String) -> Boolean {
     c.eq("_".into())
 }
 
 /// The main dispatcher for parsing any integer type.
 /// I64 Parsing (ABNF: `integer = dec-int / hex-int / oct-int / bin-int`)
+#[smt_fn]
 pub(crate) fn parse_integer(input: State) -> ParseResult<I64> {
     match current_char(input) {
         Optional::None => return ParseResult::NoMatch,
@@ -180,6 +194,7 @@ pub(crate) fn parse_integer(input: State) -> ParseResult<I64> {
 }
 
 /// `dec-int = [ minus / plus ] unsigned-dec-int`
+#[smt_fn]
 pub(crate) fn parse_dec_int(sign: Optional<String>, input: State) -> ParseResult<I64> {
     match sign {
         Optional::None => {
@@ -255,6 +270,7 @@ pub(crate) fn parse_dec_int(sign: Optional<String>, input: State) -> ParseResult
 }
 
 /// `unsigned-dec-int = DIGIT / digit1-9 1*( DIGIT / underscore DIGIT )`
+#[smt_fn]
 fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
     // Get the first character.
     let first_char = match current_char(input) {
@@ -296,7 +312,7 @@ fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
             }
         } else {
             // Handle numbers starting with '1'-'9'
-            match parse_unsigned_dec_rest(advance(input), first_char) {
+            match parse_unsigned_dec_rest_int(advance(input), first_char) {
                 ParseResult::Ok(s, i) => return ParseResult::Ok(s.to_int(), i),
                 ParseResult::Err(e) => return ParseResult::Err(e),
                 ParseResult::NoMatch => return ParseResult::NoMatch,
@@ -307,7 +323,8 @@ fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
 
 /// A recursive helper to parse the rest of an unsigned decimal integer.
 /// *( DIGIT / underscore DIGIT )
-fn parse_unsigned_dec_rest(input: State, acc: String) -> ParseResult<String> {
+#[smt_fn]
+fn parse_unsigned_dec_rest_int(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => {
             // Base Case: End of input reached.
@@ -325,7 +342,7 @@ fn parse_unsigned_dec_rest(input: State, acc: String) -> ParseResult<String> {
                     if *is_dec_digit(c) {
                         // Case 1: The next character is a digit. Append it and continue.
                         let new_acc = acc.concat(c);
-                        return parse_unsigned_dec_rest(advance(input), new_acc);
+                        return parse_unsigned_dec_rest_int(advance(input), new_acc);
                     } else {
                         if *c.eq("_".into()) {
                             // Case 2: The next character is an underscore.
@@ -340,7 +357,7 @@ fn parse_unsigned_dec_rest(input: State, acc: String) -> ParseResult<String> {
                                     if *is_dec_digit(next_c) {
                                         // This is a valid `_DIGIT`. Append the digit and continue.
                                         let new_acc = acc.concat(next_c);
-                                        return parse_unsigned_dec_rest(
+                                        return parse_unsigned_dec_rest_int(
                                             advance(after_underscore),
                                             new_acc,
                                         );
@@ -377,6 +394,7 @@ fn parse_unsigned_dec_rest(input: State, acc: String) -> ParseResult<String> {
 }
 
 /// `hex-int = hex-prefix HEXDIG *( HEXDIG / underscore HEXDIG )`
+#[smt_fn]
 fn parse_hex_int(input: State) -> ParseResult<I64> {
     let after_prefix = advance(advance(input));
     // The first character after the prefix MUST be a hex digit.
@@ -415,6 +433,7 @@ fn parse_hex_int(input: State) -> ParseResult<I64> {
 }
 
 /// A recursive helper to parse the rest of a hexadecimal integer.
+#[smt_fn]
 fn parse_hex_rest(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::Some(c) => {
@@ -457,6 +476,7 @@ fn parse_hex_rest(input: State, acc: String) -> ParseResult<String> {
 }
 
 /// `oct-int = oct-prefix digit0-7 *( digit0-7 / underscore digit0-7 )`
+#[smt_fn]
 fn parse_oct_int(input: State) -> ParseResult<I64> {
     let after_prefix = advance(advance(input));
     // The first character after the prefix MUST be a oct digit.
@@ -505,6 +525,7 @@ fn parse_oct_int(input: State) -> ParseResult<I64> {
 }
 
 /// A recursive helper to parse the rest of a octal integer.
+#[smt_fn]
 fn parse_oct_rest(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::Some(c) => {
@@ -567,6 +588,7 @@ fn parse_oct_rest(input: State, acc: String) -> ParseResult<String> {
 }
 
 /// `bin-int = bin-prefix digit0-1 *( digit0-1 / underscore digit0-1 )`
+#[smt_fn]
 fn parse_bin_int(input: State) -> ParseResult<I64> {
     let after_prefix = advance(advance(input));
     // The first character after the prefix MUST be a bin digit.
@@ -620,6 +642,7 @@ fn parse_bin_int(input: State) -> ParseResult<I64> {
 }
 
 /// A recursive helper to parse the rest of a binary integer.
+#[smt_fn]
 fn parse_bin_rest(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::Some(c) => {

@@ -4,8 +4,8 @@ The Rusmart standard library defines constructs with SMT-specific semantics that
 
 ### Core Concepts
 The design of `rusmart-smt-stdlib` is guided by the fact that every type and method is designed with two roles in mind:
-  > Concrete Execution: The methods are fully implemented in Rust, allowing the interpreter to run directly.
-  > Symbolic Transpilation: The API is structured to have a one-to-one mapping to SMT-LIB concepts. This makes it straightforward for a transpiler to convert the interpreter's logic into a formal model.
+  > Concrete Execution: The methods are expressive enough to allow a full interpreter to be implemented in Rust, enabling the interpreter to run directly.
+  > Symbolic Transpilation: The API is designed with a one-to-one mapping to SMT-LIB concepts, making it straightforward for a transpiler to convert the interpreter’s logic into a formal model.
 
 ### SMT Types
 This library provides the following concrete types:

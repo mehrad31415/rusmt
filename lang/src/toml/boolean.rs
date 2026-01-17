@@ -1,6 +1,7 @@
 //! Parsing boolean literals in TOML.
 
 use crate::toml::{ParseResult, State, parse_literal};
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{
     Boolean, Error,
     boolean::{FALSE, TRUE},
@@ -8,6 +9,7 @@ use rusmart_smt_stdlib::{
 
 /// Parses a boolean literal (`true` or `false`).
 /// ABNF: `boolean = "true" / "false"`
+#[smt_fn]
 pub(crate) fn parse_boolean(input: State) -> ParseResult<Boolean> {
     // toml is case-sensitive
     match parse_literal(input, "True".into()) {

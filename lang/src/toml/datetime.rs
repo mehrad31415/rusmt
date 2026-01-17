@@ -2,6 +2,7 @@
 
 use crate::toml::float::parse_float;
 use crate::toml::{Optional, ParseResult, State, advance, ast::DateTime, current_char, peek};
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{Boolean, Error, Integer, String, smt::SMT};
 
 /// date-time = offset-date-time / local-date-time / local-date / local-time
@@ -9,6 +10,7 @@ use rusmart_smt_stdlib::{Boolean, Error, Integer, String, smt::SMT};
 /// local-date-time = full-date time-delim partial-time
 /// local-date = full-date
 /// local-time = partial-time
+#[smt_fn]
 pub(crate) fn parse_datetime(state: State) -> ParseResult<DateTime> {
     match parse_full_date(state) {
         ParseResult::NoMatch => {
@@ -100,6 +102,7 @@ pub(crate) fn parse_datetime(state: State) -> ParseResult<DateTime> {
 }
 
 /// time-hour = 2DIGIT  ; 00-23
+#[smt_fn]
 fn parse_time_hour(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch, // cannot happen
@@ -136,6 +139,7 @@ fn parse_time_hour(input: State) -> ParseResult<String> {
 }
 
 /// time-minute = 2DIGIT  ; 00-59
+#[smt_fn]
 fn parse_time_minute(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch, // cannot happen
@@ -172,6 +176,7 @@ fn parse_time_minute(input: State) -> ParseResult<String> {
 }
 
 /// time-second = 2DIGIT  ; 00-58, 00-59, 00-60 based on leap second rules
+#[smt_fn]
 fn parse_time_second(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch, // cannot happen
@@ -208,6 +213,7 @@ fn parse_time_second(input: State) -> ParseResult<String> {
 }
 
 /// time-secfrac   = "." 1*DIGIT
+#[smt_fn]
 fn parse_time_secfrac(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch,
@@ -236,6 +242,7 @@ fn parse_time_secfrac(input: State) -> ParseResult<String> {
 }
 
 /// *DIGIT
+#[smt_fn]
 fn parse_digit_sequence_rest(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::Ok(acc, input),
@@ -252,6 +259,7 @@ fn parse_digit_sequence_rest(input: State, acc: String) -> ParseResult<String> {
 }
 
 /// partial-time = time-hour ":" time-minute ":" time-second [ time-secfrac ]
+#[smt_fn]
 fn partial_time(input: State) -> ParseResult<String> {
     // peek to see if this is partial time or an float
     let first_colon = peek(input, 2.into());
@@ -350,6 +358,7 @@ fn partial_time(input: State) -> ParseResult<String> {
 }
 
 /// full-date = date-fullyear "-" date-month "-" date-mday
+#[smt_fn]
 fn parse_full_date(input: State) -> ParseResult<String> {
     // peek
     let first_dash = peek(input, 4.into());
@@ -464,6 +473,7 @@ fn parse_full_date(input: State) -> ParseResult<String> {
 }
 
 /// date-fullyear  = 4DIGIT
+#[smt_fn]
 fn parse_date_fullyear(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch,
@@ -515,6 +525,7 @@ fn parse_date_fullyear(input: State) -> ParseResult<String> {
 }
 
 /// date-month = 2DIGIT  ; 01-12
+#[smt_fn]
 fn parse_date_month(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch,
@@ -543,6 +554,7 @@ fn parse_date_month(input: State) -> ParseResult<String> {
 }
 
 /// date-mday = 2DIGIT  ; 01-28, 01-29, 01-30, 01-31 based on month/year
+#[smt_fn]
 fn parse_date_mday(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch,
@@ -571,6 +583,7 @@ fn parse_date_mday(input: State) -> ParseResult<String> {
 }
 
 /// validate day against month and year (for leap years)
+#[smt_fn]
 fn is_valid_day(month: String, day: String, year: String) -> Boolean {
     if *month.eq(String::from("02")) {
         // February
@@ -615,6 +628,7 @@ fn is_valid_day(month: String, day: String, year: String) -> Boolean {
 }
 
 /// time-delim = "T" / %x20 ; T, t, or space
+#[smt_fn]
 fn parse_time_delim(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch,
@@ -634,6 +648,7 @@ fn parse_time_delim(input: State) -> ParseResult<String> {
 }
 
 /// time-numoffset = ( "+" / "-" ) time-hour ":" time-minute
+#[smt_fn]
 fn parse_time_numoffset(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::NoMatch,

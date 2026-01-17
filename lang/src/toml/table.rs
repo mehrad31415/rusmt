@@ -9,9 +9,11 @@ use crate::toml::{
     key_value::{parse_key, parse_key_value},
     parse_newline, parse_ws,
 };
+use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{Array, Cloak, Error, Integer, Seq, String, choose, forall, smt::SMT};
 
 /// `std-table = std-table-open key std-table-close`
+#[smt_fn]
 pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
     match parse_std_table_open(state) {
         ParseResult::Ok(_open_bracket, state_after_open) => {
@@ -63,6 +65,7 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
 }
 
 /// `std-table-open  = %x5B ws     ; [ Left square bracket`
+#[smt_fn]
 fn parse_std_table_open(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(ch) => {
@@ -79,6 +82,7 @@ fn parse_std_table_open(state: State) -> ParseResult<String> {
 }
 
 /// `std-table-close = ws %x5D     ; ] Right square bracket`
+#[smt_fn]
 fn parse_std_table_close(state: State) -> ParseResult<String> {
     let state_after_ws = parse_ws(state);
     match current_char(state_after_ws) {
@@ -95,6 +99,7 @@ fn parse_std_table_close(state: State) -> ParseResult<String> {
 }
 
 /// `array-table = array-table-open key array-table-close`
+#[smt_fn]
 pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
     match parse_array_table_open(state) {
         ParseResult::Ok(_open_brackets, state_after_open) => {
@@ -146,6 +151,7 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
 }
 
 /// `array-table-open  = %x5B.5B ws  ; [[ Double left square bracket`
+#[smt_fn]
 fn parse_array_table_open(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(ch1) => {
@@ -172,6 +178,7 @@ fn parse_array_table_open(state: State) -> ParseResult<String> {
 }
 
 /// `array-table-close = ws %x5D.5D  ; ]] Double right square bracket`
+#[smt_fn]
 fn parse_array_table_close(state: State) -> ParseResult<String> {
     let state_after_ws = parse_ws(state);
     match current_char(state_after_ws) {
@@ -199,6 +206,7 @@ fn parse_array_table_close(state: State) -> ParseResult<String> {
 }
 
 /// `inline-table = inline-table-open [ inline-table-keyvals ] inline-table-close`
+#[smt_fn]
 pub(crate) fn parse_inline_table(
     key: Seq<String>,
     state: State,
@@ -287,6 +295,7 @@ pub(crate) fn parse_inline_table(
 }
 
 /// `inline-table-keyvals = keyval [ inline-table-sep inline-table-keyvals ]`
+#[smt_fn]
 fn parse_inline_table_keyvals(
     new_key: Seq<String>,
     state: State,
@@ -435,6 +444,7 @@ fn parse_inline_table_keyvals(
 }
 
 /// `inline-table-open  = %x7B ws     ; {`
+#[smt_fn]
 fn parse_inline_table_open(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(ch) => {
@@ -451,6 +461,7 @@ fn parse_inline_table_open(state: State) -> ParseResult<String> {
 }
 
 /// `inline-table-close = ws %x7D     ; }`
+#[smt_fn]
 fn parse_inline_table_close(state: State) -> ParseResult<String> {
     let state_after_ws = parse_ws(state);
     match current_char(state_after_ws) {
@@ -467,6 +478,7 @@ fn parse_inline_table_close(state: State) -> ParseResult<String> {
 }
 
 /// `inline-table-sep   = ws %x2C ws  ; , Comma`
+#[smt_fn]
 fn parse_inline_table_sep(state: State) -> ParseResult<String> {
     let state_after_ws1 = parse_ws(state);
     match current_char(state_after_ws1) {
@@ -490,11 +502,13 @@ fn parse_inline_table_sep(state: State) -> ParseResult<String> {
 }
 
 /// Chooses the minimum key from a TOML table (Array<String, Value>).
+#[smt_fn]
 pub(crate) fn array_key_min(array: Array<String, Value>) -> String {
     choose!(s in array => forall!(e in array => s.eq(e).or(s.lt(e))))
 }
 
 /// Recursively merges two TOML tables.
+#[smt_fn]
 pub(crate) fn recursive_merge_tables(
     acc_table: Array<String, Value>,
     new_table: Array<String, Value>,

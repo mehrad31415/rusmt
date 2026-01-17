@@ -279,13 +279,6 @@ pub enum QualifiedPath {
         UsrFuncName,
         GenericsInstPartial,
     ),
-    /// `<usr-type>::[type-inst]::<usr-func>::[type-inst](<args>)`
-    UsrFuncOnUsrType(
-        UsrTypeName,
-        GenericsInstPartial,
-        UsrFuncName,
-        GenericsInstPartial,
-    ),
 }
 
 impl QualifiedPath {
@@ -366,14 +359,9 @@ impl QualifiedPath {
                         Self::UsrFuncOnSysType(ty_name, inst_for_ty, name.clone(), inst_for_fn)
                     }
                 },
-                TypeName::Usr(ty_name) => match ctxt.lookup_usr_func_on_usr_type(&ty_name, name) {
-                    None => bail_on!(ident, "no such function"),
-                    Some(fty) => {
-                        let inst_for_fn =
-                            GenericsInstPartial::from_args(ctxt, &fty.generics, arguments)?;
-                        Self::UsrFuncOnUsrType(ty_name, inst_for_ty, name.clone(), inst_for_fn)
-                    }
-                },
+                TypeName::Usr(_) => {
+                    bail_on!(ident, "user-defined function on user-defined type")
+                }
             },
             // cannot be clone or default
             FuncName::Reserved(_) => bail_on!(ident, "reserved function"),

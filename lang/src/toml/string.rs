@@ -238,11 +238,11 @@ fn parse_mlb_unescaped(state: State) -> ParseResult<String> {
                 return ParseResult::Ok(c, advance(state));
             } else {
                 // Check for %x23-5B
-                if *is_range_23_5B(c) {
+                if *is_range_23_5b(c) {
                     return ParseResult::Ok(c, advance(state));
                 } else {
                     // Check for %x5D-7E
-                    if *is_range_5D_7E(c) {
+                    if *is_range_5d_7e(c) {
                         return ParseResult::Ok(c, advance(state));
                     } else {
                         // Check for non-ascii
@@ -795,7 +795,7 @@ fn parse_ml_literal_char(state: State) -> ParseResult<String> {
                 if *is_range_20_26(c) {
                     return ParseResult::Ok(c, advance(state));
                 } else {
-                    if *is_range_28_7E(c) {
+                    if *is_range_28_7e(c) {
                         return ParseResult::Ok(c, advance(state));
                     } else {
                         if *is_non_ascii(c) {
@@ -1034,11 +1034,11 @@ fn parse_basic_unescaped(state: State) -> ParseResult<String> {
                 return ParseResult::Ok(c, advance(state));
             } else {
                 // Check for %x23-5B
-                if *is_range_23_5B(c) {
+                if *is_range_23_5b(c) {
                     return ParseResult::Ok(c, advance(state));
                 } else {
                     // Check for %x5D-7E
-                    if *is_range_5D_7E(c) {
+                    if *is_range_5d_7e(c) {
                         return ParseResult::Ok(c, advance(state));
                     } else {
                         if *is_non_ascii(c) {
@@ -1060,13 +1060,13 @@ fn parse_basic_unescaped(state: State) -> ParseResult<String> {
 
 /// %x23-5B range: # through [
 #[smt_fn]
-fn is_range_23_5B(c: String) -> Boolean {
+fn is_range_23_5b(c: String) -> Boolean {
     c.ge(String::from("#")).and(c.le(String::from("[")))
 }
 
 /// %x5D-7E range: ] through ~
 #[smt_fn]
-fn is_range_5D_7E(c: String) -> Boolean {
+fn is_range_5d_7e(c: String) -> Boolean {
     c.ge(String::from("]")).and(c.le(String::from("~")))
 }
 
@@ -1156,7 +1156,7 @@ fn parse_literal_char(state: State) -> ParseResult<String> {
                 if *is_range_20_26(c) {
                     return ParseResult::Ok(c, advance(state));
                 } else {
-                    if *is_range_28_7E(c) {
+                    if *is_range_28_7e(c) {
                         return ParseResult::Ok(c, advance(state));
                     } else {
                         if *is_non_ascii(c) {
@@ -1179,6 +1179,6 @@ fn is_range_20_26(c: String) -> Boolean {
 
 /// %x28-7E range: ( through ~
 #[smt_fn]
-fn is_range_28_7E(c: String) -> Boolean {
+fn is_range_28_7e(c: String) -> Boolean {
     c.ge(String::from("(")).and(c.le(String::from("~")))
 }

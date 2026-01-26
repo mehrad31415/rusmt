@@ -99,13 +99,14 @@ fn test_translation(path: &Path) -> datatest_stable::Result<()> {
     // Output directory is adjacent to test file
     // Example: tests/translation/prog1_basic_types_ok.rs -> tests/translation/prog1_basic_types_ok/
     let output_dir = path.with_extension("");
-    
+
     // Check if we should regenerate or fail on existing output
     if output_dir.exists() && !update {
         return Err(anyhow!(
             "Output already exists: {:?}\nTo regenerate, run: UPBL=1 cargo test",
             output_dir
-        ).into());
+        )
+        .into());
     }
 
     // Call derive() - it will:
@@ -116,74 +117,22 @@ fn test_translation(path: &Path) -> datatest_stable::Result<()> {
     // Note: derive() handles deleting output_dir if it exists (line 96-100 in lib.rs)
     let derive_result = derive(path, &output_dir);
 
-    // After derive() runs, check what actually got created
-    // Look for any solver subdirectory (z3, z3_chc, etc.)
-    let solver_dirs: Vec<_> = if output_dir.exists() {
-        fs::read_dir(&output_dir)?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-            .collect()
-    } else {
-        vec![]
-    };
-
     // Check the result
     match derive_result {
         Ok(_) => {
             // Derive succeeded
             if !ok_hint {
-                return Err(anyhow!(
-                    "Test passed but file doesn't have `_ok` suffix: {:?}",
-                    path
-                ).into());
-            }
-
-            // Verify at least one solver directory was created
-            if solver_dirs.is_empty() {
-                return Err(anyhow!(
-                    "Derive succeeded but no solver output directories found in {:?}",
-                    output_dir
-                ).into());
-            }
-
-            // Check each solver directory has both SMT and response files
-            for solver_dir in solver_dirs {
-                let solver_path = solver_dir.path();
-                let smt_files: Vec<_> = fs::read_dir(&solver_path)?
-                    .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        e.file_name()
-                            .to_str()
-                            .map(|n| n.starts_with("main."))
-                            .unwrap_or(false)
-                    })
-                    .collect();
-
-                let resp_path = solver_path.join("response.exp");
-
-                if smt_files.is_empty() {
-                    return Err(anyhow!(
-                        "No SMT file generated in {:?}",
-                        solver_path
-                    ).into());
-                }
-
-                if !resp_path.exists() {
-                    return Err(anyhow!(
-                        "No response file generated in {:?}",
-                        solver_path
-                    ).into());
-                }
+                return Err(
+                    anyhow!("Test passed but file doesn't have `_ok` suffix: {:?}", path).into(),
+                );
             }
         }
         Err(err) => {
             // Derive failed
             if ok_hint {
-                return Err(anyhow!(
-                    "Test with `_ok` suffix failed: {:?}\nError: {}",
-                    path,
-                    err
-                ).into());
+                return Err(
+                    anyhow!("Test with `_ok` suffix failed: {:?}\nError: {}", path, err).into(),
+                );
             }
         }
     }

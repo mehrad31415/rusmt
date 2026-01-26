@@ -2,6 +2,7 @@
 name = "rusmart-programs"
 version = "0.1.0"
 description = "Test programs for Rusmart SMT solver"
+readme = "README.md"
 repository = "https://github.com/meng-xu-cs/rusmart.git"
 license = "GPL-3.0-or-later"
 keywords = ["programs", "tests", "rusmart"]

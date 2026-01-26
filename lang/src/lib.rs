@@ -6,6 +6,3 @@
 /// TOML module for parsing TOML files.
 /// This module can be accessed from the binary crate (and other external crates).
 pub mod toml;
-
-/// Demo parser module for testing error discovery.
-pub mod demo_parser;

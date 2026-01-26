@@ -1,3 +1,7 @@
+//! This is the main entry point for the derive crate.
+//! usage: cargo run -- <parser_name>
+//! if no parser_name is provided, all parsers will be processed
+
 use rusmart_smt_derive::derive;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,7 +16,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Path to lang/src which contains the parsers/interpreters
     let lang_src_dir = workspace_root.join("lang").join("src");
-    let synthesis_base = workspace_root.join("lang").join("synthesis");
+    if !lang_src_dir.exists() {
+        return Err(format!("Lang source directory not found at {:?}", lang_src_dir).into());
+    }
+    // Path to lang/synthesis which contains the synthesis outputs
+    let synthesis_base = lang_src_dir.join("synthesis");
+    if !synthesis_base.exists() {
+        // create the directory
+        fs::create_dir_all(&synthesis_base)?;
+    }
 
     // Check if we got a specific parser argument
     let args: Vec<String> = std::env::args().collect();
@@ -30,10 +42,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         test_parser(&parser_dir, &output_dir)?;
     } else {
         // Test all parsers
-        if !lang_src_dir.exists() {
-            return Err(format!("Lang source directory not found at {:?}", lang_src_dir).into());
-        }
-
         for entry in fs::read_dir(&lang_src_dir)? {
             let entry = entry?;
             let path = entry.path();

@@ -78,7 +78,7 @@ macro_rules! ensure_none {
 macro_rules! ensure_some {
     ($item:expr, $par:expr, $msg:literal $(,)?) => {
         match $item {
-            None => $crate::bail_on!($par, "expect: {}", $msg),
+            None => $crate::bail_on!($par, "expect {}", $msg),
             Some(__v) => __v,
         }
     };

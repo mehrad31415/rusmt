@@ -6,8 +6,7 @@
 //!
 //! - [`func`]: Function annotation
 //! - [`ty`]: Type annotation
-//! - [`err`]: Error types
-//! - `attr`: Attribute parsing (internal)
+//! - [`err`]: Error types (internal)
 //! - `generics`: Generic parameter processing (internal)
 //!
 //! ## Usage
@@ -17,8 +16,7 @@
 
 #![warn(missing_docs)]
 
-mod attr;
-pub mod err;
+mod err;
 pub mod func;
 mod generics;
 pub mod ty;

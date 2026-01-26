@@ -460,7 +460,10 @@ pub fn derive_for_type(attr: TokenStream, item: TokenStream) -> Result<TokenStre
     let extended = match &mut original {
         Item::Struct(item_struct) => derive_for_struct(item_struct)?,
         Item::Enum(item_enum) => derive_for_enum(item_enum)?,
-        t => bail_on!(t, "expect a type definition (i.e., struct or enum)"), // smt_type only supports struct and enum
+        t => bail_on!(
+            t,
+            "expect a type definition (i.e., struct or enum) - smt_type only supports struct and enum"
+        ), // smt_type only supports struct and enum
     };
 
     // Combine the original item with the generated code.
@@ -626,7 +629,7 @@ mod tests {
 
         let res = derive_for_enum(&mut item_enum);
         assert!(res.is_err());
-        assert_eq!(res.err().unwrap().to_string(), "unexpected");
+        assert_eq!(res.err().unwrap().to_string(), "unexpected discriminant in enum variant");
     }
 
     #[test]
@@ -779,7 +782,7 @@ mod tests {
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string(),
-            "expect a type definition (i.e., struct or enum)"
+            "expect a type definition (i.e., struct or enum) - smt_type only supports struct and enum"
         );
     }
 

@@ -5,8 +5,8 @@ use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use std::collections::BTreeSet;
 use syn::{
-    AngleBracketedGenericArguments, GenericArgument, GenericParam, Generics, Path, PathArguments,
-    PathSegment, Result, TraitBound, TraitBoundModifier, Type, TypeParam, TypeParamBound, TypePath,
+    GenericParam, Generics, Path, PathArguments, PathSegment, Result, TraitBound,
+    TraitBoundModifier, TypeParam, TypeParamBound,
 };
 
 /// Represents a group of type parameters in generic definitions.
@@ -129,38 +129,6 @@ impl TypeParamGroup {
         })
     }
 
-    /// Checks if the group contains a specific type parameter.
-    pub fn contains(&self, name: &Ident) -> bool {
-        self.params.contains(name)
-    }
-
-    /// Collects type arguments from a given type based on the current type parameters.
-    ///
-    /// This function recursively inspects the given type and collects any type parameters
-    /// that are used as type arguments. It helps in tracking which type parameters are
-    /// actually used in a type definition.
-    pub fn collect_type_arguments(&self, ty: &Type) -> Result<Self> {
-        let mut ty_args_set = BTreeSet::new();
-        let mut ty_args_vec = vec![];
-        collect_type_arguments_recursive(ty, self, &mut ty_args_set, &mut ty_args_vec)?;
-        Ok(Self {
-            params: ty_args_vec,
-        })
-    }
-
-    /// Calculates the difference of type parameters between this group and another.
-    ///
-    /// This function is used when auto generating the impl block for a type,
-    pub fn diff(&self, other: &Self) -> Self {
-        let filtered: Vec<Ident> = self
-            .params
-            .iter()
-            .filter(|n| !other.contains(n))
-            .cloned()
-            .collect();
-        Self { params: filtered }
-    }
-
     /// Converts the type parameters into a syntax suitable for definition (e.g., `<T: SMT>`).
     /// The result of this is used after `impl`, `struct` in defnition, `enum` in definition, etc. keywords to define type parameters and trait bounds.
     pub fn to_syntax_def(&self) -> TokenStream {
@@ -182,106 +150,12 @@ impl TypeParamGroup {
             quote!(<#(#content),*>) //interpolates the content into the token stream: <T, U>
         }
     }
-
-    /// Converts the type parameters into a syntax suitable for function invocation (e.g., `::<T>`).
-    /// The result of this is used when invoking a function with type parameters for example function_name::<T>
-    pub fn to_syntax_invoke(&self) -> TokenStream {
-        if self.params.is_empty() {
-            TokenStream::new()
-        } else {
-            let content = self.params.iter().map(|n| quote!(#n));
-            quote!(::<#(#content),*>) //interpolates the content into the token stream: ::<T, U>
-        }
-    }
-}
-
-/// Recursively collects type arguments from a given type.
-///
-/// This helper function is used to traverse a type and collect any type parameters
-/// that are used as type arguments. It updates the provided sets and vectors with
-/// the collected identifiers.
-fn collect_type_arguments_recursive(
-    ty: &Type,
-    ty_params: &TypeParamGroup,
-    ty_args: &mut BTreeSet<Ident>,
-    ty_args_ordered: &mut Vec<Ident>,
-) -> Result<()> {
-    // Extract the path segment from the type
-    let segment = match ty {
-        Type::Path(TypePath {
-            qself,
-            path: Path {
-                leading_colon,
-                segments,
-            },
-        }) => {
-            // Qualified Self types and leading colons are not expected
-            ensure_none!(
-                qself.as_ref().map(|q| q.ty.as_ref()),
-                "type with qualified self is not expected"
-            );
-            ensure_none!(leading_colon, "no leading colon expected");
-
-            // We expect exactly one segment in the path
-            let mut iter = segments.iter();
-            let segment = ensure_some!(iter.next(), ty, "type name");
-            ensure_none!(iter.next(), "no extra segments expected"); // should only have one
-            segment
-        }
-        _ => bail_on!(ty, "expect type path"), // can be invoked with tuple (A,B)
-    };
-    let PathSegment { ident, arguments } = segment;
-
-    // Analyze the segments
-    match arguments {
-        PathArguments::None => {
-            if !ty_params.contains(ident) {
-                // here the group is checked if it contains the ident
-                // Just a type, not a type argument; do nothing
-                return Ok(());
-            }
-            if ty_args.insert(ident.clone()) {
-                // insert into ordered vector if it's a new argument
-                ty_args_ordered.push(ident.clone());
-            }
-        }
-        PathArguments::AngleBracketed(AngleBracketedGenericArguments {
-            colon2_token,
-            lt_token: _,
-            args,
-            gt_token: _,
-        }) => {
-            ensure_none!(colon2_token, "no double colon expected"); // Double colon is not expected
-            if ty_params.contains(ident) {
-                // Type parameters should not have arguments
-                bail_on!(arguments, "type parameter should not have arguments");
-            }
-
-            for arg in args {
-                match arg {
-                    // Extract type arguments recursively
-                    GenericArgument::Type(sub_ty) => {
-                        collect_type_arguments_recursive(
-                            sub_ty,
-                            ty_params,
-                            ty_args,
-                            ty_args_ordered,
-                        )?;
-                    }
-                    _ => bail_on!(arg, "expect type argument"),
-                }
-            }
-        }
-        PathArguments::Parenthesized(args) => bail_on!(args, "invalid type arguments"),
-    };
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use syn::punctuated::Punctuated;
-    use syn::{Generics, Type, parse_quote};
+    use syn::{Generics, parse_quote};
 
     #[test]
     fn test_parse_generics_params_empty_bail() {
@@ -290,7 +164,7 @@ mod tests {
         let type_param_group: Result<TypeParamGroup> = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "unexpected");
+        assert_eq!(type_param_group.err().unwrap().to_string(), "expecting no angle brackets");
     }
 
     #[test]
@@ -348,7 +222,7 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "unexpected");
+        assert_eq!(type_param_group.err().unwrap().to_string(), "no equal sign expected");
     }
 
     #[test]
@@ -381,7 +255,7 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "unexpected");
+        assert_eq!(type_param_group.err().unwrap().to_string(), "no extra bounds expected");
     }
 
     #[test]
@@ -430,7 +304,7 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "unexpected");
+        assert_eq!(type_param_group.err().unwrap().to_string(), "no lifetimes expected");
     }
 
     #[test]
@@ -446,7 +320,7 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "unexpected");
+        assert_eq!(type_param_group.err().unwrap().to_string(), "no leading colon expected");
     }
 
     #[test]
@@ -462,7 +336,7 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "unexpected");
+        assert_eq!(type_param_group.err().unwrap().to_string(), "no extra segments expected");
     }
 
     // if !matches!(arguments, PathArguments::None) {
@@ -583,33 +457,6 @@ mod tests {
     }
 
     #[test]
-    fn test_contains() {
-        let type_param_group = TypeParamGroup {
-            params: vec![parse_quote! {U}, parse_quote! {T}],
-        };
-
-        let ident: Ident = parse_quote! {U};
-        let res = type_param_group.contains(&ident);
-        assert!(res);
-    }
-
-    #[test]
-    fn test_diff() {
-        let type_param_group_one = TypeParamGroup {
-            params: vec![parse_quote!(U), parse_quote!(T)],
-        };
-        let type_param_group_two = TypeParamGroup {
-            params: vec![parse_quote!(U)],
-        };
-
-        let res = type_param_group_one.diff(&type_param_group_two);
-
-        assert_eq!(res.params.len(), 1);
-        assert!(res.contains(&parse_quote!(T)));
-        assert!(!res.contains(&parse_quote!(U)));
-    }
-
-    #[test]
     fn test_to_syntax_def_one() {
         let group = TypeParamGroup { params: vec![] };
 
@@ -645,198 +492,5 @@ mod tests {
         let tokens = group.to_syntax_use();
         let expected: TokenStream = quote!(<T, U>);
         assert_eq!(tokens.to_string(), expected.to_string());
-    }
-
-    #[test]
-    fn test_to_syntax_invoke_one() {
-        // Test converting to syntax invocation
-        let group = TypeParamGroup { params: vec![] };
-        let tokens = group.to_syntax_invoke();
-        assert!(tokens.is_empty());
-    }
-
-    #[test]
-    fn test_to_syntax_invoke_two() {
-        // Test converting to syntax invocation
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let tokens = group.to_syntax_invoke();
-        let expected: TokenStream = quote!(::<T, U>);
-        assert_eq!(tokens.to_string(), expected.to_string());
-    }
-
-    #[test]
-    fn test_collect_type_arguments() {
-        // Test collecting type arguments from a type
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(Option<T>);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_ok());
-        let collected = result.unwrap();
-        assert_eq!(collected.params.len(), 1);
-
-        // get params
-        let params = collected.params;
-        assert_eq!(params[0].to_string(), "T");
-
-        let ty: Type = parse_quote!(Result<T, U>);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_ok());
-        let collected = result.unwrap();
-        assert_eq!(collected.params.len(), 2);
-
-        // get params
-        let params = collected.params;
-        assert_eq!(params[0].to_string(), "T");
-        assert_eq!(params[1].to_string(), "U");
-    }
-
-    // ensure_none!(qself.as_ref().map(|q| q.ty.as_ref()));
-    #[test]
-    fn test_collect_type_arguments_qself() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(<T as Trait>::AssociatedType);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected");
-    }
-
-    // ensure_none!(leading_colon);
-    #[test]
-    fn test_collect_type_arguments_leading_colon() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(::std::String);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected");
-    }
-
-    // _ => bail_on!(ty, "expect type path"), is invoked
-    #[test]
-    fn test_collect_type_arguments_expect_type_path() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!((A, B));
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "expect type path");
-    }
-
-    // PathArguments::None => {
-    //     if !ty_params.contains(ident) {
-    //         return Ok(());
-    //     }
-    #[test]
-    fn test_collect_type_arguments_normal_type() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(String); // params does not contain String
-        let result = group.collect_type_arguments(&ty);
-
-        assert!(result.is_ok());
-        let collected = result.unwrap();
-        assert_eq!(collected.params.len(), 0);
-    }
-
-    // PathArguments::None
-    #[test]
-    fn test_collect_type_arguments_normal_type_two() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(T); // params does contain T
-        let result = group.collect_type_arguments(&ty);
-
-        assert!(result.is_ok());
-        let collected = result.unwrap();
-        assert_eq!(collected.params.len(), 1);
-        assert_eq!(collected.params[0].to_string(), "T");
-    }
-
-    // ensure_none!(colon2_token); // Double colon is not expected
-    #[test]
-    fn test_collect_type_arguments_colon2_token() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(Option::<T>);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected");
-    }
-
-    // if ty_params.contains(ident) {
-    //     // Type parameters should not have arguments
-    //     bail_on!(arguments, "type parameter should not have arguments");
-    // }
-    #[test]
-    fn test_collect_type_arguments_type_parameter() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(Option), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(Option<T>);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(
-            result.err().unwrap().to_string(),
-            "type parameter should not have arguments"
-        );
-    }
-
-    //  _ => bail_on!(arg, "expect type argument"),
-    #[test]
-    fn test_collect_type_arguments_expect_type_argument() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(Option<32>);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "expect type argument");
-    }
-
-    // ensure_none!(iter.next()); // should only have one
-    // segment
-    #[test]
-    fn test_collect_type_arguments_more_segments() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        let ty: Type = parse_quote!(std::Option<T, U>);
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected");
-    }
-
-    // PathArguments::Parenthesized(args) => bail_on!(args, "invalid type arguments"),
-    #[test]
-    fn test_collect_type_arguments_parenthesized() {
-        let group = TypeParamGroup {
-            params: vec![parse_quote!(T), parse_quote!(U)],
-        };
-        // let ty: Type = parse_quote!(myString(T)); //? this does not get parsed as a type
-        let ty: Type = Type::Path(TypePath {
-            qself: None,
-            path: Path {
-                leading_colon: None,
-                // punctuated path segments myString(T)
-                segments: Punctuated::from_iter(vec![PathSegment {
-                    ident: parse_quote!(myString),
-                    arguments: PathArguments::Parenthesized(parse_quote!((T))),
-                }]),
-            },
-        });
-        let result = group.collect_type_arguments(&ty);
-        assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "invalid type arguments");
     }
 }

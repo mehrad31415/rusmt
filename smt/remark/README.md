@@ -1,7 +1,8 @@
 
 ## Remark
 
-This crate provides utilities to enforce syntactic constraints on the types and functions used in Rusmart language implementations.
+This crate provides utilities to enforce syntactic constraints on the types and functions used in Rusmart language implementations. This crate provides the *implementation* of the “remarking” rules used by Rusmart’s DSL tooling.
+The actual attribute macros live in `rusmart_smt_remark_derive` and call into this crate.
 
 ### Purpose
 
@@ -9,9 +10,15 @@ Transpiling the whole Rust language to SMT-LIB is infeasible due to its complexi
 
 ### Constraints
 
-- **Type Constraints**: We provide the `[smt_type]` attribute macro to mark types that are allowed in Rusmart DSLs. Only types annotated with this macro are processed by the transpiler. No attributes are allowed for the macro. The _Debug, Clone, Copy, Default, Hash_ are automatically derived for these types. The _SMT_ trait is also automatically implemented. All the generic parameters of the type must also implement the only the _SMT_ trait.
+- **Type constraints (`#[smt_type]`)**: We provide the `[smt_type]` attribute macro to mark types that are allowed in Rusmart DSLs. Only types annotated with this macro are processed by the transpiler. It is implemented by `rusmart_smt_remark_derive::smt_type`. It accepts **no arguments**. It injects derives and an `SMT` impl:
+  - For **structs**: derives `Debug, Clone, Copy, Default, Hash` and implements `SMT::_cmp` lexicographically over fields.
+  - For **enums**: derives `Debug, Clone, Copy, Hash`, generates a `Default` impl choosing the **first variant**, and implements `SMT::_cmp`.
+  - Generic params must be of the form `<T: SMT, ...>` (no `where` clause, no extra bounds).
 
-- **Function Constraints**: We provide the `[smt_fn]` attribute macro to mark functions that are allowed in Rusmart DSLs. Only functions annotated with this macro are processed by the transpiler. The _method_ attribute is allowed for the macro to introduce a method receiver. The function must not have any other attributes. The function's parameters and return type must be types annotated with the `[smt_type]` macro or primitive types supported by the transpiler. If the function has generic parameters, they must implement only the _SMT_ trait.
+- **Function constraints (`#[smt_fn]`)**: We provide the `[smt_fn]` attribute macro to mark functions that are allowed in Rusmart DSLs. Only functions annotated with this macro are processed by the transpiler. It is implemented by `rusmart_smt_remark_derive::smt_fn`. It accepts **no arguments**.
+  - Rejects `const`, `async`, `unsafe`, `extern "ABI"`, and variadics, and rejects `where` clauses.
+  - Generic params must be of the form `<T: SMT, ...>` (no extra bounds).
+  - Note: this crate does **not** validate parameter/return types against `#[smt_type]`; it only enforces these syntactic restrictions and generic bounds.
 
 ### License
 The Rusmart project, a symbolic execution engine, is licensed under the _GPL-3.0-or-later_ license.

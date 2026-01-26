@@ -1,0 +1,11 @@
+# This is okay
+
+[a.b.c.d]
+
+[a] # defining parent tables afterward is ok
+
+# This is also okay
+
+[x] # defining parent beforehand is ok
+
+[x.y.z.w]

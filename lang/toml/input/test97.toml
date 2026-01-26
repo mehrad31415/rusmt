@@ -1,0 +1,2 @@
+# the number after e is okay(within i32) but the 10^exp overflows in float parsing
+key = 1.8e128937

@@ -1,0 +1,73 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "x",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "y",
+                                                },
+                                            ): SMTWrap(
+                                                Table(
+                                                    Cloak {
+                                                        inner: SMTWrap(
+                                                            Array {
+                                                                inner: {
+                                                                    SMTWrap(
+                                                                        String {
+                                                                            inner: "z",
+                                                                        },
+                                                                    ): SMTWrap(
+                                                                        Table(
+                                                                            Cloak {
+                                                                                inner: SMTWrap(
+                                                                                    Array {
+                                                                                        inner: {
+                                                                                            SMTWrap(
+                                                                                                String {
+                                                                                                    inner: "w",
+                                                                                                },
+                                                                                            ): SMTWrap(
+                                                                                                Table(
+                                                                                                    Cloak {
+                                                                                                        inner: SMTWrap(
+                                                                                                            Array {
+                                                                                                                inner: {},
+                                                                                                            },
+                                                                                                        ),
+                                                                                                    },
+                                                                                                ),
+                                                                                            ),
+                                                                                        },
+                                                                                    },
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

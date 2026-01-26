@@ -1,13 +1,9 @@
+//! Module tree of the IR
+
 pub mod ctxt;
-
-pub mod index;
-pub mod name;
-
-pub mod sort;
-
-mod mono;
-
-mod axiom;
-mod exp;
+pub mod exp;
 pub mod fun;
-mod intrinsics;
+pub mod index;
+pub mod intrinsics;
+pub mod name;
+pub mod sort;

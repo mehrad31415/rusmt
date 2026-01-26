@@ -1,0 +1,2 @@
+# double underscore error in binary int
+hello = 0b1__

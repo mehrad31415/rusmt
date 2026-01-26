@@ -1,0 +1,18 @@
+[package]
+name = "rusmart-lang"
+version = "0.1.0"
+description = "Executable semantics of programming languages"
+readme = "README.md"
+repository = "https://github.com/meng-xu-cs/rusmart.git"
+license = "GPL-3.0-or-later"
+keywords = ["executable-semantics", "programming-languages", "functional-programming"]
+categories = ["compilers", "parser-implementations"]
+edition = "2024"
+
+[dependencies]
+rusmart-smt-stdlib = { workspace = true }
+rusmart-smt-remark-derive = { workspace = true }
+clap = { workspace = true }
+
+[lints.clippy]
+all = "allow"

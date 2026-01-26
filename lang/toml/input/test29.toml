@@ -1,0 +1,2 @@
+# newline expected after escaped newline in multi-line basic string
+hello = """ \ sdsd " """

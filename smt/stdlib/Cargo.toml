@@ -1,16 +1,22 @@
 [package]
 name = "rusmart-smt-stdlib"
-description = "Standard Rust library for SMT elements in semantics modeling"
 version = "0.1.0"
-authors = ["Meng Xu <meng.xu.cs@uwaterloo.ca>"]
-license = "GPL-3.0"
-edition = "2021"
+description = "Standard Rust library for SMT elements"
+readme = "README.md"
+repository = "https://github.com/meng-xu-cs/rusmart.git"
+license = "GPL-3.0-or-later"
+keywords = ["smt", "types", "modeling"]
+categories = ["compilers"]
+edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
+bitvec = { workspace = true }
+hexf-parse = {workspace = true }
 internment = { workspace = true }
 itertools = { workspace = true }
 num-bigint = { workspace = true }
 num-rational = { workspace = true }
 num-traits = { workspace = true }
+ordered-float = { workspace = true }
 paste = { workspace = true }

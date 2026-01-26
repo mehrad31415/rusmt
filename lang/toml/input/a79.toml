@@ -1,0 +1,5 @@
+# Inline tables are fully self-contained and define all keys and sub-tables within them. Keys and sub-tables cannot be added outside the braces.inline tables cannot be used to add keys or sub-tables to an already-defined table.
+
+[product]
+type = { name = "Nail" }
+type.edible = false  # INVALID

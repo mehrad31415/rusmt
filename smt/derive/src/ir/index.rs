@@ -2,7 +2,7 @@
 macro_rules! index {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+        #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
         pub struct $name {
             pub index: usize,
         }
@@ -15,8 +15,15 @@ macro_rules! index {
     };
 }
 
+// this is equivalent to the following code:
+// #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+// pub struct UsrSortId {
+//     pub index: usize,
+// }
+// let a = UsrSortId { index: 0 };
+// println!("{}", a); // 0
 index! {
-    /// A unique identifier for user-defined sort
+    /// A unique identifier for user-defined type
     UsrSortId
 }
 
@@ -33,9 +40,4 @@ index! {
 index! {
     /// Index of an expression
     ExpId
-}
-
-index! {
-    /// A unique identifier for an axiom
-    UsrAxiomId
 }

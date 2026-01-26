@@ -1,0 +1,20 @@
+[package]
+name = "rusmart-smt-remark-derive"
+version = "0.1.0"
+description = "Annotations for remarking Rust syntax"
+repository = "https://github.com/meng-xu-cs/rusmart.git"
+license = "GPL-3.0-or-later"
+keywords = ["smt", "annotation", "macros"]
+categories = ["compilers", "development-tools::procedural-macro-helpers", "parser-implementations"]
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = { workspace = true }
+syn = { workspace = true }
+rusmart-smt-remark = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

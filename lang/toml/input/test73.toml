@@ -1,0 +1,2 @@
+# invalid decimal digit after octal prefix
+hello = 0o9

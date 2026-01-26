@@ -1,5 +1,12 @@
-/// SMT-related data types
-pub mod dt;
+//! Rusmart standard library DSL
+//!
+//! Module Tree:
+//! * dt - SMT-related data types
+//! * exp - SMT-related expressions
 
-/// SMT-related expressions
-pub mod exp;
+#![warn(missing_docs)]
+
+mod dt;
+mod exp;
+pub use dt::*;
+pub use exp::*;

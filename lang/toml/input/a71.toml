@@ -1,0 +1,4 @@
+# DO NOT DO THIS (type mismatch)
+
+fruit.x.key = "value"
+[fruit.x.key]

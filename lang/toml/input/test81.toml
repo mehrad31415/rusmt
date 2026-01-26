@@ -1,0 +1,2 @@
+# underscore at end of input in octal int
+hello = 0o1_

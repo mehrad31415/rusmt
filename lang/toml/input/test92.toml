@@ -1,0 +1,2 @@
+# invalid decimal digit after underscore
+hello = 0b1_9

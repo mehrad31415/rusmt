@@ -1,6 +1,4 @@
-[submodule "deps/cvc5"]
-	path = deps/cvc5
-	url = https://github.com/cvc5/cvc5.git
-[submodule "deps/z3"]
-	path = deps/z3
-	url = https://github.com/Z3Prover/z3.git
+[submodule "solver/z3.rs"]
+	path = solver/z3.rs
+	url = https://github.com/prove-rs/z3.rs
+	branch = master

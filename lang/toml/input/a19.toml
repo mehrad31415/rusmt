@@ -1,0 +1,3 @@
+# Any Unicode character may be used except those that must be escaped: backslash
+
+str = "I'm a string. \ hello"

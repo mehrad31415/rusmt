@@ -1,0 +1,3 @@
+# missing closing delimiter for multi-line literal string where newline was present
+hello = '''
+as

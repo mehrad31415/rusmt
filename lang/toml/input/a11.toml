@@ -1,0 +1,4 @@
+# Defining a key multiple times is invalid.
+
+name = "Tom"
+name = "Pradyun"

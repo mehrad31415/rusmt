@@ -1,0 +1,2 @@
+# hexadecimal invalid (+ sign not allowed)
+hex1 = +0xDEADBEEF

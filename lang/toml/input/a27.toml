@@ -1,0 +1,3 @@
+# Since there is no escaping, there is no way to write a single quote inside a literal string enclosed by single quotes.
+
+error = 'This string has an apostrophe (') inside it.'

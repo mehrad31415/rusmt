@@ -1,0 +1,2 @@
+# the number before the decimal point and after the decimal point combined with the exponent overflows in float parsing
+key = 11232343123.8121121342321441122e310

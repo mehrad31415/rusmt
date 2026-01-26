@@ -1,0 +1,2 @@
+# invalid decimal digit after underscore in octal int
+hello = 0o1_9

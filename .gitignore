@@ -1,15 +1,8 @@
 # artifacts
-/studio/
 /target/
 
-# IDE
-/.idea/
-
-# MacOS
+# macOS
 .DS_Store
 
-# Z3 trace files
-.z3-trace
-
-# coverage file
-/tarpaulin-report.html
+# visual studio code
+*.sln

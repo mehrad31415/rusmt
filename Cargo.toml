@@ -1,41 +1,40 @@
 [workspace]
 members = [
-    # ordered and grouped loosely by dependency relation
-    "utils",
-    "cli",
     "smt/stdlib",
     "smt/remark",
+    "smt/remark/remark_derive",
     "smt/derive",
-    "smt/testing",
-    "lang/demo",
-    "lang/rego",
+    "lang",
+    "programs",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-anyhow = "1.0.98"
-clap = { version = "4.5.37", features = ["derive"] }
+datatest-stable = "0.3.3"
+hexf-parse = "0.2.1"
+anyhow = "1.0.100"
 command-group = "5.0.1"
-datatest-stable = "0.3.2"
-internment = { version = "0.8.6", features = ["arc"] }
-itertools = "0.14.0"
 lazy_static = "1.5.0"
-log = "0.4.27"
-num_cpus = "1.16.0"
+log = "0.4.29"
+petgraph = "0.8.3"
+proc-macro2 = "1.0.106"
+quote = "1.0.44"
+syn = { version = "2.0.114", features = ["full", "extra-traits"] }
+tempfile = "3.24.0"
+walkdir = "2.5.0"
+bitvec = "1.0.1"
+internment = { version = "0.8.4", features = ["arc"] }
+itertools = "0.14.0"
 num-bigint = "0.4.6"
 num-rational = "0.4.2"
 num-traits = "0.2.19"
-paste = "1.0.15"
-petgraph = "0.8.1"
-proc-macro2 = "1.0.95"
-quote = "1.0.40"
-tempfile = "3.19.1"
-simplelog = "0.12.2"
-syn = { version = "2.0.101", features = ["full", "extra-traits"] }
-walkdir = "2.5.0"
+paste = "1"
+ordered-float = "5.1.0"
+clap = { version = "4.5.54", features = ["derive"] }
+z3     = { path = "solver/z3.rs/z3", features = ["bundled"] }
+z3-sys = { path = "solver/z3.rs/z3-sys", features = ["bundled"] }
 
-rusmart-utils = { path = "utils" }
-rusmart-cli = { path = "cli" }
 rusmart-smt-stdlib = { path = "smt/stdlib" }
 rusmart-smt-remark = { path = "smt/remark" }
+rusmart-smt-remark-derive = { path = "smt/remark/remark_derive" }
 rusmart-smt-derive = { path = "smt/derive" }

@@ -1,246 +1,82 @@
-use std::collections::{BTreeMap, BTreeSet};
+//! The modules provides `Mark` enum which represents the SMT-related marking attributes.
 
-use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
-use syn::{AttrStyle, Attribute, MacroDelimiter, Meta, MetaList, MetaNameValue, Path, Result};
-
-use crate::parser::err::{bail_if_missing, bail_on};
-use crate::parser::name::UsrFuncName;
-
-/// Allowed annotation
-enum Annotation {
-    Type,
-    Impl,
-    Spec,
-    Axiom,
-}
-
-impl Annotation {
-    /// Convert a path to an annotation
-    pub fn parse_path(path: &Path) -> Option<Self> {
-        match path.get_ident()?.to_string().as_str() {
-            "smt_type" => Some(Self::Type),
-            "smt_impl" => Some(Self::Impl),
-            "smt_spec" => Some(Self::Spec),
-            "smt_axiom" => Some(Self::Axiom),
-            _ => None,
-        }
-    }
-}
-
-/// Annotation value
-enum MetaValue {
-    One(Ident),
-    Set(BTreeSet<Ident>),
-}
-
-/// A mark for an annotated impl function
-pub struct ImplMark {
-    /// whether to derive a receiver-style method for this function
-    pub method: Option<UsrFuncName>,
-    /// which spec functions this impl should conform to
-    pub specs: BTreeSet<UsrFuncName>,
-}
-
-/// A mark for an annotated spec function
-pub struct SpecMark {
-    /// whether to derive a receiver-style method for this function
-    pub method: Option<UsrFuncName>,
-    /// which impl functions this spec should target at
-    pub impls: BTreeSet<UsrFuncName>,
-}
-
+use crate::bail_on;
+use syn::{AttrStyle, Attribute, Meta, MetaList, MetaNameValue, Path, Result};
 /// SMT-related marking
 pub enum Mark {
     Type,
-    Impl(ImplMark),
-    Spec(SpecMark),
-    Axiom,
+    Func,
 }
 
 impl Mark {
-    /// Parse a key-value mapping from a token stream
-    fn parse_dict(stream: &TokenStream) -> Result<BTreeMap<String, MetaValue>> {
-        let mut store = BTreeMap::new();
-
-        let mut iter = stream.clone().into_iter();
-        let mut cursor = iter.next();
-
-        while cursor.is_some() {
-            // extract key
-            let token = bail_if_missing!(cursor.as_ref(), stream, "key");
-            let key = match token {
-                TokenTree::Ident(ident) => ident.to_string(),
-                _ => bail_on!(token, "not a key"),
-            };
-            if store.contains_key(&key) {
-                bail_on!(token, "duplicated key");
-            }
-
-            // equal sign
-            let token = bail_if_missing!(iter.next(), stream, "=");
-            match &token {
-                TokenTree::Punct(punct) if punct.as_char() == '=' => (),
-                _ => bail_on!(token, "expect ="),
-            }
-
-            // extract value
-            let token = bail_if_missing!(iter.next(), stream, "val");
-            let val = match token {
-                TokenTree::Ident(ident) => MetaValue::One(ident),
-                TokenTree::Group(group) if matches!(group.delimiter(), Delimiter::Bracket) => {
-                    let mut set = BTreeSet::new();
-
-                    let sub = group.stream();
-                    let mut sub_iter = sub.into_iter();
-                    let mut sub_cursor = sub_iter.next();
-                    while sub_cursor.is_some() {
-                        // extract the item
-                        let token = bail_if_missing!(sub_cursor.as_ref(), group, "item");
-                        let item = match token {
-                            TokenTree::Ident(ident) => ident.clone(),
-                            _ => bail_on!(token, "not an item"),
-                        };
-                        if !set.insert(item.clone()) {
-                            bail_on!(group, "duplicated item");
-                        }
-
-                        // advance the cursor
-                        sub_cursor = sub_iter.next();
-                        if matches!(sub_cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
-                        {
-                            sub_cursor = sub_iter.next();
-                        }
-                    }
-
-                    MetaValue::Set(set)
-                }
-                _ => bail_on!(token, "expect value"),
-            };
-
-            // add to the key-value store
-            store.insert(key, val);
-
-            // check for more tokens
-            cursor = iter.next();
-            if matches!(cursor.as_ref(), Some(TokenTree::Punct(punct)) if punct.as_char() == ',') {
-                cursor = iter.next();
-            }
+    /// Convert a path to a mark
+    pub fn parse_path(path: &Path) -> Option<Self> {
+        match path
+            .get_ident()
+            .expect("path is not an identifier")
+            .to_string()
+            .as_str()
+        {
+            "smt_type" => Some(Self::Type),
+            "smt_fn" => Some(Self::Func),
+            _ => None,
         }
-
-        Ok(store)
     }
 
     /// Test whether this attribute represents a mark
     fn parse_attr(attr: &Attribute) -> Result<Option<Self>> {
         let Attribute {
-            pound_token: _,
-            style,
-            bracket_token: _,
-            meta,
+            pound_token: _, // The # token before the attribute like #[my_attr]
+            style, // The style of the attribute: outer or inner #[my_attr] is outer or #![my_attr] for inner.
+            // The outer style is used for attributes that apply to the item they are attached to. Affects only the specific item (like a function or struct) to which it is attached. It will not apply globally when used at the top of a module or crate.
+            // The inner style is used for attributes that apply to items within the item they are attached to. Affects the item and all items within it. It will apply globally when used at the top of a module or crate.
+            bracket_token: _, // The brackets around the attribute like #[my_attr]
+            meta,             // The content of the attribute
         } = attr;
 
-        // early filtering
+        // early filtering (only outer attributes are considered)
         if !matches!(style, AttrStyle::Outer) {
             return Ok(None);
         }
 
         let mark = match meta {
-            Meta::Path(path) => match Annotation::parse_path(path) {
+            // rust does not allow multiple attributes in a single attribute like #[my_attr1, my_attr2]. Instead, it should be #[my_attr1] #[my_attr2]...
+            // Path like `test` in #[test]
+            // If it is a path, we parse it for Annotations.
+            // Basically the parse_path checks if the path is an identifier (not a path with leading colons, only one segment, and no arguments).
+            // If it is an identifier, the acceptable values are "smt_type", "smt_fn".
+            Meta::Path(path) => match Mark::parse_path(path) {
                 None => return Ok(None),
-                Some(Annotation::Type) => Self::Type,
-                Some(Annotation::Impl) => Self::Impl(ImplMark {
-                    method: None,
-                    specs: BTreeSet::new(),
-                }),
-                Some(Annotation::Spec) => Self::Spec(SpecMark {
-                    method: None,
-                    impls: BTreeSet::new(),
-                }),
-                Some(Annotation::Axiom) => Self::Axiom,
+                Some(Mark::Type) => Self::Type,
+                Some(Mark::Func) => Self::Func,
             },
+
+            // A meta list is like the `derive(Copy)` in `#[derive(Copy)]`
             Meta::List(MetaList {
-                path,
-                delimiter,
-                tokens,
-            }) => match Annotation::parse_path(path) {
+                path,         // path in the above example is `derive`
+                delimiter: _, // delimiter in the above example is Parenthesis
+                tokens: _,    // tokens in the above example are `Copy`
+            }) => match Mark::parse_path(path) {
                 None => return Ok(None),
-                Some(Annotation::Type) | Some(Annotation::Axiom) => {
+                Some(_) => {
                     bail_on!(attr, "unexpected list")
                 }
-                Some(Annotation::Impl) => {
-                    if !matches!(delimiter, MacroDelimiter::Paren(_)) {
-                        bail_on!(attr, "not a parenthesis-enclosed list");
-                    }
-
-                    let mut store = Self::parse_dict(tokens)?;
-                    let method = match store.remove("method") {
-                        None => None,
-                        Some(MetaValue::One(ref item)) => Some(item.try_into()?),
-                        Some(_) => bail_on!(tokens, "invalid method"),
-                    };
-
-                    let mut specs = BTreeSet::new();
-                    match store.remove("specs") {
-                        None => (),
-                        Some(MetaValue::One(ref item)) => {
-                            specs.insert(item.try_into()?);
-                        }
-                        Some(MetaValue::Set(items)) => {
-                            for item in items.iter() {
-                                specs.insert(UsrFuncName::try_from(item)?);
-                            }
-                        }
-                    };
-
-                    if !store.is_empty() {
-                        bail_on!(tokens, "unrecognized entries");
-                    }
-                    Self::Impl(ImplMark { method, specs })
-                }
-                Some(Annotation::Spec) => {
-                    if !matches!(delimiter, MacroDelimiter::Paren(_)) {
-                        bail_on!(attr, "not a parenthesis-enclosed list");
-                    }
-
-                    let mut store = Self::parse_dict(tokens)?;
-                    let method = match store.remove("method") {
-                        None => None,
-                        Some(MetaValue::One(ref item)) => Some(item.try_into()?),
-                        Some(_) => bail_on!(tokens, "invalid method"),
-                    };
-
-                    let mut impls = BTreeSet::new();
-                    match store.remove("impls") {
-                        None => (),
-                        Some(MetaValue::One(ref item)) => {
-                            impls.insert(item.try_into()?);
-                        }
-                        Some(MetaValue::Set(items)) => {
-                            for item in items.iter() {
-                                impls.insert(UsrFuncName::try_from(item)?);
-                            }
-                        }
-                    };
-
-                    if !store.is_empty() {
-                        bail_on!(tokens, "unrecognized entries");
-                    }
-                    Self::Spec(SpecMark { method, impls })
-                }
             },
+            // A name-value meta is like the `path = "..."` in `#[path = "sys/windows.rs"]`.
             Meta::NameValue(MetaNameValue {
-                path,
-                eq_token: _,
-                value: _,
-            }) => match Annotation::parse_path(path) {
+                path,        // path in the above example is `path`
+                eq_token: _, // equal sign in the above example is `=`
+                value: _,    // value in the above example is `"sys/windows.rs"`
+            }) => match Mark::parse_path(path) {
                 None => return Ok(None),
-                Some(_) => bail_on!(attr, "unexpected dict"),
+                Some(_) => bail_on!(attr, "unexpected dict"), // Name-value pairs are not expected for smt_type, smt_fn
             },
         };
+
         Ok(Some(mark))
     }
 
-    /// Extract a mark, if any, from the list of attributes
+    /// This function is used to see whether the item is marked with any smt-related attributes (smt_type, smt_fn).
     pub fn parse_attrs(attrs: &[Attribute]) -> Result<Option<Self>> {
         let mut mark = None;
         for attr in attrs {
@@ -248,7 +84,7 @@ impl Mark {
                 None => continue,
                 Some(parsed) => {
                     if mark.is_some() {
-                        bail_on!(attr, "multiple marks specified");
+                        bail_on!(attr, "multiple marks specified"); // if in one of the attributes there exists smt_type, smt_fn, no other attributes containing any of these should exist.
                     }
                     mark = Some(parsed);
                 }

@@ -1,0 +1,198 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "a",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "b",
+                                                },
+                                            ): SMTWrap(
+                                                Table(
+                                                    Cloak {
+                                                        inner: SMTWrap(
+                                                            Array {
+                                                                inner: {
+                                                                    SMTWrap(
+                                                                        String {
+                                                                            inner: "c",
+                                                                        },
+                                                                    ): SMTWrap(
+                                                                        Table(
+                                                                            Cloak {
+                                                                                inner: SMTWrap(
+                                                                                    Array {
+                                                                                        inner: {},
+                                                                                    },
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "d",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "e",
+                                                },
+                                            ): SMTWrap(
+                                                Table(
+                                                    Cloak {
+                                                        inner: SMTWrap(
+                                                            Array {
+                                                                inner: {
+                                                                    SMTWrap(
+                                                                        String {
+                                                                            inner: "f",
+                                                                        },
+                                                                    ): SMTWrap(
+                                                                        Table(
+                                                                            Cloak {
+                                                                                inner: SMTWrap(
+                                                                                    Array {
+                                                                                        inner: {},
+                                                                                    },
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "g",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "h",
+                                                },
+                                            ): SMTWrap(
+                                                Table(
+                                                    Cloak {
+                                                        inner: SMTWrap(
+                                                            Array {
+                                                                inner: {
+                                                                    SMTWrap(
+                                                                        String {
+                                                                            inner: "i",
+                                                                        },
+                                                                    ): SMTWrap(
+                                                                        Table(
+                                                                            Cloak {
+                                                                                inner: SMTWrap(
+                                                                                    Array {
+                                                                                        inner: {},
+                                                                                    },
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "j",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "ʞ",
+                                                },
+                                            ): SMTWrap(
+                                                Table(
+                                                    Cloak {
+                                                        inner: SMTWrap(
+                                                            Array {
+                                                                inner: {
+                                                                    SMTWrap(
+                                                                        String {
+                                                                            inner: "l",
+                                                                        },
+                                                                    ): SMTWrap(
+                                                                        Table(
+                                                                            Cloak {
+                                                                                inner: SMTWrap(
+                                                                                    Array {
+                                                                                        inner: {},
+                                                                                    },
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

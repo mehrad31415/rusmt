@@ -1,0 +1,2 @@
+# at least one mlb-content is required after mlb-quotes in multi-line basic string
+hello = """ ss "

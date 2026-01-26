@@ -1,0 +1,2 @@
+# no input after opening delimiter for multi-line literal string
+hello = '''

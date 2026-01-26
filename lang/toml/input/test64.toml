@@ -1,0 +1,2 @@
+# overflow in hex int parsing above i64 max
+hello = 0xF61237612738937287178321

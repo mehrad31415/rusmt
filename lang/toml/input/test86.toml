@@ -1,0 +1,2 @@
+# invalid hex digit after binary prefix
+hello = 0bG

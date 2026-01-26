@@ -1,0 +1,4 @@
+# Invalid: type mismatch between integer and table
+
+table = 1
+[table]

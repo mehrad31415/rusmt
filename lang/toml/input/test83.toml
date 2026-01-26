@@ -1,0 +1,2 @@
+# underscore immediately after binary prefix
+hello = 0b_

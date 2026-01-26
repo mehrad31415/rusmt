@@ -7,14 +7,14 @@ use crate::parser::func::{FuncDef, FuncSig};
 use crate::parser::generics::Generics;
 use crate::parser::name::{UsrFuncName, UsrTypeName};
 use crate::parser::ty::{TypeBody, TypeDef};
-use crate::{bail_if_exists, bail_on, bail_on_with_note};
+use crate::{bail_on, bail_on_with_note};
 use core::panic;
 use log::trace;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::Path;
-use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemMod, ItemStruct, Result, Stmt};
+use syn::{File, Ident, Item, ItemEnum, ItemFn, ItemStruct, Result, Stmt};
 use walkdir::WalkDir;
 
 #[derive(Debug)]
@@ -169,24 +169,6 @@ impl Context {
                         "invalid annotation\n#[smt_type] is not allowed for fn"
                     ),
                 },
-                // recursively process the items in the module
-                Item::Mod(syntax) => {
-                    let ItemMod {
-                        attrs: _,
-                        vis: _,
-                        unsafety,
-                        mod_token: _,
-                        ident: _,
-                        content,
-                        semi: _,
-                    } = syntax;
-                    // a module cannot be unsafe
-                    bail_if_exists!(unsafety);
-                    match content {
-                        None => (),
-                        Some((_, items)) => self.process_items(items)?,
-                    }
-                }
                 // a use item is ignored
                 Item::Use(_) => (),
                 // throw an error for any other item

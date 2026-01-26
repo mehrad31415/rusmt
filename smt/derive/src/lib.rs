@@ -1,4 +1,5 @@
 //! Pipeline for deriving and solving models from Rust code using SMT solvers.
+#![warn(missing_docs)]
 
 use crate::backend::codegen::solvers;
 use crate::backend::error::BackendError;
@@ -60,10 +61,10 @@ pub fn solve<P: AsRef<Path>>(models: &IRContext, output: P) -> Result<()> {
             Ok(code) => {
                 fs::write(&path_src, code)
                     .unwrap_or_else(|e| panic!("IO error on source file: {}", e));
-                
+
                 let resp_path = path_solver.join("response.exp");
                 let response = solver.invoke_backend(&path_src);
-                
+
                 match response {
                     Ok(resp) => {
                         // Write the raw response to a file

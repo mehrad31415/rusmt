@@ -375,28 +375,28 @@ impl UsrFuncName {
     pub fn intrinsic(name: &str) -> Self {
         match name {
             // Logical operators.
-            "not" | "and" | "or" | "xor" | "nand" | "nor" | "xnor" | "implies" | "iff"
+            "not" | "and" | "or" | "xor" | "nand" | "nor" | "xnor" | "implies" | "iff" | "ite"
             // bit vectors operations.
             | "bv_not" | "bv_redand" | "bv_redor" | "bv_and" | "bv_or" | "bv_xor" | "bv_nand" | "bv_nor" | "bv_xnor" 
             | "bv_neg" | "bv_add" | "bv_sub" | "bv_mul" | "bv_div" | "bv_rem" | "bv_mod" 
-            | "checked_bvadd_no_overflow" | "checked_bvsub_no_overflow" | "checked_bvneg_no_overflow" | "checked_bvmul_no_overflow" | "checked_bvsdiv_no_overflow" | "bv_shl" | "bv_lshr" | "bv_ashr" | "bv_rotate_left" | "bv_rotate_right" 
+            | "bv_shl" | "bv_lshr" | "bv_ashr" | "bv_rotate_left" | "bv_rotate_right" 
             | "bv_lt" | "bv_le" | "bv_gt" | "bv_ge" | "to_int"
             // float 
-            | "add" | "sub" | "mul" | "div" | "neg" | "abs" | "rem" | "sqrt" | "min" | "max" | "is_nan" | "is_infinite" | "is_zero" | "is_normal" | "is_subnormal" | "is_negative" | "is_positive" | "lt" | "le" | "gt" | "ge" | "nan" | "infinity" | "neg_infinity" | "pos_zero" | "neg_zero" | "to_integer" | "to_real" | "from_string"
+            | "add" | "sub" | "mul" | "div" | "neg" | "abs" | "rem" | "sqrt" | "min" | "max" | "is_nan" | "is_infinite" | "is_zero" | "is_normal" | "is_subnormal" | "is_negative" | "is_positive" | "lt" | "le" | "gt" | "ge" | "nan" | "infinity" | "neg_infinity" | "pos_zero" | "neg_zero" | "to_integer" | "to_real" | "to_u32" | "to_i32" | "to_i64" | "to_u64" | "ceil" | "floor" | "trunc" | "nearest" | "fp_eq" | "from_hex_str"
             // Integer operations.
-            | "add" | "mul" | "sub" | "neg" | "div" | "modulo" | "rem" | "pow" | "abs" | "divides" | "lt" | "le" | "gt" | "ge" | "to_real" | "to_i32" | "to_i64" | "to_u32" | "to_u64" | "to_f32" | "to_f64" | "from_hex_str" | "from_oct_str" | "from_bin_str" | "is_gt_i64_max" | "is_lt_i64_min" | "is_gt_u64_max" | "is_lt_u64_min" | "is_lt_i32_min" | "is_gt_i32_max" | "is_lt_u32_min" | "is_gt_u32_max"
+            | "add" | "mul" | "sub" | "neg" | "div" | "div_trunc" | "modulo" | "rem" | "pow" | "abs" | "divides" | "lt" | "le" | "gt" | "ge" | "to_real" | "to_i32" | "to_i64" | "to_u32" | "to_u64" | "to_f32" | "to_f64" | "from_hex_str" | "from_oct_str" | "from_bin_str" | "is_gt_i64_max" | "is_lt_i64_min" | "is_gt_u64_max" | "is_lt_u64_min" | "is_lt_i32_min" | "is_gt_i32_max" | "is_lt_u32_min" | "is_gt_u32_max"
             // Real operations.
-            | "add" | "mul" | "sub" | "neg" | "div" | "pow" | "abs" | "round" | "floor" | "ceil" | "is_integer" | "lt" | "le" | "gt" | "ge" | "to_int" | "to_f32" | "to_f64" | "numerator" | "denominator"
+            | "add" | "mul" | "sub" | "neg" | "div" | "pow" | "abs" | "round" | "floor" | "ceil" | "is_integer" | "lt" | "le" | "gt" | "ge" | "to_int" | "to_f32" | "to_f64"
             // String operations.
-            | "new" | "length" | "concat" | "at" | "contains" | "starts_with" | "ends_with" | "le" | "lt" | "ge" | "gt" | "is_empty" | "to_chars" | "index_of" | "replace" | "replace_all" | "to_int" | "from_int" | "is_digit" | "from_code" | "to_code"
+            | "new" | "length" | "concat" | "at" | "index_of" | "index_of_default" | "substr" | "contains" | "starts_with" | "ends_with" | "to_int" | "from_int" | "le" | "lt" | "ge" | "gt" | "is_digit" | "from_code" | "to_code" | "is_empty" | "replace" | "replace_all" 
             // Error handling.
             | "fresh" | "merge"
             // Cloak operations.
             | "shield" | "reveal"
             // Sequence operations.
-            | "new" | "length" | "unit" | "append" | "concat" | "at" | "at_seq" | "extract" | "contains" | "prefix_of" | "suffix_of"  | "is_empty" | "replace"
+            | "new" | "length" | "unit" | "append" | "concat" | "at" | "at_seq" | "extract" | "index_of" | "index_of_default" | "contains" | "prefix_of" | "suffix_of"  | "is_empty" | "replace"
             // Set operations.
-            | "new" | "length" | "insert" | "remove" | "contains"  | "is_empty" | "intersection" | "union" | "difference" | "is_subset" | "has_size" | "is_disjoint" | "symmetric_difference" | "is_proper_subset" | "is_superset"
+            | "new" | "length" | "insert" | "remove" | "contains" | "is_empty" | "intersection" | "union" | "difference" | "is_subset" | "has_size" | "is_disjoint" | "symmetric_difference" | "is_proper_subset"
             // Array operations.
             | "new" | "store" | "contains_key" | "select" | "del" | "length"  | "is_empty"
             // All the above are valid intrinsic function names.

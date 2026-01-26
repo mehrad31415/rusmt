@@ -165,8 +165,9 @@ impl Context {
                     None => continue, // the function is not marked with any smt-related attributes
                     Some(Mark::Func) => self.add_func(MarkedFunc { item: syntax })?,
                     _ => bail_on!(
-                        syntax,
-                        "invalid annotation\n#[smt_type] is not allowed for fn"
+                        syntax.clone(),
+                        "invalid annotation\n#only #[smt_fn] is allowed for fn {}",
+                        &syntax.sig.ident
                     ),
                 },
                 // a use item is ignored
@@ -249,7 +250,7 @@ impl Context {
     pub fn parse_generics(self) -> Result<ContextWithGenerics> {
         let mut types = BTreeMap::new();
         for (name, marked) in self.types {
-            // from_marked_type will check that the generics are of the form <T: SM, U: SMT...> and return the parsed generics. No duplicate generics, extra trait bounds, lifetime bounds, or const bounds, etc. are allowed.
+            // from_marked_type will check that the generics are of the form <T: SMT, U: SMT...> and return the parsed generics. No duplicate generics, extra trait bounds, lifetime bounds, or const bounds, etc. are allowed.
             let parsed = Generics::from_marked_type(&marked)?;
             types.insert(name, (parsed, marked));
         }
@@ -353,40 +354,29 @@ impl ContextWithType {
             // convert the function signature into a FuncSig struct (abstract syntax tree for function signatures)
             let parsed = FuncSig::from_sig(&self, sig)?;
             trace!("func sig analyzed: {name}");
-            sig_funcs.insert(name.clone(), (parsed, sig.clone()));
+            let stmts = marked.item.block.stmts.clone();
+            sig_funcs.insert(name.clone(), (parsed, stmts));
         }
 
         let mut fn_db = ApplyDatabase::with_intrinsics(); // a database intialized with the system functions
 
-        for (name, (sig, raw)) in sig_funcs.iter() {
-            // register to type db
+        for (name, (sig, _)) in sig_funcs.iter() {
             // register_user_func is a function that registers a user-defined function to `fn_db`, which is a database for functions
             // the function takes the name of the function and the signature of the function
             match fn_db.register_user_func(name, sig) {
                 Ok(()) => (),
-                Err(e) => bail_on!(raw, "{}", e),
+                Err(e) => bail_on!(name.to_string(), "{}", e),
             }
         }
 
         trace!("databases constructed");
 
         // re-packing
-        let Self { types, funcs } = self;
-
-        // extract the func sig and body
-        let unpacked_funcs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)> = funcs
-            .into_iter()
-            .map(|(name, marked)| {
-                let (sig, _) = sig_funcs.remove(&name).unwrap();
-                let stmts = marked.item.block.stmts;
-
-                (name, (sig, stmts))
-            })
-            .collect();
+        let Self { types, funcs: _ } = self;
 
         let ctxt = ContextWithSig {
             types,
-            funcs: unpacked_funcs,
+            funcs: sig_funcs,
             fn_db,
         };
 
@@ -399,7 +389,7 @@ impl ContextWithType {
 /// Context manager after type and function signature analysis is done
 pub struct ContextWithSig {
     types: BTreeMap<UsrTypeName, TypeDef>,
-    funcs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>, // all functions and methods with their signatures and bodies
+    funcs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>, // all functions with their signatures and bodies
     pub fn_db: ApplyDatabase,
 }
 

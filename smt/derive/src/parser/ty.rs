@@ -277,6 +277,7 @@ impl TypeTag {
             args,
             gt_token: _,
         } = pack;
+        
         Self::from_args(ctxt, args)
     }
 

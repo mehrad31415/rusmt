@@ -98,12 +98,12 @@ impl ApplyDatabase {
 
     /// Initializes the database with built-in functions (intrinsics).
     ///
-    /// This method registers common functions for system types like `Integer`, `Boolean`, etc.
+    /// This method registers common functions for system types like `Integer`, `Boolean`, `Real`, `String`, `F32`, `F64`, `I32`, `I64`, `U32`, `U64`, `Cloak`, `Seq`, `Set`, `Array`, `Error`.
     ///
     /// # Returns
     ///
     /// An `ApplyDatabase` populated with intrinsic functions.
-    /// This function is only called once - ApplyDatabase::with_intrinsics() - in the parse_func_sigs function of ctx.rs. It is used to populate the ApplyDatabase with intrinsic functions for system types. After that, the ApplyDatabase is populated with user-defined functions & methods.
+    /// This function is only called once - ApplyDatabase::with_intrinsics() - in the parse_func_sigs function of ctx.rs. It is used to populate the ApplyDatabase with intrinsic functions for system types. After that, the ApplyDatabase is populated with user-defined functions.
     pub fn with_intrinsics() -> Self {
         use SysTypeName as Q; // Alias for system type names.
         use TypeTag::*; // Import type tags.
@@ -164,6 +164,7 @@ impl ApplyDatabase {
         db.builtin("nand", Q::Boolean, fn2_arith(Boolean)); // `nand` is the same as `and` but for the `nand` operation.
         db.builtin("nor", Q::Boolean, fn2_arith(Boolean)); // `nor` is the same as `and` but for the `nor` operation.
         db.builtin("xnor", Q::Boolean, fn2_arith(Boolean)); // `xnor` is the same as `and` but for the `xnor` operation.
+        db.builtin("ite", Q::Boolean, fn3(Boolean, t(), t(), t())); // if boolean is true, return the first type, otherwise return the second type.
 
         // Integer arithmetic and comparison.
         // add, sub, mul, div, rem, pow are arithmetic operations. They are binary arithmetic functions, with the signature TypeFn { generics: Generics { params: [], }, params: [Integer, Integer], ret_ty: Integer, } so the parameters are two Integers and the return type is an Integer.
@@ -173,6 +174,7 @@ impl ApplyDatabase {
         db.builtin("sub", Q::Integer, fn2_arith(Integer)); // Binary: Integer - Integer -> Integer
         db.builtin("mul", Q::Integer, fn2_arith(Integer)); // Binary: Integer * Integer -> Integer
         db.builtin("div", Q::Integer, fn2_arith(Integer)); // Binary: Integer / Integer -> Integer
+        db.builtin("div_trunc", Q::Integer, fn2_arith(Integer)); // Binary: Integer / Integer -> Integer (truncated division)
         db.builtin("modulo", Q::Integer, fn2_arith(Integer)); // Binary: Integer % Integer -> Integer (modulo)
         db.builtin("rem", Q::Integer, fn2_arith(Integer)); // Binary: Integer % Integer -> Integer (remainder)
         db.builtin("pow", Q::Integer, fn2_arith(Integer)); // Binary: Integer ^ Integer -> Integer
@@ -232,10 +234,6 @@ impl ApplyDatabase {
         db.builtin("ceil", Q::Real, fn1(Real, Integer));
         db.builtin("to_int", Q::Real, fn1(Real, Integer));
 
-        // Fraction Inspection (Real -> Integer).
-        db.builtin("numerator", Q::Real, fn1(Real, Integer));
-        db.builtin("denominator", Q::Real, fn1(Real, Integer));
-
         // Checks (Real -> Boolean).
         db.builtin("is_integer", Q::Real, fn1(Real, Boolean));
 
@@ -243,7 +241,7 @@ impl ApplyDatabase {
         db.builtin("to_f32", Q::Real, fn1(Real, F32));
         db.builtin("to_f64", Q::Real, fn1(Real, F64));
 
-        // Text
+        // String
         // String Construction and Basic Operations
         db.builtin("new", Q::String, fn0(String)); // new() -> String (empty string)
         db.builtin("concat", Q::String, fn2_arith(String)); // Binary: String ++ String -> String
@@ -260,15 +258,15 @@ impl ApplyDatabase {
         db.builtin("contains", Q::String, fn2_cmp(String)); // Binary: contains(String, String) -> Boolean
         db.builtin("starts_with", Q::String, fn2_cmp(String)); // Binary: starts_with(String, String) -> Boolean
         db.builtin("ends_with", Q::String, fn2_cmp(String)); // Binary: ends_with(String, String) -> Boolean
-        db.builtin("to_chars", Q::String, fn1(String, seq_t())); // Unary: to_chars(String) -> Seq<String> (sequence of characters)
 
         // at(self, index) -> char_as_string
         db.builtin("at", Q::String, fn2(String, Integer, String));
         // index_of(self, substr, offset) -> index
         db.builtin("index_of", Q::String, fn3(String, String, Integer, Integer));
+        db.builtin("index_of_default", Q::String, fn2(String, String, Integer));
+        db.builtin("substr", Q::String, fn3(String, Integer, Integer, String));
         // replace(self, src, dst) -> string
         db.builtin("replace", Q::String, fn3(String, String, String, String));
-
         // replace_all(self, src, dst) -> string
         db.builtin(
             "replace_all",
@@ -290,368 +288,84 @@ impl ApplyDatabase {
         db.builtin("reveal", Q::Cloak, fn1(box_t(), t()));
 
         // Sequence operations.
-        let gen_t = || Generics::intrinsic(vec![TypeParamName::intrinsic("T")]);
         // new<T>() -> Seq<T>
-        db.builtin(
-            "new",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![],
-                ret_ty: seq_t(),
-            },
-        );
+        db.builtin("new", Q::Seq, fn0(seq_t()));
         // unit<T>(e: T) -> Seq<T>
-        db.builtin(
-            "unit",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![t()],
-                ret_ty: seq_t(),
-            },
-        );
+        db.builtin("unit", Q::Seq, fn1(t(), seq_t()));
         // length<T>(s: Seq<T>) -> Integer
-        db.builtin(
-            "length",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t()],
-                ret_ty: Integer,
-            },
-        );
-        // is_empty<T>(s: Seq<T>) -> Boolean
-        db.builtin(
-            "is_empty",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("length", Q::Seq, fn1(seq_t(), Integer));
         // append<T>(s: Seq<T>, e: T) -> Seq<T>
-        db.builtin(
-            "append",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), t()],
-                ret_ty: seq_t(),
-            },
-        );
+        db.builtin("append", Q::Seq, fn2(seq_t(), t(), seq_t()));
         // concat<T>(s1: Seq<T>, s2: Seq<T>) -> Seq<T>
-        db.builtin(
-            "concat",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), seq_t()],
-                ret_ty: seq_t(),
-            },
-        );
-        // replace<T>(s: Seq<T>, src: T, dst: T) -> Seq<T>
-        db.builtin(
-            "replace",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), t(), t()],
-                ret_ty: seq_t(),
-            },
-        );
-        // at<T>(s: Seq<T>, i: Integer) -> T
-        db.builtin(
-            "at",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), Integer],
-                ret_ty: t(),
-            },
-        );
-        // at_seq<T>(s: Seq<T>, i: Integer) -> Seq<T> (Returns singleton sequence)
-        db.builtin(
-            "at_seq",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), Integer],
-                ret_ty: seq_t(),
-            },
-        );
+        db.builtin("concat", Q::Seq, fn2(seq_t(), seq_t(), seq_t()));
         // extract<T>(s: Seq<T>, offset: Integer, length: Integer) -> Seq<T>
-        db.builtin(
-            "extract",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), Integer, Integer],
-                ret_ty: seq_t(),
-            },
-        );
+        db.builtin("extract", Q::Seq, fn3(seq_t(), Integer, Integer, seq_t()));
+        db.builtin("index_of", Q::Seq, fn3(seq_t(), seq_t(), Integer, Integer));
+        db.builtin("index_of_default", Q::Seq, fn2(seq_t(), seq_t(), Integer));
+        // at<T>(s: Seq<T>, i: Integer) -> T
+        db.builtin("at", Q::Seq, fn2(seq_t(), Integer, t()));
+        // at_seq<T>(s: Seq<T>, i: Integer) -> Seq<T> (Returns singleton sequence)
+        db.builtin("at_seq", Q::Seq, fn2(seq_t(), Integer, seq_t()));
         // contains<T>(s: Seq<T>, e: T) -> Boolean
-        db.builtin(
-            "contains",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("contains", Q::Seq, fn2(seq_t(), t(), Boolean));
+        // is_empty<T>(s: Seq<T>) -> Boolean
+        db.builtin("is_empty", Q::Seq, fn1(seq_t(), Boolean));
+        // replace<T>(s: Seq<T>, src: T, dst: T) -> Seq<T>
+        db.builtin("replace", Q::Seq, fn3(seq_t(), t(), t(), seq_t()));
         // prefix_of<T>(self: Seq<T>, other: Seq<T>) -> Boolean
-        db.builtin(
-            "prefix_of",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), seq_t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("prefix_of", Q::Seq, fn2(seq_t(), seq_t(), Boolean));
         // suffix_of<T>(self: Seq<T>, other: Seq<T>) -> Boolean
-        db.builtin(
-            "suffix_of",
-            Q::Seq,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![seq_t(), seq_t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("suffix_of", Q::Seq, fn2(seq_t(), seq_t(), Boolean));
 
         // Set operations.
         // new<T>() -> Set<T>
-        db.builtin(
-            "new",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![],
-                ret_ty: set_t(),
-            },
-        );
+        db.builtin("new", Q::Set, fn0(set_t()));
         // insert<T>(s: Set<T>, e: T) -> Set<T>
-        db.builtin(
-            "insert",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), t()],
-                ret_ty: set_t(),
-            },
-        );
+        db.builtin("insert", Q::Set, fn2(set_t(), t(), set_t()));
         // remove<T>(s: Set<T>, e: T) -> Set<T>
-        db.builtin(
-            "remove",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), t()],
-                ret_ty: set_t(),
-            },
-        );
+        db.builtin("remove", Q::Set, fn2(set_t(), t(), set_t()));
+        // length<T>(s: Set<T>) -> Integer
+        db.builtin("length", Q::Set, fn1(set_t(), Integer));
         // union<T>(s1: Set<T>, s2: Set<T>) -> Set<T>
-        db.builtin(
-            "union",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: set_t(),
-            },
-        );
+        db.builtin("union", Q::Set, fn2(set_t(), set_t(), set_t()));
         // intersection<T>(s1: Set<T>, s2: Set<T>) -> Set<T>
-        db.builtin(
-            "intersection",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: set_t(),
-            },
-        );
+        db.builtin("intersection", Q::Set, fn2(set_t(), set_t(), set_t()));
         // difference<T>(s1: Set<T>, s2: Set<T>) -> Set<T>
-        db.builtin(
-            "difference",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: set_t(),
-            },
-        );
+        db.builtin("difference", Q::Set, fn2(set_t(), set_t(), set_t()));
         // symmetric_difference<T>(s1: Set<T>, s2: Set<T>) -> Set<T>
         db.builtin(
             "symmetric_difference",
             Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: set_t(),
-            },
-        );
-        // length<T>(s: Set<T>) -> Integer
-        db.builtin(
-            "length",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t()],
-                ret_ty: Integer,
-            },
+            fn2(set_t(), set_t(), set_t()),
         );
         // is_empty<T>(s: Set<T>) -> Boolean
-        db.builtin(
-            "is_empty",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("is_empty", Q::Set, fn1(set_t(), Boolean));
         // contains<T>(s: Set<T>, e: T) -> Boolean
-        db.builtin(
-            "contains",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("contains", Q::Set, fn2(set_t(), t(), Boolean));
         // is_subset<T>(self: Set<T>, other: Set<T>) -> Boolean
-        db.builtin(
-            "is_subset",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("is_subset", Q::Set, fn2(set_t(), set_t(), Boolean));
         // is_proper_subset<T>(self: Set<T>, other: Set<T>) -> Boolean
-        db.builtin(
-            "is_proper_subset",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: Boolean,
-            },
-        );
-        // is_superset<T>(self: Set<T>, other: Set<T>) -> Boolean
-        db.builtin(
-            "is_superset",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("is_proper_subset", Q::Set, fn2(set_t(), set_t(), Boolean));
         // is_disjoint<T>(self: Set<T>, other: Set<T>) -> Boolean
-        db.builtin(
-            "is_disjoint",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), set_t()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("is_disjoint", Q::Set, fn2(set_t(), set_t(), Boolean));
         // has_size<T>(self: Set<T>, k: Integer) -> Boolean
-        db.builtin(
-            "has_size",
-            Q::Set,
-            TypeFn {
-                generics: gen_t(),
-                params: vec![set_t(), Integer],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("has_size", Q::Set, fn2(set_t(), Integer, Boolean));
 
         // Array operations.
-        // Helper to define the generic parameter list <K, V>
-        let gen_kv = || {
-            Generics::intrinsic(vec![
-                TypeParamName::intrinsic("K"),
-                TypeParamName::intrinsic("V"),
-            ])
-        };
         // new<K, V>() -> Array<K, V>
-        db.builtin(
-            "new",
-            Q::Array,
-            TypeFn {
-                generics: gen_kv(),
-                params: vec![],
-                ret_ty: map_kv(),
-            },
-        );
+        db.builtin("new", Q::Array, fn0(map_kv()));
         // store<K, V>(arr: Array<K, V>, k: K, v: V) -> Array<K, V>
-        db.builtin(
-            "store",
-            Q::Array,
-            TypeFn {
-                generics: gen_kv(),
-                params: vec![map_kv(), k(), v()],
-                ret_ty: map_kv(),
-            },
-        );
+        db.builtin("store", Q::Array, fn3(map_kv(), k(), v(), map_kv()));
         // del<K, V>(arr: Array<K, V>, k: K) -> Array<K, V>
-        db.builtin(
-            "del",
-            Q::Array,
-            TypeFn {
-                generics: gen_kv(),
-                params: vec![map_kv(), k()],
-                ret_ty: map_kv(),
-            },
-        );
+        db.builtin("del", Q::Array, fn2(map_kv(), k(), map_kv()));
         // select<K, V>(arr: Array<K, V>, k: K) -> V
-        db.builtin(
-            "select",
-            Q::Array,
-            TypeFn {
-                generics: gen_kv(),
-                params: vec![map_kv(), k()],
-                ret_ty: v(),
-            },
-        );
+        db.builtin("select", Q::Array, fn2(map_kv(), k(), v()));
         // contains_key<K, V>(arr: Array<K, V>, k: K) -> Boolean
-        db.builtin(
-            "contains_key",
-            Q::Array,
-            TypeFn {
-                generics: gen_kv(),
-                params: vec![map_kv(), k()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("contains_key", Q::Array, fn2(map_kv(), k(), Boolean));
         // length<K, V>(arr: Array<K, V>) -> Integer
-        db.builtin(
-            "length",
-            Q::Array,
-            TypeFn {
-                generics: gen_kv(),
-                params: vec![map_kv()],
-                ret_ty: Integer,
-            },
-        );
+        db.builtin("length", Q::Array, fn1(map_kv(), Integer));
         // is_empty<K, V>(arr: Array<K, V>) -> Boolean
-        db.builtin(
-            "is_empty",
-            Q::Array,
-            TypeFn {
-                generics: gen_kv(),
-                params: vec![map_kv()],
-                ret_ty: Boolean,
-            },
-        );
+        db.builtin("is_empty", Q::Array, fn1(map_kv(), Boolean));
 
         // Bitwise Logic (I32)
         db.builtin("bv_not", Q::I32, fn1_arith(I32)); // Unary: ~I32 -> I32
@@ -687,13 +401,6 @@ impl ApplyDatabase {
         db.builtin("bv_le", Q::I32, fn2_cmp(I32));
         db.builtin("bv_gt", Q::I32, fn2_cmp(I32));
         db.builtin("bv_ge", Q::I32, fn2_cmp(I32));
-
-        // Overflow Checks (I32 -> Boolean)
-        db.builtin("checked_bvadd_no_overflow", Q::I32, fn2_cmp(I32));
-        db.builtin("checked_bvsub_no_overflow", Q::I32, fn2_cmp(I32));
-        db.builtin("checked_bvmul_no_overflow", Q::I32, fn2_cmp(I32));
-        db.builtin("checked_bvsdiv_no_overflow", Q::I32, fn2_cmp(I32));
-        db.builtin("checked_bvneg_no_overflow", Q::I32, fn1(I32, Boolean));
 
         // Conversion (I32 -> Integer)
         db.builtin("to_int", Q::I32, fn1(I32, Integer));
@@ -733,13 +440,6 @@ impl ApplyDatabase {
         db.builtin("bv_gt", Q::I64, fn2_cmp(I64));
         db.builtin("bv_ge", Q::I64, fn2_cmp(I64));
 
-        // Overflow Checks (I64 -> Boolean)
-        db.builtin("checked_bvadd_no_overflow", Q::I64, fn2_cmp(I64));
-        db.builtin("checked_bvsub_no_overflow", Q::I64, fn2_cmp(I64));
-        db.builtin("checked_bvmul_no_overflow", Q::I64, fn2_cmp(I64));
-        db.builtin("checked_bvsdiv_no_overflow", Q::I64, fn2_cmp(I64));
-        db.builtin("checked_bvneg_no_overflow", Q::I64, fn1(I64, Boolean));
-
         // Conversion (I64 -> Integer)
         db.builtin("to_int", Q::I64, fn1(I64, Integer));
 
@@ -778,13 +478,6 @@ impl ApplyDatabase {
         db.builtin("bv_gt", Q::U32, fn2_cmp(U32));
         db.builtin("bv_ge", Q::U32, fn2_cmp(U32));
 
-        // Overflow Checks (U32 -> Boolean)
-        db.builtin("checked_bvadd_no_overflow", Q::U32, fn2_cmp(U32));
-        db.builtin("checked_bvsub_no_overflow", Q::U32, fn2_cmp(U32));
-        db.builtin("checked_bvmul_no_overflow", Q::U32, fn2_cmp(U32));
-        db.builtin("checked_bvsdiv_no_overflow", Q::U32, fn2_cmp(U32));
-        db.builtin("checked_bvneg_no_overflow", Q::U32, fn1(U32, Boolean));
-
         // Conversion (U32 -> Integer)
         db.builtin("to_int", Q::U32, fn1(U32, Integer));
 
@@ -822,13 +515,6 @@ impl ApplyDatabase {
         db.builtin("bv_le", Q::U64, fn2_cmp(U64));
         db.builtin("bv_gt", Q::U64, fn2_cmp(U64));
         db.builtin("bv_ge", Q::U64, fn2_cmp(U64));
-
-        // Overflow Checks (U64 -> Boolean)
-        db.builtin("checked_bvadd_no_overflow", Q::U64, fn2_cmp(U64));
-        db.builtin("checked_bvsub_no_overflow", Q::U64, fn2_cmp(U64));
-        db.builtin("checked_bvmul_no_overflow", Q::U64, fn2_cmp(U64));
-        db.builtin("checked_bvsdiv_no_overflow", Q::U64, fn2_cmp(U64));
-        db.builtin("checked_bvneg_no_overflow", Q::U64, fn1(U64, Boolean));
 
         // Conversion (U64 -> Integer)
         db.builtin("to_int", Q::U64, fn1(U64, Integer));
@@ -872,10 +558,18 @@ impl ApplyDatabase {
         // Conversions (Unary: F32 -> Other)
         db.builtin("to_integer", Q::F32, fn1(F32, Integer));
         db.builtin("to_real", Q::F32, fn1(F32, Real));
+        db.builtin("to_u32", Q::F32, fn1(F32, U32));
+        db.builtin("to_i32", Q::F32, fn1(F32, I32));
+        db.builtin("to_u64", Q::F32, fn1(F32, U64));
+        db.builtin("to_i64", Q::F32, fn1(F32, I64));
 
-        // Conversions (Unary: Other -> F32)
-        // Based on `impl From<String> for F32`
-        db.builtin("from_string", Q::F32, fn1(String, F32));
+        db.builtin("ceil", Q::F32, fn1(F32, F32));
+        db.builtin("floor", Q::F32, fn1(F32, F32));
+        db.builtin("trunc", Q::F32, fn1(F32, F32));
+        db.builtin("nearest", Q::F32, fn1(F32, F32));
+
+        db.builtin("fq_eq", Q::F32, fn2_cmp(F32));
+        db.builtin("from_hex_str", Q::F32, fn1(String, F32));
 
         // Arithmetic Operations (Binary: F64, F64 -> F64)
         db.builtin("add", Q::F64, fn2_arith(F64));
@@ -916,14 +610,20 @@ impl ApplyDatabase {
         // Conversions (Unary: F64 -> Other)
         db.builtin("to_integer", Q::F64, fn1(F64, Integer));
         db.builtin("to_real", Q::F64, fn1(F64, Real));
-
-        // Conversions (Unary: Other -> F64)
-        // Based on `impl From<String> for F64`
-        db.builtin("from_string", Q::F64, fn1(String, F64));
+        db.builtin("to_u32", Q::F64, fn1(F64, U32));
+        db.builtin("to_i32", Q::F64, fn1(F64, I32));
+        db.builtin("to_u64", Q::F64, fn1(F64, U64));
+        db.builtin("to_i64", Q::F64, fn1(F64, I64));
+        db.builtin("ceil", Q::F64, fn1(F64, F64));
+        db.builtin("floor", Q::F64, fn1(F64, F64));
+        db.builtin("trunc", Q::F64, fn1(F64, F64));
+        db.builtin("nearest", Q::F64, fn1(F64, F64));
+        db.builtin("fq_eq", Q::F64, fn2_cmp(F64));
+        db.builtin("from_hex_str", Q::F64, fn1(String, F64));
 
         // Error handling functions.
-        db.builtin("fresh", Q::Error, fn0(Error)); // `fresh` is a function that returns a new error. It is a nullary function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [], ret_ty: Error, } so it returns an error.
-        db.builtin("merge", Q::Error, fn2_arith(Error)); // `merge` is a function that merges two errors. It is a binary arithmetic function, with the signature TypeFn { kind: Kind::Impl, generics: Generics { params: [], }, params: [Error, Error], ret_ty: Error, } so the parameters are two errors and the return type is an error.
+        db.builtin("fresh", Q::Error, fn0(Error));
+        db.builtin("merge", Q::Error, fn2_arith(Error));
 
         db // Return the populated database.
     }
@@ -932,6 +632,12 @@ impl ApplyDatabase {
     pub fn register_user_func(&mut self, name: &UsrFuncName, sig: &FuncSig) -> Result<()> {
         // Register the function as unqualified (standalone function).
         let func = TypeFn::new_from_sig(sig); // builds a TypeFn from the function signature.
+
+        // sanity check that the function is not in the intrinsics database
+        if self.lookup_unqualified(name).is_some() {
+            panic!("duplicated registration of user-defined function: {name}");
+        }
+        // if not, insert the function into the unqualified database
         match self.unqualified.insert(name.clone(), func) {
             None => (), // Successfully inserted.
             Some(_) => panic!("duplicated registration of user-defined function: {name}"),
@@ -993,8 +699,9 @@ impl ApplyDatabase {
                 TypeName::Usr(usr_name) => {
                     println!("usr_name: {:?}", usr_name);
                     GenericsInstPartial::new_without_args(
-                    ctxt.get_type_generics(usr_name).expect("user-defined type"),
-                )},
+                        ctxt.get_type_generics(usr_name).expect("user-defined type"),
+                    )
+                }
                 TypeName::Param(_) => panic!("unexpected type parameter in type name"),
             };
             // Instantiate function generics, possibly using provided type arguments.

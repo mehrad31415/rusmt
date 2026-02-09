@@ -16,11 +16,6 @@ impl From<bool> for Boolean {
     }
 }
 
-/// true
-pub const TRUE: Boolean = Boolean { inner: true };
-/// false
-pub const FALSE: Boolean = Boolean { inner: false };
-
 /// All methods are defined such that they take ownership of the self parameter.
 impl Boolean {
     /// NOT

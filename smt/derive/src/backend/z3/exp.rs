@@ -332,7 +332,12 @@ pub fn format_expression(
         Expression::Procedure { callee, args } => {
             // Function call
             let (function_name, type_params) = resolve_function_name(ir, *callee);
-            let instance_name = if type_params.is_empty() {
+            // For functions in the same SCC (e.g., recursive calls), use the base name without type suffix
+            // Otherwise, use the instance name with type parameters
+            let instance_name = if scc_fids.contains(callee) {
+                // Same SCC: use base function name (recursive or mutually recursive call)
+                function_name.to_string()
+            } else if type_params.is_empty() {
                 function_name.to_string()
             } else {
                 let type_suffix = type_params

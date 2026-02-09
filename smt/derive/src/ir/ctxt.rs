@@ -7,19 +7,6 @@ use crate::parser::infer::TypeRef;
 use crate::parser::name::TypeParamName;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Information about an error location in the source code
-#[derive(Debug, Clone)]
-pub struct ErrorLocation {
-    /// Unique ID for this error
-    pub error_id: usize,
-    /// File name where the error occurs
-    pub file_name: String,
-    /// Line number where the error occurs
-    pub line_number: usize,
-    /// Function name where the error occurs
-    pub function_name: String,
-}
-
 /// A context for intermediate representation.
 #[derive(Debug)]
 pub struct IRContext {
@@ -31,8 +18,6 @@ pub struct IRContext {
     /// function registry (lookup, signature, definition). The lookup is a map from user-defined functions to a map from list of parameter types to function id.
     /// The signature is a map from function id to function signature. The definition is a map from function id to function body.
     pub fn_registry: FunRegistry,
-    /// All error locations found in the source code
-    pub error_locations: Vec<ErrorLocation>,
 }
 
 impl IRContext {
@@ -43,7 +28,6 @@ impl IRContext {
             undef_sorts: BTreeSet::new(),
             ty_registry: TypeRegistry::new(),
             fn_registry: FunRegistry::new(),
-            error_locations: Vec::new(),
         }
     }
 }
@@ -90,32 +74,18 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
     /// Main entry point: Convert the entire parser context (types + functions) to IR.
     ///
-    /// **Two-phase process**:
+    /// Two-phase process:
     /// 1. **Register all types first** (so they're available when processing functions)
     /// 2. **Register all functions** (which may reference the types)
-    ///
-    /// **Why two phases?**: Types can be referenced by functions, so we need types registered
-    /// before we can resolve type references in function signatures/bodies.
     pub fn build(ctxt: &'ctx ContextWithFunc) -> IRContext {
         // Create empty IR context (will be populated)
         let mut ir = IRContext::new();
 
-        // ============================================================
-        // PHASE 1: Register all types
-        // ============================================================
         // For each user-defined type (struct/enum), register it
         //
-        // **Key Issue**: When registering a type DEFINITION, we pass TypeRef::Parameter(T) for each
-        // generic parameter. But register_type() will try to resolve these parameters by looking them
-        // up in ty_inst. So we MUST set up ty_inst with bindings for the type's generic parameters
-        // BEFORE calling register_type().
-        //
-        // **Why tuples are registered**: Z3 SMT-LIB requires all datatypes (including tuples) to be
-        // explicitly declared using `(declare-datatypes ...)`. So anonymous tuples like `(Int, Bool)`
-        // must be registered and given a name like `Tuple_Int_Bool` in the SMT-LIB output.
+        // Z3 SMT-LIB requires all datatypes (including tuples) to be explicitly declared using `(declare-datatypes ...)`.
+        // So anonymous tuples like `(Int, Bool)` must be registered and given a name like `Tuple_Int_Bool` in the SMT-LIB output.
         for (type_name, type_def) in &ctxt.types {
-            // Step 1: Create uninterpreted sorts for each type parameter
-            // These represent the generic parameters in the type definition
             // Unlike functions, type parameters in types don't go in undef_sorts because
             // SMT-LIB supports polymorphic types via (declare-datatypes ((MyType 1)) ...)
             let mut ty_inst = BTreeMap::new();
@@ -130,13 +100,12 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                 ty_inst.insert(ty_param.clone(), smt_sort);
             }
 
-            // Step 2: Create a builder with type parameter bindings for THIS type
+            // Create a builder with type parameter bindings for THIS type
             // Now when register_type() calls resolve_type() on TypeRef::Parameter(T),
             // it will find T in ty_inst and resolve it to the uninterpreted sort
             let mut type_builder = IRBuilder::new(ctxt, ty_inst, &mut ir);
 
-            // Step 3: Register the type with TypeRef::Parameter for each generic
-            // register_type() will:
+            // Register the type:
             // - Resolve TypeRef::Parameter(T) using ty_inst -> Sort::Uninterpreted("MyType_T")
             // - Process the type body, resolving references to T using ty_inst
             // - Store the type definition with the generic parameters as uninterpreted sorts
@@ -151,9 +120,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             );
         }
 
-        // ============================================================
-        // PHASE 2: Register all functions
-        // ============================================================
+        // Register all functions
         for (func_name, func_def) in &ctxt.funcs {
             let generics = &func_def.head.generics.params;
             let mut ty_args_refs = vec![]; // TypeRef version (for register_func)
@@ -174,10 +141,10 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                 ty_args_refs.push(TypeRef::Parameter(ty_param.clone()));
             }
 
-            // Step 2: Create a NEW builder with THIS function's type parameter bindings
+            // Create a NEW builder with THIS function's type parameter bindings
             let mut func_builder = IRBuilder::new(ctxt, ty_inst, &mut ir);
 
-            // Step 3: Register the function
+            // Register the function
             func_builder.register_func(func_name, &ty_args_refs);
         }
 

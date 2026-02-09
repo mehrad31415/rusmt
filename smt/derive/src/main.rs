@@ -3,10 +3,11 @@
 //! if no parser_name is provided, all parsers will be processed
 
 use rusmart_smt_derive::derive;
+use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = root_crate_dir
         .parent()
@@ -58,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn test_parser(parser_dir: &Path, output_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn test_parser(parser_dir: &Path, output_dir: &Path) -> Result<(), Box<dyn Error>> {
     // Clean up this parser's previous outputs (not the entire synthesis directory)
     // E.g., deletes lang/synthesis/toml/ but not lang/synthesis/wasm/
     if output_dir.exists() {

@@ -8,7 +8,7 @@ use crate::ir::{
     name::UsrFunName,
     sort::Sort,
 };
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::BTreeSet;
 
 /// Helper to resolve the function name and type parameters from a function ID.
 /// Returns (function_name, type_parameters)
@@ -39,79 +39,24 @@ pub fn collect_function_call_edges(fn_registry: &FunRegistry) -> Vec<(UsrFunId, 
     edges
 }
 
-/// Computes strongly connected components from the type edges to get mutually recursive types.
-pub fn scc_from_edges_fn(edges: &[(UsrFunId, UsrFunId)]) -> Vec<BTreeSet<UsrFunId>> {
-    let mut adj: HashMap<UsrFunId, Vec<UsrFunId>> = HashMap::new(); // outgoing edges
-    let mut radj: HashMap<UsrFunId, Vec<UsrFunId>> = HashMap::new(); // incoming edges
-
-    for &(u, v) in edges {
-        adj.entry(u).or_default().push(v);
-        radj.entry(v).or_default().push(u);
-        adj.entry(v).or_default();
-        radj.entry(u).or_default();
-    }
-
-    let mut seen = HashSet::new();
-    let mut order = Vec::new();
-    for &u in adj.keys() {
-        if !seen.contains(&u) {
-            dfs(u, &adj, &mut seen, &mut order);
-        }
-    }
-
-    let mut comps = Vec::new();
-    let mut seen2 = HashSet::new();
-    while let Some(u) = order.pop() {
-        if !seen2.contains(&u) {
-            let mut cur = BTreeSet::new();
-            dfs_rev(u, &radj, &mut seen2, &mut cur);
-            comps.push(cur);
-        }
-    }
-    comps
-}
-
-/// DFS
-fn dfs(
-    u: UsrFunId,
-    g: &HashMap<UsrFunId, Vec<UsrFunId>>,
-    seen: &mut HashSet<UsrFunId>,
-    order: &mut Vec<UsrFunId>,
-) {
-    seen.insert(u);
-    for &v in &g[&u] {
-        if !seen.contains(&v) {
-            dfs(v, g, seen, order);
-        }
-    }
-    order.push(u);
-}
-
-/// DFS reverse
-fn dfs_rev(
-    u: UsrFunId,
-    g: &HashMap<UsrFunId, Vec<UsrFunId>>,
-    seen: &mut HashSet<UsrFunId>,
-    acc: &mut BTreeSet<UsrFunId>,
-) {
-    seen.insert(u);
-    acc.insert(u);
-    for &v in &g[&u] {
-        if !seen.contains(&v) {
-            dfs_rev(v, g, seen, acc);
-        }
-    }
-}
-
 /// Helper to format a Sort for use in function signatures (not inside polymorphic type declarations).
 /// This is simpler than format_sort because function type parameters are already declared separately.
 pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
     match sort {
         Sort::User(sid) => {
             // Use the type name from the registry
-            let (ty_name_opt, _) = ir.ty_registry.reverse_lookup(*sid);
+            let (ty_name_opt, type_args) = ir.ty_registry.reverse_lookup(*sid);
             if let Some(ty_name) = ty_name_opt {
-                ty_name.to_string()
+                // If there are type arguments, format as (TypeName Arg1 Arg2 ...)
+                if type_args.is_empty() {
+                    ty_name.to_string()
+                } else {
+                    let args_str: Vec<String> = type_args
+                        .iter()
+                        .map(|t| format_sort_for_fn(t, ir))
+                        .collect();
+                    format!("({} {})", ty_name, args_str.join(" "))
+                }
             } else {
                 // Unnamed tuple
                 format!(
@@ -214,36 +159,6 @@ pub fn mk_function_str(
 
     format!(
         "(define-fun {} ({}) {} {})",
-        function_name,
-        param_list.join(" "),
-        ret_type,
-        body
-    )
-}
-
-/// Convert a single recursive function definition to SMT-LIB string format.
-/// Format: (define-fun-rec function_name ((param1 Type1) (param2 Type2)) ReturnType body)
-pub fn mk_function_rec_str(
-    function_name: &str,
-    _type_params: &[Sort],
-    sig: &FunSig,
-    def: &FunDef,
-    ir: &IRContext,
-    _scc_fids: &BTreeSet<UsrFunId>,
-) -> String {
-    let param_list: Vec<String> = sig
-        .params
-        .iter()
-        .map(|(param_name, param_sort)| {
-            format!("({} {})", param_name, format_sort_for_fn(param_sort, ir))
-        })
-        .collect();
-
-    let ret_type = format_sort_for_fn(&sig.ret_ty, ir);
-    let body = format_function_body(def, ir, sig, _scc_fids);
-
-    format!(
-        "(define-fun-rec {} ({}) {} {})",
         function_name,
         param_list.join(" "),
         ret_type,

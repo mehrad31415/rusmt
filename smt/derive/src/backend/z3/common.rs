@@ -5,11 +5,11 @@ use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
+use crate::backend::response::NUM_CPU_CORES;
 use crate::backend::response::Response;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::resolve_function_name;
-use crate::backend::z3::fun::scc_from_edges_fn;
-use crate::backend::z3::fun::{mk_function_rec_str, mk_function_str, mk_functions_rec_str};
+use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str};
 use crate::backend::z3::ty::get_generic_param_count;
 use crate::backend::z3::ty::{collect_type_edges, resolve_type_name, scc_from_edges};
 use crate::backend::z3::ty::{
@@ -21,6 +21,7 @@ use crate::ir::index::{UsrFunId, UsrSortId};
 use crate::ir::sort::{DataType, Sort};
 use command_group::CommandGroup;
 use log::{debug, warn};
+use std::collections::HashMap;
 use std::collections::{BTreeSet, HashSet};
 use std::io::Read;
 use std::path::Path;
@@ -28,7 +29,7 @@ use std::process::Command;
 use std::process::Stdio;
 use std::thread;
 use std::time::Duration;
-use std::time::SystemTime;
+use std::time::Instant;
 
 /// A wrapper for Z3 backends that implements the `CodeGen` trait.
 pub struct CodeGenZ3;
@@ -58,7 +59,6 @@ impl CodeGen for CodeGenZ3 {
             undef_sorts,
             ty_registry,
             fn_registry,
-            error_locations,
         } = ir;
 
         // disable success messages
@@ -69,35 +69,26 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "(set-option :produce-proofs false)");
         // disable unsat core generation to save resources
         l!(x, "(set-option :produce-unsat-cores false)");
-
-        // === Reproducibility ===
+        // Reproducibility
         l!(x, "(set-option :sat.random_seed 42)");
         l!(x, "(set-option :smt.random_seed 42)");
-
-        // === Parallelism ===
+        // Parallelism
         l!(x, "(set-option :parallel.enable true)");
-        l!(x, "(set-option :parallel.threads.max 8)"); // adjust to your CPU cores
+        l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
         l!(x, "(set-option :parallel.conquer.delay 10)");
-
-        // === SAT Solver Optimizations ===
+        // SAT Solver Optimizations
         l!(x, "(set-option :sat.restart.max 100000)");
-
-        // === SMT Solver Optimizations ===
-        l!(x, "(set-option :smt.arith.solver 6)"); // most advanced arithmetic solver
-        l!(x, "(set-option :smt.case_split 3)"); // more aggressive case splitting
-        l!(x, "(set-option :smt.phase_selection 3)"); // phase caching
-
-        // === Quantifier Handling (IMPORTANT: You have quantifiers!) ===
-        l!(x, "(set-option :smt.mbqi true)"); // KEEP enabled for quantifiers
-        l!(x, "(set-option :smt.qi.eager_threshold 10.0)"); // control eager instantiation
-        l!(x, "(set-option :smt.qi.max_multi_patterns 1000)"); // limit pattern matching
-        l!(x, "(set-option :smt.ematching true)"); // enable E-matching for quantifiers
-
-        // === Arithmetic Optimizations ===
-        l!(x, "(set-option :smt.arith.nl false)"); // disable nonlinear if you don't need it
-
-        // === Auto-configuration ===
-        l!(x, "(set-option :smt.auto_config false)"); // manual control for consistency
+        // SMT Solver Optimizations
+        l!(x, "(set-option :smt.arith.solver 6)");
+        l!(x, "(set-option :smt.case_split 3)");
+        l!(x, "(set-option :smt.phase_selection 3)");
+        // Quantifier Handling
+        l!(x, "(set-option :smt.mbqi true)");
+        l!(x, "(set-option :smt.qi.eager_threshold 10.0)");
+        l!(x, "(set-option :smt.qi.max_multi_patterns 1000)");
+        l!(x, "(set-option :smt.ematching true)");
+        // Auto-configuration
+        l!(x, "(set-option :smt.auto_config false)");
         l!(x); // add new line
 
         // Define the Error datatype
@@ -140,14 +131,14 @@ impl CodeGen for CodeGenZ3 {
             // This happens with mutually recursive generic types that create multiple instantiations
             // We group by type name and prefer instances where type parameters match the type name
             let mut seen_type_names: HashSet<String> = HashSet::new();
-            let mut name_to_best_sid: std::collections::HashMap<String, UsrSortId> = std::collections::HashMap::new();
-            
-            // First pass: find the best representative for each type name
+            let mut name_to_best_sid: HashMap<String, UsrSortId> = HashMap::new();
+
+            // find the best representative for each type name
             for scc in sccs.iter() {
                 for &sid in scc {
                     let type_name = resolve_type_name(ir, sid);
                     let (_, type_params) = ir.ty_registry.reverse_lookup(sid);
-                    
+
                     // Check if this instance has "matching" type parameters
                     // (i.e., type parameters that start with the type name prefix)
                     let has_matching_params = type_params.iter().any(|sort| {
@@ -159,7 +150,7 @@ impl CodeGen for CodeGenZ3 {
                             false
                         }
                     });
-                    
+
                     // If we haven't seen this type name, or this instance has matching params,
                     // update the best representative
                     if !seen_type_names.contains(&type_name) || has_matching_params {
@@ -168,11 +159,11 @@ impl CodeGen for CodeGenZ3 {
                     }
                 }
             }
-            
+
             // Second pass: build deduplicated SCCs using the best representatives
             let mut seen_scc_signatures: HashSet<Vec<String>> = HashSet::new();
             let mut deduplicated_sccs: Vec<BTreeSet<UsrSortId>> = Vec::new();
-            
+
             for scc in sccs.iter().rev() {
                 // Map each sid to its best representative's sid
                 let canonical_scc: BTreeSet<UsrSortId> = scc
@@ -182,14 +173,14 @@ impl CodeGen for CodeGenZ3 {
                         *name_to_best_sid.get(&type_name).unwrap_or(&sid)
                     })
                     .collect();
-                
+
                 // Create a signature for this SCC based on type names (sorted)
                 let mut type_names: Vec<String> = canonical_scc
                     .iter()
                     .map(|&sid| resolve_type_name(ir, sid))
                     .collect();
                 type_names.sort();
-                
+
                 // If we haven't seen this signature before, keep this SCC
                 if seen_scc_signatures.insert(type_names) {
                     deduplicated_sccs.push(canonical_scc);
@@ -295,85 +286,89 @@ impl CodeGen for CodeGenZ3 {
             l!(x, "; Define user-defined functions");
 
             let edges = collect_function_call_edges(fn_registry);
-            let mut sccs = scc_from_edges_fn(&edges);
-
-            // include truly isolated functions
+            
+            // Get all function IDs
             let all_ids: BTreeSet<_> = fn_registry
                 .lookup
                 .values()
                 .flat_map(|insts| insts.iter().map(|(_, fn_id)| *fn_id))
                 .collect();
-            let covered: BTreeSet<_> = sccs.iter().flat_map(|s| s.iter().copied()).collect();
-            for fid in all_ids.difference(&covered) {
-                sccs.push(BTreeSet::from([*fid]));
+            
+            // Group functions that have dependencies on each other
+            // We'll use define-funs-rec for any group of interdependent functions
+            // and define-fun only for truly isolated functions with no dependencies
+            
+            // Build a dependency graph: which functions have edges to/from other functions
+            let mut has_dependencies: HashSet<UsrFunId> = HashSet::new();
+            let all_fids: HashSet<UsrFunId> = all_ids.iter().copied().collect();
+            
+            for &(from, to) in &edges {
+                if all_fids.contains(&from) && all_fids.contains(&to) {
+                    has_dependencies.insert(from);
+                    has_dependencies.insert(to);
+                }
             }
-
-            // Build a set of edges for quick lookup (to check for self-loops)
-            let edge_set: HashSet<(UsrFunId, UsrFunId)> = edges.iter().copied().collect();
-
-            // Convert SCC to BTreeSet for efficient lookup
-            // Iterate over all functions and instantiations
-            for scc in sccs.iter().rev() {
-                let scc_set: BTreeSet<_> = scc.iter().copied().collect();
-
-                if scc.len() > 1 {
-                    // Mutually recursive functions: use define-funs-rec
-                    let mut function_data: Vec<(UsrFunId, String, Vec<Sort>, &FunSig, &FunDef)> =
-                        Vec::new();
-                    for fid in scc {
-                        let (function_name, type_params) = resolve_function_name(ir, *fid);
-                        let sig = ir.fn_registry.retrieve_sig(*fid);
-                        let def = ir.fn_registry.retrieve_def(*fid);
-                        function_data.push((
-                            *fid,
-                            function_name.to_string(),
-                            type_params,
-                            sig,
-                            def,
-                        ));
-                    }
-
-                    let functions: Vec<_> = function_data
-                        .iter()
-                        .map(|(fid, name, type_params, sig, def)| {
-                            (*fid, name.as_str(), type_params.as_slice(), *sig, *def)
-                        })
-                        .collect();
-
-                    let functions_str = mk_functions_rec_str(&functions, ir, &scc_set);
-                    l!(x, "{}", functions_str);
-                } else {
-                    // Single function in SCC
-                    let fid = scc.iter().next().unwrap();
+            
+            // Separate functions into two groups:
+            // 1. Interdependent functions (use define-funs-rec for all)
+            // 2. Truly isolated functions (use define-fun)
+            let has_dependencies_set: BTreeSet<UsrFunId> = has_dependencies.iter().copied().collect();
+            let mut interdependent_fids: Vec<UsrFunId> = has_dependencies.iter().copied().collect();
+            let mut isolated_fids: Vec<UsrFunId> = all_ids
+                .difference(&has_dependencies_set)
+                .copied()
+                .collect();
+            
+            // Sort for deterministic output
+            interdependent_fids.sort();
+            isolated_fids.sort();
+            
+            // Generate interdependent functions using define-funs-rec
+            if !interdependent_fids.is_empty() {
+                let mut function_data: Vec<(UsrFunId, String, Vec<Sort>, &FunSig, &FunDef)> =
+                    Vec::new();
+                let interdependent_set: BTreeSet<_> = interdependent_fids.iter().copied().collect();
+                
+                for fid in &interdependent_fids {
                     let (function_name, type_params) = resolve_function_name(ir, *fid);
                     let sig = ir.fn_registry.retrieve_sig(*fid);
                     let def = ir.fn_registry.retrieve_def(*fid);
-
-                    // Check if it's self-recursive (has edge to itself)
-                    if edge_set.contains(&(*fid, *fid)) {
-                        // Self-recursive: use define-fun-rec
-                        let function_str = mk_function_rec_str(
-                            function_name.as_ref(),
-                            &type_params,
-                            sig,
-                            def,
-                            ir,
-                            &scc_set,
-                        );
-                        l!(x, "{}", function_str);
-                    } else {
-                        // Non-recursive: use define-fun
-                        let function_str = mk_function_str(
-                            function_name.as_ref(),
-                            &type_params,
-                            sig,
-                            def,
-                            ir,
-                            &scc_set,
-                        );
-                        l!(x, "{}", function_str);
-                    }
+                    function_data.push((
+                        *fid,
+                        function_name.to_string(),
+                        type_params,
+                        sig,
+                        def,
+                    ));
                 }
+
+                let functions: Vec<_> = function_data
+                    .iter()
+                    .map(|(fid, name, type_params, sig, def)| {
+                        (*fid, name.as_str(), type_params.as_slice(), *sig, *def)
+                    })
+                    .collect();
+
+                let functions_str = mk_functions_rec_str(&functions, ir, &interdependent_set);
+                l!(x, "{}", functions_str);
+            }
+            
+            // Generate isolated functions using define-fun
+            for fid in isolated_fids {
+                let (function_name, type_params) = resolve_function_name(ir, fid);
+                let sig = ir.fn_registry.retrieve_sig(fid);
+                let def = ir.fn_registry.retrieve_def(fid);
+                let scc_set = BTreeSet::from([fid]);
+                
+                let function_str = mk_function_str(
+                    function_name.as_ref(),
+                    &type_params,
+                    sig,
+                    def,
+                    ir,
+                    &scc_set,
+                );
+                l!(x, "{}", function_str);
             }
 
             l!(x); // Empty line after functions
@@ -390,7 +385,7 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "(define-fun err-is-empty ((e Error)) Bool");
         l!(x, "\t(is-ErrEmpty e))");
         l!(x);
-        
+
         // Recursive function to check if error contains a specific ID
         l!(x, "(define-fun-rec err-contains ((e Error) (id Int)) Bool");
         l!(x, "\t(or");
@@ -399,7 +394,7 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "\t\t\t(or (err-contains (err_left e) id)");
         l!(x, "\t\t\t    (err-contains (err_right e) id)))))");
         l!(x);
-        
+
         // Don't add check-sat or get-model here - they will be added by error discovery
         l!(x, "; Base SMT-LIB definitions complete");
         l!(x, "; Add error-specific assertions below");
@@ -420,18 +415,18 @@ impl CodeGen for CodeGenZ3 {
             warn!("Failed to spawn z3 process: {}", e);
             BackendError
         })?;
-        
+
         let mut stdout = child.inner().stdout.take().ok_or_else(|| {
             warn!("Failed to capture stdout");
             BackendError
         })?;
-        
+
         let mut stderr = child.inner().stderr.take().ok_or_else(|| {
             warn!("Failed to capture stderr");
             BackendError
         })?;
-        
-        let timestamp = SystemTime::now();
+
+        let start = Instant::now();
 
         // Read stdout in a separate thread to avoid blocking
         let stdout_thread = thread::spawn(move || {
@@ -456,17 +451,9 @@ impl CodeGen for CodeGenZ3 {
                 }
 
                 // check timeout
-                match timestamp.elapsed() {
-                    Ok(elapsed) if elapsed > BACKEND_TIMEOUT => {
-                        let _ = child.kill();
-                        return None;
-                    }
-                    Err(_) => {
-                        // Time measurement error, treat as timeout
-                        let _ = child.kill();
-                        return None;
-                    }
-                    _ => {}
+                if start.elapsed() > BACKEND_TIMEOUT {
+                    let _ = child.kill();
+                    return None;
                 }
 
                 // wait a bit longer
@@ -479,13 +466,13 @@ impl CodeGen for CodeGenZ3 {
             warn!("Monitoring thread panicked");
             BackendError
         })?;
-        
+
         // Get the outputs from the reader threads
         let output = stdout_thread.join().map_err(|_| {
             warn!("Stdout thread panicked");
             BackendError
         })?;
-        
+
         let stderr_output = stderr_thread.join().map_err(|_| {
             warn!("Stderr thread panicked");
             BackendError
@@ -514,7 +501,7 @@ impl CodeGen for CodeGenZ3 {
                     }
                     return Err(BackendError);
                 }
-                
+
                 let trimmed = output.trim();
 
                 if trimmed == "unknown" {

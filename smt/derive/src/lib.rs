@@ -2,7 +2,6 @@
 #![warn(missing_docs)]
 
 use crate::backend::codegen::solvers;
-use crate::backend::error::BackendError;
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context;
 use log::{debug, warn};
@@ -70,15 +69,19 @@ pub fn solve<P: AsRef<Path>>(models: &IRContext, output: P) -> Result<()> {
                         // Write the raw response to a file
                         fs::write(&resp_path, resp.to_string()).expect("failed to write response");
                     }
-                    Err(BackendError) => {
+                    Err(x) => {
                         warn!(
-                            "[{}] backend invocation failed for {}",
+                            "[{}] backend invocation failed for {} {:?}",
                             name,
-                            path_src.display()
+                            path_src.display(),
+                            x
                         );
                         // Still write the error to the response file so tests can detect it
-                        fs::write(&resp_path, "ERROR: backend invocation failed\n")
-                            .expect("failed to write error response");
+                        fs::write(
+                            &resp_path,
+                            format!("{}", x),
+                        )
+                        .expect("failed to write error response");
                     }
                 }
             }
@@ -93,7 +96,7 @@ pub fn solve<P: AsRef<Path>>(models: &IRContext, output: P) -> Result<()> {
 /// Derive the VCs and solve them
 pub fn derive<P1: AsRef<Path> + Clone, P2: AsRef<Path>>(input: P1, output: P2) -> Result<()> {
     // Derive the model (IR) from the input source
-    debug!("deriving models");
+    debug!("deriving model");
     let models = model(input)?;
     debug!("IR completed");
 

@@ -1,5 +1,6 @@
-//! Module containing the response enum and the execution timeout.
+//! Module containing the response enum, the execution timeout, and the number of CPU cores.
 
+use lazy_static::lazy_static;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
@@ -8,10 +9,14 @@ pub const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
 
 #[derive(Debug, Clone)]
 /// The response returned by the backend solver.
-pub enum Response {
+pub(crate) enum Response {
+    /// Satisfiable model found
     Sat(String),
+    /// Unsatisfiable
     Unsat,
+    /// Unknown result
     Unknown,
+    /// Timeout occurred
     Timeout,
 }
 
@@ -25,4 +30,9 @@ impl Display for Response {
         };
         f.write_str(text)
     }
+}
+
+lazy_static! {
+    /// Number of CPU cores available on this machine.
+    pub static ref NUM_CPU_CORES: usize = num_cpus::get();
 }

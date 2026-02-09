@@ -1,0 +1,7 @@
+(declare-datatypes (T1 T2) ((Pair (mk-pair (first T1) (second T2)))))
+(declare-const p1 (Pair Int Int))
+(declare-const p2 (Pair Int Int))
+(assert (not (= p1 p2)))
+(assert (= p1 ((_ update-field first) p2 1)))
+(check-sat)
+(get-model)

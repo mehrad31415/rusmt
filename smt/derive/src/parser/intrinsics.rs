@@ -26,16 +26,18 @@ pub enum Intrinsic {
     BoolOr { lhs: Expr, rhs: Expr },
     /// `Boolean::xor`
     BoolXor { lhs: Expr, rhs: Expr },
-    /// `Boolean::implies`
-    BoolImplies { lhs: Expr, rhs: Expr },
-    /// `Boolean::iff`
-    BoolIff { lhs: Expr, rhs: Expr },
     /// `Boolean::nand`
     BoolNand { lhs: Expr, rhs: Expr },
     /// `Boolean::nor`
     BoolNor { lhs: Expr, rhs: Expr },
     /// `Boolean::xnor`
     BoolXnor { lhs: Expr, rhs: Expr },
+    /// `Boolean::implies`
+    BoolImplies { lhs: Expr, rhs: Expr },
+    /// `Boolean::iff`
+    BoolIff { lhs: Expr, rhs: Expr },
+    /// `Boolean::ite`
+    BoolIte { cond: Expr, then: Expr, else_: Expr },
     /// `Integer::from` (Literal)
     IntVal(BigInt),
     // Arithmetic
@@ -49,6 +51,8 @@ pub enum Intrinsic {
     IntMul { lhs: Expr, rhs: Expr },
     /// `Integer::div`
     IntDiv { lhs: Expr, rhs: Expr },
+    /// `Integer::div_trunc`
+    IntDivTrunc { lhs: Expr, rhs: Expr },
     /// `Integer::modulo`
     IntMod { lhs: Expr, rhs: Expr },
     /// `Integer::rem` (Rust % operator behavior)
@@ -146,18 +150,22 @@ pub enum Intrinsic {
     RealToF32 { val: Expr },
     /// `Real::to_f64`
     RealToF64 { val: Expr },
-    /// `Real::numerator`
-    RealNumer { val: Expr },
-    /// `Real::denominator`
-    RealDenom { val: Expr },
     /// `String::from` (Literal)
     StrVal(String),
+    /// `String::new` (Empty string)
+    StrNew,
     /// `String::length`
     StrLen { seq: Expr },
     /// `String::concat`
     StrConcat { lhs: Expr, rhs: Expr },
     /// `String::at`
     StrAt { seq: Expr, idx: Expr },
+    /// `String::index_of`
+    StrIndexOf { seq: Expr, sub: Expr, offset: Expr },
+    /// `String::index_of_default`
+    StrIndexOfDefault { seq: Expr, sub: Expr },
+    /// `String::substr`
+    StrSubstr { seq: Expr, start: Expr, len: Expr },
     /// `String::is_empty`
     StrIsEmpty { seq: Expr },
     /// `String::contains`
@@ -176,8 +184,6 @@ pub enum Intrinsic {
     StrGe { lhs: Expr, rhs: Expr },
     /// `String::gt`
     StrGt { lhs: Expr, rhs: Expr },
-    /// `String::index_of`
-    StrIndexOf { seq: Expr, sub: Expr, offset: Expr },
     /// `String::replace` (Single occurrence)
     StrReplace { seq: Expr, src: Expr, dst: Expr },
     /// `String::replace_all` (All occurrences)
@@ -200,8 +206,14 @@ pub enum Intrinsic {
     SeqUnit { t: TypeRef, val: Expr },
     /// `Seq::length`
     SeqLen { t: TypeRef, seq: Expr },
+    /// `Seq::append` (Push single element to end)
+    SeqPush { t: TypeRef, seq: Expr, item: Expr },
+    /// `Seq::concat` (Join two sequences)
+    SeqConcat { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `Seq::at` (Get element at index, corresponds to `seq.nth`)
     SeqNth { t: TypeRef, seq: Expr, idx: Expr },
+    /// `Seq::at_seq` (Get singleton sequence at index)
+    SeqAtSeq { t: TypeRef, seq: Expr, idx: Expr },
     /// `Seq::extract` (Sub-sequence, corresponds to `seq.extract`)
     SeqExtract {
         t: TypeRef,
@@ -209,10 +221,15 @@ pub enum Intrinsic {
         offset: Expr,
         len: Expr,
     },
-    /// `Seq::append` (Push single element to end)
-    SeqPush { t: TypeRef, seq: Expr, item: Expr },
-    /// `Seq::concat` (Join two sequences)
-    SeqConcat { t: TypeRef, lhs: Expr, rhs: Expr },
+    /// `Seq::index_of` (Find subsequence position with offset)
+    SeqIndexOf {
+        t: TypeRef,
+        seq: Expr,
+        sub: Expr,
+        offset: Expr,
+    },
+    /// `Seq::index_of_default` (Find subsequence position from start)
+    SeqIndexOfDefault { t: TypeRef, seq: Expr, sub: Expr },
     /// `Seq::contains` (Check if sequence contains element)
     SeqContains { t: TypeRef, seq: Expr, item: Expr },
     /// `Seq::prefix_of` (Check if self is prefix of other)
@@ -252,8 +269,6 @@ pub enum Intrinsic {
     SetIsSubset { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `Set::is_proper_subset` (Strict subset)
     SetIsProperSubset { t: TypeRef, lhs: Expr, rhs: Expr },
-    /// `Set::is_superset`
-    SetIsSuperset { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `Set::is_disjoint` (No common elements)
     SetIsDisjoint { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `Set::has_size` (Check if cardinality equals specific integer)
@@ -327,16 +342,6 @@ pub enum Intrinsic {
     BvRem { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `bv_mod`
     BvMod { t: TypeRef, lhs: Expr, rhs: Expr },
-    /// `checked_bvadd_no_overflow`
-    BvAddNoOverflow { t: TypeRef, lhs: Expr, rhs: Expr },
-    /// `checked_bvsub_no_overflow`
-    BvSubNoOverflow { t: TypeRef, lhs: Expr, rhs: Expr },
-    /// `checked_bvneg_no_overflow`
-    BvNegNoOverflow { t: TypeRef, val: Expr },
-    /// `checked_bvmul_no_overflow`
-    BvMulNoOverflow { t: TypeRef, lhs: Expr, rhs: Expr },
-    /// `checked_bvsdiv_no_overflow`
-    BvDivNoOverflow { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `bv_shl`
     BvShl { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `bv_lshr`
@@ -357,16 +362,6 @@ pub enum Intrinsic {
     BvGe { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `to_int`
     BvToInt { t: TypeRef, val: Expr },
-    /// `FloatOps::nan`
-    FloatNaN { t: TypeRef },
-    /// `FloatOps::infinity`
-    FloatPosInf { t: TypeRef },
-    /// `FloatOps::neg_infinity`
-    FloatNegInf { t: TypeRef },
-    /// `FloatOps::pos_zero`
-    FloatPosZero { t: TypeRef },
-    /// `FloatOps::neg_zero`
-    FloatNegZero { t: TypeRef },
     /// Literal Value
     FloatVal { t: TypeRef, val: BigRational },
     /// `FloatOps::add`
@@ -411,10 +406,40 @@ pub enum Intrinsic {
     FloatGt { t: TypeRef, lhs: Expr, rhs: Expr },
     /// `FloatOps::ge`
     FloatGe { t: TypeRef, lhs: Expr, rhs: Expr },
+    /// `FloatOps::nan`
+    FloatNaN { t: TypeRef },
+    /// `FloatOps::infinity`
+    FloatPosInf { t: TypeRef },
+    /// `FloatOps::neg_infinity`
+    FloatNegInf { t: TypeRef },
+    /// `FloatOps::pos_zero`
+    FloatPosZero { t: TypeRef },
+    /// `FloatOps::neg_zero`
+    FloatNegZero { t: TypeRef },
     /// `FloatOps::to_integer`
     FloatToInt { t: TypeRef, val: Expr },
     /// `FloatOps::to_real`
     FloatToReal { t: TypeRef, val: Expr },
+    /// `FloatOps::to_u32`
+    FloatToU32 { t: TypeRef, val: Expr },
+    /// `FloatOps::to_i32`
+    FloatToI32 { t: TypeRef, val: Expr },
+    /// `FloatOps::to_u64`
+    FloatToU64 { t: TypeRef, val: Expr },
+    /// `FloatOps::to_i64`
+    FloatToI64 { t: TypeRef, val: Expr },
+    /// `FloatOps::ceil`
+    FloatCeil { t: TypeRef, val: Expr },
+    /// `FloatOps::floor`
+    FloatFloor { t: TypeRef, val: Expr },
+    /// `FloatOps::trunc`
+    FloatTrunc { t: TypeRef, val: Expr },
+    /// `FloatOps::nearest`
+    FloatNearest { t: TypeRef, val: Expr },
+    /// `FloatOps::fq_eq`
+    FloatFqEq { t: TypeRef, lhs: Expr, rhs: Expr },
+    /// `FloatOps::from_hex_str`
+    FloatFromHexStr { t: TypeRef, val: Expr },
     /// `Error::fresh`
     ErrFresh,
     /// `Error::merge`
@@ -444,6 +469,14 @@ macro_rules! mk2 {
         Intrinsic::unpack_ty_arg_0($ty_args)?;
         let (e1, e2) = Intrinsic::unpack_expr_2($args)?;
         Intrinsic::$op { lhs: e1, rhs: e2 }
+    }};
+}
+
+macro_rules! mk3 {
+    ($op:ident, $ty_args:expr, $args:expr) => {{
+        Intrinsic::unpack_ty_arg_0($ty_args)?;
+        let (e1, e2, e3) = Intrinsic::unpack_expr_3($args)?;
+        Intrinsic::$op { cond: e1, then: e2, else_: e3 }
     }};
 }
 
@@ -549,10 +582,36 @@ impl Intrinsic {
             Exp::Lit(expr_lit) => {
                 let ExprLit { attrs: _, lit } = expr_lit;
                 match lit {
-                    Lit::Int(val) => match val.token().to_string().parse() {
-                        Ok(v) => v,
-                        Err(_) => bail_on!(val, "unable to parse"),
-                    },
+                    Lit::Int(val) => {
+                        let s = val.token().to_string();
+                        // Handle different integer literal formats
+                        if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+                            match BigInt::parse_bytes(hex.as_bytes(), 16) {
+                                Some(v) => v,
+                                None => bail_on!(val, "unable to parse hex literal"),
+                            }
+                        } else if let Some(oct) =
+                            s.strip_prefix("0o").or_else(|| s.strip_prefix("0O"))
+                        {
+                            match BigInt::parse_bytes(oct.as_bytes(), 8) {
+                                Some(v) => v,
+                                None => bail_on!(val, "unable to parse octal literal"),
+                            }
+                        } else if let Some(bin) =
+                            s.strip_prefix("0b").or_else(|| s.strip_prefix("0B"))
+                        {
+                            match BigInt::parse_bytes(bin.as_bytes(), 2) {
+                                Some(v) => v,
+                                None => bail_on!(val, "unable to parse binary literal"),
+                            }
+                        } else {
+                            // Decimal (may have underscores like 1_000)
+                            match s.replace('_', "").parse() {
+                                Ok(v) => v,
+                                Err(_) => bail_on!(val, "unable to parse decimal literal"),
+                            }
+                        }
+                    }
                     _ => bail_on!(lit, "not an integer literal"),
                 }
             }
@@ -717,7 +776,6 @@ impl Intrinsic {
         Ok((intrinsic, ty))
     }
 
-    /// Create an intrinsic
     pub fn new(
         ty_name: &SysTypeName,
         fn_name: &UsrFuncName,
@@ -725,12 +783,7 @@ impl Intrinsic {
         args: Vec<Expr>,
     ) -> anyhow::Result<Self> {
         use SysTypeName as Q;
-
-        // =====================================================================
-        // LOCAL HELPER MACROS (Extensions to cover missing cases)
-        // =====================================================================
-
-        // Matches mk2 but allows custom field names (for IntPow etc.)
+    
         macro_rules! mk2_named {
             ($op:ident, $n1:ident, $n2:ident) => {{
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
@@ -738,8 +791,7 @@ impl Intrinsic {
                 Intrinsic::$op { $n1, $n2 }
             }};
         }
-
-        // Matches mk3 (Ternary)
+    
         macro_rules! mk3_named {
             ($op:ident, $n1:ident, $n2:ident, $n3:ident) => {{
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
@@ -747,8 +799,7 @@ impl Intrinsic {
                 Intrinsic::$op { $n1, $n2, $n3 }
             }};
         }
-
-        // Matches mk3_t (Ternary with Type Arg)
+    
         macro_rules! mk3_t {
             ($op:ident, $n1:ident, $n2:ident, $n3:ident) => {{
                 let t1 = Intrinsic::unpack_ty_arg_1(ty_args)?;
@@ -761,8 +812,7 @@ impl Intrinsic {
                 }
             }};
         }
-
-        // Helper to infer TypeRef from SysTypeName (for I32, F64, etc.)
+    
         let get_impl_type = || -> anyhow::Result<TypeRef> {
             match ty_name {
                 Q::I32 => Ok(TypeRef::I32),
@@ -774,15 +824,12 @@ impl Intrinsic {
                 _ => anyhow::bail!("Type {:?} does not have a static TypeRef", ty_name),
             }
         };
-
-        // Implicit Type Macros (t comes from name, not args)
+    
         macro_rules! mk0_impl {
             ($op:ident) => {{
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 Intrinsic::unpack_expr_0(args)?;
-                Intrinsic::$op {
-                    t: get_impl_type()?,
-                }
+                Intrinsic::$op { t: get_impl_type()? }
             }};
         }
         macro_rules! mk1_impl {
@@ -806,15 +853,8 @@ impl Intrinsic {
                 }
             }};
         }
-
-        // =====================================================================
-        // MATCH LOGIC
-        // =====================================================================
-
+    
         let intrinsic = match (ty_name, fn_name.as_ref()) {
-            // -----------------------------------------------------------------
-            // Generic / Error
-            // -----------------------------------------------------------------
             (_, "eq") => {
                 let t = Intrinsic::unpack_ty_arg_1(ty_args)?;
                 let (lhs, rhs) = Intrinsic::unpack_expr_2(args)?;
@@ -825,45 +865,40 @@ impl Intrinsic {
                 let (lhs, rhs) = Intrinsic::unpack_expr_2(args)?;
                 Intrinsic::SmtNe { t, lhs, rhs }
             }
+    
             (Q::Error, "fresh") => {
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 Intrinsic::unpack_expr_0(args)?;
                 Intrinsic::ErrFresh
             }
             (Q::Error, "merge") => mk2!(ErrMerge, ty_args, args),
-
-            // -----------------------------------------------------------------
-            // Boolean
-            // -----------------------------------------------------------------
+    
             (Q::Boolean, "not") => mk1!(BoolNot, ty_args, args),
             (Q::Boolean, "and") => mk2!(BoolAnd, ty_args, args),
             (Q::Boolean, "or") => mk2!(BoolOr, ty_args, args),
             (Q::Boolean, "xor") => mk2!(BoolXor, ty_args, args),
-            (Q::Boolean, "implies") => mk2!(BoolImplies, ty_args, args),
-            (Q::Boolean, "iff") => mk2!(BoolIff, ty_args, args),
             (Q::Boolean, "nand") => mk2!(BoolNand, ty_args, args),
             (Q::Boolean, "nor") => mk2!(BoolNor, ty_args, args),
             (Q::Boolean, "xnor") => mk2!(BoolXnor, ty_args, args),
-
-            // -----------------------------------------------------------------
-            // Integer
-            // -----------------------------------------------------------------
+            (Q::Boolean, "implies") => mk2!(BoolImplies, ty_args, args),
+            (Q::Boolean, "iff") => mk2!(BoolIff, ty_args, args),
+            (Q::Boolean, "ite") => mk3!(BoolIte, ty_args, args),
+    
             (Q::Integer, "neg") => mk1!(IntNeg, ty_args, args),
             (Q::Integer, "add") => mk2!(IntAdd, ty_args, args),
             (Q::Integer, "sub") => mk2!(IntSub, ty_args, args),
             (Q::Integer, "mul") => mk2!(IntMul, ty_args, args),
             (Q::Integer, "div") => mk2!(IntDiv, ty_args, args),
-            (Q::Integer, "mod") => mk2!(IntMod, ty_args, args),
+            (Q::Integer, "div_trunc") => mk2!(IntDivTrunc, ty_args, args),
+            (Q::Integer, "modulo") => mk2!(IntMod, ty_args, args),
             (Q::Integer, "rem") => mk2!(IntRem, ty_args, args),
             (Q::Integer, "pow") => mk2_named!(IntPow, base, exp),
             (Q::Integer, "abs") => mk1!(IntAbs, ty_args, args),
-
             (Q::Integer, "divides") => mk2!(IntDivides, ty_args, args),
             (Q::Integer, "lt") => mk2!(IntLt, ty_args, args),
             (Q::Integer, "le") => mk2!(IntLe, ty_args, args),
-            (Q::Integer, "ge") => mk2!(IntGe, ty_args, args),
             (Q::Integer, "gt") => mk2!(IntGt, ty_args, args),
-
+            (Q::Integer, "ge") => mk2!(IntGe, ty_args, args),
             (Q::Integer, "to_real") => mk1!(IntToReal, ty_args, args),
             (Q::Integer, "to_i32") => mk1!(IntToI32, ty_args, args),
             (Q::Integer, "to_i64") => mk1!(IntToI64, ty_args, args),
@@ -871,11 +906,11 @@ impl Intrinsic {
             (Q::Integer, "to_u64") => mk1!(IntToU64, ty_args, args),
             (Q::Integer, "to_f32") => mk1!(IntToF32, ty_args, args),
             (Q::Integer, "to_f64") => mk1!(IntToF64, ty_args, args),
-
+    
             (Q::Integer, "from_hex_str") => mk1!(IntFromHex, ty_args, args),
             (Q::Integer, "from_oct_str") => mk1!(IntFromOct, ty_args, args),
             (Q::Integer, "from_bin_str") => mk1!(IntFromBin, ty_args, args),
-
+    
             (Q::Integer, "is_gt_i64_max") => mk1!(IntIsGtI64Max, ty_args, args),
             (Q::Integer, "is_lt_i64_min") => mk1!(IntIsLtI64Min, ty_args, args),
             (Q::Integer, "is_gt_u64_max") => mk1!(IntIsGtU64Max, ty_args, args),
@@ -884,10 +919,7 @@ impl Intrinsic {
             (Q::Integer, "is_gt_i32_max") => mk1!(IntIsGtI32Max, ty_args, args),
             (Q::Integer, "is_lt_u32_min") => mk1!(IntIsLtU32Min, ty_args, args),
             (Q::Integer, "is_gt_u32_max") => mk1!(IntIsGtU32Max, ty_args, args),
-
-            // -----------------------------------------------------------------
-            // Real (Rational)
-            // -----------------------------------------------------------------
+    
             (Q::Real, "neg") => mk1!(RealNeg, ty_args, args),
             (Q::Real, "add") => mk2!(RealAdd, ty_args, args),
             (Q::Real, "sub") => mk2!(RealSub, ty_args, args),
@@ -898,23 +930,22 @@ impl Intrinsic {
             (Q::Real, "round") => mk1!(RealRound, ty_args, args),
             (Q::Real, "floor") => mk1!(RealFloor, ty_args, args),
             (Q::Real, "ceil") => mk1!(RealCeil, ty_args, args),
-
+    
             (Q::Real, "is_integer") => mk1!(RealIsInt, ty_args, args),
             (Q::Real, "lt") => mk2!(RealLt, ty_args, args),
             (Q::Real, "le") => mk2!(RealLe, ty_args, args),
-            (Q::Real, "ge") => mk2!(RealGe, ty_args, args),
             (Q::Real, "gt") => mk2!(RealGt, ty_args, args),
-
+            (Q::Real, "ge") => mk2!(RealGe, ty_args, args),
+    
             (Q::Real, "to_int") => mk1!(RealToInt, ty_args, args),
             (Q::Real, "to_f32") => mk1!(RealToF32, ty_args, args),
             (Q::Real, "to_f64") => mk1!(RealToF64, ty_args, args),
-            (Q::Real, "numerator") => mk1!(RealNumer, ty_args, args),
-            (Q::Real, "denominator") => mk1!(RealDenom, ty_args, args),
-
-            // -----------------------------------------------------------------
-            // String (Text)
-            // -----------------------------------------------------------------
-            // mk1 uses `val`, but StrLen uses `seq`. Must use manual or named helper.
+    
+            (Q::String, "new") => {
+                Intrinsic::unpack_ty_arg_0(ty_args)?;
+                Intrinsic::unpack_expr_0(args)?;
+                Intrinsic::StrNew
+            }
             (Q::String, "length") => {
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 let seq = Intrinsic::unpack_expr_1(args)?;
@@ -922,6 +953,9 @@ impl Intrinsic {
             }
             (Q::String, "concat") => mk2!(StrConcat, ty_args, args),
             (Q::String, "at") => mk2_named!(StrAt, seq, idx),
+            (Q::String, "index_of") => mk3_named!(StrIndexOf, seq, sub, offset),
+            (Q::String, "index_of_default") => mk2_named!(StrIndexOfDefault, seq, sub),
+            (Q::String, "substr") => mk3_named!(StrSubstr, seq, start, len),
             (Q::String, "is_empty") => {
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 let seq = Intrinsic::unpack_expr_1(args)?;
@@ -935,43 +969,37 @@ impl Intrinsic {
                 let seq = Intrinsic::unpack_expr_1(args)?;
                 Intrinsic::StrIsDigit { seq }
             }
-
             (Q::String, "le") => mk2!(StrLe, ty_args, args),
             (Q::String, "lt") => mk2!(StrLt, ty_args, args),
             (Q::String, "ge") => mk2!(StrGe, ty_args, args),
             (Q::String, "gt") => mk2!(StrGt, ty_args, args),
-
-            (Q::String, "index_of") => mk3_named!(StrIndexOf, seq, sub, offset),
             (Q::String, "replace") => mk3_named!(StrReplace, seq, src, dst),
             (Q::String, "replace_all") => mk3_named!(StrReplaceAll, seq, src, dst),
-
+    
             (Q::String, "to_int") => mk1!(StrToInt, ty_args, args),
             (Q::String, "from_int") => mk1!(StrFromInt, ty_args, args),
             (Q::String, "from_code") => mk1!(StrFromCode, ty_args, args),
             (Q::String, "to_code") => mk1!(StrToCode, ty_args, args),
-
-            // -----------------------------------------------------------------
-            // Collections (Generic)
-            // -----------------------------------------------------------------
-            // Cloak - mk1_t uses `val` and `t`. This matches BoxShield { t, val }.
+    
             (Q::Cloak, "shield") => mk1_t!(BoxShield, ty_args, args, val),
             (Q::Cloak, "reveal") => mk1_t!(BoxReveal, ty_args, args, val),
-
-            // Sequence
+    
             (Q::Seq, "new") => mk0_t!(SeqEmpty, ty_args, args),
             (Q::Seq, "unit") => mk1_t!(SeqUnit, ty_args, args, val),
             (Q::Seq, "length") => mk1_t!(SeqLen, ty_args, args, seq),
             (Q::Seq, "append") => mk2_t!(SeqPush, ty_args, args, seq, item),
-            (Q::Seq, "at") => mk2_t!(SeqNth, ty_args, args, seq, idx),
-            (Q::Seq, "contains") => mk2_t!(SeqContains, ty_args, args, seq, item),
             (Q::Seq, "concat") => mk2_t!(SeqConcat, ty_args, args, lhs, rhs),
+            (Q::Seq, "at") => mk2_t!(SeqNth, ty_args, args, seq, idx),
+            (Q::Seq, "at_seq") => mk2_t!(SeqAtSeq, ty_args, args, seq, idx),
+            (Q::Seq, "extract") => mk3_t!(SeqExtract, seq, offset, len),
+            (Q::Seq, "index_of") => mk3_t!(SeqIndexOf, seq, sub, offset),
+            (Q::Seq, "index_of_default") => mk2_t!(SeqIndexOfDefault, ty_args, args, seq, sub),
+            (Q::Seq, "contains") => mk2_t!(SeqContains, ty_args, args, seq, item),
             (Q::Seq, "prefix_of") => mk2_t!(SeqPrefixOf, ty_args, args, lhs, rhs),
             (Q::Seq, "suffix_of") => mk2_t!(SeqSuffixOf, ty_args, args, lhs, rhs),
-            (Q::Seq, "is_empty") => mk1_t!(SeqIsEmpty, ty_args, args, seq),
-            (Q::Seq, "extract") => mk3_t!(SeqExtract, seq, offset, len),
             (Q::Seq, "replace") => mk3_t!(SeqReplace, seq, src, dst),
-
-            // Set
+            (Q::Seq, "is_empty") => mk1_t!(SeqIsEmpty, ty_args, args, seq),
+    
             (Q::Set, "new") => mk0_t!(SetEmpty, ty_args, args),
             (Q::Set, "length") => mk1_t!(SetLen, ty_args, args, set),
             (Q::Set, "insert") => mk2_t!(SetInsert, ty_args, args, set, item),
@@ -984,11 +1012,9 @@ impl Intrinsic {
             (Q::Set, "symmetric_difference") => mk2_t!(SetSymDiff, ty_args, args, lhs, rhs),
             (Q::Set, "is_subset") => mk2_t!(SetIsSubset, ty_args, args, lhs, rhs),
             (Q::Set, "is_proper_subset") => mk2_t!(SetIsProperSubset, ty_args, args, lhs, rhs),
-            (Q::Set, "is_superset") => mk2_t!(SetIsSuperset, ty_args, args, lhs, rhs),
             (Q::Set, "is_disjoint") => mk2_t!(SetIsDisjoint, ty_args, args, lhs, rhs),
             (Q::Set, "has_size") => mk2_t!(SetHasSize, ty_args, args, set, size),
-
-            // Array / Map
+    
             (Q::Array, "new") => mk0_kv!(ArrayEmpty, ty_args, args),
             (Q::Array, "length") => mk1_kv!(ArrayLen, ty_args, args, arr),
             (Q::Array, "store") => mk3_kv!(ArrayStore, ty_args, args, arr, key, val),
@@ -996,21 +1022,13 @@ impl Intrinsic {
             (Q::Array, "del") => mk2_kv!(ArrayRemove, ty_args, args, arr, key),
             (Q::Array, "contains_key") => mk2_kv!(ArrayContainsKey, ty_args, args, arr, key),
             (Q::Array, "is_empty") => mk1_kv!(ArrayIsEmpty, ty_args, args, arr),
-
-            // -----------------------------------------------------------------
-            // Bitvectors (I32, I64, U32, U64)
-            // -----------------------------------------------------------------
-            // Unary
+    
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_not") => mk1_impl!(BvNot, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_neg") => mk1_impl!(BvNeg, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_redand") => mk1_impl!(BvRedAnd, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_redor") => mk1_impl!(BvRedOr, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "to_int") => mk1_impl!(BvToInt, val),
-            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "checked_bvneg_no_overflow") => {
-                mk1_impl!(BvNegNoOverflow, val)
-            }
-
-            // Binary
+    
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_and") => mk2_impl!(BvAnd, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_or") => mk2_impl!(BvOr, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_xor") => mk2_impl!(BvXor, lhs, rhs),
@@ -1027,45 +1045,33 @@ impl Intrinsic {
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_lshr") => mk2_impl!(BvLshr, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_ashr") => mk2_impl!(BvAshr, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_rotate_left") => mk2_impl!(BvRotLeft, lhs, rhs),
-            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_rotate_right") => {
-                mk2_impl!(BvRotRight, lhs, rhs)
-            }
+            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_rotate_right") => mk2_impl!(BvRotRight, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_lt") => mk2_impl!(BvLt, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_le") => mk2_impl!(BvLe, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_gt") => mk2_impl!(BvGt, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_ge") => mk2_impl!(BvGe, lhs, rhs),
-
-            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "checked_bvadd_no_overflow") => {
-                mk2_impl!(BvAddNoOverflow, lhs, rhs)
-            }
-            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "checked_bvsub_no_overflow") => {
-                mk2_impl!(BvSubNoOverflow, lhs, rhs)
-            }
-            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "checked_bvmul_no_overflow") => {
-                mk2_impl!(BvMulNoOverflow, lhs, rhs)
-            }
-            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "checked_bvsdiv_no_overflow") => {
-                mk2_impl!(BvDivNoOverflow, lhs, rhs)
-            }
-
-            // -----------------------------------------------------------------
-            // Floats (F32, F64)
-            // -----------------------------------------------------------------
-            // Constants
+    
             (Q::F32 | Q::F64, "nan") => mk0_impl!(FloatNaN),
             (Q::F32 | Q::F64, "infinity") => mk0_impl!(FloatPosInf),
             (Q::F32 | Q::F64, "neg_infinity") => mk0_impl!(FloatNegInf),
             (Q::F32 | Q::F64, "pos_zero") => mk0_impl!(FloatPosZero),
             (Q::F32 | Q::F64, "neg_zero") => mk0_impl!(FloatNegZero),
-
-            // Unary
+    
             (Q::F32 | Q::F64, "neg") => mk1_impl!(FloatNeg, val),
             (Q::F32 | Q::F64, "abs") => mk1_impl!(FloatAbs, val),
             (Q::F32 | Q::F64, "sqrt") => mk1_impl!(FloatSqrt, val),
             (Q::F32 | Q::F64, "to_integer") => mk1_impl!(FloatToInt, val),
             (Q::F32 | Q::F64, "to_real") => mk1_impl!(FloatToReal, val),
-
-            // Predicates
+            (Q::F32 | Q::F64, "to_u32") => mk1_impl!(FloatToU32, val),
+            (Q::F32 | Q::F64, "to_i32") => mk1_impl!(FloatToI32, val),
+            (Q::F32 | Q::F64, "to_u64") => mk1_impl!(FloatToU64, val),
+            (Q::F32 | Q::F64, "to_i64") => mk1_impl!(FloatToI64, val),
+            (Q::F32 | Q::F64, "ceil") => mk1_impl!(FloatCeil, val),
+            (Q::F32 | Q::F64, "floor") => mk1_impl!(FloatFloor, val),
+            (Q::F32 | Q::F64, "trunc") => mk1_impl!(FloatTrunc, val),
+            (Q::F32 | Q::F64, "nearest") => mk1_impl!(FloatNearest, val),
+            (Q::F32 | Q::F64, "from_hex_str") => mk1_impl!(FloatFromHexStr, val),
+    
             (Q::F32 | Q::F64, "is_nan") => mk1_impl!(FloatIsNaN, val),
             (Q::F32 | Q::F64, "is_infinite") => mk1_impl!(FloatIsInf, val),
             (Q::F32 | Q::F64, "is_zero") => mk1_impl!(FloatIsZero, val),
@@ -1073,8 +1079,7 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "is_subnormal") => mk1_impl!(FloatIsSubnormal, val),
             (Q::F32 | Q::F64, "is_negative") => mk1_impl!(FloatIsNeg, val),
             (Q::F32 | Q::F64, "is_positive") => mk1_impl!(FloatIsPos, val),
-
-            // Binary
+    
             (Q::F32 | Q::F64, "add") => mk2_impl!(FloatAdd, lhs, rhs),
             (Q::F32 | Q::F64, "sub") => mk2_impl!(FloatSub, lhs, rhs),
             (Q::F32 | Q::F64, "mul") => mk2_impl!(FloatMul, lhs, rhs),
@@ -1086,12 +1091,14 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "le") => mk2_impl!(FloatLe, lhs, rhs),
             (Q::F32 | Q::F64, "gt") => mk2_impl!(FloatGt, lhs, rhs),
             (Q::F32 | Q::F64, "ge") => mk2_impl!(FloatGe, lhs, rhs),
-
+            (Q::F32 | Q::F64, "fq_eq") => mk2_impl!(FloatFqEq, lhs, rhs),
+    
             _ => anyhow::bail!("unknown intrinsic: {:?}::{}", ty_name, fn_name),
         };
-
+    
         Ok(intrinsic)
     }
+    
     /// Utility to unpack 0 type argument
     fn unpack_ty_arg_0(ty_args: Vec<TypeRef>) -> anyhow::Result<()> {
         let mut iter = ty_args.into_iter();
@@ -1195,115 +1202,36 @@ impl Intrinsic {
 impl Display for Intrinsic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            // -----------------------------------------------------------------
-            // Values / Literals
-            // -----------------------------------------------------------------
+            // --- Boolean ---
             Self::BoolVal(v) => write!(f, "{v}"),
-            Self::IntVal(v) => write!(f, "{v}"),
-            Self::RealVal(v) => write!(f, "{v}"),
-            Self::StrVal(v) => write!(f, "\"{v}\""), // Wrap string in quotes
-            Self::BvVal { val, .. } => write!(f, "{val}"), // Type inferred from context usually
-            Self::FloatVal { val, .. } => write!(f, "{val}"),
-
-            // -----------------------------------------------------------------
-            // Infix Operators (Arithmetic & Logic)
-            // -----------------------------------------------------------------
-            // Equality (Generic)
-            Self::SmtEq { lhs, rhs, .. } => write!(f, "{lhs} == {rhs}"),
-            Self::SmtNe { lhs, rhs, .. } => write!(f, "{lhs} != {rhs}"),
-
-            // Boolean Logic
+            Self::BoolNot { val } => write!(f, "!{val}"),
             Self::BoolAnd { lhs, rhs } => write!(f, "({lhs} && {rhs})"),
             Self::BoolOr { lhs, rhs } => write!(f, "({lhs} || {rhs})"),
-            Self::BoolImplies { lhs, rhs } => write!(f, "({lhs} => {rhs})"),
-            Self::BoolIff { lhs, rhs } => write!(f, "({lhs} <=> {rhs})"),
             Self::BoolXor { lhs, rhs } => write!(f, "({lhs} ^ {rhs})"),
-
-            // Addition (+)
-            Self::IntAdd { lhs, rhs }
-            | Self::RealAdd { lhs, rhs }
-            | Self::BvAdd { lhs, rhs, .. }
-            | Self::FloatAdd { lhs, rhs, .. } => write!(f, "({lhs} + {rhs})"),
-
-            // Subtraction (-)
-            Self::IntSub { lhs, rhs }
-            | Self::RealSub { lhs, rhs }
-            | Self::BvSub { lhs, rhs, .. }
-            | Self::FloatSub { lhs, rhs, .. } => write!(f, "({lhs} - {rhs})"),
-
-            // Multiplication (*)
-            Self::IntMul { lhs, rhs }
-            | Self::RealMul { lhs, rhs }
-            | Self::BvMul { lhs, rhs, .. }
-            | Self::FloatMul { lhs, rhs, .. } => write!(f, "({lhs} * {rhs})"),
-
-            // Division (/)
-            Self::IntDiv { lhs, rhs }
-            | Self::RealDiv { lhs, rhs }
-            | Self::BvDiv { lhs, rhs, .. }
-            | Self::FloatDiv { lhs, rhs, .. } => write!(f, "({lhs} / {rhs})"),
-
-            // Remainder (%)
-            Self::IntRem { lhs, rhs }
-            | Self::BvRem { lhs, rhs, .. }
-            | Self::FloatRem { lhs, rhs, .. } => write!(f, "({lhs} % {rhs})"),
-
-            // Bitwise Logic (&, |, ^)
-            Self::BvAnd { lhs, rhs, .. } => write!(f, "({lhs} & {rhs})"),
-            Self::BvOr { lhs, rhs, .. } => write!(f, "({lhs} | {rhs})"),
-            Self::BvXor { lhs, rhs, .. } => write!(f, "({lhs} ^ {rhs})"),
-            Self::BvShl { lhs, rhs, .. } => write!(f, "({lhs} << {rhs})"),
-            Self::BvLshr { lhs, rhs, .. } => write!(f, "({lhs} >> {rhs})"),
-            Self::BvAshr { lhs, rhs, .. } => write!(f, "({lhs} a>> {rhs})"), // Arithmetic shift distinction
-
-            // String Concatenation (++)
-            Self::StrConcat { lhs, rhs } | Self::SeqConcat { lhs, rhs, .. } => {
-                write!(f, "({lhs} ++ {rhs})")
-            }
-
-            // -----------------------------------------------------------------
-            // Comparisons (<, <=, >, >=)
-            // -----------------------------------------------------------------
-            Self::IntLt { lhs, rhs }
-            | Self::RealLt { lhs, rhs }
-            | Self::StrLt { lhs, rhs }
-            | Self::BvLt { lhs, rhs, .. }
-            | Self::FloatLt { lhs, rhs, .. } => write!(f, "({lhs} < {rhs})"),
-
-            Self::IntLe { lhs, rhs }
-            | Self::RealLe { lhs, rhs }
-            | Self::StrLe { lhs, rhs }
-            | Self::BvLe { lhs, rhs, .. }
-            | Self::FloatLe { lhs, rhs, .. } => write!(f, "({lhs} <= {rhs})"),
-
-            Self::IntGt { lhs, rhs }
-            | Self::RealGt { lhs, rhs }
-            | Self::StrGt { lhs, rhs }
-            | Self::BvGt { lhs, rhs, .. }
-            | Self::FloatGt { lhs, rhs, .. } => write!(f, "({lhs} > {rhs})"),
-
-            Self::IntGe { lhs, rhs }
-            | Self::RealGe { lhs, rhs }
-            | Self::StrGe { lhs, rhs }
-            | Self::BvGe { lhs, rhs, .. }
-            | Self::FloatGe { lhs, rhs, .. } => write!(f, "({lhs} >= {rhs})"),
-
-            // -----------------------------------------------------------------
-            // Prefix / Function Style
-            // -----------------------------------------------------------------
-            // Boolean
-            Self::BoolNot { val } => write!(f, "!{val}"),
             Self::BoolNand { lhs, rhs } => write!(f, "nand({lhs}, {rhs})"),
             Self::BoolNor { lhs, rhs } => write!(f, "nor({lhs}, {rhs})"),
             Self::BoolXnor { lhs, rhs } => write!(f, "xnor({lhs}, {rhs})"),
+            Self::BoolImplies { lhs, rhs } => write!(f, "({lhs} => {rhs})"),
+            Self::BoolIff { lhs, rhs } => write!(f, "({lhs} <=> {rhs})"),
+            Self::BoolIte { cond, then, else_ } => write!(f, "ite({cond}, {then}, {else_})"),
 
-            // Integer
+            // --- Integer ---
+            Self::IntVal(v) => write!(f, "{v}"),
             Self::IntNeg { val } => write!(f, "-{val}"),
+            Self::IntAdd { lhs, rhs } => write!(f, "({lhs} + {rhs})"),
+            Self::IntSub { lhs, rhs } => write!(f, "({lhs} - {rhs})"),
+            Self::IntMul { lhs, rhs } => write!(f, "({lhs} * {rhs})"),
+            Self::IntDiv { lhs, rhs } => write!(f, "({lhs} / {rhs})"),
+            Self::IntDivTrunc { lhs, rhs } => write!(f, "({lhs} /_t {rhs})"),
             Self::IntMod { lhs, rhs } => write!(f, "mod({lhs}, {rhs})"),
+            Self::IntRem { lhs, rhs } => write!(f, "({lhs} % {rhs})"),
             Self::IntPow { base, exp } => write!(f, "pow({base}, {exp})"),
             Self::IntAbs { val } => write!(f, "abs({val})"),
             Self::IntDivides { lhs, rhs } => write!(f, "divides({lhs}, {rhs})"),
-            // Int Conversions/Checks
+            Self::IntLt { lhs, rhs } => write!(f, "({lhs} < {rhs})"),
+            Self::IntLe { lhs, rhs } => write!(f, "({lhs} <= {rhs})"),
+            Self::IntGt { lhs, rhs } => write!(f, "({lhs} > {rhs})"),
+            Self::IntGe { lhs, rhs } => write!(f, "({lhs} >= {rhs})"),
             Self::IntToReal { val } => write!(f, "Int::to_real({val})"),
             Self::IntToI32 { val } => write!(f, "Int::to_i32({val})"),
             Self::IntToI64 { val } => write!(f, "Int::to_i64({val})"),
@@ -1314,7 +1242,6 @@ impl Display for Intrinsic {
             Self::IntFromHex { val } => write!(f, "Int::from_hex({val})"),
             Self::IntFromOct { val } => write!(f, "Int::from_oct({val})"),
             Self::IntFromBin { val } => write!(f, "Int::from_bin({val})"),
-            // Range checks (abbreviated)
             Self::IntIsGtI64Max { val } => write!(f, "is_gt_i64_max({val})"),
             Self::IntIsLtI64Min { val } => write!(f, "is_lt_i64_min({val})"),
             Self::IntIsGtU64Max { val } => write!(f, "is_gt_u64_max({val})"),
@@ -1324,29 +1251,45 @@ impl Display for Intrinsic {
             Self::IntIsLtU32Min { val } => write!(f, "is_lt_u32_min({val})"),
             Self::IntIsGtU32Max { val } => write!(f, "is_gt_u32_max({val})"),
 
-            // Real
+            // --- Real ---
+            Self::RealVal(v) => write!(f, "{v}"),
             Self::RealNeg { val } => write!(f, "-{val}"),
-            Self::RealAbs { val } => write!(f, "abs({val})"),
+            Self::RealAdd { lhs, rhs } => write!(f, "({lhs} + {rhs})"),
+            Self::RealSub { lhs, rhs } => write!(f, "({lhs} - {rhs})"),
+            Self::RealMul { lhs, rhs } => write!(f, "({lhs} * {rhs})"),
+            Self::RealDiv { lhs, rhs } => write!(f, "({lhs} / {rhs})"),
             Self::RealPow { base, exp } => write!(f, "pow({base}, {exp})"),
+            Self::RealAbs { val } => write!(f, "abs({val})"),
             Self::RealRound { val } => write!(f, "round({val})"),
             Self::RealFloor { val } => write!(f, "floor({val})"),
             Self::RealCeil { val } => write!(f, "ceil({val})"),
             Self::RealIsInt { val } => write!(f, "is_int({val})"),
+            Self::RealLt { lhs, rhs } => write!(f, "({lhs} < {rhs})"),
+            Self::RealLe { lhs, rhs } => write!(f, "({lhs} <= {rhs})"),
+            Self::RealGt { lhs, rhs } => write!(f, "({lhs} > {rhs})"),
+            Self::RealGe { lhs, rhs } => write!(f, "({lhs} >= {rhs})"),
             Self::RealToInt { val } => write!(f, "Real::to_int({val})"),
             Self::RealToF32 { val } => write!(f, "Real::to_f32({val})"),
             Self::RealToF64 { val } => write!(f, "Real::to_f64({val})"),
-            Self::RealNumer { val } => write!(f, "numer({val})"),
-            Self::RealDenom { val } => write!(f, "denom({val})"),
 
-            // String
+            // --- String ---
+            Self::StrVal(v) => write!(f, "\"{v}\""),
+            Self::StrNew => write!(f, "String::new()"),
             Self::StrLen { seq } => write!(f, "len({seq})"),
+            Self::StrConcat { lhs, rhs } => write!(f, "({lhs} ++ {rhs})"),
             Self::StrAt { seq, idx } => write!(f, "{seq}[{idx}]"),
+            Self::StrIndexOf { seq, sub, offset } => write!(f, "index_of({seq}, {sub}, {offset})"),
+            Self::StrIndexOfDefault { seq, sub } => write!(f, "index_of({seq}, {sub})"),
+            Self::StrSubstr { seq, start, len } => write!(f, "substr({seq}, {start}, {len})"),
             Self::StrIsEmpty { seq } => write!(f, "is_empty({seq})"),
             Self::StrContains { seq, item } => write!(f, "contains({seq}, {item})"),
             Self::StrStartsWith { seq, item } => write!(f, "starts_with({seq}, {item})"),
             Self::StrEndsWith { seq, item } => write!(f, "ends_with({seq}, {item})"),
             Self::StrIsDigit { seq } => write!(f, "is_digit({seq})"),
-            Self::StrIndexOf { seq, sub, offset } => write!(f, "index_of({seq}, {sub}, {offset})"),
+            Self::StrLe { lhs, rhs } => write!(f, "({lhs} <= {rhs})"),
+            Self::StrLt { lhs, rhs } => write!(f, "({lhs} < {rhs})"),
+            Self::StrGe { lhs, rhs } => write!(f, "({lhs} >= {rhs})"),
+            Self::StrGt { lhs, rhs } => write!(f, "({lhs} > {rhs})"),
             Self::StrReplace { seq, src, dst } => write!(f, "replace({seq}, {src}, {dst})"),
             Self::StrReplaceAll { seq, src, dst } => write!(f, "replace_all({seq}, {src}, {dst})"),
             Self::StrToInt { val } => write!(f, "Str::to_int({val})"),
@@ -1354,26 +1297,28 @@ impl Display for Intrinsic {
             Self::StrFromCode { val } => write!(f, "Str::from_code({val})"),
             Self::StrToCode { val } => write!(f, "Str::to_code({val})"),
 
-            // Cloak
+            // --- Cloak ---
             Self::BoxShield { val, .. } => write!(f, "shield({val})"),
             Self::BoxReveal { val, .. } => write!(f, "reveal({val})"),
 
-            // Sequence
+            // --- Sequence ---
             Self::SeqEmpty { .. } => write!(f, "Seq::empty"),
             Self::SeqUnit { val, .. } => write!(f, "Seq::unit({val})"),
             Self::SeqLen { seq, .. } => write!(f, "len({seq})"),
-            Self::SeqNth { seq, idx, .. } => write!(f, "{seq}[{idx}]"),
-            Self::SeqExtract {
-                seq, offset, len, ..
-            } => write!(f, "{seq}[{offset}..{len}]"),
             Self::SeqPush { seq, item, .. } => write!(f, "push({seq}, {item})"),
+            Self::SeqConcat { lhs, rhs, .. } => write!(f, "({lhs} ++ {rhs})"),
+            Self::SeqNth { seq, idx, .. } => write!(f, "{seq}[{idx}]"),
+            Self::SeqAtSeq { seq, idx, .. } => write!(f, "at_seq({seq}, {idx})"),
+            Self::SeqExtract { seq, offset, len, .. } => write!(f, "{seq}[{offset}..{len}]"),
+            Self::SeqIndexOf { seq, sub, offset, .. } => write!(f, "index_of({seq}, {sub}, {offset})"),
+            Self::SeqIndexOfDefault { seq, sub, .. } => write!(f, "index_of({seq}, {sub})"),
             Self::SeqContains { seq, item, .. } => write!(f, "contains({seq}, {item})"),
             Self::SeqPrefixOf { lhs, rhs, .. } => write!(f, "prefix_of({lhs}, {rhs})"),
             Self::SeqSuffixOf { lhs, rhs, .. } => write!(f, "suffix_of({lhs}, {rhs})"),
             Self::SeqReplace { seq, src, dst, .. } => write!(f, "replace({seq}, {src}, {dst})"),
             Self::SeqIsEmpty { seq, .. } => write!(f, "is_empty({seq})"),
 
-            // Set
+            // --- Set ---
             Self::SetEmpty { .. } => write!(f, "Set::empty"),
             Self::SetLen { set, .. } => write!(f, "len({set})"),
             Self::SetInsert { set, item, .. } => write!(f, "insert({set}, {item})"),
@@ -1386,11 +1331,10 @@ impl Display for Intrinsic {
             Self::SetSymDiff { lhs, rhs, .. } => write!(f, "sym_diff({lhs}, {rhs})"),
             Self::SetIsSubset { lhs, rhs, .. } => write!(f, "subset({lhs}, {rhs})"),
             Self::SetIsProperSubset { lhs, rhs, .. } => write!(f, "proper_subset({lhs}, {rhs})"),
-            Self::SetIsSuperset { lhs, rhs, .. } => write!(f, "superset({lhs}, {rhs})"),
             Self::SetIsDisjoint { lhs, rhs, .. } => write!(f, "disjoint({lhs}, {rhs})"),
             Self::SetHasSize { set, size, .. } => write!(f, "has_size({set}, {size})"),
 
-            // Array / Map
+            // --- Array ---
             Self::ArrayEmpty { .. } => write!(f, "Array::empty"),
             Self::ArrayLen { arr, .. } => write!(f, "len({arr})"),
             Self::ArrayStore { arr, key, val, .. } => write!(f, "store({arr}, {key}, {val})"),
@@ -1399,32 +1343,44 @@ impl Display for Intrinsic {
             Self::ArrayContainsKey { arr, key, .. } => write!(f, "contains_key({arr}, {key})"),
             Self::ArrayIsEmpty { arr, .. } => write!(f, "is_empty({arr})"),
 
-            // Bitvector (Logic & Shift)
+            // --- Bitvector ---
+            Self::BvVal { val, .. } => write!(f, "{val}"),
             Self::BvNot { val, .. } => write!(f, "!{val}"),
-            Self::BvNeg { val, .. } => write!(f, "-{val}"),
+            Self::BvAnd { lhs, rhs, .. } => write!(f, "({lhs} & {rhs})"),
+            Self::BvOr { lhs, rhs, .. } => write!(f, "({lhs} | {rhs})"),
+            Self::BvXor { lhs, rhs, .. } => write!(f, "({lhs} ^ {rhs})"),
             Self::BvNand { lhs, rhs, .. } => write!(f, "nand({lhs}, {rhs})"),
             Self::BvNor { lhs, rhs, .. } => write!(f, "nor({lhs}, {rhs})"),
             Self::BvXnor { lhs, rhs, .. } => write!(f, "xnor({lhs}, {rhs})"),
             Self::BvRedAnd { val, .. } => write!(f, "redand({val})"),
             Self::BvRedOr { val, .. } => write!(f, "redor({val})"),
+            Self::BvNeg { val, .. } => write!(f, "-{val}"),
+            Self::BvAdd { lhs, rhs, .. } => write!(f, "({lhs} + {rhs})"),
+            Self::BvSub { lhs, rhs, .. } => write!(f, "({lhs} - {rhs})"),
+            Self::BvMul { lhs, rhs, .. } => write!(f, "({lhs} * {rhs})"),
+            Self::BvDiv { lhs, rhs, .. } => write!(f, "({lhs} / {rhs})"),
+            Self::BvRem { lhs, rhs, .. } => write!(f, "({lhs} % {rhs})"),
             Self::BvMod { lhs, rhs, .. } => write!(f, "mod({lhs}, {rhs})"),
-            Self::BvAddNoOverflow { lhs, rhs, .. } => write!(f, "add_no_overflow({lhs}, {rhs})"),
-            Self::BvSubNoOverflow { lhs, rhs, .. } => write!(f, "sub_no_overflow({lhs}, {rhs})"),
-            Self::BvNegNoOverflow { val, .. } => write!(f, "neg_no_overflow({val})"),
-            Self::BvMulNoOverflow { lhs, rhs, .. } => write!(f, "mul_no_overflow({lhs}, {rhs})"),
-            Self::BvDivNoOverflow { lhs, rhs, .. } => write!(f, "div_no_overflow({lhs}, {rhs})"),
+            Self::BvShl { lhs, rhs, .. } => write!(f, "({lhs} << {rhs})"),
+            Self::BvLshr { lhs, rhs, .. } => write!(f, "({lhs} >> {rhs})"),
+            Self::BvAshr { lhs, rhs, .. } => write!(f, "({lhs} a>> {rhs})"),
             Self::BvRotLeft { lhs, rhs, .. } => write!(f, "rot_left({lhs}, {rhs})"),
             Self::BvRotRight { lhs, rhs, .. } => write!(f, "rot_right({lhs}, {rhs})"),
+            Self::BvLt { lhs, rhs, .. } => write!(f, "({lhs} < {rhs})"),
+            Self::BvLe { lhs, rhs, .. } => write!(f, "({lhs} <= {rhs})"),
+            Self::BvGt { lhs, rhs, .. } => write!(f, "({lhs} > {rhs})"),
+            Self::BvGe { lhs, rhs, .. } => write!(f, "({lhs} >= {rhs})"),
             Self::BvToInt { val, .. } => write!(f, "Bv::to_int({val})"),
 
-            // Float
-            Self::FloatNaN { .. } => write!(f, "NaN"),
-            Self::FloatPosInf { .. } => write!(f, "+Inf"),
-            Self::FloatNegInf { .. } => write!(f, "-Inf"),
-            Self::FloatPosZero { .. } => write!(f, "+0.0"),
-            Self::FloatNegZero { .. } => write!(f, "-0.0"),
+            // --- Float ---
+            Self::FloatVal { val, .. } => write!(f, "{val}"),
+            Self::FloatAdd { lhs, rhs, .. } => write!(f, "({lhs} + {rhs})"),
+            Self::FloatSub { lhs, rhs, .. } => write!(f, "({lhs} - {rhs})"),
+            Self::FloatMul { lhs, rhs, .. } => write!(f, "({lhs} * {rhs})"),
+            Self::FloatDiv { lhs, rhs, .. } => write!(f, "({lhs} / {rhs})"),
             Self::FloatNeg { val, .. } => write!(f, "-{val}"),
             Self::FloatAbs { val, .. } => write!(f, "abs({val})"),
+            Self::FloatRem { lhs, rhs, .. } => write!(f, "({lhs} % {rhs})"),
             Self::FloatSqrt { val, .. } => write!(f, "sqrt({val})"),
             Self::FloatMin { lhs, rhs, .. } => write!(f, "min({lhs}, {rhs})"),
             Self::FloatMax { lhs, rhs, .. } => write!(f, "max({lhs}, {rhs})"),
@@ -1435,12 +1391,33 @@ impl Display for Intrinsic {
             Self::FloatIsSubnormal { val, .. } => write!(f, "is_subnormal({val})"),
             Self::FloatIsNeg { val, .. } => write!(f, "is_neg({val})"),
             Self::FloatIsPos { val, .. } => write!(f, "is_pos({val})"),
+            Self::FloatLt { lhs, rhs, .. } => write!(f, "({lhs} < {rhs})"),
+            Self::FloatLe { lhs, rhs, .. } => write!(f, "({lhs} <= {rhs})"),
+            Self::FloatGt { lhs, rhs, .. } => write!(f, "({lhs} > {rhs})"),
+            Self::FloatGe { lhs, rhs, .. } => write!(f, "({lhs} >= {rhs})"),
+            Self::FloatNaN { .. } => write!(f, "NaN"),
+            Self::FloatPosInf { .. } => write!(f, "+Inf"),
+            Self::FloatNegInf { .. } => write!(f, "-Inf"),
+            Self::FloatPosZero { .. } => write!(f, "+0.0"),
+            Self::FloatNegZero { .. } => write!(f, "-0.0"),
             Self::FloatToInt { val, .. } => write!(f, "Float::to_int({val})"),
             Self::FloatToReal { val, .. } => write!(f, "Float::to_real({val})"),
+            Self::FloatToU32 { val, .. } => write!(f, "Float::to_u32({val})"),
+            Self::FloatToI32 { val, .. } => write!(f, "Float::to_i32({val})"),
+            Self::FloatToU64 { val, .. } => write!(f, "Float::to_u64({val})"),
+            Self::FloatToI64 { val, .. } => write!(f, "Float::to_i64({val})"),
+            Self::FloatCeil { val, .. } => write!(f, "ceil({val})"),
+            Self::FloatFloor { val, .. } => write!(f, "floor({val})"),
+            Self::FloatTrunc { val, .. } => write!(f, "trunc({val})"),
+            Self::FloatNearest { val, .. } => write!(f, "nearest({val})"),
+            Self::FloatFqEq { lhs, rhs, .. } => write!(f, "({lhs} fq_eq {rhs})"),
+            Self::FloatFromHexStr { val, .. } => write!(f, "Float::from_hex({val})"),
 
-            // Errors
+            // --- Errors & SMT ---
             Self::ErrFresh => write!(f, "err_fresh"),
             Self::ErrMerge { lhs, rhs } => write!(f, "err_merge({lhs}, {rhs})"),
+            Self::SmtEq { lhs, rhs, .. } => write!(f, "({lhs} == {rhs})"),
+            Self::SmtNe { lhs, rhs, .. } => write!(f, "({lhs} != {rhs})"),
         }
     }
 }

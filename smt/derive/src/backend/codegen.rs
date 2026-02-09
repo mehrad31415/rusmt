@@ -7,7 +7,7 @@ use crate::ir::ctxt::IRContext;
 use std::path::Path;
 
 /// A generic trait for backend code generators.
-pub trait CodeGen {
+pub(crate) trait CodeGen {
     /// Constructs a new `CodeGen` wrapper
     fn new() -> Self
     where
@@ -87,6 +87,6 @@ macro_rules! l {
 pub(crate) use l;
 
 /// Available list of backend solvers
-pub fn solvers() -> Vec<Box<dyn CodeGen>> {
+pub(crate) fn solvers() -> Vec<Box<dyn CodeGen>> {
     vec![Box::new(CodeGenZ3::new())]
 }

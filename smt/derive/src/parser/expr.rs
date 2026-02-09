@@ -704,28 +704,25 @@ impl Expr {
                 body.visit(ty, pre, post)?;
             }
             Op::Intrinsic(intrinsic) => match intrinsic.as_mut() {
-                // -------------------------------------------------------------------------
-                // Boolean
-                // -------------------------------------------------------------------------
                 Intrinsic::BoolVal(_) => (),
                 Intrinsic::BoolNot { val } => val.visit(ty, pre, post)?,
                 Intrinsic::BoolAnd { lhs, rhs }
                 | Intrinsic::BoolOr { lhs, rhs }
                 | Intrinsic::BoolXor { lhs, rhs }
-                | Intrinsic::BoolImplies { lhs, rhs }
-                | Intrinsic::BoolIff { lhs, rhs }
                 | Intrinsic::BoolNand { lhs, rhs }
                 | Intrinsic::BoolNor { lhs, rhs }
-                | Intrinsic::BoolXnor { lhs, rhs } => {
+                | Intrinsic::BoolXnor { lhs, rhs }
+                | Intrinsic::BoolImplies { lhs, rhs }
+                | Intrinsic::BoolIff { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-
-                // -------------------------------------------------------------------------
-                // Integer
-                // -------------------------------------------------------------------------
+                Intrinsic::BoolIte { cond, then, else_ } => {
+                    cond.visit(ty, pre, post)?;
+                    then.visit(ty, pre, post)?;
+                    else_.visit(ty, pre, post)?;
+                }
                 Intrinsic::IntVal(_) => (),
-                // Unary
                 Intrinsic::IntNeg { val }
                 | Intrinsic::IntAbs { val }
                 | Intrinsic::IntToReal { val }
@@ -748,11 +745,11 @@ impl Expr {
                 | Intrinsic::IntIsGtU32Max { val } => {
                     val.visit(ty, pre, post)?;
                 }
-                // Binary
                 Intrinsic::IntAdd { lhs, rhs }
                 | Intrinsic::IntSub { lhs, rhs }
                 | Intrinsic::IntMul { lhs, rhs }
                 | Intrinsic::IntDiv { lhs, rhs }
+                | Intrinsic::IntDivTrunc { lhs, rhs }
                 | Intrinsic::IntMod { lhs, rhs }
                 | Intrinsic::IntRem { lhs, rhs }
                 | Intrinsic::IntPow {
@@ -767,12 +764,7 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-
-                // -------------------------------------------------------------------------
-                // Real
-                // -------------------------------------------------------------------------
                 Intrinsic::RealVal(_) => (),
-                // Unary
                 Intrinsic::RealNeg { val }
                 | Intrinsic::RealAbs { val }
                 | Intrinsic::RealRound { val }
@@ -781,12 +773,9 @@ impl Expr {
                 | Intrinsic::RealIsInt { val }
                 | Intrinsic::RealToInt { val }
                 | Intrinsic::RealToF32 { val }
-                | Intrinsic::RealToF64 { val }
-                | Intrinsic::RealNumer { val }
-                | Intrinsic::RealDenom { val } => {
+                | Intrinsic::RealToF64 { val } => {
                     val.visit(ty, pre, post)?;
                 }
-                // Binary
                 Intrinsic::RealAdd { lhs, rhs }
                 | Intrinsic::RealSub { lhs, rhs }
                 | Intrinsic::RealMul { lhs, rhs }
@@ -802,24 +791,19 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-
-                // -------------------------------------------------------------------------
-                // String
-                // -------------------------------------------------------------------------
-                Intrinsic::StrVal(_) => (),
-                // Unary (on seq or val)
-                Intrinsic::StrLen { seq: val }
-                | Intrinsic::StrIsEmpty { seq: val }
-                | Intrinsic::StrIsDigit { seq: val }
-                | Intrinsic::StrToInt { val }
-                | Intrinsic::StrFromInt { val }
-                | Intrinsic::StrFromCode { val }
-                | Intrinsic::StrToCode { val } => {
-                    val.visit(ty, pre, post)?;
+                Intrinsic::StrVal(_) | Intrinsic::StrNew => (),
+                Intrinsic::StrLen { seq }
+                | Intrinsic::StrIsEmpty { seq }
+                | Intrinsic::StrIsDigit { seq }
+                | Intrinsic::StrToInt { val: seq }
+                | Intrinsic::StrFromInt { val: seq }
+                | Intrinsic::StrFromCode { val: seq }
+                | Intrinsic::StrToCode { val: seq } => {
+                    seq.visit(ty, pre, post)?;
                 }
-                // Binary
                 Intrinsic::StrConcat { lhs, rhs }
                 | Intrinsic::StrAt { seq: lhs, idx: rhs }
+                | Intrinsic::StrIndexOfDefault { seq: lhs, sub: rhs }
                 | Intrinsic::StrContains {
                     seq: lhs,
                     item: rhs,
@@ -839,109 +823,132 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                // Ternary
-                Intrinsic::StrIndexOf { seq, sub, offset } => {
+                Intrinsic::StrIndexOf { seq, sub, offset }
+                | Intrinsic::StrSubstr {
+                    seq,
+                    start: sub,
+                    len: offset,
+                }
+                | Intrinsic::StrReplace {
+                    seq,
+                    src: sub,
+                    dst: offset,
+                }
+                | Intrinsic::StrReplaceAll {
+                    seq,
+                    src: sub,
+                    dst: offset,
+                } => {
                     seq.visit(ty, pre, post)?;
                     sub.visit(ty, pre, post)?;
                     offset.visit(ty, pre, post)?;
                 }
-                Intrinsic::StrReplace { seq, src, dst }
-                | Intrinsic::StrReplaceAll { seq, src, dst } => {
-                    seq.visit(ty, pre, post)?;
-                    src.visit(ty, pre, post)?;
-                    dst.visit(ty, pre, post)?;
-                }
-
-                // -------------------------------------------------------------------------
-                // Cloak
-                // -------------------------------------------------------------------------
                 Intrinsic::BoxShield { t, val } | Intrinsic::BoxReveal { t, val } => {
                     ty(t)?;
                     val.visit(ty, pre, post)?;
                 }
-
-                // -------------------------------------------------------------------------
-                // Sequence
-                // -------------------------------------------------------------------------
-                Intrinsic::SeqEmpty { t } => {
-                    ty(t)?;
-                }
+                Intrinsic::SeqEmpty { t } => ty(t)?,
                 Intrinsic::SeqUnit { t, val }
                 | Intrinsic::SeqLen { t, seq: val }
                 | Intrinsic::SeqIsEmpty { t, seq: val } => {
                     ty(t)?;
                     val.visit(ty, pre, post)?;
                 }
-                Intrinsic::SeqNth { t, seq, idx }
-                | Intrinsic::SeqPush { t, seq, item: idx }
-                | Intrinsic::SeqContains { t, seq, item: idx } => {
+                Intrinsic::SeqPush { t, seq, item }
+                | Intrinsic::SeqConcat {
+                    t,
+                    lhs: seq,
+                    rhs: item,
+                }
+                | Intrinsic::SeqNth { t, seq, idx: item }
+                | Intrinsic::SeqAtSeq { t, seq, idx: item }
+                | Intrinsic::SeqIndexOfDefault { t, seq, sub: item }
+                | Intrinsic::SeqContains { t, seq, item }
+                | Intrinsic::SeqPrefixOf {
+                    t,
+                    lhs: seq,
+                    rhs: item,
+                }
+                | Intrinsic::SeqSuffixOf {
+                    t,
+                    lhs: seq,
+                    rhs: item,
+                } => {
                     ty(t)?;
                     seq.visit(ty, pre, post)?;
-                    idx.visit(ty, pre, post)?;
-                }
-                Intrinsic::SeqConcat { t, lhs, rhs }
-                | Intrinsic::SeqPrefixOf { t, lhs, rhs }
-                | Intrinsic::SeqSuffixOf { t, lhs, rhs } => {
-                    ty(t)?;
-                    lhs.visit(ty, pre, post)?;
-                    rhs.visit(ty, pre, post)?;
+                    item.visit(ty, pre, post)?;
                 }
                 Intrinsic::SeqExtract {
                     t,
                     seq,
                     offset,
                     len,
+                }
+                | Intrinsic::SeqIndexOf {
+                    t,
+                    seq,
+                    sub: offset,
+                    offset: len,
+                }
+                | Intrinsic::SeqReplace {
+                    t,
+                    seq,
+                    src: offset,
+                    dst: len,
                 } => {
                     ty(t)?;
                     seq.visit(ty, pre, post)?;
                     offset.visit(ty, pre, post)?;
                     len.visit(ty, pre, post)?;
                 }
-                Intrinsic::SeqReplace { t, seq, src, dst } => {
+                Intrinsic::SetEmpty { t } => ty(t)?,
+                Intrinsic::SetLen { t, set } | Intrinsic::SetIsEmpty { t, set } => {
                     ty(t)?;
-                    seq.visit(ty, pre, post)?;
-                    src.visit(ty, pre, post)?;
-                    dst.visit(ty, pre, post)?;
-                }
-
-                // -------------------------------------------------------------------------
-                // Set
-                // -------------------------------------------------------------------------
-                Intrinsic::SetEmpty { t } => {
-                    ty(t)?;
-                }
-                Intrinsic::SetLen { t, set: val } | Intrinsic::SetIsEmpty { t, set: val } => {
-                    ty(t)?;
-                    val.visit(ty, pre, post)?;
+                    set.visit(ty, pre, post)?;
                 }
                 Intrinsic::SetInsert { t, set, item }
                 | Intrinsic::SetRemove { t, set, item }
-                | Intrinsic::SetContains { t, set, item } => {
+                | Intrinsic::SetContains { t, set, item }
+                | Intrinsic::SetIntersect {
+                    t,
+                    lhs: set,
+                    rhs: item,
+                }
+                | Intrinsic::SetUnion {
+                    t,
+                    lhs: set,
+                    rhs: item,
+                }
+                | Intrinsic::SetDiff {
+                    t,
+                    lhs: set,
+                    rhs: item,
+                }
+                | Intrinsic::SetSymDiff {
+                    t,
+                    lhs: set,
+                    rhs: item,
+                }
+                | Intrinsic::SetIsSubset {
+                    t,
+                    lhs: set,
+                    rhs: item,
+                }
+                | Intrinsic::SetIsProperSubset {
+                    t,
+                    lhs: set,
+                    rhs: item,
+                }
+                | Intrinsic::SetIsDisjoint {
+                    t,
+                    lhs: set,
+                    rhs: item,
+                }
+                | Intrinsic::SetHasSize { t, set, size: item } => {
                     ty(t)?;
                     set.visit(ty, pre, post)?;
                     item.visit(ty, pre, post)?;
                 }
-                Intrinsic::SetHasSize { t, set, size } => {
-                    ty(t)?;
-                    set.visit(ty, pre, post)?;
-                    size.visit(ty, pre, post)?;
-                }
-                Intrinsic::SetIntersect { t, lhs, rhs }
-                | Intrinsic::SetUnion { t, lhs, rhs }
-                | Intrinsic::SetDiff { t, lhs, rhs }
-                | Intrinsic::SetSymDiff { t, lhs, rhs }
-                | Intrinsic::SetIsSubset { t, lhs, rhs }
-                | Intrinsic::SetIsProperSubset { t, lhs, rhs }
-                | Intrinsic::SetIsSuperset { t, lhs, rhs }
-                | Intrinsic::SetIsDisjoint { t, lhs, rhs } => {
-                    ty(t)?;
-                    lhs.visit(ty, pre, post)?;
-                    rhs.visit(ty, pre, post)?;
-                }
-
-                // -------------------------------------------------------------------------
-                // Array / Map
-                // -------------------------------------------------------------------------
                 Intrinsic::ArrayEmpty { k, v } => {
                     ty(k)?;
                     ty(v)?;
@@ -972,18 +979,11 @@ impl Expr {
                     key.visit(ty, pre, post)?;
                     val.visit(ty, pre, post)?;
                 }
-
-                // -------------------------------------------------------------------------
-                // Bitvector
-                // -------------------------------------------------------------------------
-                Intrinsic::BvVal { t, val: _ } => {
-                    ty(t)?;
-                }
+                Intrinsic::BvVal { t, .. } => ty(t)?,
                 Intrinsic::BvNot { t, val }
                 | Intrinsic::BvRedAnd { t, val }
                 | Intrinsic::BvRedOr { t, val }
                 | Intrinsic::BvNeg { t, val }
-                | Intrinsic::BvNegNoOverflow { t, val }
                 | Intrinsic::BvToInt { t, val } => {
                     ty(t)?;
                     val.visit(ty, pre, post)?;
@@ -1000,10 +1000,6 @@ impl Expr {
                 | Intrinsic::BvDiv { t, lhs, rhs }
                 | Intrinsic::BvRem { t, lhs, rhs }
                 | Intrinsic::BvMod { t, lhs, rhs }
-                | Intrinsic::BvAddNoOverflow { t, lhs, rhs }
-                | Intrinsic::BvSubNoOverflow { t, lhs, rhs }
-                | Intrinsic::BvMulNoOverflow { t, lhs, rhs }
-                | Intrinsic::BvDivNoOverflow { t, lhs, rhs }
                 | Intrinsic::BvShl { t, lhs, rhs }
                 | Intrinsic::BvLshr { t, lhs, rhs }
                 | Intrinsic::BvAshr { t, lhs, rhs }
@@ -1017,18 +1013,12 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-
-                // -------------------------------------------------------------------------
-                // Float
-                // -------------------------------------------------------------------------
-                Intrinsic::FloatNaN { t }
+                Intrinsic::FloatVal { t, .. }
+                | Intrinsic::FloatNaN { t }
                 | Intrinsic::FloatPosInf { t }
                 | Intrinsic::FloatNegInf { t }
                 | Intrinsic::FloatPosZero { t }
-                | Intrinsic::FloatNegZero { t }
-                | Intrinsic::FloatVal { t, val: _ } => {
-                    ty(t)?;
-                }
+                | Intrinsic::FloatNegZero { t } => ty(t)?,
                 Intrinsic::FloatNeg { t, val }
                 | Intrinsic::FloatAbs { t, val }
                 | Intrinsic::FloatSqrt { t, val }
@@ -1040,7 +1030,16 @@ impl Expr {
                 | Intrinsic::FloatIsNeg { t, val }
                 | Intrinsic::FloatIsPos { t, val }
                 | Intrinsic::FloatToInt { t, val }
-                | Intrinsic::FloatToReal { t, val } => {
+                | Intrinsic::FloatToReal { t, val }
+                | Intrinsic::FloatToU32 { t, val }
+                | Intrinsic::FloatToI32 { t, val }
+                | Intrinsic::FloatToU64 { t, val }
+                | Intrinsic::FloatToI64 { t, val }
+                | Intrinsic::FloatCeil { t, val }
+                | Intrinsic::FloatFloor { t, val }
+                | Intrinsic::FloatTrunc { t, val }
+                | Intrinsic::FloatNearest { t, val }
+                | Intrinsic::FloatFromHexStr { t, val } => {
                     ty(t)?;
                     val.visit(ty, pre, post)?;
                 }
@@ -1054,16 +1053,13 @@ impl Expr {
                 | Intrinsic::FloatLt { t, lhs, rhs }
                 | Intrinsic::FloatLe { t, lhs, rhs }
                 | Intrinsic::FloatGt { t, lhs, rhs }
-                | Intrinsic::FloatGe { t, lhs, rhs } => {
+                | Intrinsic::FloatGe { t, lhs, rhs }
+                | Intrinsic::FloatFqEq { t, lhs, rhs } => {
                     ty(t)?;
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-
-                // -------------------------------------------------------------------------
-                // Error / Generic
-                // -------------------------------------------------------------------------
-                Intrinsic::ErrFresh { .. } => (),
+                Intrinsic::ErrFresh => (),
                 Intrinsic::ErrMerge { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
@@ -1190,7 +1186,6 @@ impl<'ctx> ExprParserRoot<'ctx> {
         // basically this function traverses the whole expression and replaces any TypeRef::Var with the actual type (if the type is known) and if not, returns an error
         let result = parsed.visit(
             &mut |ty| {
-                // unnessecary to refresh the type if we had just used the type unification in forming the OP in the convert_expr function.
                 let refreshed = unifier.refresh_type(ty); // replaces any TypeRef::Var with the actual type (if the type is known). because this is inside visit, it traverses the whole `parsed` expression and replaces all the TypeRef::Var with the inferred types
 
                 // if there are still any TypeRef::Var left, the type is incomplete and we return an error
@@ -1351,7 +1346,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
 
                     // parse the body with a new parser
                     // the new parser has the same root, the expected type is the type of the let-binding, and the variables are retained, but the new let-binding is initialized as empty
-                    // `fork` is used to redefine the expected type of the parser. The let-binding is empty because the right-hand side of the let-binding is a unit and not a block (in our design choice)
+                    // `fork` is used to redefine the expected type of the parser. The let-binding is empty because the right-hand side of the let-binding is a unit and not a block.
                     let body_expr = self.fork(decl.ty()).convert_expr(unifier, expr)?;
 
                     // add the let-binding to the list of let-bindings
@@ -1501,10 +1496,15 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 // an expression is either Unit(Inst) or Block{lets: Vec<LetBinding>, body: Inst}
                 // e.ty() retrieves the type field of the instruction (Inst has two fields: op and ty)
                 // ty is unifier.refresh_type(&self.exp_ty) where self.exp_ty is TypeRef::Var(unifier.mk_var()) - it may get unified with another type
-                let ty_pack = parsed_elems.iter().map(|e| e.ty().clone()).collect();
+                let ty_pack: Vec<TypeRef> = parsed_elems.iter().map(|e| e.ty().clone()).collect();
 
                 // unify the return type
-                ti_unify!(unifier, &TypeRef::Pack(ty_pack), &self.exp_ty, target);
+                ti_unify!(
+                    unifier,
+                    &TypeRef::Pack(ty_pack.clone()),
+                    &self.exp_ty,
+                    target
+                );
 
                 // done
                 Op::Pack {
@@ -1732,7 +1732,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
 
                 // unify the return type
                 // the type of the slot or field in the definition of the tuple struct or record struct is unified with the expected type annotation (on the left side).
-                ti_unify!(unifier, &tag.into(), &self.exp_ty, expr_field);
+                ti_unify!(unifier, &TypeRef::from(tag), &self.exp_ty, expr_field);
 
                 // return the constructed opcode (contains the type name and the field name or index)
                 op
@@ -2232,10 +2232,11 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             let parsed_args =
                                 self.parse_call_arguments(unifier, &params, &ret_ty, expr_call)?;
 
-                            // Extract type arguments in the order expected by the function's generics
-                            // This ensures type arguments are provided in the correct order regardless
-                            // of how they were merged
-                            let ty_args = match inst.vec_for_generics(&fty.generics) {
+                            // Extract type arguments in the order expected by the type's generics
+                            // For intrinsic functions on generic types (like Seq::at), the type
+                            // parameters come from the type (Seq<T>), not the function
+                            let ty_generics = ty_name.generics();
+                            let ty_args = match inst.vec_for_generics(&ty_generics) {
                                 None => bail_on!(func, "missing type parameter in instantiation"),
                                 Some(args) => args,
                             };

@@ -404,335 +404,298 @@ impl ExpRegistry {
     }
 
     fn collect_fn_from_intrinsic(&self, intrinsic: &Intrinsic) -> Vec<UsrFunId> {
-        use crate::ir::intrinsics::Intrinsic::*;
         let mut called_fns = vec![];
 
         match intrinsic {
-            // --- Boolean ---
-            BoolVal(_) => {}
-            BoolNot { val } => {
+            // --- 0 ExpId Arguments (Constants / Literals / Nullary) ---
+            Intrinsic::BoolVal(_)
+            | Intrinsic::IntVal(_)
+            | Intrinsic::RealVal(_)
+            | Intrinsic::StrVal(_)
+            | Intrinsic::StrNew
+            | Intrinsic::SeqEmpty { .. }
+            | Intrinsic::SetEmpty { .. }
+            | Intrinsic::ArrayEmpty { .. }
+            | Intrinsic::BvVal { .. }
+            | Intrinsic::FloatVal { .. }
+            | Intrinsic::FloatNaN { .. }
+            | Intrinsic::FloatPosInf { .. }
+            | Intrinsic::FloatNegInf { .. }
+            | Intrinsic::FloatPosZero { .. }
+            | Intrinsic::FloatNegZero { .. }
+            | Intrinsic::ErrFresh => {}
+
+            // --- 1 ExpId Argument (Unary Ops / Conversions) ---
+            Intrinsic::BoolNot { val }
+            | Intrinsic::IntNeg { val }
+            | Intrinsic::IntAbs { val }
+            | Intrinsic::IntToReal { val }
+            | Intrinsic::IntToI32 { val }
+            | Intrinsic::IntToI64 { val }
+            | Intrinsic::IntToU32 { val }
+            | Intrinsic::IntToU64 { val }
+            | Intrinsic::IntToF32 { val }
+            | Intrinsic::IntToF64 { val }
+            | Intrinsic::IntFromHex { val }
+            | Intrinsic::IntFromOct { val }
+            | Intrinsic::IntFromBin { val }
+            | Intrinsic::IntIsGtI64Max { val }
+            | Intrinsic::IntIsLtI64Min { val }
+            | Intrinsic::IntIsGtU64Max { val }
+            | Intrinsic::IntIsLtU64Min { val }
+            | Intrinsic::IntIsLtI32Min { val }
+            | Intrinsic::IntIsGtI32Max { val }
+            | Intrinsic::IntIsLtU32Min { val }
+            | Intrinsic::IntIsGtU32Max { val }
+            | Intrinsic::RealNeg { val }
+            | Intrinsic::RealAbs { val }
+            | Intrinsic::RealRound { val }
+            | Intrinsic::RealFloor { val }
+            | Intrinsic::RealCeil { val }
+            | Intrinsic::RealIsInt { val }
+            | Intrinsic::RealToInt { val }
+            | Intrinsic::RealToF32 { val }
+            | Intrinsic::RealToF64 { val }
+            | Intrinsic::StrLen { seq: val }
+            | Intrinsic::StrIsEmpty { seq: val }
+            | Intrinsic::StrIsDigit { seq: val }
+            | Intrinsic::StrToInt { val }
+            | Intrinsic::StrFromInt { val }
+            | Intrinsic::StrFromCode { val }
+            | Intrinsic::StrToCode { val }
+            | Intrinsic::BoxShield { val, .. }
+            | Intrinsic::BoxReveal { val, .. }
+            | Intrinsic::SeqUnit { val, .. }
+            | Intrinsic::SeqLen { seq: val, .. }
+            | Intrinsic::SeqIsEmpty { seq: val, .. }
+            | Intrinsic::SetLen { set: val, .. }
+            | Intrinsic::SetIsEmpty { set: val, .. }
+            | Intrinsic::ArrayLen { arr: val, .. }
+            | Intrinsic::ArrayIsEmpty { arr: val, .. }
+            | Intrinsic::BvNot { val, .. }
+            | Intrinsic::BvNeg { val, .. }
+            | Intrinsic::BvRedAnd { val, .. }
+            | Intrinsic::BvRedOr { val, .. }
+            | Intrinsic::BvToInt { val, .. }
+            | Intrinsic::FloatNeg { val, .. }
+            | Intrinsic::FloatAbs { val, .. }
+            | Intrinsic::FloatSqrt { val, .. }
+            | Intrinsic::FloatIsNaN { val, .. }
+            | Intrinsic::FloatIsInf { val, .. }
+            | Intrinsic::FloatIsZero { val, .. }
+            | Intrinsic::FloatIsNormal { val, .. }
+            | Intrinsic::FloatIsSubnormal { val, .. }
+            | Intrinsic::FloatIsNeg { val, .. }
+            | Intrinsic::FloatIsPos { val, .. }
+            | Intrinsic::FloatToInt { val, .. }
+            | Intrinsic::FloatToReal { val, .. }
+            | Intrinsic::FloatToU32 { val, .. }
+            | Intrinsic::FloatToI32 { val, .. }
+            | Intrinsic::FloatToU64 { val, .. }
+            | Intrinsic::FloatToI64 { val, .. }
+            | Intrinsic::FloatCeil { val, .. }
+            | Intrinsic::FloatFloor { val, .. }
+            | Intrinsic::FloatTrunc { val, .. }
+            | Intrinsic::FloatNearest { val, .. }
+            | Intrinsic::FloatFromHexStr { val, .. } => {
                 called_fns.append(&mut self.collect_called_functions(val));
             }
-            BoolAnd { lhs, rhs }
-            | BoolOr { lhs, rhs }
-            | BoolXor { lhs, rhs }
-            | BoolImplies { lhs, rhs }
-            | BoolIff { lhs, rhs }
-            | BoolNand { lhs, rhs }
-            | BoolNor { lhs, rhs }
-            | BoolXnor { lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
+
+            // --- 2 ExpId Arguments (Binary Ops / Predicates) ---
+            Intrinsic::BoolAnd { lhs, rhs }
+            | Intrinsic::BoolOr { lhs, rhs }
+            | Intrinsic::BoolXor { lhs, rhs }
+            | Intrinsic::BoolNand { lhs, rhs }
+            | Intrinsic::BoolNor { lhs, rhs }
+            | Intrinsic::BoolXnor { lhs, rhs }
+            | Intrinsic::BoolImplies { lhs, rhs }
+            | Intrinsic::BoolIff { lhs, rhs }
+            | Intrinsic::IntAdd { lhs, rhs }
+            | Intrinsic::IntSub { lhs, rhs }
+            | Intrinsic::IntMul { lhs, rhs }
+            | Intrinsic::IntDiv { lhs, rhs }
+            | Intrinsic::IntDivTrunc { lhs, rhs }
+            | Intrinsic::IntMod { lhs, rhs }
+            | Intrinsic::IntRem { lhs, rhs }
+            | Intrinsic::IntPow {
+                base: lhs,
+                exp: rhs,
+            }
+            | Intrinsic::IntDivides { lhs, rhs }
+            | Intrinsic::IntLt { lhs, rhs }
+            | Intrinsic::IntLe { lhs, rhs }
+            | Intrinsic::IntGt { lhs, rhs }
+            | Intrinsic::IntGe { lhs, rhs }
+            | Intrinsic::RealAdd { lhs, rhs }
+            | Intrinsic::RealSub { lhs, rhs }
+            | Intrinsic::RealMul { lhs, rhs }
+            | Intrinsic::RealDiv { lhs, rhs }
+            | Intrinsic::RealPow {
+                base: lhs,
+                exp: rhs,
+            }
+            | Intrinsic::RealLt { lhs, rhs }
+            | Intrinsic::RealLe { lhs, rhs }
+            | Intrinsic::RealGt { lhs, rhs }
+            | Intrinsic::RealGe { lhs, rhs }
+            | Intrinsic::StrConcat { lhs, rhs }
+            | Intrinsic::StrAt { seq: lhs, idx: rhs }
+            | Intrinsic::StrIndexOfDefault { seq: lhs, sub: rhs }
+            | Intrinsic::StrContains {
+                seq: lhs,
+                item: rhs,
+            }
+            | Intrinsic::StrStartsWith {
+                seq: lhs,
+                item: rhs,
+            }
+            | Intrinsic::StrEndsWith {
+                seq: lhs,
+                item: rhs,
+            }
+            | Intrinsic::StrLt { lhs, rhs }
+            | Intrinsic::StrLe { lhs, rhs }
+            | Intrinsic::StrGt { lhs, rhs }
+            | Intrinsic::StrGe { lhs, rhs }
+            | Intrinsic::SeqPush {
+                seq: lhs,
+                item: rhs,
+                ..
+            }
+            | Intrinsic::SeqConcat { lhs, rhs, .. }
+            | Intrinsic::SeqNth {
+                seq: lhs, idx: rhs, ..
+            }
+            | Intrinsic::SeqAtSeq {
+                seq: lhs, idx: rhs, ..
+            }
+            | Intrinsic::SeqIndexOfDefault {
+                seq: lhs, sub: rhs, ..
+            }
+            | Intrinsic::SeqContains {
+                seq: lhs,
+                item: rhs,
+                ..
+            }
+            | Intrinsic::SeqPrefixOf { lhs, rhs, .. }
+            | Intrinsic::SeqSuffixOf { lhs, rhs, .. }
+            | Intrinsic::SetInsert {
+                set: lhs,
+                item: rhs,
+                ..
+            }
+            | Intrinsic::SetRemove {
+                set: lhs,
+                item: rhs,
+                ..
+            }
+            | Intrinsic::SetContains {
+                set: lhs,
+                item: rhs,
+                ..
+            }
+            | Intrinsic::SetIntersect { lhs, rhs, .. }
+            | Intrinsic::SetUnion { lhs, rhs, .. }
+            | Intrinsic::SetDiff { lhs, rhs, .. }
+            | Intrinsic::SetSymDiff { lhs, rhs, .. }
+            | Intrinsic::SetIsSubset { lhs, rhs, .. }
+            | Intrinsic::SetIsProperSubset { lhs, rhs, .. }
+            | Intrinsic::SetIsDisjoint { lhs, rhs, .. }
+            | Intrinsic::SetHasSize {
+                set: lhs,
+                size: rhs,
+                ..
+            }
+            | Intrinsic::ArraySelect {
+                arr: lhs, key: rhs, ..
+            }
+            | Intrinsic::ArrayRemove {
+                arr: lhs, key: rhs, ..
+            }
+            | Intrinsic::ArrayContainsKey {
+                arr: lhs, key: rhs, ..
+            }
+            | Intrinsic::BvAnd { lhs, rhs, .. }
+            | Intrinsic::BvOr { lhs, rhs, .. }
+            | Intrinsic::BvXor { lhs, rhs, .. }
+            | Intrinsic::BvNand { lhs, rhs, .. }
+            | Intrinsic::BvNor { lhs, rhs, .. }
+            | Intrinsic::BvXnor { lhs, rhs, .. }
+            | Intrinsic::BvAdd { lhs, rhs, .. }
+            | Intrinsic::BvSub { lhs, rhs, .. }
+            | Intrinsic::BvMul { lhs, rhs, .. }
+            | Intrinsic::BvDiv { lhs, rhs, .. }
+            | Intrinsic::BvRem { lhs, rhs, .. }
+            | Intrinsic::BvMod { lhs, rhs, .. }
+            | Intrinsic::BvShl { lhs, rhs, .. }
+            | Intrinsic::BvLshr { lhs, rhs, .. }
+            | Intrinsic::BvAshr { lhs, rhs, .. }
+            | Intrinsic::BvRotLeft { lhs, rhs, .. }
+            | Intrinsic::BvRotRight { lhs, rhs, .. }
+            | Intrinsic::BvLt { lhs, rhs, .. }
+            | Intrinsic::BvLe { lhs, rhs, .. }
+            | Intrinsic::BvGt { lhs, rhs, .. }
+            | Intrinsic::BvGe { lhs, rhs, .. }
+            | Intrinsic::FloatAdd { lhs, rhs, .. }
+            | Intrinsic::FloatSub { lhs, rhs, .. }
+            | Intrinsic::FloatMul { lhs, rhs, .. }
+            | Intrinsic::FloatDiv { lhs, rhs, .. }
+            | Intrinsic::FloatRem { lhs, rhs, .. }
+            | Intrinsic::FloatMin { lhs, rhs, .. }
+            | Intrinsic::FloatMax { lhs, rhs, .. }
+            | Intrinsic::FloatLt { lhs, rhs, .. }
+            | Intrinsic::FloatLe { lhs, rhs, .. }
+            | Intrinsic::FloatGt { lhs, rhs, .. }
+            | Intrinsic::FloatGe { lhs, rhs, .. }
+            | Intrinsic::FloatFqEq { lhs, rhs, .. }
+            | Intrinsic::ErrMerge { lhs, rhs }
+            | Intrinsic::SmtEq { lhs, rhs, .. }
+            | Intrinsic::SmtNe { lhs, rhs, .. } => {
+                called_fns.append(&mut self.collect_called_functions(&lhs));
+                called_fns.append(&mut self.collect_called_functions(&rhs));
             }
 
-            // --- Integer ---
-            IntVal(_) => {}
-            IntNeg { val }
-            | IntoToReal { val }
-            | IntAbs { val }
-            | IntToI32 { val }
-            | IntToI64 { val }
-            | IntToU32 { val }
-            | IntToU64 { val }
-            | IntToF32 { val }
-            | IntToF64 { val }
-            | IntFromHex { val }
-            | IntFromOct { val }
-            | IntFromBin { val }
-            | IntIsGtI64Max { val }
-            | IntIsLtI64Min { val }
-            | IntIsGtU64Max { val }
-            | IntIsLtU64Min { val }
-            | IntIsLtI32Min { val }
-            | IntIsGtI32Max { val }
-            | IntIsLtU32Min { val }
-            | IntIsGtU32Max { val } => {
-                called_fns.append(&mut self.collect_called_functions(val));
+            // --- 3 ExpId Arguments (Ternary / Complex Ops) ---
+            Intrinsic::BoolIte { cond, then, else_ } => {
+                called_fns.append(&mut self.collect_called_functions(cond));
+                called_fns.append(&mut self.collect_called_functions(then));
+                called_fns.append(&mut self.collect_called_functions(else_));
             }
-            IntLt { lhs, rhs }
-            | IntLe { lhs, rhs }
-            | IntGe { lhs, rhs }
-            | IntGt { lhs, rhs }
-            | IntAdd { lhs, rhs }
-            | IntSub { lhs, rhs }
-            | IntMul { lhs, rhs }
-            | IntDiv { lhs, rhs }
-            | IntMod { lhs, rhs }
-            | IntRem { lhs, rhs }
-            | IntDivides { lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-            IntPow { base, exp } => {
-                called_fns.append(&mut self.collect_called_functions(base));
-                called_fns.append(&mut self.collect_called_functions(exp));
-            }
-
-            // --- Rational / Real ---
-            RealVal(_) => {}
-            RealNeg { val }
-            | RealAbs { val }
-            | RealRound { val }
-            | RealFloor { val }
-            | RealCeil { val }
-            | RealIsInt { val }
-            | RealToInt { val }
-            | RealToF32 { val }
-            | RealToF64 { val }
-            | RealRealer { val }
-            | RealDenom { val } => {
-                called_fns.append(&mut self.collect_called_functions(val));
-            }
-            RealLt { lhs, rhs }
-            | RealLe { lhs, rhs }
-            | RealGe { lhs, rhs }
-            | RealGt { lhs, rhs }
-            | RealAdd { lhs, rhs }
-            | RealSub { lhs, rhs }
-            | RealMul { lhs, rhs }
-            | RealDiv { lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-            RealPow { base, exp } => {
-                called_fns.append(&mut self.collect_called_functions(base));
-                called_fns.append(&mut self.collect_called_functions(exp));
-            }
-
-            // --- String ---
-            StrVal(_) => {}
-            StrLt { lhs, rhs }
-            | StrLe { lhs, rhs }
-            | StrGt { lhs, rhs }
-            | StrGe { lhs, rhs }
-            | StrConcat { lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-            StrAt { seq, idx } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(idx));
-            }
-            StrLength { seq } | StrIsEmpty { seq } | StrIsDigit { seq } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-            }
-            StrIncludes { seq, item } | StrStartsWith { seq, item } | StrEndsWith { seq, item } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(item));
-            }
-            StrIndexOf { seq, sub, offset } => {
+            Intrinsic::StrIndexOf { seq, sub, offset } => {
                 called_fns.append(&mut self.collect_called_functions(seq));
                 called_fns.append(&mut self.collect_called_functions(sub));
                 called_fns.append(&mut self.collect_called_functions(offset));
             }
-            StrReplace { seq, src, dst } | StrReplaceAll { seq, src, dst } => {
+            Intrinsic::StrSubstr { seq, start, len } => {
+                called_fns.append(&mut self.collect_called_functions(seq));
+                called_fns.append(&mut self.collect_called_functions(start));
+                called_fns.append(&mut self.collect_called_functions(len));
+            }
+            Intrinsic::StrReplace { seq, src, dst }
+            | Intrinsic::StrReplaceAll { seq, src, dst }
+            | Intrinsic::SeqReplace { seq, src, dst, .. } => {
                 called_fns.append(&mut self.collect_called_functions(seq));
                 called_fns.append(&mut self.collect_called_functions(src));
                 called_fns.append(&mut self.collect_called_functions(dst));
             }
-            StrToInt { val } | StrFromInt { val } | StrFromCode { val } | StrToCode { val } => {
-                called_fns.append(&mut self.collect_called_functions(val));
-            }
-
-            // --- Cloak ---
-            BoxShield { t: _, val } | BoxReveal { t: _, val } => {
-                called_fns.append(&mut self.collect_called_functions(val));
-            }
-
-            // --- Sequence ---
-            SeqEmpty { t: _ } => {}
-            SeqUnit { t: _, val } => {
-                called_fns.append(&mut self.collect_called_functions(val));
-            }
-            SeqLength { t: _, seq } | SeqIsEmpty { t: _, seq } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-            }
-            SeqNth { t: _, seq, idx } | SeqAt { t: _, seq, idx } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(idx));
-            }
-            SeqExtract {
-                t: _,
-                seq,
-                offset,
-                len,
+            Intrinsic::SeqExtract {
+                seq, offset, len, ..
             } => {
                 called_fns.append(&mut self.collect_called_functions(seq));
                 called_fns.append(&mut self.collect_called_functions(offset));
                 called_fns.append(&mut self.collect_called_functions(len));
             }
-            SeqAppend { t: _, seq, item } | SeqIncludes { t: _, seq, item } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(item));
-            }
-            SeqConcat { t: _, lhs, rhs }
-            | SeqPrefixOf { t: _, lhs, rhs }
-            | SeqSuffixOf { t: _, lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-            SeqReplace {
-                t: _,
-                seq,
-                src,
-                dst,
+            | Intrinsic::SeqIndexOf {
+                seq, sub, offset, ..
             } => {
                 called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(src));
-                called_fns.append(&mut self.collect_called_functions(dst));
+                called_fns.append(&mut self.collect_called_functions(sub));
+                called_fns.append(&mut self.collect_called_functions(offset));
             }
-
-            // --- Set ---
-            SetEmpty { t: _ } => {}
-            SetLength { t: _, set } | SetIsEmpty { t: _, set } => {
-                called_fns.append(&mut self.collect_called_functions(set));
-            }
-            SetInsert { t: _, set, item }
-            | SetRemove { t: _, set, item }
-            | SetContains { t: _, set, item } => {
-                called_fns.append(&mut self.collect_called_functions(set));
-                called_fns.append(&mut self.collect_called_functions(item));
-            }
-            SetIntersection { t: _, lhs, rhs }
-            | SetUnion { t: _, lhs, rhs }
-            | SetDifference { t: _, lhs, rhs }
-            | SetSymDiff { t: _, lhs, rhs }
-            | SetIsSubset { t: _, lhs, rhs }
-            | SetIsProperSubset { t: _, lhs, rhs }
-            | SetIsSuperset { t: _, lhs, rhs }
-            | SetIsDisjoint { t: _, lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-            SetHasSize { t: _, set, size } => {
-                called_fns.append(&mut self.collect_called_functions(set));
-                called_fns.append(&mut self.collect_called_functions(size));
-            }
-
-            // --- Map ---
-            MapEmpty { k: _, v: _ } => {}
-            MapLength { k: _, v: _, map } | MapIsEmpty { k: _, v: _, map } => {
-                called_fns.append(&mut self.collect_called_functions(map));
-            }
-            MapPut {
-                k: _,
-                v: _,
-                map,
-                key,
-                val,
-            } => {
-                called_fns.append(&mut self.collect_called_functions(map));
+            Intrinsic::ArrayStore { arr, key, val, .. } => {
+                called_fns.append(&mut self.collect_called_functions(arr));
                 called_fns.append(&mut self.collect_called_functions(key));
                 called_fns.append(&mut self.collect_called_functions(val));
-            }
-            MapGet {
-                k: _,
-                v: _,
-                map,
-                key,
-            }
-            | MapDel {
-                k: _,
-                v: _,
-                map,
-                key,
-            }
-            | MapContainsKey {
-                k: _,
-                v: _,
-                map,
-                key,
-            } => {
-                called_fns.append(&mut self.collect_called_functions(map));
-                called_fns.append(&mut self.collect_called_functions(key));
-            }
-
-            // --- BitVector (Bv) ---
-            BvVal { .. } => {}
-            BvNot { t: _, val }
-            | BvNeg { t: _, val }
-            | BvRedAnd { t: _, val }
-            | BvRedOr { t: _, val }
-            | BvToInt { t: _, val }
-            | BvNegNoOverflow { t: _, val } => {
-                called_fns.append(&mut self.collect_called_functions(val));
-            }
-            BvAnd { t: _, lhs, rhs }
-            | BvOr { t: _, lhs, rhs }
-            | BvXor { t: _, lhs, rhs }
-            | BvNand { t: _, lhs, rhs }
-            | BvNor { t: _, lhs, rhs }
-            | BvXnor { t: _, lhs, rhs }
-            | BvAdd { t: _, lhs, rhs }
-            | BvSub { t: _, lhs, rhs }
-            | BvMul { t: _, lhs, rhs }
-            | BvDiv { t: _, lhs, rhs }
-            | BvRem { t: _, lhs, rhs }
-            | BvMod { t: _, lhs, rhs }
-            | BvShl { t: _, lhs, rhs }
-            | BvLshr { t: _, lhs, rhs }
-            | BvAshr { t: _, lhs, rhs }
-            | BvRotLeft { t: _, lhs, rhs }
-            | BvRotRight { t: _, lhs, rhs }
-            | BvLt { t: _, lhs, rhs }
-            | BvLe { t: _, lhs, rhs }
-            | BvGt { t: _, lhs, rhs }
-            | BvGe { t: _, lhs, rhs }
-            | BvAddNoOverflow { t: _, lhs, rhs }
-            | BvSubNoOverflow { t: _, lhs, rhs }
-            | BvMulNoOverflow { t: _, lhs, rhs }
-            | BvDivNoOverflow { t: _, lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-
-            // --- Float ---
-            FloatVal { .. }
-            | FloatNaN { .. }
-            | FloatPosInf { .. }
-            | FloatNegInf { .. }
-            | FloatPosZero { .. }
-            | FloatNegZero { .. } => {}
-            FloatNeg { t: _, val }
-            | FloatAbs { t: _, val }
-            | FloatSqrt { t: _, val }
-            | FloatIsNaN { t: _, val }
-            | FloatIsInf { t: _, val }
-            | FloatIsZero { t: _, val }
-            | FloatIsNormal { t: _, val }
-            | FloatIsSubnormal { t: _, val }
-            | FloatIsNeg { t: _, val }
-            | FloatIsPos { t: _, val }
-            | FloatToInt { t: _, val }
-            | FloatToReal { t: _, val } => {
-                called_fns.append(&mut self.collect_called_functions(val));
-            }
-            FloatAdd { t: _, lhs, rhs }
-            | FloatSub { t: _, lhs, rhs }
-            | FloatMul { t: _, lhs, rhs }
-            | FloatDiv { t: _, lhs, rhs }
-            | FloatRem { t: _, lhs, rhs }
-            | FloatMin { t: _, lhs, rhs }
-            | FloatMax { t: _, lhs, rhs }
-            | FloatLt { t: _, lhs, rhs }
-            | FloatLe { t: _, lhs, rhs }
-            | FloatGt { t: _, lhs, rhs }
-            | FloatGe { t: _, lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-
-            // --- Error ---
-            ErrFresh { .. } => {}
-            ErrMerge { lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
-            }
-
-            // --- Generic SMT ---
-            SmtEq { t: _, lhs, rhs } | SmtNe { t: _, lhs, rhs } => {
-                called_fns.append(&mut self.collect_called_functions(lhs));
-                called_fns.append(&mut self.collect_called_functions(rhs));
             }
         }
         called_fns
@@ -1353,9 +1316,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             }
             Op::Intrinsic(native) => {
                 let intrinsic = match native.as_ref() {
-                    // ---------------------------------------------------------
-                    // Boolean
-                    // ---------------------------------------------------------
+                    // --- Boolean ---
                     Native::BoolVal(v) => Intrinsic::BoolVal(*v),
                     Native::BoolNot { val } => Intrinsic::BoolNot {
                         val: self.resolve(val, Some(&Sort::Boolean)),
@@ -1372,14 +1333,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         lhs: self.resolve(lhs, Some(&Sort::Boolean)),
                         rhs: self.resolve(rhs, Some(&Sort::Boolean)),
                     },
-                    Native::BoolImplies { lhs, rhs } => Intrinsic::BoolImplies {
-                        lhs: self.resolve(lhs, Some(&Sort::Boolean)),
-                        rhs: self.resolve(rhs, Some(&Sort::Boolean)),
-                    },
-                    Native::BoolIff { lhs, rhs } => Intrinsic::BoolIff {
-                        lhs: self.resolve(lhs, Some(&Sort::Boolean)),
-                        rhs: self.resolve(rhs, Some(&Sort::Boolean)),
-                    },
                     Native::BoolNand { lhs, rhs } => Intrinsic::BoolNand {
                         lhs: self.resolve(lhs, Some(&Sort::Boolean)),
                         rhs: self.resolve(rhs, Some(&Sort::Boolean)),
@@ -1392,29 +1345,24 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         lhs: self.resolve(lhs, Some(&Sort::Boolean)),
                         rhs: self.resolve(rhs, Some(&Sort::Boolean)),
                     },
+                    Native::BoolImplies { lhs, rhs } => Intrinsic::BoolImplies {
+                        lhs: self.resolve(lhs, Some(&Sort::Boolean)),
+                        rhs: self.resolve(rhs, Some(&Sort::Boolean)),
+                    },
+                    Native::BoolIff { lhs, rhs } => Intrinsic::BoolIff {
+                        lhs: self.resolve(lhs, Some(&Sort::Boolean)),
+                        rhs: self.resolve(rhs, Some(&Sort::Boolean)),
+                    },
+                    Native::BoolIte { cond, then, else_ } => Intrinsic::BoolIte {
+                        cond: self.resolve(cond, Some(&Sort::Boolean)),
+                        then: self.resolve(then, None),
+                        else_: self.resolve(else_, None),
+                    },
 
-                    // ---------------------------------------------------------
-                    // Integer
-                    // ---------------------------------------------------------
+                    // --- Integer ---
                     Native::IntVal(v) => Intrinsic::IntVal(v.clone()),
                     Native::IntNeg { val } => Intrinsic::IntNeg {
                         val: self.resolve(val, Some(&Sort::Integer)),
-                    },
-                    Native::IntLt { lhs, rhs } => Intrinsic::IntLt {
-                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
-                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
-                    },
-                    Native::IntLe { lhs, rhs } => Intrinsic::IntLe {
-                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
-                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
-                    },
-                    Native::IntGe { lhs, rhs } => Intrinsic::IntGe {
-                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
-                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
-                    },
-                    Native::IntGt { lhs, rhs } => Intrinsic::IntGt {
-                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
-                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
                     },
                     Native::IntAdd { lhs, rhs } => Intrinsic::IntAdd {
                         lhs: self.resolve(lhs, Some(&Sort::Integer)),
@@ -1432,6 +1380,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         lhs: self.resolve(lhs, Some(&Sort::Integer)),
                         rhs: self.resolve(rhs, Some(&Sort::Integer)),
                     },
+                    Native::IntDivTrunc { lhs, rhs } => Intrinsic::IntDivTrunc {
+                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
+                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
+                    },
                     Native::IntMod { lhs, rhs } => Intrinsic::IntMod {
                         lhs: self.resolve(lhs, Some(&Sort::Integer)),
                         rhs: self.resolve(rhs, Some(&Sort::Integer)),
@@ -1440,19 +1392,34 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         lhs: self.resolve(lhs, Some(&Sort::Integer)),
                         rhs: self.resolve(rhs, Some(&Sort::Integer)),
                     },
-                    Native::IntAbs { val } => Intrinsic::IntAbs {
-                        val: self.resolve(val, Some(&Sort::Integer)),
-                    },
                     Native::IntPow { base, exp } => Intrinsic::IntPow {
                         base: self.resolve(base, Some(&Sort::Integer)),
                         exp: self.resolve(exp, Some(&Sort::Integer)),
+                    },
+                    Native::IntAbs { val } => Intrinsic::IntAbs {
+                        val: self.resolve(val, Some(&Sort::Integer)),
                     },
                     Native::IntDivides { lhs, rhs } => Intrinsic::IntDivides {
                         lhs: self.resolve(lhs, Some(&Sort::Integer)),
                         rhs: self.resolve(rhs, Some(&Sort::Integer)),
                     },
-                    // Integer Conversions
-                    Native::IntToReal { val } => Intrinsic::IntoToReal {
+                    Native::IntLt { lhs, rhs } => Intrinsic::IntLt {
+                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
+                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
+                    },
+                    Native::IntLe { lhs, rhs } => Intrinsic::IntLe {
+                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
+                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
+                    },
+                    Native::IntGt { lhs, rhs } => Intrinsic::IntGt {
+                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
+                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
+                    },
+                    Native::IntGe { lhs, rhs } => Intrinsic::IntGe {
+                        lhs: self.resolve(lhs, Some(&Sort::Integer)),
+                        rhs: self.resolve(rhs, Some(&Sort::Integer)),
+                    },
+                    Native::IntToReal { val } => Intrinsic::IntToReal {
                         val: self.resolve(val, Some(&Sort::Integer)),
                     },
                     Native::IntToI32 { val } => Intrinsic::IntToI32 {
@@ -1473,7 +1440,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     Native::IntToF64 { val } => Intrinsic::IntToF64 {
                         val: self.resolve(val, Some(&Sort::Integer)),
                     },
-                    // Integer Parsing
                     Native::IntFromHex { val } => Intrinsic::IntFromHex {
                         val: self.resolve(val, Some(&Sort::String)),
                     },
@@ -1483,7 +1449,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     Native::IntFromBin { val } => Intrinsic::IntFromBin {
                         val: self.resolve(val, Some(&Sort::String)),
                     },
-                    // Integer Range Checks
                     Native::IntIsGtI64Max { val } => Intrinsic::IntIsGtI64Max {
                         val: self.resolve(val, Some(&Sort::Integer)),
                     },
@@ -1509,28 +1474,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         val: self.resolve(val, Some(&Sort::Integer)),
                     },
 
-                    // ---------------------------------------------------------
-                    // Rational / Real
-                    // ---------------------------------------------------------
+                    // --- Real ---
                     Native::RealVal(v) => Intrinsic::RealVal(v.clone()),
                     Native::RealNeg { val } => Intrinsic::RealNeg {
                         val: self.resolve(val, Some(&Sort::Real)),
-                    },
-                    Native::RealLt { lhs, rhs } => Intrinsic::RealLt {
-                        lhs: self.resolve(lhs, Some(&Sort::Real)),
-                        rhs: self.resolve(rhs, Some(&Sort::Real)),
-                    },
-                    Native::RealLe { lhs, rhs } => Intrinsic::RealLe {
-                        lhs: self.resolve(lhs, Some(&Sort::Real)),
-                        rhs: self.resolve(rhs, Some(&Sort::Real)),
-                    },
-                    Native::RealGe { lhs, rhs } => Intrinsic::RealGe {
-                        lhs: self.resolve(lhs, Some(&Sort::Real)),
-                        rhs: self.resolve(rhs, Some(&Sort::Real)),
-                    },
-                    Native::RealGt { lhs, rhs } => Intrinsic::RealGt {
-                        lhs: self.resolve(lhs, Some(&Sort::Real)),
-                        rhs: self.resolve(rhs, Some(&Sort::Real)),
                     },
                     Native::RealAdd { lhs, rhs } => Intrinsic::RealAdd {
                         lhs: self.resolve(lhs, Some(&Sort::Real)),
@@ -1567,6 +1514,22 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     Native::RealIsInt { val } => Intrinsic::RealIsInt {
                         val: self.resolve(val, Some(&Sort::Real)),
                     },
+                    Native::RealLt { lhs, rhs } => Intrinsic::RealLt {
+                        lhs: self.resolve(lhs, Some(&Sort::Real)),
+                        rhs: self.resolve(rhs, Some(&Sort::Real)),
+                    },
+                    Native::RealLe { lhs, rhs } => Intrinsic::RealLe {
+                        lhs: self.resolve(lhs, Some(&Sort::Real)),
+                        rhs: self.resolve(rhs, Some(&Sort::Real)),
+                    },
+                    Native::RealGt { lhs, rhs } => Intrinsic::RealGt {
+                        lhs: self.resolve(lhs, Some(&Sort::Real)),
+                        rhs: self.resolve(rhs, Some(&Sort::Real)),
+                    },
+                    Native::RealGe { lhs, rhs } => Intrinsic::RealGe {
+                        lhs: self.resolve(lhs, Some(&Sort::Real)),
+                        rhs: self.resolve(rhs, Some(&Sort::Real)),
+                    },
                     Native::RealToInt { val } => Intrinsic::RealToInt {
                         val: self.resolve(val, Some(&Sort::Real)),
                     },
@@ -1576,35 +1539,12 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     Native::RealToF64 { val } => Intrinsic::RealToF64 {
                         val: self.resolve(val, Some(&Sort::Real)),
                     },
-                    Native::RealNumer { val } => Intrinsic::RealRealer {
-                        val: self.resolve(val, Some(&Sort::Real)),
-                    },
-                    Native::RealDenom { val } => Intrinsic::RealDenom {
-                        val: self.resolve(val, Some(&Sort::Real)),
-                    },
 
-                    // ---------------------------------------------------------
-                    // String (Text)
-                    // ---------------------------------------------------------
+                    // --- String ---
                     Native::StrVal(v) => Intrinsic::StrVal(v.clone()),
-                    Native::StrLen { seq } => Intrinsic::StrLength {
+                    Native::StrNew => Intrinsic::StrNew,
+                    Native::StrLen { seq } => Intrinsic::StrLen {
                         seq: self.resolve(seq, Some(&Sort::String)),
-                    },
-                    Native::StrLt { lhs, rhs } => Intrinsic::StrLt {
-                        lhs: self.resolve(lhs, Some(&Sort::String)),
-                        rhs: self.resolve(rhs, Some(&Sort::String)),
-                    },
-                    Native::StrLe { lhs, rhs } => Intrinsic::StrLe {
-                        lhs: self.resolve(lhs, Some(&Sort::String)),
-                        rhs: self.resolve(rhs, Some(&Sort::String)),
-                    },
-                    Native::StrGt { lhs, rhs } => Intrinsic::StrGt {
-                        lhs: self.resolve(lhs, Some(&Sort::String)),
-                        rhs: self.resolve(rhs, Some(&Sort::String)),
-                    },
-                    Native::StrGe { lhs, rhs } => Intrinsic::StrGe {
-                        lhs: self.resolve(lhs, Some(&Sort::String)),
-                        rhs: self.resolve(rhs, Some(&Sort::String)),
                     },
                     Native::StrConcat { lhs, rhs } => Intrinsic::StrConcat {
                         lhs: self.resolve(lhs, Some(&Sort::String)),
@@ -1614,7 +1554,24 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         seq: self.resolve(seq, Some(&Sort::String)),
                         idx: self.resolve(idx, Some(&Sort::Integer)),
                     },
-                    Native::StrContains { seq, item } => Intrinsic::StrIncludes {
+                    Native::StrIndexOf { seq, sub, offset } => Intrinsic::StrIndexOf {
+                        seq: self.resolve(seq, Some(&Sort::String)),
+                        sub: self.resolve(sub, Some(&Sort::String)),
+                        offset: self.resolve(offset, Some(&Sort::Integer)),
+                    },
+                    Native::StrIndexOfDefault { seq, sub } => Intrinsic::StrIndexOfDefault {
+                        seq: self.resolve(seq, Some(&Sort::String)),
+                        sub: self.resolve(sub, Some(&Sort::String)),
+                    },
+                    Native::StrSubstr { seq, start, len } => Intrinsic::StrSubstr {
+                        seq: self.resolve(seq, Some(&Sort::String)),
+                        start: self.resolve(start, Some(&Sort::Integer)),
+                        len: self.resolve(len, Some(&Sort::Integer)),
+                    },
+                    Native::StrIsEmpty { seq } => Intrinsic::StrIsEmpty {
+                        seq: self.resolve(seq, Some(&Sort::String)),
+                    },
+                    Native::StrContains { seq, item } => Intrinsic::StrContains {
                         seq: self.resolve(seq, Some(&Sort::String)),
                         item: self.resolve(item, Some(&Sort::String)),
                     },
@@ -1626,16 +1583,24 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         seq: self.resolve(seq, Some(&Sort::String)),
                         item: self.resolve(item, Some(&Sort::String)),
                     },
-                    Native::StrIsEmpty { seq } => Intrinsic::StrIsEmpty {
-                        seq: self.resolve(seq, Some(&Sort::String)),
-                    },
                     Native::StrIsDigit { seq } => Intrinsic::StrIsDigit {
                         seq: self.resolve(seq, Some(&Sort::String)),
                     },
-                    Native::StrIndexOf { seq, sub, offset } => Intrinsic::StrIndexOf {
-                        seq: self.resolve(seq, Some(&Sort::String)),
-                        sub: self.resolve(sub, Some(&Sort::String)),
-                        offset: self.resolve(offset, Some(&Sort::Integer)),
+                    Native::StrLe { lhs, rhs } => Intrinsic::StrLe {
+                        lhs: self.resolve(lhs, Some(&Sort::String)),
+                        rhs: self.resolve(rhs, Some(&Sort::String)),
+                    },
+                    Native::StrLt { lhs, rhs } => Intrinsic::StrLt {
+                        lhs: self.resolve(lhs, Some(&Sort::String)),
+                        rhs: self.resolve(rhs, Some(&Sort::String)),
+                    },
+                    Native::StrGe { lhs, rhs } => Intrinsic::StrGe {
+                        lhs: self.resolve(lhs, Some(&Sort::String)),
+                        rhs: self.resolve(rhs, Some(&Sort::String)),
+                    },
+                    Native::StrGt { lhs, rhs } => Intrinsic::StrGt {
+                        lhs: self.resolve(lhs, Some(&Sort::String)),
+                        rhs: self.resolve(rhs, Some(&Sort::String)),
                     },
                     Native::StrReplace { seq, src, dst } => Intrinsic::StrReplace {
                         seq: self.resolve(seq, Some(&Sort::String)),
@@ -1660,219 +1625,206 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         val: self.resolve(val, Some(&Sort::String)),
                     },
 
-                    // ---------------------------------------------------------
-                    // Cloak
-                    // ---------------------------------------------------------
+                    // --- Cloak ---
                     Native::BoxShield { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::BoxShield { t: sort, val }
+                        Intrinsic::BoxShield {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::BoxReveal { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, None);
-                        Intrinsic::BoxReveal { t: sort, val }
+                        Intrinsic::BoxReveal {
+                            t: sort,
+                            val: self.resolve(val, None),
+                        }
                     }
 
-                    // ---------------------------------------------------------
-                    // Sequence
-                    // ---------------------------------------------------------
-                    Native::SeqEmpty { t } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::SeqEmpty { t: sort }
-                    }
-                    Native::SeqLen { t, seq } => {
-                        let sort = self.parent.resolve_type(t);
-                        let seq = self.resolve(seq, None);
-                        Intrinsic::SeqLength { t: sort, seq }
-                    }
+                    // --- Sequence ---
+                    Native::SeqEmpty { t } => Intrinsic::SeqEmpty {
+                        t: self.parent.resolve_type(t),
+                    },
                     Native::SeqUnit { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::SeqUnit { t: sort, val }
+                        Intrinsic::SeqUnit {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
+                    Native::SeqLen { t, seq } => Intrinsic::SeqLen {
+                        t: self.parent.resolve_type(t),
+                        seq: self.resolve(seq, None),
+                    },
                     Native::SeqPush { t, seq, item } => {
                         let sort = self.parent.resolve_type(t);
-                        let seq = self.resolve(seq, None);
-                        let item = self.resolve(item, Some(&sort));
-                        Intrinsic::SeqAppend { t: sort, seq, item }
+                        Intrinsic::SeqPush {
+                            t: sort.clone(),
+                            seq: self.resolve(seq, None),
+                            item: self.resolve(item, Some(&sort)),
+                        }
                     }
-                    Native::SeqNth { t, seq, idx } => {
-                        let sort = self.parent.resolve_type(t);
-                        let seq = self.resolve(seq, None);
-                        let idx = self.resolve(idx, Some(&Sort::Integer));
-                        Intrinsic::SeqNth { t: sort, seq, idx }
-                    }
+                    Native::SeqConcat { t, lhs, rhs } => Intrinsic::SeqConcat {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SeqNth { t, seq, idx } => Intrinsic::SeqNth {
+                        t: self.parent.resolve_type(t),
+                        seq: self.resolve(seq, None),
+                        idx: self.resolve(idx, Some(&Sort::Integer)),
+                    },
+                    Native::SeqAtSeq { t, seq, idx } => Intrinsic::SeqAtSeq {
+                        t: self.parent.resolve_type(t),
+                        seq: self.resolve(seq, None),
+                        idx: self.resolve(idx, Some(&Sort::Integer)),
+                    },
                     Native::SeqExtract {
                         t,
                         seq,
                         offset,
                         len,
-                    } => {
-                        let sort = self.parent.resolve_type(t);
-                        let seq = self.resolve(seq, None);
-                        let offset = self.resolve(offset, Some(&Sort::Integer));
-                        let len = self.resolve(len, Some(&Sort::Integer));
-                        Intrinsic::SeqExtract {
-                            t: sort,
-                            seq,
-                            offset,
-                            len,
-                        }
-                    }
-                    Native::SeqConcat { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SeqConcat { t: sort, lhs, rhs }
-                    }
+                    } => Intrinsic::SeqExtract {
+                        t: self.parent.resolve_type(t),
+                        seq: self.resolve(seq, None),
+                        offset: self.resolve(offset, Some(&Sort::Integer)),
+                        len: self.resolve(len, Some(&Sort::Integer)),
+                    },
+                    Native::SeqIndexOf {
+                        t,
+                        seq,
+                        sub,
+                        offset,
+                    } => Intrinsic::SeqIndexOf {
+                        t: self.parent.resolve_type(t),
+                        seq: self.resolve(seq, None),
+                        sub: self.resolve(sub, None),
+                        offset: self.resolve(offset, Some(&Sort::Integer)),
+                    },
+                    Native::SeqIndexOfDefault { t, seq, sub } => Intrinsic::SeqIndexOfDefault {
+                        t: self.parent.resolve_type(t),
+                        seq: self.resolve(seq, None),
+                        sub: self.resolve(sub, None),
+                    },
                     Native::SeqContains { t, seq, item } => {
                         let sort = self.parent.resolve_type(t);
-                        let seq = self.resolve(seq, None);
-                        let item = self.resolve(item, Some(&sort));
-                        Intrinsic::SeqIncludes { t: sort, seq, item }
-                    }
-                    Native::SeqPrefixOf { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SeqPrefixOf { t: sort, lhs, rhs }
-                    }
-                    Native::SeqSuffixOf { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SeqSuffixOf { t: sort, lhs, rhs }
-                    }
-                    Native::SeqReplace { t, seq, src, dst } => {
-                        let sort = self.parent.resolve_type(t);
-                        let seq = self.resolve(seq, None);
-                        let src = self.resolve(src, Some(&sort));
-                        let dst = self.resolve(dst, Some(&sort));
-                        Intrinsic::SeqReplace {
-                            t: sort,
-                            seq,
-                            src,
-                            dst,
+                        Intrinsic::SeqContains {
+                            t: sort.clone(),
+                            seq: self.resolve(seq, None),
+                            item: self.resolve(item, Some(&sort)),
                         }
                     }
-                    Native::SeqIsEmpty { t, seq } => {
+                    Native::SeqPrefixOf { t, lhs, rhs } => Intrinsic::SeqPrefixOf {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SeqSuffixOf { t, lhs, rhs } => Intrinsic::SeqSuffixOf {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SeqReplace { t, seq, src, dst } => {
                         let sort = self.parent.resolve_type(t);
-                        let seq = self.resolve(seq, None);
-                        Intrinsic::SeqIsEmpty { t: sort, seq }
+                        Intrinsic::SeqReplace {
+                            t: sort.clone(),
+                            seq: self.resolve(seq, None),
+                            src: self.resolve(src, Some(&sort)),
+                            dst: self.resolve(dst, Some(&sort)),
+                        }
                     }
+                    Native::SeqIsEmpty { t, seq } => Intrinsic::SeqIsEmpty {
+                        t: self.parent.resolve_type(t),
+                        seq: self.resolve(seq, None),
+                    },
 
-                    // ---------------------------------------------------------
-                    // Set
-                    // ---------------------------------------------------------
-                    Native::SetEmpty { t } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::SetEmpty { t: sort }
-                    }
-                    Native::SetLen { t, set } => {
-                        let sort = self.parent.resolve_type(t);
-                        let set = self.resolve(set, None);
-                        Intrinsic::SetLength { t: sort, set }
-                    }
+                    // --- Set ---
+                    Native::SetEmpty { t } => Intrinsic::SetEmpty {
+                        t: self.parent.resolve_type(t),
+                    },
+                    Native::SetLen { t, set } => Intrinsic::SetLen {
+                        t: self.parent.resolve_type(t),
+                        set: self.resolve(set, None),
+                    },
                     Native::SetInsert { t, set, item } => {
                         let sort = self.parent.resolve_type(t);
-                        let set = self.resolve(set, None);
-                        let item = self.resolve(item, Some(&sort));
-                        Intrinsic::SetInsert { t: sort, set, item }
+                        Intrinsic::SetInsert {
+                            t: sort.clone(),
+                            set: self.resolve(set, None),
+                            item: self.resolve(item, Some(&sort)),
+                        }
                     }
                     Native::SetRemove { t, set, item } => {
                         let sort = self.parent.resolve_type(t);
-                        let set = self.resolve(set, None);
-                        let item = self.resolve(item, Some(&sort));
-                        Intrinsic::SetRemove { t: sort, set, item }
+                        Intrinsic::SetRemove {
+                            t: sort.clone(),
+                            set: self.resolve(set, None),
+                            item: self.resolve(item, Some(&sort)),
+                        }
                     }
                     Native::SetContains { t, set, item } => {
                         let sort = self.parent.resolve_type(t);
-                        let set = self.resolve(set, None);
-                        let item = self.resolve(item, Some(&sort));
-                        Intrinsic::SetContains { t: sort, set, item }
+                        Intrinsic::SetContains {
+                            t: sort.clone(),
+                            set: self.resolve(set, None),
+                            item: self.resolve(item, Some(&sort)),
+                        }
                     }
-                    Native::SetIntersect { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetIntersection { t: sort, lhs, rhs }
-                    }
-                    Native::SetUnion { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetUnion { t: sort, lhs, rhs }
-                    }
-                    Native::SetDiff { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetDifference { t: sort, lhs, rhs }
-                    }
-                    Native::SetSymDiff { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetSymDiff { t: sort, lhs, rhs }
-                    }
-                    Native::SetIsSubset { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetIsSubset { t: sort, lhs, rhs }
-                    }
-                    Native::SetIsProperSubset { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetIsProperSubset { t: sort, lhs, rhs }
-                    }
-                    Native::SetIsSuperset { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetIsSuperset { t: sort, lhs, rhs }
-                    }
-                    Native::SetIsDisjoint { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, None);
-                        let rhs = self.resolve(rhs, None);
-                        Intrinsic::SetIsDisjoint { t: sort, lhs, rhs }
-                    }
-                    Native::SetHasSize { t, set, size } => {
-                        let sort = self.parent.resolve_type(t);
-                        let set = self.resolve(set, None);
-                        let size = self.resolve(size, Some(&Sort::Integer));
-                        Intrinsic::SetHasSize { t: sort, set, size }
-                    }
-                    Native::SetIsEmpty { t, set } => {
-                        let sort = self.parent.resolve_type(t);
-                        let set = self.resolve(set, None);
-                        Intrinsic::SetIsEmpty { t: sort, set }
-                    }
+                    Native::SetIsEmpty { t, set } => Intrinsic::SetIsEmpty {
+                        t: self.parent.resolve_type(t),
+                        set: self.resolve(set, None),
+                    },
+                    Native::SetIntersect { t, lhs, rhs } => Intrinsic::SetIntersect {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SetUnion { t, lhs, rhs } => Intrinsic::SetUnion {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SetDiff { t, lhs, rhs } => Intrinsic::SetDiff {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SetSymDiff { t, lhs, rhs } => Intrinsic::SetSymDiff {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SetIsSubset { t, lhs, rhs } => Intrinsic::SetIsSubset {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SetIsProperSubset { t, lhs, rhs } => Intrinsic::SetIsProperSubset {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SetIsDisjoint { t, lhs, rhs } => Intrinsic::SetIsDisjoint {
+                        t: self.parent.resolve_type(t),
+                        lhs: self.resolve(lhs, None),
+                        rhs: self.resolve(rhs, None),
+                    },
+                    Native::SetHasSize { t, set, size } => Intrinsic::SetHasSize {
+                        t: self.parent.resolve_type(t),
+                        set: self.resolve(set, None),
+                        size: self.resolve(size, Some(&Sort::Integer)),
+                    },
 
-                    // ---------------------------------------------------------
-                    // Map / Array
-                    // ---------------------------------------------------------
-                    Native::ArrayEmpty { k, v } => {
-                        let k_sort = self.parent.resolve_type(k);
-                        let v_sort = self.parent.resolve_type(v);
-                        Intrinsic::MapEmpty {
-                            k: k_sort,
-                            v: v_sort,
-                        }
-                    }
-                    Native::ArrayLen { k, v, arr } => {
-                        let k_sort = self.parent.resolve_type(k);
-                        let v_sort = self.parent.resolve_type(v);
-                        let map = self.resolve(arr, None);
-                        Intrinsic::MapLength {
-                            k: k_sort,
-                            v: v_sort,
-                            map,
-                        }
-                    }
+                    // --- Array (Map) ---
+                    Native::ArrayEmpty { k, v } => Intrinsic::ArrayEmpty {
+                        k: self.parent.resolve_type(k),
+                        v: self.parent.resolve_type(v),
+                    },
+                    Native::ArrayLen { k, v, arr } => Intrinsic::ArrayLen {
+                        k: self.parent.resolve_type(k),
+                        v: self.parent.resolve_type(v),
+                        arr: self.resolve(arr, None),
+                    },
                     Native::ArrayStore {
                         k,
                         v,
@@ -1882,443 +1834,541 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     } => {
                         let k_sort = self.parent.resolve_type(k);
                         let v_sort = self.parent.resolve_type(v);
-                        let map = self.resolve(arr, None);
-                        let key = self.resolve(key, Some(&k_sort));
-                        let val = self.resolve(val, Some(&v_sort));
-                        Intrinsic::MapPut {
-                            k: k_sort,
-                            v: v_sort,
-                            map,
-                            key,
-                            val,
+                        Intrinsic::ArrayStore {
+                            k: k_sort.clone(),
+                            v: v_sort.clone(),
+                            arr: self.resolve(arr, None),
+                            key: self.resolve(key, Some(&k_sort)),
+                            val: self.resolve(val, Some(&v_sort)),
                         }
                     }
                     Native::ArraySelect { k, v, arr, key } => {
                         let k_sort = self.parent.resolve_type(k);
-                        let v_sort = self.parent.resolve_type(v);
-                        let map = self.resolve(arr, None);
-                        let key = self.resolve(key, Some(&k_sort));
-                        Intrinsic::MapGet {
-                            k: k_sort,
-                            v: v_sort,
-                            map,
-                            key,
+                        Intrinsic::ArraySelect {
+                            k: k_sort.clone(),
+                            v: self.parent.resolve_type(v),
+                            arr: self.resolve(arr, None),
+                            key: self.resolve(key, Some(&k_sort)),
                         }
                     }
                     Native::ArrayRemove { k, v, arr, key } => {
                         let k_sort = self.parent.resolve_type(k);
-                        let v_sort = self.parent.resolve_type(v);
-                        let map = self.resolve(arr, None);
-                        let key = self.resolve(key, Some(&k_sort));
-                        Intrinsic::MapDel {
-                            k: k_sort,
-                            v: v_sort,
-                            map,
-                            key,
+                        Intrinsic::ArrayRemove {
+                            k: k_sort.clone(),
+                            v: self.parent.resolve_type(v),
+                            arr: self.resolve(arr, None),
+                            key: self.resolve(key, Some(&k_sort)),
                         }
                     }
                     Native::ArrayContainsKey { k, v, arr, key } => {
                         let k_sort = self.parent.resolve_type(k);
-                        let v_sort = self.parent.resolve_type(v);
-                        let map = self.resolve(arr, None);
-                        let key = self.resolve(key, Some(&k_sort));
-                        Intrinsic::MapContainsKey {
-                            k: k_sort,
-                            v: v_sort,
-                            map,
-                            key,
+                        Intrinsic::ArrayContainsKey {
+                            k: k_sort.clone(),
+                            v: self.parent.resolve_type(v),
+                            arr: self.resolve(arr, None),
+                            key: self.resolve(key, Some(&k_sort)),
                         }
                     }
-                    Native::ArrayIsEmpty { k, v, arr } => {
-                        let k_sort = self.parent.resolve_type(k);
-                        let v_sort = self.parent.resolve_type(v);
-                        let map = self.resolve(arr, None);
-                        Intrinsic::MapIsEmpty {
-                            k: k_sort,
-                            v: v_sort,
-                            map,
-                        }
-                    }
+                    Native::ArrayIsEmpty { k, v, arr } => Intrinsic::ArrayIsEmpty {
+                        k: self.parent.resolve_type(k),
+                        v: self.parent.resolve_type(v),
+                        arr: self.resolve(arr, None),
+                    },
 
-                    // ---------------------------------------------------------
-                    // Bitvector (Bv)
-                    // ---------------------------------------------------------
-                    Native::BvVal { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        let v = val.to_u64_digits().1.first().copied().unwrap_or(0);
-                        Intrinsic::BvVal { t: sort, val: v }
-                    }
+                    // --- Bitvector ---
+                    Native::BvVal { t, val } => Intrinsic::BvVal {
+                        t: self.parent.resolve_type(t),
+                        val: val.clone(),
+                    },
                     Native::BvNot { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::BvNot { t: sort, val }
-                    }
-                    Native::BvNeg { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::BvNeg { t: sort, val }
+                        Intrinsic::BvNot {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::BvAnd { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvAnd { t: sort, lhs, rhs }
+                        Intrinsic::BvAnd {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::BvOr { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvOr { t: sort, lhs, rhs }
+                        Intrinsic::BvOr {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::BvXor { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvXor { t: sort, lhs, rhs }
+                        Intrinsic::BvXor {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::BvNand { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvNand { t: sort, lhs, rhs }
+                        Intrinsic::BvNand {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::BvNor { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvNor { t: sort, lhs, rhs }
+                        Intrinsic::BvNor {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::BvXnor { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvXnor { t: sort, lhs, rhs }
-                    }
-                    Native::BvAdd { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvAdd { t: sort, lhs, rhs }
-                    }
-                    Native::BvSub { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvSub { t: sort, lhs, rhs }
-                    }
-                    Native::BvMul { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvMul { t: sort, lhs, rhs }
-                    }
-                    Native::BvDiv { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvDiv { t: sort, lhs, rhs }
-                    }
-                    Native::BvRem { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvRem { t: sort, lhs, rhs }
-                    }
-                    Native::BvMod { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvMod { t: sort, lhs, rhs }
-                    }
-                    Native::BvShl { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvShl { t: sort, lhs, rhs }
-                    }
-                    Native::BvLshr { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvLshr { t: sort, lhs, rhs }
-                    }
-                    Native::BvAshr { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvAshr { t: sort, lhs, rhs }
-                    }
-                    Native::BvRotLeft { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvRotLeft { t: sort, lhs, rhs }
-                    }
-                    Native::BvRotRight { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvRotRight { t: sort, lhs, rhs }
-                    }
-                    Native::BvLt { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvLt { t: sort, lhs, rhs }
-                    }
-                    Native::BvLe { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvLe { t: sort, lhs, rhs }
-                    }
-                    Native::BvGt { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvGt { t: sort, lhs, rhs }
-                    }
-                    Native::BvGe { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvGe { t: sort, lhs, rhs }
+                        Intrinsic::BvXnor {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::BvRedAnd { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::BvRedAnd { t: sort, val }
+                        Intrinsic::BvRedAnd {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::BvRedOr { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::BvRedOr { t: sort, val }
+                        Intrinsic::BvRedOr {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::BvNeg { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvNeg {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::BvAdd { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvAdd {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvSub { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvSub {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvMul { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvMul {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvDiv { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvDiv {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvRem { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvRem {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvMod { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvMod {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvShl { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvShl {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvLshr { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvLshr {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvAshr { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvAshr {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvRotLeft { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvRotLeft {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvRotRight { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvRotRight {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvLt { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvLt {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvLe { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvLe {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvGt { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvGt {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::BvGe { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::BvGe {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::BvToInt { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::BvToInt { t: sort, val }
-                    }
-                    Native::BvAddNoOverflow { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvAddNoOverflow { t: sort, lhs, rhs }
-                    }
-                    Native::BvSubNoOverflow { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvSubNoOverflow { t: sort, lhs, rhs }
-                    }
-                    Native::BvNegNoOverflow { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::BvNegNoOverflow { t: sort, val }
-                    }
-                    Native::BvMulNoOverflow { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvMulNoOverflow { t: sort, lhs, rhs }
-                    }
-                    Native::BvDivNoOverflow { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::BvDivNoOverflow { t: sort, lhs, rhs }
-                    }
-
-                    // ---------------------------------------------------------
-                    // Float (F32, F64)
-                    // ---------------------------------------------------------
-                    Native::FloatVal { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::FloatVal {
-                            t: sort,
-                            val: val.clone(),
+                        Intrinsic::BvToInt {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
                         }
                     }
-                    Native::FloatNaN { t } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::FloatNaN { t: sort }
-                    }
-                    Native::FloatPosInf { t } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::FloatPosInf { t: sort }
-                    }
-                    Native::FloatNegInf { t } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::FloatNegInf { t: sort }
-                    }
-                    Native::FloatPosZero { t } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::FloatPosZero { t: sort }
-                    }
-                    Native::FloatNegZero { t } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::FloatNegZero { t: sort }
-                    }
-                    Native::FloatNeg { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatNeg { t: sort, val }
-                    }
-                    Native::FloatAbs { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatAbs { t: sort, val }
-                    }
-                    Native::FloatSqrt { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatSqrt { t: sort, val }
-                    }
+
+                    // --- Floating Point ---
+                    Native::FloatVal { t, val } => Intrinsic::FloatVal {
+                        t: self.parent.resolve_type(t),
+                        val: val.clone(),
+                    },
                     Native::FloatAdd { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatAdd { t: sort, lhs, rhs }
+                        Intrinsic::FloatAdd {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatSub { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatSub { t: sort, lhs, rhs }
+                        Intrinsic::FloatSub {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatMul { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatMul { t: sort, lhs, rhs }
+                        Intrinsic::FloatMul {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatDiv { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatDiv { t: sort, lhs, rhs }
+                        Intrinsic::FloatDiv {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::FloatNeg { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatNeg {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatAbs { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatAbs {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatRem { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatRem { t: sort, lhs, rhs }
+                        Intrinsic::FloatRem {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::FloatSqrt { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatSqrt {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatMin { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatMin { t: sort, lhs, rhs }
+                        Intrinsic::FloatMin {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatMax { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatMax { t: sort, lhs, rhs }
+                        Intrinsic::FloatMax {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatIsNaN { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatIsNaN { t: sort, val }
+                        Intrinsic::FloatIsNaN {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatIsInf { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatIsInf { t: sort, val }
+                        Intrinsic::FloatIsInf {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatIsZero { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatIsZero { t: sort, val }
+                        Intrinsic::FloatIsZero {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatIsNormal { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatIsNormal { t: sort, val }
+                        Intrinsic::FloatIsNormal {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatIsSubnormal { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatIsSubnormal { t: sort, val }
+                        Intrinsic::FloatIsSubnormal {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatIsNeg { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatIsNeg { t: sort, val }
+                        Intrinsic::FloatIsNeg {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatIsPos { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatIsPos { t: sort, val }
+                        Intrinsic::FloatIsPos {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatLt { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatLt { t: sort, lhs, rhs }
+                        Intrinsic::FloatLt {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatLe { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatLe { t: sort, lhs, rhs }
+                        Intrinsic::FloatLe {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatGt { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatGt { t: sort, lhs, rhs }
+                        Intrinsic::FloatGt {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::FloatGe { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::FloatGe { t: sort, lhs, rhs }
+                        Intrinsic::FloatGe {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
+                    Native::FloatNaN { t } => Intrinsic::FloatNaN {
+                        t: self.parent.resolve_type(t),
+                    },
+                    Native::FloatPosInf { t } => Intrinsic::FloatPosInf {
+                        t: self.parent.resolve_type(t),
+                    },
+                    Native::FloatNegInf { t } => Intrinsic::FloatNegInf {
+                        t: self.parent.resolve_type(t),
+                    },
+                    Native::FloatPosZero { t } => Intrinsic::FloatPosZero {
+                        t: self.parent.resolve_type(t),
+                    },
+                    Native::FloatNegZero { t } => Intrinsic::FloatNegZero {
+                        t: self.parent.resolve_type(t),
+                    },
                     Native::FloatToInt { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatToInt { t: sort, val }
+                        Intrinsic::FloatToInt {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
                     }
                     Native::FloatToReal { t, val } => {
                         let sort = self.parent.resolve_type(t);
-                        let val = self.resolve(val, Some(&sort));
-                        Intrinsic::FloatToReal { t: sort, val }
+                        Intrinsic::FloatToReal {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatToU32 { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatToU32 {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatToI32 { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatToI32 {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatToU64 { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatToU64 {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatToI64 { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatToI64 {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatCeil { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatCeil {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatFloor { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatFloor {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatTrunc { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatTrunc {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatNearest { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatNearest {
+                            t: sort.clone(),
+                            val: self.resolve(val, Some(&sort)),
+                        }
+                    }
+                    Native::FloatFqEq { t, lhs, rhs } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatFqEq {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
+                    }
+                    Native::FloatFromHexStr { t, val } => {
+                        let sort = self.parent.resolve_type(t);
+                        Intrinsic::FloatFromHexStr {
+                            t: sort,
+                            val: self.resolve(val, Some(&Sort::String)),
+                        }
                     }
 
-                    // ---------------------------------------------------------
-                    // Error / Generic
-                    // ---------------------------------------------------------
-                    Native::ErrFresh => {
-                        // Assign a unique error ID for this Error::fresh() call
-                        let error_id = self.parent.ir.error_locations.len();
-                        
-                        // TODO: Track source location information if available
-                        // For now, we use placeholder values
-                        self.parent.ir.error_locations.push(crate::ir::ctxt::ErrorLocation {
-                            error_id,
-                            file_name: "unknown".to_string(),
-                            line_number: 0,
-                            function_name: "unknown".to_string(),
-                        });
-                        
-                        Intrinsic::ErrFresh { error_id }
-                    }
+                    // --- Error / SMT ---
+                    Native::ErrFresh => Intrinsic::ErrFresh,
                     Native::ErrMerge { lhs, rhs } => Intrinsic::ErrMerge {
                         lhs: self.resolve(lhs, None),
                         rhs: self.resolve(rhs, None),
                     },
                     Native::SmtEq { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::SmtEq { t: sort, lhs, rhs }
+                        Intrinsic::SmtEq {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                     Native::SmtNe { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
-                        let lhs = self.resolve(lhs, Some(&sort));
-                        let rhs = self.resolve(rhs, Some(&sort));
-                        Intrinsic::SmtNe { t: sort, lhs, rhs }
+                        Intrinsic::SmtNe {
+                            t: sort.clone(),
+                            lhs: self.resolve(lhs, Some(&sort)),
+                            rhs: self.resolve(rhs, Some(&sort)),
+                        }
                     }
                 };
                 Expression::Intrinsic(Box::new(intrinsic))
@@ -2488,7 +2538,8 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::BoolIff { .. }
                 | Intrinsic::BoolNand { .. }
                 | Intrinsic::BoolNor { .. }
-                | Intrinsic::BoolXnor { .. } => Sort::Boolean,
+                | Intrinsic::BoolXnor { .. }
+                | Intrinsic::BoolIte { .. } => Sort::Boolean,
 
                 // -------------------------------------------------------------
                 // Integer
@@ -2499,6 +2550,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::IntSub { .. }
                 | Intrinsic::IntMul { .. }
                 | Intrinsic::IntDiv { .. }
+                | Intrinsic::IntDivTrunc { .. }
                 | Intrinsic::IntMod { .. }
                 | Intrinsic::IntRem { .. }
                 | Intrinsic::IntPow { .. }
@@ -2511,7 +2563,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::IntDivides { .. } => Sort::Boolean,
 
                 // Integer Conversions
-                Intrinsic::IntoToReal { .. } => Sort::Real,
+                Intrinsic::IntToReal { .. } => Sort::Real,
                 Intrinsic::IntToI32 { .. } => Sort::I32,
                 Intrinsic::IntToI64 { .. } => Sort::I64,
                 Intrinsic::IntToU32 { .. } => Sort::U32,
@@ -2535,7 +2587,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::IntIsGtU32Max { .. } => Sort::Boolean,
 
                 // -------------------------------------------------------------
-                // Real (Rational)
+                // Real
                 // -------------------------------------------------------------
                 Intrinsic::RealVal(_)
                 | Intrinsic::RealNeg { .. }
@@ -2549,9 +2601,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 Intrinsic::RealRound { .. }
                 | Intrinsic::RealFloor { .. }
                 | Intrinsic::RealCeil { .. }
-                | Intrinsic::RealToInt { .. }
-                | Intrinsic::RealRealer { .. } // Numerator
-                | Intrinsic::RealDenom { .. } => Sort::Integer,
+                | Intrinsic::RealToInt { .. } => Sort::Integer,
 
                 Intrinsic::RealLt { .. }
                 | Intrinsic::RealLe { .. }
@@ -2566,15 +2616,18 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 // String
                 // -------------------------------------------------------------
                 Intrinsic::StrVal(_)
+                | Intrinsic::StrNew
                 | Intrinsic::StrConcat { .. }
                 | Intrinsic::StrAt { .. }
+                | Intrinsic::StrSubstr { .. }
                 | Intrinsic::StrReplace { .. }
                 | Intrinsic::StrReplaceAll { .. }
                 | Intrinsic::StrFromInt { .. }
                 | Intrinsic::StrFromCode { .. } => Sort::String,
 
-                Intrinsic::StrLength { .. }
+                Intrinsic::StrLen { .. }
                 | Intrinsic::StrIndexOf { .. }
+                | Intrinsic::StrIndexOfDefault { .. }
                 | Intrinsic::StrToInt { .. } => Sort::Integer,
 
                 Intrinsic::StrToCode { .. } => Sort::U32,
@@ -2584,7 +2637,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::StrGt { .. }
                 | Intrinsic::StrGe { .. }
                 | Intrinsic::StrIsEmpty { .. }
-                | Intrinsic::StrIncludes { .. }
+                | Intrinsic::StrContains { .. }
                 | Intrinsic::StrStartsWith { .. }
                 | Intrinsic::StrEndsWith { .. }
                 | Intrinsic::StrIsDigit { .. } => Sort::Boolean,
@@ -2600,17 +2653,19 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 // -------------------------------------------------------------
                 Intrinsic::SeqEmpty { t }
                 | Intrinsic::SeqUnit { t, .. }
-                | Intrinsic::SeqAppend { t, .. }
+                | Intrinsic::SeqPush { t, .. }
                 | Intrinsic::SeqExtract { t, .. }
                 | Intrinsic::SeqConcat { t, .. }
+                | Intrinsic::SeqAtSeq { t, .. }
                 | Intrinsic::SeqReplace { t, .. } => Sort::Seq(Box::new(t.clone())),
 
-                Intrinsic::SeqAt { t, .. }
-                | Intrinsic::SeqNth { t, .. } => t.clone(),
+                Intrinsic::SeqNth { t, .. } => t.clone(),
 
-                Intrinsic::SeqLength { .. } => Sort::Integer,
+                Intrinsic::SeqLen { .. }
+                | Intrinsic::SeqIndexOf { .. }
+                | Intrinsic::SeqIndexOfDefault { .. } => Sort::Integer,
 
-                Intrinsic::SeqIncludes { .. }
+                Intrinsic::SeqContains { .. }
                 | Intrinsic::SeqPrefixOf { .. }
                 | Intrinsic::SeqSuffixOf { .. }
                 | Intrinsic::SeqIsEmpty { .. } => Sort::Boolean,
@@ -2621,34 +2676,34 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 Intrinsic::SetEmpty { t }
                 | Intrinsic::SetInsert { t, .. }
                 | Intrinsic::SetRemove { t, .. }
-                | Intrinsic::SetIntersection { t, .. }
+                | Intrinsic::SetIntersect { t, .. }
                 | Intrinsic::SetUnion { t, .. }
-                | Intrinsic::SetDifference { t, .. }
+                | Intrinsic::SetDiff { t, .. }
                 | Intrinsic::SetSymDiff { t, .. } => Sort::Set(Box::new(t.clone())),
 
-                Intrinsic::SetLength { .. } => Sort::Integer,
+                Intrinsic::SetLen { .. } => Sort::Integer,
 
                 Intrinsic::SetContains { .. }
                 | Intrinsic::SetIsEmpty { .. }
                 | Intrinsic::SetIsSubset { .. }
                 | Intrinsic::SetIsProperSubset { .. }
-                | Intrinsic::SetIsSuperset { .. }
                 | Intrinsic::SetIsDisjoint { .. }
                 | Intrinsic::SetHasSize { .. } => Sort::Boolean,
 
                 // -------------------------------------------------------------
-                // Map / Array
+                // Array
                 // -------------------------------------------------------------
-                Intrinsic::MapEmpty { k, v }
-                | Intrinsic::MapPut { k, v, .. }
-                | Intrinsic::MapDel { k, v, .. } => {
+                Intrinsic::ArrayEmpty { k, v }
+                | Intrinsic::ArrayStore { k, v, .. }
+                | Intrinsic::ArrayRemove { k, v, .. } => {
                     Sort::Array(Box::new(k.clone()), Box::new(v.clone()))
                 }
 
-                Intrinsic::MapGet { v, .. } => v.clone(),
-                Intrinsic::MapLength { .. } => Sort::Integer,
-                Intrinsic::MapContainsKey { .. }
-                | Intrinsic::MapIsEmpty { .. } => Sort::Boolean,
+                Intrinsic::ArraySelect { v, .. } => v.clone(),
+                Intrinsic::ArrayLen { .. } => Sort::Integer,
+                Intrinsic::ArrayContainsKey { .. } | Intrinsic::ArrayIsEmpty { .. } => {
+                    Sort::Boolean
+                }
 
                 // -------------------------------------------------------------
                 // Bitvector
@@ -2679,12 +2734,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::BvGt { .. }
                 | Intrinsic::BvGe { .. }
                 | Intrinsic::BvRedAnd { .. }
-                | Intrinsic::BvRedOr { .. }
-                | Intrinsic::BvAddNoOverflow { .. }
-                | Intrinsic::BvSubNoOverflow { .. }
-                | Intrinsic::BvNegNoOverflow { .. }
-                | Intrinsic::BvMulNoOverflow { .. }
-                | Intrinsic::BvDivNoOverflow { .. } => Sort::Boolean,
+                | Intrinsic::BvRedOr { .. } => Sort::Boolean,
 
                 Intrinsic::BvToInt { .. } => Sort::Integer,
 
@@ -2718,19 +2768,27 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::FloatLt { .. }
                 | Intrinsic::FloatLe { .. }
                 | Intrinsic::FloatGt { .. }
-                | Intrinsic::FloatGe { .. } => Sort::Boolean,
+                | Intrinsic::FloatGe { .. }
+                | Intrinsic::FloatFqEq { .. } => Sort::Boolean,
 
                 Intrinsic::FloatToInt { .. } => Sort::Integer,
                 Intrinsic::FloatToReal { .. } => Sort::Real,
+                Intrinsic::FloatToU32 { .. } => Sort::U32,
+                Intrinsic::FloatToI32 { .. } => Sort::I32,
+                Intrinsic::FloatToU64 { .. } => Sort::U64,
+                Intrinsic::FloatToI64 { .. } => Sort::I64,
+                Intrinsic::FloatCeil { .. }
+                | Intrinsic::FloatFloor { .. }
+                | Intrinsic::FloatTrunc { .. }
+                | Intrinsic::FloatNearest { .. } => Sort::Integer,
+                Intrinsic::FloatFromHexStr { t, .. } => t.clone(),
 
                 // -------------------------------------------------------------
                 // Error / Generic
                 // -------------------------------------------------------------
-                Intrinsic::ErrFresh { .. }
-                | Intrinsic::ErrMerge { .. } => Sort::Error,
+                Intrinsic::ErrFresh | Intrinsic::ErrMerge { .. } => Sort::Error,
 
-                Intrinsic::SmtEq { .. }
-                | Intrinsic::SmtNe { .. } => Sort::Boolean,
+                Intrinsic::SmtEq { .. } | Intrinsic::SmtNe { .. } => Sort::Boolean,
             },
             Expression::Procedure { callee, args: _ } => self
                 .parent

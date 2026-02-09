@@ -98,7 +98,7 @@ fn parse_newline(input: State) -> ParseResult<String> {
             return ParseResult::Ok(String::from("\r\n"), advance(advance(input)));
         }
     } else {
-        ParseResult::NoMatch
+        return ParseResult::NoMatch
     }
 }
 
@@ -162,11 +162,11 @@ fn parse_wschar(input: State) -> ParseResult<String> {
                 ParseResult::Ok(c, advance(input))
             } else {
                 // we expect a whitespace character but something else found
-                ParseResult::NoMatch
+                return ParseResult::NoMatch
             }
         }
         // we expect a whitespace character but no more input
-        Optional::None => ParseResult::NoMatch,
+        Optional::None => return ParseResult::NoMatch,
     }
 }
 
@@ -231,11 +231,11 @@ fn parse_comment(state: State) -> ParseResult<String> {
                 parse_comment_rest(String::from(""), advance(state))
             } else {
                 // not a comment start (another symbol)
-                ParseResult::NoMatch
+                return ParseResult::NoMatch
             }
         }
         // we expect a '#' to start a comment (# missing)
-        Optional::None => ParseResult::NoMatch,
+        Optional::None => return ParseResult::NoMatch,
     }
 }
 
@@ -391,8 +391,8 @@ pub fn parse_toml(state: State) -> ParseResult<Value> {
                 Optional::Some(_c) => parse_toml_loop(first_value, new_state),
             }
         }
-        ParseResult::Err(e) => ParseResult::Err(e),
-        ParseResult::NoMatch => ParseResult::NoMatch, // this should never happen
+        ParseResult::Err(e) => return ParseResult::Err(e),
+        ParseResult::NoMatch => return ParseResult::NoMatch, // this should never happen
     }
 }
 
@@ -420,15 +420,15 @@ fn parse_toml_loop(acc: Array<String, Value>, state: State) -> ParseResult<Value
                                 }
                             }
                         }
-                        ParseResult::Err(e) => ParseResult::Err(e),
-                        ParseResult::NoMatch => ParseResult::NoMatch, // an expression can be anything so no match cannot happen
+                        ParseResult::Err(e) => return ParseResult::Err(e),
+                        ParseResult::NoMatch => return ParseResult::NoMatch, // an expression can be anything so no match cannot happen
                     }
                 }
                 ParseResult::NoMatch => {
                     // println!("Expected newline but found something else");
-                    ParseResult::Err(Error::fresh()) // expected newline but not found (for this to be invoked the expression parsing needs to terminate complete)
+                    return ParseResult::Err(Error::fresh()); // expected newline but not found (for this to be invoked the expression parsing needs to terminate complete)
                 }
-                ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
             }
         }
     }

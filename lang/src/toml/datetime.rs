@@ -16,28 +16,28 @@ pub(crate) fn parse_datetime(state: State) -> ParseResult<DateTime> {
         ParseResult::NoMatch => {
             // try local-time
             match partial_time(state) {
-                ParseResult::NoMatch => ParseResult::NoMatch,
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::NoMatch => return ParseResult::NoMatch,
+                ParseResult::Err(e) => return ParseResult::Err(e),
                 ParseResult::Ok(local_time_str, state_after_local_time) => {
                     ParseResult::Ok(DateTime::LocalTime(local_time_str), state_after_local_time)
                 }
             }
         }
-        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::Ok(full_date_str, state_after_full_date) => {
             match parse_time_delim(state_after_full_date) {
                 ParseResult::NoMatch => {
                     // try local-date
                     ParseResult::Ok(DateTime::LocalDate(full_date_str), state_after_full_date)
                 }
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::Err(e) => return ParseResult::Err(e),
                 ParseResult::Ok(_time_delim, state_after_time_delim) => {
                     match partial_time(state_after_time_delim) {
                         ParseResult::NoMatch => {
                             // println!("expect partial-time after full-date and time-delim");
                             ParseResult::Err(Error::fresh()) // expect partial-time
                         }
-                        ParseResult::Err(e) => ParseResult::Err(e),
+                        ParseResult::Err(e) => return ParseResult::Err(e),
                         ParseResult::Ok(partial_time_str, state_after_partial_time) => {
                             match current_char(state_after_partial_time) {
                                 Optional::None => {
@@ -75,7 +75,7 @@ pub(crate) fn parse_datetime(state: State) -> ParseResult<DateTime> {
                                                     state_after_partial_time,
                                                 )
                                             }
-                                            ParseResult::Err(e) => ParseResult::Err(e),
+                                            ParseResult::Err(e) => return ParseResult::Err(e),
                                             ParseResult::Ok(
                                                 time_numoffset_str,
                                                 state_after_numoffset,
@@ -280,13 +280,13 @@ fn partial_time(input: State) -> ParseResult<String> {
                         } else {
                             // it's partial time
                             match parse_time_hour(input) {
-                                ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                                ParseResult::Err(e) => ParseResult::Err(e),
+                                ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::Ok(time_hour, state_after_time_hour) => {
                                     let after_colon = advance(state_after_time_hour);
                                     match parse_time_minute(after_colon) {
-                                        ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                        ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                         ParseResult::Ok(time_minute, state_after_time_minute) => {
                                             let after_colon2 = advance(state_after_time_minute);
                                             match parse_time_second(after_colon2) {
@@ -294,7 +294,7 @@ fn partial_time(input: State) -> ParseResult<String> {
                                                     // println!("expect time-second after time-hour and time-minute");
                                                     ParseResult::Err(Error::fresh())
                                                 } // can happen because we only peeked until minutes
-                                                ParseResult::Err(e) => ParseResult::Err(e),
+                                                ParseResult::Err(e) => return ParseResult::Err(e),
                                                 ParseResult::Ok(
                                                     time_second,
                                                     state_after_time_second,
@@ -318,7 +318,7 @@ fn partial_time(input: State) -> ParseResult<String> {
                                                                 state_after_secfrac,
                                                             )
                                                         }
-                                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                                         ParseResult::NoMatch => {
                                                             let time_str = time_hour
                                                                 .concat(String::from(":"))
@@ -374,7 +374,7 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                             ParseResult::Ok(_, _) => {
                                 ParseResult::NoMatch // it's an float, not a full-date
                             }
-                            ParseResult::Err(e) => ParseResult::Err(e),
+                            ParseResult::Err(e) => return ParseResult::Err(e),
                             ParseResult::NoMatch => {
                                 // println!("second dash not found non existent when the first dash is found");
                                 ParseResult::Err(Error::fresh())
@@ -385,13 +385,13 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                         if *c2.eq(String::from("-")) {
                             // it's full-date
                             match parse_date_fullyear(input) {
-                                ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                                ParseResult::Err(e) => ParseResult::Err(e),
+                                ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::Ok(year_str, state_after_year) => {
                                     let after_dash1 = advance(state_after_year);
                                     match parse_date_month(after_dash1) {
-                                        ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                        ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                         ParseResult::Ok(month_str, state_after_month) => {
                                             let after_dash2 = advance(state_after_month);
                                             match parse_date_mday(after_dash2) {
@@ -399,7 +399,7 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                                     // println!("expect date-mday after date-month and year");
                                                     ParseResult::Err(Error::fresh())
                                                 } // can happen because we only peeked until month
-                                                ParseResult::Err(e) => ParseResult::Err(e),
+                                                ParseResult::Err(e) => return ParseResult::Err(e),
                                                 ParseResult::Ok(day_str, state_after_day) => {
                                                     // Validate day against month and year
                                                     let is_valid =
@@ -438,7 +438,7 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                 ParseResult::Ok(_, _) => {
                                     ParseResult::NoMatch // it's an float, not a full-date
                                 }
-                                ParseResult::Err(e) => ParseResult::Err(e),
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     // println!("another char found instead of second dash when the first dash is found");
                                     return ParseResult::Err(Error::fresh()); // invalid full-date
@@ -456,7 +456,7 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                 ParseResult::Ok(_, _) => {
                                     ParseResult::NoMatch // it's a float, not a full-date
                                 }
-                                ParseResult::Err(e) => ParseResult::Err(e),
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     // println!("another char found instead of first dash when the second dash is found");
                                     return ParseResult::Err(Error::fresh()); // invalid full-date
@@ -671,7 +671,7 @@ fn parse_time_numoffset(input: State) -> ParseResult<String> {
                                             sign.concat(hour_str).concat(colon).concat(minute_str);
                                         ParseResult::Ok(offset_str, after_minute)
                                     }
-                                    ParseResult::Err(e) => ParseResult::Err(e),
+                                    ParseResult::Err(e) => return ParseResult::Err(e),
                                     ParseResult::NoMatch => {
                                         // println!("expect time-minute after time-hour and colon; found nothing");
                                         ParseResult::Err(Error::fresh())
@@ -683,7 +683,7 @@ fn parse_time_numoffset(input: State) -> ParseResult<String> {
                             }
                         }
                     },
-                    ParseResult::Err(e) => ParseResult::Err(e),
+                    ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => {
                         // println!("expect time-hour after sign in time-numoffset; found nothing");
                         ParseResult::Err(Error::fresh())

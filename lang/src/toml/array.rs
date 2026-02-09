@@ -21,8 +21,8 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                     } // expect array-close
                     Optional::Some(_next_c) => {
                         match parse_ws_comment_newline(after_open) {
-                            ParseResult::Err(e) => ParseResult::Err(e),
-                            ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+                            ParseResult::Err(e) => return ParseResult::Err(e),
+                            ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
                             ParseResult::Ok(_ws, after_ws) => {
                                 match current_char(after_ws) {
                                     Optional::None => {
@@ -104,15 +104,15 @@ fn is_array_sep(c: String) -> Boolean {
 #[smt_fn]
 pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>> {
     match parse_value(key, input) {
-        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::NoMatch => {
             // println!("expected a value but none matched");
             ParseResult::Err(Error::fresh())
         } // expected a value but none matched
         ParseResult::Ok(val, after_val) => {
             match parse_ws_comment_newline(after_val) {
-                ParseResult::Err(e) => ParseResult::Err(e),
-                ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+                ParseResult::Err(e) => return ParseResult::Err(e),
+                ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
                 ParseResult::Ok(_ws2, after_ws2) => {
                     match current_char(after_ws2) {
                         Optional::None => {
@@ -125,8 +125,8 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
                             if *is_array_sep(next_c) {
                                 let after_sep = advance(after_ws2);
                                 match parse_ws_comment_newline(after_sep) {
-                                    ParseResult::Err(e) => ParseResult::Err(e),
-                                    ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+                                    ParseResult::Err(e) => return ParseResult::Err(e),
+                                    ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
                                     ParseResult::Ok(_ws3, after_ws3) => {
                                         match current_char(after_ws3) {
                                             Optional::None => {
@@ -144,7 +144,7 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
                                                     );
                                                 } else {
                                                     match parse_array_values(key, after_ws3) {
-                                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                                         ParseResult::NoMatch => {
                                                             ParseResult::NoMatch
                                                         } // cannot happen
@@ -186,16 +186,16 @@ fn parse_ws_comment_newline(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::Ok(String::from(""), input),
         Optional::Some(_first_char) => match parse_wschar(input) {
-            ParseResult::Err(e) => ParseResult::Err(e),
+            ParseResult::Err(e) => return ParseResult::Err(e),
             ParseResult::NoMatch => match parse_comment(input) {
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::Err(e) => return ParseResult::Err(e),
                 ParseResult::NoMatch => match parse_newline(input) {
-                    ParseResult::Err(e) => ParseResult::Err(e),
+                    ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => ParseResult::Ok(String::from(""), input),
                     ParseResult::Ok(newline, after_newline) => {
                         match parse_ws_comment_newline(after_newline) {
-                            ParseResult::Err(e) => ParseResult::Err(e),
-                            ParseResult::NoMatch => ParseResult::NoMatch,
+                            ParseResult::Err(e) => return ParseResult::Err(e),
+                            ParseResult::NoMatch => return ParseResult::NoMatch,
                             ParseResult::Ok(rest_ws, final_state) => {
                                 let result = newline.concat(rest_ws);
                                 ParseResult::Ok(result, final_state)
@@ -204,15 +204,15 @@ fn parse_ws_comment_newline(input: State) -> ParseResult<String> {
                     }
                 },
                 ParseResult::Ok(comment, after_comment) => match parse_newline(after_comment) {
-                    ParseResult::Err(e) => ParseResult::Err(e),
+                    ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => {
                         // println!("expected newline after comment in ws-comment-newline");
                         ParseResult::Err(Error::fresh())
                     } // need newline after comment
                     ParseResult::Ok(newline, after_newline) => {
                         match parse_ws_comment_newline(after_newline) {
-                            ParseResult::Err(e) => ParseResult::Err(e),
-                            ParseResult::NoMatch => ParseResult::NoMatch,
+                            ParseResult::Err(e) => return ParseResult::Err(e),
+                            ParseResult::NoMatch => return ParseResult::NoMatch,
                             ParseResult::Ok(rest_ws, final_state) => {
                                 let result = comment.concat(newline).concat(rest_ws);
                                 ParseResult::Ok(result, final_state)
@@ -223,8 +223,8 @@ fn parse_ws_comment_newline(input: State) -> ParseResult<String> {
             },
             ParseResult::Ok(_wschar, after_wschar) => {
                 match parse_ws_comment_newline(after_wschar) {
-                    ParseResult::Err(e) => ParseResult::Err(e),
-                    ParseResult::NoMatch => ParseResult::NoMatch,
+                    ParseResult::Err(e) => return ParseResult::Err(e),
+                    ParseResult::NoMatch => return ParseResult::NoMatch,
                     ParseResult::Ok(rest_ws, final_state) => {
                         let result = _wschar.concat(rest_ws);
                         ParseResult::Ok(result, final_state)

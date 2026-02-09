@@ -26,23 +26,23 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
         }
         Optional::Some(_x) => {
             match parse_newline(state_after_ws) {
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::Err(e) => return ParseResult::Err(e),
                 // its just whitespace until newline and then eof
                 ParseResult::NoMatch => {
                     match parse_comment(state_after_ws) {
-                        ParseResult::Err(e) => ParseResult::Err(e),
+                        ParseResult::Err(e) => return ParseResult::Err(e),
                         // its not empty and it is not a comment either
                         ParseResult::NoMatch => {
                             // parse table array
                             match parse_array_table(state_after_ws) {
-                                ParseResult::Err(e) => ParseResult::Err(e),
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     match parse_std_table(state_after_ws) {
-                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                         ParseResult::NoMatch => {
                                             // parse key-value
                                             match parse_key_value(state_after_ws) {
-                                                ParseResult::Err(e) => ParseResult::Err(e),
+                                                ParseResult::Err(e) => return ParseResult::Err(e),
                                                 ParseResult::NoMatch => {
                                                     // We tried comment, array_table, std_table, and key_value.
                                                     // None matched.
@@ -326,7 +326,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                     let state_after_ws2 =
                                                         parse_ws(_state_after_table);
                                                     match parse_comment(state_after_ws2) {
-                                                        ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                                                        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                                         ParseResult::NoMatch => {
                                                             // return empty array
                                                             return ParseResult::Ok(

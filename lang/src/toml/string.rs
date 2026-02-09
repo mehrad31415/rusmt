@@ -391,7 +391,7 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                 // );
                                                 return ParseResult::Err(Error::fresh());
                                             } // Invalid Hex
-                                            ParseResult::Err(e) => ParseResult::Err(e),
+                                            ParseResult::Err(e) => return ParseResult::Err(e),
                                             ParseResult::Ok(hex_str, state) => {
                                                 let code_point = Integer::from_hex_str(hex_str); // mathematically cannot panic!
                                                 let code_point_u32 = code_point.to_u32(); // cannot panic
@@ -453,7 +453,7 @@ fn parse_mlb_escaped_nl(state: State) -> ParseResult<String> {
                     ParseResult::Ok(_newline_str, after_newline_state) => {
                         match parse_wschar_newline_sequence(after_newline_state) {
                             ParseResult::Err(e) => return ParseResult::Err(e),
-                            ParseResult::NoMatch => ParseResult::NoMatch,
+                            ParseResult::NoMatch => return ParseResult::NoMatch,
                             ParseResult::Ok(_s2, final_state) => {
                                 return ParseResult::Ok(String::from(""), final_state);
                             }

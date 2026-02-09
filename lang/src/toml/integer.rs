@@ -208,9 +208,9 @@ pub(crate) fn parse_dec_int(sign: Optional<String>, input: State) -> ParseResult
                         return ParseResult::Ok(integer.to_i64(), remaining_input);
                     }
                 }
-                ParseResult::NoMatch => ParseResult::NoMatch,
+                ParseResult::NoMatch => return ParseResult::NoMatch,
                 // Propagate any other errors found.
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::Err(e) => return ParseResult::Err(e),
             }
         }
         Optional::Some(c) => {

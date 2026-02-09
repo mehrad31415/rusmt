@@ -49,18 +49,18 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
                                             return ParseResult::Err(Error::fresh());
                                         }
                                     },
-                                    ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                                    ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                 }
                             }
-                            ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                            ParseResult::Err(e) => ParseResult::Err(e),
+                            ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                            ParseResult::Err(e) => return ParseResult::Err(e),
                         }
                     }
                 }
             }
         }
-        ParseResult::NoMatch => ParseResult::NoMatch,
-        ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+        ParseResult::NoMatch => return ParseResult::NoMatch,
+        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
     }
 }
 
@@ -72,12 +72,12 @@ fn parse_std_table_open(state: State) -> ParseResult<String> {
             if *ch.eq(String::from("[")) {
                 let next_state = advance(state);
                 let state_after_ws = parse_ws(next_state);
-                ParseResult::Ok(ch, state_after_ws)
+                return ParseResult::Ok(ch, state_after_ws)
             } else {
-                ParseResult::NoMatch
+                return ParseResult::NoMatch
             }
         }
-        Optional::None => ParseResult::NoMatch,
+        Optional::None => return ParseResult::NoMatch,
     }
 }
 
@@ -135,18 +135,18 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
                                             return ParseResult::Err(Error::fresh());
                                         }
                                     },
-                                    ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                                    ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                 }
                             }
-                            ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                            ParseResult::Err(e) => ParseResult::Err(e),
+                            ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                            ParseResult::Err(e) => return ParseResult::Err(e),
                         }
                     }
                 }
             }
         }
-        ParseResult::NoMatch => ParseResult::NoMatch,
-        ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+        ParseResult::NoMatch => return ParseResult::NoMatch,
+        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
     }
 }
 
@@ -274,13 +274,13 @@ pub(crate) fn parse_inline_table(
                                         // non-empty inline table
                                         parse_inline_table_keyvals(new_key, state_after_open)
                                     }
-                                    ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                                    ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                 }
                             }
                         }
                     }
-                    ParseResult::NoMatch => ParseResult::NoMatch,
-                    ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                    ParseResult::NoMatch => return ParseResult::NoMatch,
+                    ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                 }
             }
         }
@@ -409,26 +409,26 @@ fn parse_inline_table_keyvals(
                                                         ParseResult::NoMatch => {
                                                             ParseResult::NoMatch
                                                         } // cannot happen
-                                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                                     }
                                                 }
-                                                ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                                                ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                             }
                                         }
                                         ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                     }
                                 }
-                                ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+                                ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                             }
                         }
                     }
                 }
-                ParseResult::NoMatch => ParseResult::NoMatch, // will not happen
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::NoMatch => return ParseResult::NoMatch, // will not happen
+                ParseResult::Err(e) => return ParseResult::Err(e),
             }
         }
-        ParseResult::Err(e) => ParseResult::Err(e), // cannot happen
+        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
     }
 }
 

@@ -26,27 +26,27 @@ pub fn parse_key_value(state: State) -> ParseResult<(Seq<String>, Value)> {
                         Optional::Some(_c) => {
                             match parse_value(key, _state_after_sep) {
                                 ParseResult::Ok(val, state_after_val) => {
-                                    ParseResult::Ok((key, val), state_after_val)
+                                    return ParseResult::Ok((key, val), state_after_val);
                                 }
-                                ParseResult::Err(e) => ParseResult::Err(e),
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     // println!("expected a value but none matched");
-                                    ParseResult::Err(Error::fresh())
+                                    return ParseResult::Err(Error::fresh());
                                 } // expected a value but none matched
                             }
                         }
                         Optional::None => {
                             // println!("expected a value but found end of input");
-                            ParseResult::Err(Error::fresh())
+                            return ParseResult::Err(Error::fresh());
                         } // expected a value but found end of input
                     }
                 }
-                ParseResult::Err(e) => ParseResult::Err(e),
-                ParseResult::NoMatch => ParseResult::NoMatch,
+                ParseResult::Err(e) => return ParseResult::Err(e),
+                ParseResult::NoMatch => return ParseResult::NoMatch,
             }
         }
-        ParseResult::Err(e) => ParseResult::Err(e),
-        ParseResult::NoMatch => ParseResult::NoMatch,
+        ParseResult::Err(e) => return ParseResult::Err(e),
+        ParseResult::NoMatch => return ParseResult::NoMatch,
     }
 }
 
@@ -72,8 +72,8 @@ pub(crate) fn parse_key(state: State) -> ParseResult<Seq<String>> {
                 Optional::None => ParseResult::Ok(Seq::new().append(first_key), after_ws),
             }
         }
-        ParseResult::Err(e) => ParseResult::Err(e),
-        ParseResult::NoMatch => ParseResult::NoMatch,
+        ParseResult::Err(e) => return ParseResult::Err(e),
+        ParseResult::NoMatch => return ParseResult::NoMatch,
     }
 }
 
@@ -111,14 +111,14 @@ fn parse_dotted_key_loop(acc: Seq<String>, state: State) -> ParseResult<Seq<Stri
                 let new_acc = acc.append(next_key);
                 parse_dotted_key_loop(new_acc, state_after_key)
             }
-            ParseResult::Err(e) => ParseResult::Err(e),
+            ParseResult::Err(e) => return ParseResult::Err(e),
             // there were no more keys after dot
             ParseResult::NoMatch => {
                 // println!("expected a key after '.' but none found");
-                ParseResult::Err(Error::fresh())
+                return ParseResult::Err(Error::fresh())
             }
         },
-        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::NoMatch => ParseResult::Ok(acc, state), // end of dotted key
     }
 }
@@ -133,12 +133,12 @@ fn parse_dot_sep(state: State) -> ParseResult<String> {
             if *ch.eq(String::from(".")) {
                 let state_after_dot = advance(state_after_ws);
                 let state_after_ws2 = parse_ws(state_after_dot);
-                ParseResult::Ok(ch, state_after_ws2)
+                return ParseResult::Ok(ch, state_after_ws2)
             } else {
-                ParseResult::NoMatch // cannot happen
+                return ParseResult::NoMatch // cannot happen
             }
         }
-        Optional::None => ParseResult::NoMatch, // cannot happen
+        Optional::None => return ParseResult::NoMatch, // cannot happen
     }
 }
 
@@ -147,9 +147,9 @@ fn parse_dot_sep(state: State) -> ParseResult<String> {
 fn parse_simple_key(state: State) -> ParseResult<String> {
     match parse_quoted_key(state) {
         ParseResult::Ok(quoted_key, state_after_quoted) => {
-            ParseResult::Ok(quoted_key, state_after_quoted)
+            return ParseResult::Ok(quoted_key, state_after_quoted)
         }
-        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::NoMatch => parse_unquoted_key(state),
     }
 }
@@ -241,28 +241,28 @@ pub(crate) fn parse_value(key: Seq<String>, input: State) -> ParseResult<Value> 
         ParseResult::Ok(bool_val, remaining_input) => {
             ParseResult::Ok(Value::Boolean(bool_val), remaining_input)
         }
-        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::NoMatch => {
             // then parse array
             match parse_array(key, input) {
                 ParseResult::Ok(array_val, remaining_input) => {
                     ParseResult::Ok(Value::Array(Cloak::shield(array_val)), remaining_input)
                 }
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::Err(e) => return ParseResult::Err(e),
                 ParseResult::NoMatch => {
                     // then parse inline table
                     match parse_inline_table(key, input) {
                         ParseResult::Ok(table_val, remaining_input) => {
                             ParseResult::Ok(Value::Table(Cloak::shield(table_val)), remaining_input)
                         }
-                        ParseResult::Err(e) => ParseResult::Err(e),
+                        ParseResult::Err(e) => return ParseResult::Err(e),
                         ParseResult::NoMatch => {
                             // the parse string
                             match parse_string(input) {
                                 ParseResult::Ok(str_val, remaining_input) => {
                                     ParseResult::Ok(Value::String(str_val), remaining_input)
                                 }
-                                ParseResult::Err(e) => ParseResult::Err(e),
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     // then parse date-time
                                     match parse_datetime(input) {
@@ -272,7 +272,7 @@ pub(crate) fn parse_value(key: Seq<String>, input: State) -> ParseResult<Value> 
                                                 remaining_input,
                                             )
                                         }
-                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                         ParseResult::NoMatch => {
                                             // then parse float
                                             match parse_float(input) {
@@ -288,8 +288,8 @@ pub(crate) fn parse_value(key: Seq<String>, input: State) -> ParseResult<Value> 
                                                         ),
                                                     }
                                                 }
-                                                ParseResult::Err(e) => ParseResult::Err(e),
-                                                ParseResult::NoMatch => ParseResult::NoMatch,
+                                                ParseResult::Err(e) => return ParseResult::Err(e),
+                                                ParseResult::NoMatch => return ParseResult::NoMatch,
                                             }
                                         }
                                     }

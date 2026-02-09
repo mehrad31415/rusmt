@@ -23,8 +23,8 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
     // try special float
     let res = parse_special_float(input);
     match res {
-        ParseResult::Ok(f, i) => ParseResult::Ok(Number::F64(f), i),
-        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::Ok(f, i) => return ParseResult::Ok(Number::F64(f), i),
+        ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::NoMatch => {
             let decimal_part = parse_integer(input);
             match decimal_part {
@@ -33,8 +33,8 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                         Optional::Some(nc) => {
                             if *nc.eq(".".into()) {
                                 match parse_unsigned_dec_rest(advance(_i), Integer::from(0)) {
-                                    ParseResult::NoMatch => ParseResult::NoMatch,
-                                    ParseResult::Err(e) => ParseResult::Err(e),
+                                    ParseResult::NoMatch => return ParseResult::NoMatch,
+                                    ParseResult::Err(e) => return ParseResult::Err(e),
                                     ParseResult::Ok(val, after_val) => {
                                         let first_part = _d.to_int();
                                         match current_char(after_val) {
@@ -109,7 +109,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                                 }
                                                             }
                                                         }
-                                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                                         ParseResult::NoMatch => {
                                                             ParseResult::NoMatch // should not happen
                                                         }
@@ -226,7 +226,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                 }
                                             }
                                         }
-                                        ParseResult::Err(e) => ParseResult::Err(e),
+                                        ParseResult::Err(e) => return ParseResult::Err(e),
                                         ParseResult::NoMatch => {
                                             ParseResult::NoMatch // should not happen
                                         }
@@ -243,8 +243,8 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                         }
                     }
                 }
-                ParseResult::Err(e) => ParseResult::Err(e),
-                ParseResult::NoMatch => ParseResult::NoMatch,
+                ParseResult::Err(e) => return ParseResult::Err(e),
+                ParseResult::NoMatch => return ParseResult::NoMatch,
             }
         }
     }
@@ -374,7 +374,7 @@ fn parse_special_float(input: State) -> ParseResult<F64> {
                         ParseResult::Ok(v, i)
                     }
                 }
-                ParseResult::Err(e) => ParseResult::Err(e),
+                ParseResult::Err(e) => return ParseResult::Err(e),
                 ParseResult::NoMatch => match is_nan(new_state) {
                     ParseResult::Ok(v, i) => {
                         if *is_minus(c) {
@@ -383,28 +383,28 @@ fn parse_special_float(input: State) -> ParseResult<F64> {
                             ParseResult::Ok(v, i)
                         }
                     }
-                    ParseResult::Err(e) => ParseResult::Err(e),
+                    ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => {
                         match parse_literal(new_state, "Nan".into()) {
                             ParseResult::Ok(_x, _remaining_input) => {
                                 // println!("invalid Nan casing");
                                 ParseResult::Err(Error::fresh())
                             }
-                            ParseResult::Err(e) => ParseResult::Err(e),
+                            ParseResult::Err(e) => return ParseResult::Err(e),
                             ParseResult::NoMatch => {
                                 match parse_literal(new_state, "Inf".into()) {
                                     ParseResult::Ok(_x, _remaining_input) => {
                                         // println!("invalid Inf casing");
                                         ParseResult::Err(Error::fresh())
                                     }
-                                    ParseResult::Err(e) => ParseResult::Err(e),
+                                    ParseResult::Err(e) => return ParseResult::Err(e),
                                     ParseResult::NoMatch => {
                                         match parse_literal(new_state, "NAN".into()) {
                                             ParseResult::Ok(_x, _remaining_input) => {
                                                 // println!("invalid NAN casing");
                                                 ParseResult::Err(Error::fresh())
                                             }
-                                            ParseResult::Err(e) => ParseResult::Err(e),
+                                            ParseResult::Err(e) => return ParseResult::Err(e),
                                             ParseResult::NoMatch => {
                                                 match parse_literal(new_state, "INF".into()) {
                                                     ParseResult::Ok(_x, _remaining_input) => {
@@ -413,7 +413,7 @@ fn parse_special_float(input: State) -> ParseResult<F64> {
                                                         // );
                                                         ParseResult::Err(Error::fresh())
                                                     }
-                                                    ParseResult::Err(e) => ParseResult::Err(e),
+                                                    ParseResult::Err(e) => return ParseResult::Err(e),
                                                     ParseResult::NoMatch => {
                                                         match parse_literal(new_state, "NaN".into())
                                                         {
@@ -457,8 +457,8 @@ fn is_inf(input: State) -> ParseResult<F64> {
             // If successful, return the infinite value.
             ParseResult::Ok(F64::infinity(), remaining_input)
         }
-        ParseResult::Err(e) => ParseResult::Err(e),
-        ParseResult::NoMatch => ParseResult::NoMatch,
+        ParseResult::Err(e) => return ParseResult::Err(e),
+        ParseResult::NoMatch => return ParseResult::NoMatch,
     }
 }
 
@@ -467,8 +467,8 @@ fn is_inf(input: State) -> ParseResult<F64> {
 fn is_nan(input: State) -> ParseResult<F64> {
     match parse_literal(input, "nan".into()) {
         ParseResult::Ok(_x, remaining_input) => ParseResult::Ok(F64::nan(), remaining_input),
-        ParseResult::Err(e) => ParseResult::Err(e),
-        ParseResult::NoMatch => ParseResult::NoMatch,
+        ParseResult::Err(e) => return ParseResult::Err(e),
+        ParseResult::NoMatch => return ParseResult::NoMatch,
     }
 }
 

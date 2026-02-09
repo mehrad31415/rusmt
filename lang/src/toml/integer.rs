@@ -4,7 +4,7 @@ use crate::toml::{
     Optional, ParseResult, State, advance, current_char, is_alpha, is_dec_digit, peek,
 };
 use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{Boolean, Error, I64, Integer, String, boolean::FALSE, smt::SMT};
+use rusmart_smt_stdlib::{Boolean, Error, I64, Integer, String, smt::SMT};
 
 /// `hex prefix = "0x"`
 #[smt_fn]
@@ -14,10 +14,10 @@ fn is_hex_prefix(input: State) -> Boolean {
             let peek = peek(input, 1.into());
             match peek {
                 Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("x".into())),
-                Optional::None => FALSE,
+                Optional::None => Boolean::from(false),
             }
         }
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 
@@ -29,10 +29,10 @@ fn is_hex_prefix_upper(input: State) -> Boolean {
             let peek = peek(input, 1.into());
             match peek {
                 Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("X".into())),
-                Optional::None => FALSE,
+                Optional::None => Boolean::from(false),
             }
         }
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 
@@ -44,10 +44,10 @@ fn is_oct_prefix(input: State) -> Boolean {
             let peek = peek(input, 1.into());
             match peek {
                 Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("o".into())),
-                Optional::None => FALSE,
+                Optional::None => Boolean::from(false),
             }
         }
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 
@@ -59,10 +59,10 @@ fn is_oct_prefix_upper(input: State) -> Boolean {
             let peek = peek(input, 1.into());
             match peek {
                 Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("O".into())),
-                Optional::None => FALSE,
+                Optional::None => Boolean::from(false),
             }
         }
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 
@@ -74,10 +74,10 @@ fn is_bin_prefix(input: State) -> Boolean {
             let peek = peek(input, 1.into());
             match peek {
                 Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("b".into())),
-                Optional::None => FALSE,
+                Optional::None => Boolean::from(false),
             }
         }
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 
@@ -89,10 +89,10 @@ fn is_bin_prefix_upper(input: State) -> Boolean {
             let peek = peek(input, 1.into());
             match peek {
                 Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("B".into())),
-                Optional::None => FALSE,
+                Optional::None => Boolean::from(false),
             }
         }
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 
@@ -238,7 +238,7 @@ pub(crate) fn parse_dec_int(sign: Optional<String>, input: State) -> ParseResult
                         }
                     }
                     ParseResult::Err(e) => return ParseResult::Err(e),
-                };
+                }
             } else {
                 match parse_unsigned_dec_int(input) {
                     ParseResult::Ok(integer, remaining_input) => {
@@ -263,7 +263,7 @@ pub(crate) fn parse_dec_int(sign: Optional<String>, input: State) -> ParseResult
                         }
                     }
                     ParseResult::Err(e) => return ParseResult::Err(e),
-                };
+                }
             }
         }
     }
@@ -429,7 +429,7 @@ fn parse_hex_int(input: State) -> ParseResult<I64> {
             // println!("no digits after hex prefix");
             return ParseResult::Err(Error::fresh());
         } // no digits after prefix
-    };
+    }
 }
 
 /// A recursive helper to parse the rest of a hexadecimal integer.
@@ -521,7 +521,7 @@ fn parse_oct_int(input: State) -> ParseResult<I64> {
             // println!("no digits after octal prefix");
             return ParseResult::Err(Error::fresh());
         } // no digits after prefix
-    };
+    }
 }
 
 /// A recursive helper to parse the rest of a octal integer.
@@ -608,7 +608,7 @@ fn parse_bin_int(input: State) -> ParseResult<I64> {
                     }
                     ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => return ParseResult::NoMatch,
-                };
+                }
             } else {
                 if *is_underscore(c) {
                     // println!("underscore immediately after binary prefix");
@@ -638,7 +638,7 @@ fn parse_bin_int(input: State) -> ParseResult<I64> {
             // println!("no digits after binary prefix");
             return ParseResult::Err(Error::fresh());
         } // no digits after prefix
-    };
+    }
 }
 
 /// A recursive helper to parse the rest of a binary integer.

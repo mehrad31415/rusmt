@@ -12,7 +12,6 @@ use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{
     Boolean, Error, Integer, String, U32,
     bitvector::BitvectorOps,
-    boolean::{FALSE, TRUE},
     smt::SMT,
 };
 
@@ -109,24 +108,24 @@ fn is_ml_basic_string_delim(state: State) -> Boolean {
                             match current_char(third_state) {
                                 Optional::Some(c3) => {
                                     if *is_quotation_mark(c3) {
-                                        return TRUE;
+                                        return Boolean::from(true);
                                     } else {
-                                        return FALSE;
+                                        return Boolean::from(false);
                                     }
                                 }
-                                Optional::None => return FALSE,
+                                Optional::None => return Boolean::from(false),
                             }
                         } else {
-                            return FALSE;
+                            return Boolean::from(false);
                         }
                     }
-                    Optional::None => return FALSE,
+                    Optional::None => return Boolean::from(false),
                 }
             } else {
-                return FALSE;
+                return Boolean::from(false);
             }
         }
-        Optional::None => return FALSE,
+        Optional::None => return Boolean::from(false),
     }
 }
 
@@ -698,24 +697,24 @@ fn is_ml_literal_string_delim(state: State) -> Boolean {
                             match current_char(third_state) {
                                 Optional::Some(c3) => {
                                     if *is_apostrophe(c3) {
-                                        return TRUE;
+                                        return Boolean::from(true);
                                     } else {
-                                        return FALSE;
+                                        return Boolean::from(false);
                                     }
                                 }
-                                Optional::None => return FALSE,
+                                Optional::None => return Boolean::from(false),
                             }
                         } else {
-                            return FALSE;
+                            return Boolean::from(false);
                         }
                     }
-                    Optional::None => return FALSE,
+                    Optional::None => return Boolean::from(false),
                 }
             } else {
-                return FALSE;
+                return Boolean::from(false);
             }
         }
-        Optional::None => return FALSE,
+        Optional::None => return Boolean::from(false),
     }
 }
 

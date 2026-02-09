@@ -212,19 +212,14 @@ pub(crate) fn parse_inline_table(
     state: State,
 ) -> ParseResult<Array<String, Value>> {
     // change the inline table in the parser context
-    let State {
-        stream: _,
-        cursor: _,
-        context,
-    } = state;
-    let ParserContext {
-        current_table_path,
-        explicit_tables,
-        closed_tables,
-        inline_tables,
-        inline_arrays: _,
-        array_of_tables: _,
-    } = context;
+    let state_temp = state;
+    let context = state_temp.context;
+    let context_temp = context;
+    let current_table_path = context_temp.current_table_path;
+    let explicit_tables = context_temp.explicit_tables;
+    let closed_tables = context_temp.closed_tables;
+    let inline_tables = context_temp.inline_tables;
+
     let new_key = current_table_path.concat(key);
     if *inline_tables.contains(new_key) {
         // println!("inline table already defined");
@@ -249,19 +244,17 @@ pub(crate) fn parse_inline_table(
                                 match parse_inline_table_close(state_after_open) {
                                     ParseResult::Ok(_close_brace, state_after_close) => {
                                         // change the inline table in the parser context
-                                        let State {
-                                            stream,
-                                            cursor,
-                                            context,
-                                        } = state_after_close;
-                                        let ParserContext {
-                                            current_table_path,
-                                            explicit_tables,
-                                            closed_tables,
-                                            inline_tables,
-                                            inline_arrays,
-                                            array_of_tables,
-                                        } = context;
+                                        let state_after_close_temp = state_after_close;
+                                        let stream = state_after_close_temp.stream;
+                                        let cursor = state_after_close_temp.cursor;
+                                        let context = state_after_close_temp.context;
+                                        let context_temp = context;
+                                        let current_table_path = context_temp.current_table_path;
+                                        let explicit_tables = context_temp.explicit_tables;
+                                        let closed_tables = context_temp.closed_tables;
+                                        let inline_tables = context_temp.inline_tables;
+                                        let inline_arrays = context_temp.inline_arrays;
+                                        let array_of_tables = context_temp.array_of_tables;
                                         let new_context = ParserContext {
                                             current_table_path,
                                             explicit_tables,
@@ -318,19 +311,17 @@ fn parse_inline_table_keyvals(
                             match parse_inline_table_close(state_after_kv) {
                                 ParseResult::Ok(_close_brace, state_after_close) => {
                                     let nested_table = make_nested_table(key, val);
-                                    let State {
-                                        stream,
-                                        cursor,
-                                        context,
-                                    } = state_after_close;
-                                    let ParserContext {
-                                        current_table_path,
-                                        explicit_tables,
-                                        closed_tables,
-                                        inline_tables,
-                                        inline_arrays,
-                                        array_of_tables,
-                                    } = context;
+                                    let state_after_close_temp = state_after_close;
+                                    let stream = state_after_close_temp.stream;
+                                    let cursor = state_after_close_temp.cursor;
+                                    let context = state_after_close_temp.context;
+                                    let context_temp = context;
+                                    let current_table_path = context_temp.current_table_path;
+                                    let explicit_tables = context_temp.explicit_tables;
+                                    let closed_tables = context_temp.closed_tables;
+                                    let inline_tables = context_temp.inline_tables;
+                                    let inline_arrays = context_temp.inline_arrays;
+                                    let array_of_tables = context_temp.array_of_tables;
                                     let new_context = ParserContext {
                                         current_table_path,
                                         explicit_tables,
@@ -376,19 +367,17 @@ fn parse_inline_table_keyvals(
                                                             );
                                                             match combined {
                                                                 Optional::Some(merged_table) => {
-                                                                    let State {
-                                                                        stream,
-                                                                        cursor,
-                                                                        context,
-                                                                    } = final_state;
-                                                                    let ParserContext {
-                                                                        current_table_path,
-                                                                        explicit_tables,
-                                                                        closed_tables,
-                                                                        inline_tables,
-                                                                        inline_arrays,
-                                                                        array_of_tables,
-                                                                    } = context;
+                                                                    let final_state_temp = final_state;
+                                                                    let stream = final_state_temp.stream;
+                                                                    let cursor = final_state_temp.cursor;
+                                                                    let context = final_state_temp.context;
+                                                                    let context_temp = context;
+                                                                    let current_table_path = context_temp.current_table_path;
+                                                                    let explicit_tables = context_temp.explicit_tables;
+                                                                    let closed_tables = context_temp.closed_tables;
+                                                                    let inline_tables = context_temp.inline_tables;
+                                                                    let inline_arrays = context_temp.inline_arrays;
+                                                                    let array_of_tables = context_temp.array_of_tables;
                                                                     let new_context =
                                                                         ParserContext {
                                                                             current_table_path,

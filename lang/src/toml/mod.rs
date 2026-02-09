@@ -3,7 +3,7 @@
 use crate::toml::{ast::Value, expr::parse_expression, table::recursive_merge_tables};
 use rusmart_smt_remark_derive::{smt_fn, smt_type};
 use rusmart_smt_stdlib::{
-    Array, Boolean, Cloak, Error, Integer, Seq, String, boolean::FALSE, smt::SMT,
+    Array, Boolean, Cloak, Error, Integer, Seq, String, smt::SMT,
 };
 
 /// array
@@ -63,7 +63,7 @@ enum Optional<T: SMT> {
 fn is_lf_newline(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c) => c.eq(String::from("\n")),
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 
@@ -75,9 +75,9 @@ fn is_crlf_newline(input: State) -> Boolean {
     match first_char {
         Optional::Some(c1) => match second_char {
             Optional::Some(c2) => c1.eq(String::from("\r")).and(c2.eq(String::from("\n"))),
-            Optional::None => FALSE,
+            Optional::None => Boolean::from(false),
         },
-        Optional::None => FALSE,
+        Optional::None => Boolean::from(false),
     }
 }
 

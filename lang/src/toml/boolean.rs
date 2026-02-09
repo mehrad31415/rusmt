@@ -4,7 +4,6 @@ use crate::toml::{ParseResult, State, parse_literal};
 use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{
     Boolean, Error,
-    boolean::{FALSE, TRUE},
 };
 
 /// Parses a boolean literal (`true` or `false`).
@@ -29,7 +28,7 @@ pub(crate) fn parse_boolean(input: State) -> ParseResult<Boolean> {
                     match parse_literal(input, "true".into()) {
                         ParseResult::Ok(_true, remaining_input) => {
                             // If successful, return the boolean value.
-                            ParseResult::Ok(TRUE, remaining_input)
+                            ParseResult::Ok(Boolean::from(true), remaining_input)
                         }
                         ParseResult::Err(e) => ParseResult::Err(e),
                         // If it didn't match "true", try to parse "false".
@@ -51,7 +50,7 @@ pub(crate) fn parse_boolean(input: State) -> ParseResult<Boolean> {
                                             match parse_literal(input, "false".into()) {
                                                 ParseResult::Ok(_false, remaining_input) => {
                                                     // If successful, return the boolean value.
-                                                    ParseResult::Ok(FALSE, remaining_input)
+                                                    ParseResult::Ok(Boolean::from(false), remaining_input)
                                                 }
                                                 ParseResult::Err(e) => ParseResult::Err(e),
                                                 // If it didn't match "false", return NoMatch.

@@ -1,5 +1,4 @@
 //! Array parsing functions.
-
 use crate::toml::{
     Optional, ParseResult, ParserContext, State, advance, ast::Value, current_char,
     key_value::parse_value, parse_comment, parse_newline, parse_wschar,
@@ -34,19 +33,17 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                                         if *is_array_close(x) {
                                             let after_close = advance(after_ws);
                                             // check if the array is in the array of tables and throw error if so
-                                            let State {
-                                                stream,
-                                                cursor,
-                                                context,
-                                            } = after_close;
-                                            let ParserContext {
-                                                current_table_path,
-                                                explicit_tables,
-                                                closed_tables,
-                                                inline_tables,
-                                                inline_arrays,
-                                                array_of_tables,
-                                            } = context;
+                                            let after_close_temp = after_close;
+                                            let stream = after_close_temp.stream;
+                                            let cursor = after_close_temp.cursor;
+                                            let context = after_close_temp.context;
+                                            let context_temp = context;
+                                            let current_table_path = context_temp.current_table_path;
+                                            let explicit_tables = context_temp.explicit_tables;
+                                            let closed_tables = context_temp.closed_tables;
+                                            let inline_tables = context_temp.inline_tables;
+                                            let inline_arrays = context_temp.inline_arrays;
+                                            let array_of_tables = context_temp.array_of_tables;
                                             if *array_of_tables.contains(key) {
                                                 // println!("arrays of tables cannot contain inline arrays");
                                                 return ParseResult::Err(Error::fresh()); // arrays of tables cannot contain inline arrays
@@ -66,7 +63,7 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                                                     cursor,
                                                     context: new_context,
                                                 };
-                                                return ParseResult::Ok(Seq::new(), new_state);
+                                                return ParseResult::Ok(Seq::<Value>::new(), new_state);
                                             }
                                         } else {
                                             parse_array_values(key, after_ws)
@@ -105,7 +102,7 @@ fn is_array_sep(c: String) -> Boolean {
 /// array-values =  ws-comment-newline val ws-comment-newline array-sep array-values
 /// array-values =/ ws-comment-newline val ws-comment-newline [ array-sep ]
 #[smt_fn]
-fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>> {
+pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>> {
     match parse_value(key, input) {
         ParseResult::Err(e) => ParseResult::Err(e),
         ParseResult::NoMatch => {
@@ -142,7 +139,7 @@ fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>>
                                                 if *is_array_close(newnew) {
                                                     // trailing comma case is okay
                                                     return ParseResult::Ok(
-                                                        Seq::new().append(val),
+                                                        Seq::<Value>::new().append(val),
                                                         advance(after_ws3),
                                                     );
                                                 } else {
@@ -152,8 +149,8 @@ fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>>
                                                             ParseResult::NoMatch
                                                         } // cannot happen
                                                         ParseResult::Ok(res, final_state) => {
-                                                            let new_seq = Seq::new().append(val);
-                                                            let rest_vals = new_seq.concat(res);
+                                                            let new_seq: Seq<Value> = Seq::<Value>::new().append(val);
+                                                            let rest_vals: Seq<Value> = new_seq.concat(res);
                                                             ParseResult::Ok(rest_vals, final_state)
                                                         }
                                                     }
@@ -165,7 +162,7 @@ fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<Seq<Value>>
                             } else {
                                 if *is_array_close(next_c) {
                                     return ParseResult::Ok(
-                                        Seq::new().append(val),
+                                        Seq::<Value>::new().append(val),
                                         advance(after_ws2),
                                     );
                                 } else {

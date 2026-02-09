@@ -1,5 +1,4 @@
 //! parsing Expressions
-
 use crate::toml::{
     Optional, ParseResult, ParserContext, State,
     ast::Value,
@@ -11,7 +10,6 @@ use crate::toml::{
 use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{
     Array, Boolean, Cloak, Error, Integer, Seq, String,
-    boolean::{FALSE, TRUE},
     smt::SMT,
 };
 
@@ -52,20 +50,17 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                 }
                                                 ParseResult::Ok((key, val), state_after_kv) => {
                                                     // destructuring the state and context
-                                                    let State {
-                                                        stream,
-                                                        cursor,
-                                                        context,
-                                                    } = state_after_kv;
-
-                                                    let ParserContext {
-                                                        current_table_path,
-                                                        explicit_tables,
-                                                        closed_tables,
-                                                        inline_tables,
-                                                        inline_arrays,
-                                                        array_of_tables,
-                                                    } = context;
+                                                    let state_after_kv_temp = state_after_kv;
+                                                    let stream = state_after_kv_temp.stream;
+                                                    let cursor = state_after_kv_temp.cursor;
+                                                    let context = state_after_kv_temp.context;
+                                                    let context_temp = context;
+                                                    let current_table_path = context_temp.current_table_path;
+                                                    let explicit_tables = context_temp.explicit_tables;
+                                                    let closed_tables = context_temp.closed_tables;
+                                                    let inline_tables = context_temp.inline_tables;
+                                                    let inline_arrays = context_temp.inline_arrays;
+                                                    let array_of_tables = context_temp.array_of_tables;
                                                     let implicit_tables = make_tables_from_key(
                                                         current_table_path,
                                                         key,
@@ -173,21 +168,17 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                         // its a standard table
                                         ParseResult::Ok(_table_name, _state_after_table) => {
                                             // destructuring the state and context
-                                            let State {
-                                                stream,
-                                                cursor,
-                                                context,
-                                            } = _state_after_table;
-
-                                            let ParserContext {
-                                                current_table_path: _current_table_path,
-                                                explicit_tables,
-                                                closed_tables,
-                                                inline_tables,
-                                                inline_arrays,
-                                                array_of_tables,
-                                            } = context;
-
+                                            let _state_after_table_temp = _state_after_table;
+                                            let stream = _state_after_table_temp.stream;
+                                            let cursor = _state_after_table_temp.cursor;
+                                            let context = _state_after_table_temp.context;
+                                            let context_temp = context;
+                                            let _current_table_path = context_temp.current_table_path;
+                                            let explicit_tables = context_temp.explicit_tables;
+                                            let closed_tables = context_temp.closed_tables;
+                                            let inline_tables = context_temp.inline_tables;
+                                            let inline_arrays = context_temp.inline_arrays;
+                                            let array_of_tables = context_temp.array_of_tables;
                                             if *explicit_tables.contains(_table_name) {
                                                 // table redefinition error
                                                 // println!("Duplicate table definition error");
@@ -271,21 +262,16 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                 // its a table array
                                 ParseResult::Ok(new_array_table_name, state_after_table) => {
                                     // destructuring the state and context
-                                    let State {
-                                        stream,
-                                        cursor,
-                                        context,
-                                    } = state_after_table;
-
-                                    let ParserContext {
-                                        current_table_path: _,
-                                        explicit_tables,
-                                        closed_tables,
-                                        inline_tables,
-                                        inline_arrays,
-                                        array_of_tables,
-                                    } = context;
-
+                                    let state_after_table_temp = state_after_table;
+                                    let stream = state_after_table_temp.stream;
+                                    let cursor = state_after_table_temp.cursor;
+                                    let context = state_after_table_temp.context;
+                                    let context_temp = context;
+                                    let explicit_tables = context_temp.explicit_tables;
+                                    let closed_tables = context_temp.closed_tables;
+                                    let inline_tables = context_temp.inline_tables;
+                                    let inline_arrays = context_temp.inline_arrays;
+                                    let array_of_tables = context_temp.array_of_tables;
                                     if *explicit_tables.contains(new_array_table_name) {
                                         // table redefinition error
                                         // println!("This array table was already defined as a standard table");
@@ -383,17 +369,17 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
 #[smt_fn]
 pub(crate) fn make_nested_table(keys: Seq<String>, value: Value) -> Array<String, Value> {
     if *keys.length().eq(0.into()) {
-        return Array::new(); // empty table name which is the root
+        return Array::<String, Value>::new(); // empty table name which is the root
     } else {
         if *keys.length().eq(1.into()) {
             let key = keys.at(Integer::from(0));
-            let arr = Array::new();
+            let arr = Array::<String, Value>::new();
             let arr_filled = arr.store(key, value);
             return arr_filled;
         } else {
             let key = keys.at(Integer::from(0));
             let rest_of_keys = keys.extract(Integer::from(1), keys.length().sub(Integer::from(1)));
-            let arr = Array::new();
+            let arr = Array::<String, Value>::new();
             let filled_arr = arr.store(
                 key,
                 Value::Table(Cloak::shield(make_nested_table(rest_of_keys, value))),
@@ -405,7 +391,7 @@ pub(crate) fn make_nested_table(keys: Seq<String>, value: Value) -> Array<String
 
 /// delete last element from a Seq<String>
 #[smt_fn]
-pub(crate) fn drop_last_element(seq: Seq<String>) -> Seq<String> {
+pub(crate) fn droplast(seq: Seq<String>) -> Seq<String> {
     let len = seq.length();
     if *len.eq(0.into()) {
         seq
@@ -424,13 +410,15 @@ pub(crate) fn make_tables_from_key(
     // its just a simple key without dots
     if *key_parts.length().eq(1.into()) {
         return acc;
+    } else {
+        make_tables_from_key_inner(table_keyname, droplast(key_parts), acc)
     }
-    make_tables_from_key_inner(table_keyname, drop_last_element(key_parts), acc)
+    
 }
 
 /// inner recursive function for make_tables_from_key
 #[smt_fn]
-fn make_tables_from_key_inner(
+pub(crate) fn make_tables_from_key_inner(
     table_keyname: Seq<String>,
     key_parts: Seq<String>,
     acc: Seq<Seq<String>>,
@@ -440,7 +428,7 @@ fn make_tables_from_key_inner(
     } else {
         make_tables_from_key_inner(
             table_keyname,
-            drop_last_element(key_parts),
+            droplast(key_parts),
             acc.append(table_keyname.concat(key_parts)),
         )
     }
@@ -450,20 +438,20 @@ fn make_tables_from_key_inner(
 #[smt_fn]
 pub(crate) fn has_intersection(seq1: Seq<Seq<String>>, seq2: Seq<Seq<String>>) -> Boolean {
     if *seq2.length().eq(0.into()) {
-        return FALSE;
+        return Boolean::from(false);
     } else {
         if *seq2.length().eq(1.into()) {
             let first = seq2.at(Integer::from(0));
             if *seq1.contains(first) {
-                return TRUE;
+                return Boolean::from(true);
             } else {
-                return FALSE;
+                return Boolean::from(false);
             }
         } else {
             let first = seq2.at(Integer::from(0));
             let rest = seq2.extract(Integer::from(1), seq2.length().sub(Integer::from(1)));
             if *seq1.contains(first) {
-                return TRUE;
+                return Boolean::from(true);
             } else {
                 has_intersection(seq1, rest)
             }
@@ -480,6 +468,6 @@ pub(crate) fn make_tables_from_table_names(
     if *name.length().eq(0.into()) {
         acc
     } else {
-        make_tables_from_table_names(drop_last_element(name), acc.append(name))
+        make_tables_from_table_names(droplast(name), acc.append(name))
     }
 }

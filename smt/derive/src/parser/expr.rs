@@ -2253,11 +2253,19 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     // like let a = MyTuple(1) where struct MyTuple(i32);
                     ExprPathAsCallee::CtorTuple(tuple) => {
                         let (ty_name, inst) = tuple.complete(unifier);
-                        let params: Vec<_> = match self.root.get_type_def(&ty_name) {
+                        let params: Vec<TypeRef> = match self.root.get_type_def(&ty_name) {
                             None => bail_on!(expr_call, "[invariant] no such type"),
                             Some(def) => match &def.body {
                                 TypeBody::Tuple(tuple_def) => {
-                                    tuple_def.slots.iter().map(|t| t.into()).collect()
+                                    // Instantiate type parameters in the slot types using inst
+                                    let mut instantiated_params = Vec::new();
+                                    for slot_ty in &tuple_def.slots {
+                                        match inst.instantiate(slot_ty) {
+                                            None => bail_on!(expr_call, "[invariant] no such type parameter in tuple slot"),
+                                            Some(instantiated) => instantiated_params.push(instantiated),
+                                        }
+                                    }
+                                    instantiated_params
                                 }
                                 _ => bail_on!(expr_call, "[invariant] not a tuple type"),
                             },
@@ -2282,9 +2290,17 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             None => bail_on!(expr_call, "[invariant] no such type or variant"),
                             Some(details) => details,
                         };
-                        let params: Vec<_> = match variant {
+                        let params: Vec<TypeRef> = match variant {
                             EnumVariant::Tuple(tuple_def) => {
-                                tuple_def.slots.iter().map(|t| t.into()).collect()
+                                // Instantiate type parameters in the slot types using inst
+                                let mut instantiated_params = Vec::new();
+                                for slot_ty in &tuple_def.slots {
+                                    match inst.instantiate(slot_ty) {
+                                        None => bail_on!(expr_call, "[invariant] no such type parameter in enum variant slot"),
+                                        Some(instantiated) => instantiated_params.push(instantiated),
+                                    }
+                                }
+                                instantiated_params
                             }
                             _ => bail_on!(expr_call, "not a tuple variant"),
                         };

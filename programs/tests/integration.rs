@@ -114,7 +114,7 @@ fn test_translation(path: &Path) -> datatest_stable::Result<()> {
     // 2. Generate SMT code (may fail here for unsupported features)
     // 3. Write to output_dir/<solver_name>/main.smt2
     // 4. Invoke Z3 and write response to output_dir/<solver_name>/response.exp
-    // Note: derive() handles deleting output_dir if it exists (line 96-100 in lib.rs)
+    // Note: derive() handles deleting output_dir if it exists.
     let derive_result = derive(path, &output_dir);
 
     // Check the result

@@ -36,7 +36,10 @@ macro_rules! ti_unify {
                 $crate::bail_on!($spanned, "cyclic type unification");
             }
             Ok(None) => {
-                $crate::bail_on!($spanned, "no viable type");
+                // Refresh types to get their current state before reporting error
+                let lhs_refreshed = $unifier.refresh_type($lhs);
+                let rhs_refreshed = $unifier.refresh_type($rhs);
+                $crate::bail_on!($spanned, "type mismatch: cannot unify {} with {}", lhs_refreshed, rhs_refreshed);
             }
             Ok(Some(__v)) => __v, // __v is of type TypeRef and is the result of the unification.
         }

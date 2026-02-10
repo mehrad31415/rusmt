@@ -2574,9 +2574,10 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
             Exp::Return(expr_return) => {
                 match &expr_return.expr {
                     Some(inner_expr) => {
-                        // Recursively convert the inner expression - return x becomes x
-                        // This returns early from the match, unpacking the Result
-                        return self.convert_expr(unifier, inner_expr);
+                        // Recursively convert the inner expression using the function's return type
+                        // as the expected type, not the current expression's expected type
+                        let ret_ty = self.root.ret_ty.clone();
+                        return self.fork(ret_ty).convert_expr(unifier, inner_expr);
                     }
                     None => {
                         // return without value - not allowed in SMT functions

@@ -301,7 +301,9 @@ fn parse_inline_table_keyvals(
         }
         ParseResult::NoMatch => {
             match parse_key_value(state) {
-                ParseResult::Ok((key, val), state_after_kv) => {
+                ParseResult::Ok(kv, state_after_kv) => {
+                    // Extract key and val using match
+                    let (key, val) = kv;
                     match current_char(state_after_kv) {
                         Optional::None => {
                             // println!("cannot have end of input here expecting }} or ,");

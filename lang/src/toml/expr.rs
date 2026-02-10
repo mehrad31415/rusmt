@@ -48,7 +48,9 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                     // None matched.
                                                     ParseResult::NoMatch // cannot happen
                                                 }
-                                                ParseResult::Ok((key, val), state_after_kv) => {
+                                                ParseResult::Ok(kv, state_after_kv) => {
+                                                    // Extract key and val using match
+                                                    let (key, val) = kv;
                                                     // destructuring the state and context
                                                     let state_after_kv_temp = state_after_kv;
                                                     let stream = state_after_kv_temp.stream;
@@ -224,13 +226,13 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                 inline_arrays: inline_arrays,
                                                                 array_of_tables: array_of_tables,
                                                             };
-                                                            let _state_after_table = State {
+                                                            let _state_after_std_table = State {
                                                                 stream: stream,
                                                                 cursor: cursor,
                                                                 context: new_context,
                                                             };
                                                             let state_after_ws2 =
-                                                                parse_ws(_state_after_table);
+                                                                parse_ws(_state_after_std_table);
                                                             match parse_comment(state_after_ws2) {
                                                                 ParseResult::Err(e) => {
                                                                     ParseResult::Err(e)
@@ -309,7 +311,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         inline_arrays: inline_arrays,
                                                         array_of_tables: new_array_tables,
                                                     };
-                                                    let _state_after_table = State {
+                                                    let _state_after_array_table = State {
                                                         stream: stream,
                                                         cursor: cursor,
                                                         context: new_context,
@@ -324,7 +326,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         arr,
                                                     );
                                                     let state_after_ws2 =
-                                                        parse_ws(_state_after_table);
+                                                        parse_ws(_state_after_array_table);
                                                     match parse_comment(state_after_ws2) {
                                                         ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                                         ParseResult::NoMatch => {

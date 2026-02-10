@@ -392,13 +392,13 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                 return ParseResult::Err(Error::fresh());
                                             } // Invalid Hex
                                             ParseResult::Err(e) => return ParseResult::Err(e),
-                                            ParseResult::Ok(hex_str, state) => {
+                                            ParseResult::Ok(hex_str, state_after_hex) => {
                                                 let code_point = Integer::from_hex_str(hex_str); // mathematically cannot panic!
                                                 let code_point_u32 = code_point.to_u32(); // cannot panic
                                                 if *is_valid_unicode_scalar(code_point_u32) {
                                                     let char_str =
                                                         String::from_code(code_point_u32);
-                                                    return ParseResult::Ok(char_str, state);
+                                                    return ParseResult::Ok(char_str, state_after_hex);
                                                 } else {
                                                     // println!(
                                                     //    "invalid unicode scalar value in escape sequence: {:?}",

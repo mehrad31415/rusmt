@@ -59,7 +59,7 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
                                         //    "missing closing delimiter for multi-line basic string"
                                         // );
                                         ParseResult::Err(Error::fresh())
-                                    }; // missing closing delimiter
+                                    } // missing closing delimiter
                                 }
                             }
                         }

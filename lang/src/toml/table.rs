@@ -587,7 +587,7 @@ pub(crate) fn recursive_merge_tables(
             _other => {
                 return Optional::None;
             }
-        };
+        }
     } else {
         let next_acc = acc_table.store(key_to_merge, new_val);
         recursive_merge_tables(next_acc, rest_of_new_table)

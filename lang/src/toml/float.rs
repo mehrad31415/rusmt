@@ -292,7 +292,7 @@ fn parse_unsigned_dec_rest(input: State, number: Integer) -> ParseResult<Integer
             }
             ParseResult::Err(e) => return ParseResult::Err(e),
             ParseResult::NoMatch => return ParseResult::NoMatch,
-        };
+        }
     }
 }
 

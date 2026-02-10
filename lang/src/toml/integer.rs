@@ -188,7 +188,7 @@ pub(crate) fn parse_integer(input: State) -> ParseResult<I64> {
                         }
                     }
                 }
-            };
+            }
         }
     }
 }
@@ -316,7 +316,7 @@ fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
                 ParseResult::Ok(s, i) => return ParseResult::Ok(s.to_int(), i),
                 ParseResult::Err(e) => return ParseResult::Err(e),
                 ParseResult::NoMatch => return ParseResult::NoMatch,
-            };
+            }
         }
     }
 }
@@ -414,7 +414,7 @@ fn parse_hex_int(input: State) -> ParseResult<I64> {
                     }
                     ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => return ParseResult::NoMatch,
-                };
+                }
             } else {
                 if *is_underscore(c) {
                     // println!("underscore immediately after hex prefix");
@@ -496,7 +496,7 @@ fn parse_oct_int(input: State) -> ParseResult<I64> {
                     }
                     ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => return ParseResult::NoMatch,
-                };
+                }
             } else {
                 if *is_underscore(c) {
                     // println!("underscore immediately after octal prefix");

@@ -318,7 +318,9 @@ fn partial_time(input: State) -> ParseResult<String> {
                                                                 state_after_secfrac,
                                                             )
                                                         }
-                                                        ParseResult::Err(e) => return ParseResult::Err(e),
+                                                        ParseResult::Err(e) => {
+                                                            return ParseResult::Err(e);
+                                                        }
                                                         ParseResult::NoMatch => {
                                                             let time_str = time_hour
                                                                 .concat(String::from(":"))
@@ -585,10 +587,10 @@ fn parse_date_mday(input: State) -> ParseResult<String> {
 /// validate day against month and year (for leap years)
 #[smt_fn]
 fn is_valid_day(month: String, day: String, year: String) -> Boolean {
+    let day_int = day.to_int();
+    let year_int = year.to_int();
     if *month.eq(String::from("02")) {
         // February
-        let day_int = day.to_int();
-        let year_int = year.to_int();
         let is_leap_year = year_int
             .modulo(Integer::from(4))
             .eq(Integer::from(0))
@@ -613,13 +615,11 @@ fn is_valid_day(month: String, day: String, year: String) -> Boolean {
             .or(month.eq(String::from("11")))
         {
             // April, June, September, November: 30 days
-            let day_int = day.to_int();
             return day_int
                 .ge(Integer::from(1))
                 .and(day_int.le(Integer::from(30)));
         } else {
             // All other months: 31 days
-            let day_int = day.to_int();
             return day_int
                 .ge(Integer::from(1))
                 .and(day_int.le(Integer::from(31)));

@@ -517,7 +517,7 @@ fn parse_float_exp_part(input: State) -> ParseResult<Integer> {
         // after e there must be at least one digit
         Optional::None => {
             // println!("must have at least one digit after e in float exponent part");
-            ParseResult::Err(Error::fresh())
+            return ParseResult::Err(Error::fresh());
         }
     }
 }

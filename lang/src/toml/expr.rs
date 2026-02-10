@@ -374,10 +374,7 @@ pub(crate) fn make_nested_table(keys: Seq<String>, value: Value) -> Array<String
         return Array::<String, Value>::new(); // empty table name which is the root
     } else {
         if *keys.length().eq(1.into()) {
-            let key = keys.at(Integer::from(0));
-            let arr = Array::<String, Value>::new();
-            let arr_filled = arr.store(key, value);
-            return arr_filled;
+            return Array::<String, Value>::new().store(keys.at(Integer::from(0)), value);
         } else {
             let key = keys.at(Integer::from(0));
             let rest_of_keys = keys.extract(Integer::from(1), keys.length().sub(Integer::from(1)));

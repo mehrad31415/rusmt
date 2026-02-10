@@ -51,8 +51,7 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch, // not happening
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_basic_string_delim(new_state) {
-                                    let after_closing = advance(advance(advance(new_state)));
-                                    return ParseResult::Ok(s, after_closing);
+                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
                                 } else {
                                     return {
                                         // println!(
@@ -71,8 +70,7 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch, // not happening
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_basic_string_delim(new_state) {
-                                    let after_closing = advance(advance(advance(new_state)));
-                                    return ParseResult::Ok(s, after_closing);
+                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
                                 } else {
                                     // println!(
                                     //    "missing closing delimiter for multi-line basic string where newline was present"
@@ -642,8 +640,7 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch, // not happening
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_literal_string_delim(new_state) {
-                                    let after_closing = advance(advance(advance(new_state)));
-                                    return ParseResult::Ok(s, after_closing);
+                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
                                 } else {
                                     // println!(
                                     //     "missing closing delimiter for multi-line literal string"
@@ -660,8 +657,7 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch,
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_literal_string_delim(new_state) {
-                                    let after_closing = advance(advance(advance(new_state)));
-                                    return ParseResult::Ok(s, after_closing);
+                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
                                 } else {
                                     // println!(
                                     //     "missing closing delimiter for multi-line literal string where newline was present"
@@ -955,8 +951,7 @@ pub(crate) fn parse_basic_string(state: State) -> ParseResult<String> {
                             } // missing closing quotation mark
                             Optional::Some(closing_char) => {
                                 if *is_quotation_mark(closing_char) {
-                                    let after_closing = advance(state_after_content);
-                                    return ParseResult::Ok(content_str, after_closing);
+                                    return ParseResult::Ok(content_str, advance(state_after_content));
                                 } else {
                                     // println!("missing closing quotation mark for basic string");
                                     return ParseResult::Err(Error::fresh());
@@ -1088,8 +1083,7 @@ pub(crate) fn parse_literal_string(state: State) -> ParseResult<String> {
                             }
                             Optional::Some(closing_char) => {
                                 if *is_apostrophe(closing_char) {
-                                    let after_closing = advance(state_after_content);
-                                    return ParseResult::Ok(content_str, after_closing);
+                                    return ParseResult::Ok(content_str, advance(state_after_content));
                                 } else {
                                     // println!("missing closing apostrophe for literal string");
                                     return ParseResult::Err(Error::fresh());

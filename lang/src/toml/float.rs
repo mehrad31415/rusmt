@@ -273,25 +273,26 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
 /// `zero-prefixable-int = DIGIT *( DIGIT / underscore DIGIT )`
 #[smt_fn]
 fn parse_unsigned_dec_rest(input: State, number: Integer) -> ParseResult<Integer> {
-    // Get the first character.
-    let first_char = match current_char(input) {
-        Optional::Some(c) => c,
+    // Avoid `return ...` inside a match-as-expression; Rusmart does not treat `return`
+    // as a diverging expression for type-checking purposes.
+    match current_char(input) {
         Optional::None => {
             // println!("must have at least one digit after decimal point");
             return ParseResult::Err(Error::fresh());
         } // must have at least one digit after decimal point
-    };
-
-    if *is_dec_digit(first_char).not() {
-        // println!("must have at least one digit after decimal point; found {:?}", first_char);
-        return ParseResult::Err(Error::fresh()); // must start with a digit
-    } else {
-        match parse_float_rest(advance(input), first_char, number) {
-            ParseResult::Ok(s, i) => {
-                return ParseResult::Ok(s.to_int(), i);
+        Optional::Some(first_char) => {
+            if *is_dec_digit(first_char).not() {
+                // println!("must have at least one digit after decimal point; found {:?}", first_char);
+                return ParseResult::Err(Error::fresh()); // must start with a digit
+            } else {
+                match parse_float_rest(advance(input), first_char, number) {
+                    ParseResult::Ok(s, i) => {
+                        return ParseResult::Ok(s.to_int(), i);
+                    }
+                    ParseResult::Err(e) => return ParseResult::Err(e),
+                    ParseResult::NoMatch => return ParseResult::NoMatch,
+                }
             }
-            ParseResult::Err(e) => return ParseResult::Err(e),
-            ParseResult::NoMatch => return ParseResult::NoMatch,
         }
     }
 }

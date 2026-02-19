@@ -12,12 +12,22 @@ use crate::toml::{
     string::{parse_basic_string, parse_literal_string, parse_string},
     table::parse_inline_table,
 };
-use rusmart_smt_remark_derive::smt_fn;
+use rusmart_smt_remark_derive::{smt_fn, smt_type};
 use rusmart_smt_stdlib::{Cloak, Error, Seq, String, smt::SMT};
+
+/// A key-value pair returned by `parse_key_value`.
+///
+/// We use a record (not a tuple/pack) because Rusmart's expression IR intentionally restricts
+/// tuple destructuring and does not support projecting pack slots from a variable.
+#[smt_type]
+pub struct KeyVal {
+    pub key: Seq<String>,
+    pub val: Value,
+}
 
 /// `keyval = key keyval-sep val`
 #[smt_fn]
-pub fn parse_key_value(state: State) -> ParseResult<(Seq<String>, Value)> {
+pub fn parse_key_value(state: State) -> ParseResult<KeyVal> {
     match parse_key(state) {
         ParseResult::Ok(key, state_after_key) => {
             match parse_keyval_sep(state_after_key) {
@@ -26,7 +36,7 @@ pub fn parse_key_value(state: State) -> ParseResult<(Seq<String>, Value)> {
                         Optional::Some(_c) => {
                             match parse_value(key, _state_after_sep) {
                                 ParseResult::Ok(val, state_after_val) => {
-                                    return ParseResult::Ok((key, val), state_after_val);
+                                    return ParseResult::Ok(KeyVal { key, val }, state_after_val);
                                 }
                                 ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {

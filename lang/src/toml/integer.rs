@@ -272,50 +272,51 @@ pub(crate) fn parse_dec_int(sign: Optional<String>, input: State) -> ParseResult
 /// `unsigned-dec-int = DIGIT / digit1-9 1*( DIGIT / underscore DIGIT )`
 #[smt_fn]
 fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
-    // Get the first character.
-    let first_char = match current_char(input) {
-        Optional::Some(c) => c,
+    // Avoid `return ...` inside a match-as-expression; Rusmart does not treat `return`
+    // as a diverging expression for type-checking purposes.
+    match current_char(input) {
         Optional::None => return ParseResult::NoMatch,
-    };
-
-    // This must be a digit to match this rule at all.
-    if *is_dec_digit(first_char).not() {
-        return ParseResult::NoMatch;
-    } else {
-        // Handle single-digit '0'
-        if *first_char.eq("0".into()) {
-            let next_input = advance(input);
-            // Check for the "leading zero" error. A '0' cannot be followed by another digit or underscore.
-            match current_char(next_input) {
-                Optional::None => {
-                    // If it's just '0' by itself, return 0.
-                    return ParseResult::Ok(Integer::from(0), next_input);
-                }
-                Optional::Some(next_char) => {
-                    if *is_dec_digit(next_char) {
-                        // println!("leading zero error due to digit after zero");
-                        return ParseResult::Err(Error::fresh());
-                    } else {
-                        if *is_underscore(next_char) {
-                            // println!("leading zero error due to underscore after zero");
-                            return ParseResult::Err(Error::fresh());
-                        } else {
-                            if *is_alpha(next_char) {
-                                // println!("invalid character after zero");
+        Optional::Some(first_char) => {
+            // This must be a digit to match this rule at all.
+            if *is_dec_digit(first_char).not() {
+                return ParseResult::NoMatch;
+            } else {
+                // Handle single-digit '0'
+                if *first_char.eq("0".into()) {
+                    let next_input = advance(input);
+                    // Check for the "leading zero" error. A '0' cannot be followed by another digit or underscore.
+                    match current_char(next_input) {
+                        Optional::None => {
+                            // If it's just '0' by itself, return 0.
+                            return ParseResult::Ok(Integer::from(0), next_input);
+                        }
+                        Optional::Some(next_char) => {
+                            if *is_dec_digit(next_char) {
+                                // println!("leading zero error due to digit after zero");
                                 return ParseResult::Err(Error::fresh());
                             } else {
-                                return ParseResult::Ok(Integer::from(0), next_input);
+                                if *is_underscore(next_char) {
+                                    // println!("leading zero error due to underscore after zero");
+                                    return ParseResult::Err(Error::fresh());
+                                } else {
+                                    if *is_alpha(next_char) {
+                                        // println!("invalid character after zero");
+                                        return ParseResult::Err(Error::fresh());
+                                    } else {
+                                        return ParseResult::Ok(Integer::from(0), next_input);
+                                    }
+                                }
                             }
                         }
                     }
+                } else {
+                    // Handle numbers starting with '1'-'9'
+                    match parse_unsigned_dec_rest_int(advance(input), first_char) {
+                        ParseResult::Ok(s, i) => return ParseResult::Ok(s.to_int(), i),
+                        ParseResult::Err(e) => return ParseResult::Err(e),
+                        ParseResult::NoMatch => return ParseResult::NoMatch,
+                    }
                 }
-            }
-        } else {
-            // Handle numbers starting with '1'-'9'
-            match parse_unsigned_dec_rest_int(advance(input), first_char) {
-                ParseResult::Ok(s, i) => return ParseResult::Ok(s.to_int(), i),
-                ParseResult::Err(e) => return ParseResult::Err(e),
-                ParseResult::NoMatch => return ParseResult::NoMatch,
             }
         }
     }

@@ -302,8 +302,8 @@ fn parse_inline_table_keyvals(
         ParseResult::NoMatch => {
             match parse_key_value(state) {
                 ParseResult::Ok(kv, state_after_kv) => {
-                    // Extract key and val using match
-                    let (key, val) = kv;
+                    let key = kv.key;
+                    let val = kv.val;
                     match current_char(state_after_kv) {
                         Optional::None => {
                             // println!("cannot have end of input here expecting }} or ,");
@@ -587,12 +587,13 @@ pub(crate) fn recursive_merge_tables(
 
                                     match sub_merge_result {
                                         Optional::Some(merged_last_table) => {
-                                            let prefix =
+                                            let prefix: Seq<Value> =
                                                 acc_seq.extract(Integer::from(0), last_idx);
 
                                             let new_last_val =
                                                 Value::Table(Cloak::shield(merged_last_table));
-                                            let new_tail = Seq::new().append(new_last_val);
+                                            let new_tail: Seq<Value> =
+                                                Seq::new().append(new_last_val);
                                             let new_seq = prefix.concat(new_tail);
                                             let next_acc = acc_table.store(
                                                 key_to_merge,

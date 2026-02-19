@@ -49,8 +49,8 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                     ParseResult::NoMatch // cannot happen
                                                 }
                                                 ParseResult::Ok(kv, state_after_kv) => {
-                                                    // Extract key and val using match
-                                                    let (key, val) = kv;
+                                                    let key = kv.key;
+                                                    let val = kv.val;
                                                     // destructuring the state and context
                                                     let state_after_kv_temp = state_after_kv;
                                                     let stream = state_after_kv_temp.stream;

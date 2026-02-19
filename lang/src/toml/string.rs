@@ -321,44 +321,37 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
             if *c.eq(String::from("\""))
             // %x22 - "
             {
-                let res = String::from("\"");
-                return ParseResult::Ok(res, advance(state));
+                return ParseResult::Ok(String::from("\""), advance(state));
             } else {
                 if *c.eq(String::from("\\"))
                 // %x5C - \
                 {
-                    let res = String::from("\\");
-                    return ParseResult::Ok(res, advance(state));
+                    return ParseResult::Ok(String::from("\\"), advance(state));
                 } else {
                     if *c.eq(String::from("b"))
                     // %x62 - b
                     {
-                        let res = String::from("\x08");
-                        return ParseResult::Ok(res, advance(state));
+                        return ParseResult::Ok(String::from("\x08"), advance(state));
                     } else {
                         if *c.eq(String::from("f"))
                         // %x66 - f
                         {
-                            let res = String::from("\x0C");
-                            return ParseResult::Ok(res, advance(state));
+                            return ParseResult::Ok(String::from("\x0C"), advance(state));
                         } else {
                             if *c.eq(String::from("n"))
                             // %x6E - n
                             {
-                                let res = String::from("\n");
-                                return ParseResult::Ok(res, advance(state));
+                                return ParseResult::Ok(String::from("\n"), advance(state));
                             } else {
                                 if *c.eq(String::from("r"))
                                 // %x72 - r
                                 {
-                                    let res = String::from("\r");
-                                    return ParseResult::Ok(res, advance(state));
+                                    return ParseResult::Ok(String::from("\r"), advance(state));
                                 } else {
                                     if *c.eq(String::from("t"))
                                     // %x74 - t
                                     {
-                                        let res = String::from("\t");
-                                        return ParseResult::Ok(res, advance(state));
+                                        return ParseResult::Ok(String::from("\t"), advance(state));
                                     } else {
                                         let needed = if *c.eq(String::from("u")) {
                                             Integer::from(4)
@@ -389,14 +382,14 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                 // );
                                                 return ParseResult::Err(Error::fresh());
                                             } // Invalid Hex
-                                            ParseResult::Err(e) => return ParseResult::Err(e),
-                                            ParseResult::Ok(hex_str, state_after_hex) => {
+                                            ParseResult::Err(e) => ParseResult::Err(e),
+                                            ParseResult::Ok(hex_str, hex_state) => {
                                                 let code_point = Integer::from_hex_str(hex_str); // mathematically cannot panic!
                                                 let code_point_u32 = code_point.to_u32(); // cannot panic
                                                 if *is_valid_unicode_scalar(code_point_u32) {
                                                     let char_str =
                                                         String::from_code(code_point_u32);
-                                                    return ParseResult::Ok(char_str, state_after_hex);
+                                                    return ParseResult::Ok(char_str, hex_state);
                                                 } else {
                                                     // println!(
                                                     //    "invalid unicode scalar value in escape sequence: {:?}",

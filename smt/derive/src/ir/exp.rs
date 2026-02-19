@@ -2538,8 +2538,13 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 | Intrinsic::BoolIff { .. }
                 | Intrinsic::BoolNand { .. }
                 | Intrinsic::BoolNor { .. }
-                | Intrinsic::BoolXnor { .. }
-                | Intrinsic::BoolIte { .. } => Sort::Boolean,
+                | Intrinsic::BoolXnor { .. } => Sort::Boolean,
+                Intrinsic::BoolIte { then, else_, .. } => {
+                    let then_sort = self.derive_type(*then);
+                    let else_sort = self.derive_type(*else_);
+                    Self::check_sort(&then_sort, &else_sort);
+                    then_sort
+                }
 
                 // -------------------------------------------------------------
                 // Integer

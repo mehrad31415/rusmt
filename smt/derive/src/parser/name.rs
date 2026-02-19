@@ -382,7 +382,7 @@ impl UsrFuncName {
             | "bv_shl" | "bv_lshr" | "bv_ashr" | "bv_rotate_left" | "bv_rotate_right" 
             | "bv_lt" | "bv_le" | "bv_gt" | "bv_ge" | "to_int"
             // float
-            | "add" | "sub" | "mul" | "div" | "neg" | "abs" | "rem" | "sqrt" | "min" | "max" | "is_nan" | "is_infinite" | "is_zero" | "is_normal" | "is_subnormal" | "is_negative" | "is_positive" | "lt" | "le" | "gt" | "ge" | "nan" | "infinity" | "neg_infinity" | "pos_zero" | "neg_zero" | "to_integer" | "to_real" | "to_u32" | "to_i32" | "to_i64" | "to_u64" | "ceil" | "floor" | "trunc" | "nearest" | "fq_eq" | "from_hex_str"
+            | "add" | "sub" | "mul" | "div" | "neg" | "abs" | "rem" | "sqrt" | "min" | "max" | "is_nan" | "is_infinite" | "is_zero" | "is_normal" | "is_subnormal" | "is_negative" | "is_positive" | "lt" | "le" | "gt" | "ge" | "nan" | "infinity" | "neg_infinity" | "pos_zero" | "neg_zero" | "to_integer" | "to_real" | "to_u32" | "to_i32" | "to_i64" | "to_u64" | "ceil" | "floor" | "trunc" | "nearest" | "fp_eq" | "from_hex_str"
             // Integer operations.
             | "add" | "mul" | "sub" | "neg" | "div" | "div_trunc" | "modulo" | "rem" | "pow" | "abs" | "divides" | "lt" | "le" | "gt" | "ge" | "to_real" | "to_i32" | "to_i64" | "to_u32" | "to_u64" | "to_f32" | "to_f64" | "from_hex_str" | "from_oct_str" | "from_bin_str" | "is_gt_i64_max" | "is_lt_i64_min" | "is_gt_u64_max" | "is_lt_u64_min" | "is_lt_i32_min" | "is_gt_i32_max" | "is_lt_u32_min" | "is_gt_u32_max"
             // Real operations.

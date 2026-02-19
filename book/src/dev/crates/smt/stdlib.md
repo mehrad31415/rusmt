@@ -55,13 +55,15 @@ pub struct Boolean {
 ```
 Note that this approach of wrapping inside a struct with an `inner` field is a common way in the libraries of Rust itself and this approach is used in the Rusmart standard library as well.
 
-- `Integer`: A wrapper around the Rust signed and unsigned integer types from 8 to 128 bits.
-- `Rational`: A wrapper around the Rust signed and unsigned integer types from 8 to 128 bits along with f32 and f64.
-- `Text`: A wrapper around the Rust `String` type.
+- `Integer`: Unbounded integer (backed by `num_bigint::BigInt`).
+- `Real`: Unbounded rational (backed by `num_rational::BigRational`).
+- `I32`, `I64`, `U32`, `U64`: Bitvectors (SMT-LIB `(_ BitVec 32)` / `(_ BitVec 64)`), with signed/unsigned *interpretations* in the DSL API.
+- `F32`, `F64`: Floating-point sorts (SMT-LIB `(_ FloatingPoint 8 24)` / `(_ FloatingPoint 11 53)`).
+- `String`: A wrapper around Rust `String`, corresponding to SMT-LIB `String`.
 - `Cloak<T>`: A wrapper over `T` to allow recursive data types to be defined (similar to `Box<T>` in Rust). A `Cloak<T>` will be uncloaked to `T` after the parsing stage of Rusmart.
 - `Seq<T>`: SMT sequence of type `T` similar to Rust `Vec<T>`.
 - `Set<T>`: SMT set of type `T` similar to Rust `BTreeSet<T>`.
-- `Map<K, V>`: SMT array of key type `K` and value type `V`, similar to Rust `BTreeMap<K, V>`.
+- `Array<K, V>`: SMT array of key type `K` and value type `V`, similar to a persistent `BTreeMap<K, V>` in the interpreter.
 - `Error`: A special marker to indicate error states. The error state is created by calling the `Error::fresh()` function. Every time the `fresh()` method is called, a new error state is created with a unique inner value. The inner values are incremented by one each time a new error state is created.
 
 ## Expressions

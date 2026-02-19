@@ -1,3 +1,10 @@
 ### Dependencies
 
-Contains the submodules of the project. A submodule is a repository embedded inside another repository. These modules are listed in the `.gitmodules` file in the root directory of the project. In this case, the `deps` directory contains the `cvc5` and `z3` submodules. These submodules are used to integrate the CVC5 and Z3 SMT solvers into the project.
+Rusmart’s solver integration lives under `solver/`.
+
+In this repository the focus is **Z3**, and the codebase includes Rust bindings and build plumbing so tests can run in a self-contained way.
+
+If you are updating solver behavior or SMT-LIB emission, the key crates are typically:
+
+- `smt/derive` backend implementation (SMT-LIB formatting, invocation, response parsing)
+- `solver/` (Z3 binding/build integration)

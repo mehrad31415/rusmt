@@ -1,3 +1,32 @@
+## Crate: `rusmart-smt-derive`
+
+`rusmart-smt-derive` is the **Rust→IR→SMT-LIB** compiler for the Rusmart DSL.
+
+### Key entry points
+
+The crate exposes two workflows that are used by the test harness in `programs/tests/integration.rs`:
+
+- **`model(path)`**: parse and lower a Rusmart program into the internal IR (no solver required)
+- **`derive(path, out_dir)`**: end-to-end compilation that emits SMT-LIB (Z3-oriented) and collects solver responses
+
+### Internal structure
+
+- `src/parser/*`: DSL parsing, intrinsic recognition, overload resolution
+- `src/ir/*`: expression lowering and SMT sort checking
+- `src/backend/*`:
+  - `backend/z3/*`: SMT-LIB emission for Z3 and response handling
+
+### Intrinsics: where they are defined
+
+When you add a new intrinsic-backed method in `rusmart-smt-stdlib`, the derive crate typically needs updates in:
+
+- `parser/name.rs` (allow-list intrinsic names)
+- `parser/apply.rs` (type signatures / overload resolution)
+- `parser/intrinsics.rs` (map `(type, name)` to an intrinsic opcode)
+- `ir/intrinsics.rs` + `backend/z3/intrinsics.rs` (if you add a new opcode)
+
+The user-facing intrinsic list lives in `book/src/user/stdlib.md`.
+
 ### Derive
 
 We will start analyzing the _rusmart-smt-derive_ package differently. This package has one root library crate. The content of the _Cargo.toml_ file is shown below:
@@ -84,7 +113,7 @@ Some important facts about the rusmart files are:
 - In dsl.rs of the parser, Parse method for Quantifier not unit tested because a generics type that implements CtxtForExpr is needed.
 - In bail_on for derive and remark, there are differences; this was intentional as the derive is deeper in the code and thus the error message is more readable. The remark is at the top level and thus the error message is more generic.
 - A type parameter name in the parser is converted to a smt sort name in the ir (intermediate representation). TypeParamName > crate::ir::name::SmtSortName in name.rs.
-- Compared to the types that we have in stdlib (Boolean, Integer, Rational, Text, Cloak, Seq, Set, Map, Error), TypeTag has three extra variants: User, Pack, Parameter which are user-defined (struct and enum) types, tuple types, and type parameters respectively.
+- Compared to the intrinsic types that we have in stdlib (e.g. Boolean, Integer, Real, F32/F64, I32/I64/U32/U64, String, Cloak, Seq, Set, Array, Error), `TypeTag` has three extra variants: `User`, `Pack`, `Parameter` which are user-defined (struct and enum) types, tuple types, and type parameters respectively.
 - TypeRef in infer.rs has an extra variant Var(TypeVar) compared to TypeTag which are for vars that do not have a concrete type yet and will be unified later.
 - Seq(Box<TypeRef>) defines a type which is a sequence of TypeRefs.
 - in ty.rs of the parser, we have let param_name = ident.try_into()?; in logic, type parameters take priority over user-defined type names (this is a design choice made by the rust authors as well).
@@ -92,7 +121,7 @@ Some important facts about the rusmart files are:
 - Refinement is a relation between the impl and the spec.
 - In ctxt.rs, the fn_db is created and then ignored as it is not needed anymore. It is only used in the expr module to look up the function names.
 - Only a specification can be uninterpreted as it means that the specification is not implemented yet for the implementation. In this case we will have an axiomatic specification.
-- We cannot use types that Rust defines. We have to have types that are rusmart types marked with #[smt_type] in the parser. So for example using a HashMap from the standard library is not allowed (instead we use Map).
+- We cannot use arbitrary Rust library types. We have to have types that are Rusmart types marked with `#[smt_type]` in the parser. For example using `std::collections::HashMap` is not allowed (instead use the stdlib `Array<K, V>`).
 - fn lookup_unqualified(&self, name: &UsrFuncName) -> Option<&TypeFn> in expr.rs of the parser is used to look up the function name in the function database. An impl function can be called inside an impl function. A spec function can be called inside a spec function. An impl function can be called inside a spec function. A spec function CANNOT be called inside an impl function and an error will be thrown.
 - In unifying type parameters, they need to have the same name.
 - The methods defined on the types in stdlib are not in place meaning that they generate a new value instead of modifying the existing one.

@@ -1091,7 +1091,7 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "le") => mk2_impl!(FloatLe, lhs, rhs),
             (Q::F32 | Q::F64, "gt") => mk2_impl!(FloatGt, lhs, rhs),
             (Q::F32 | Q::F64, "ge") => mk2_impl!(FloatGe, lhs, rhs),
-            (Q::F32 | Q::F64, "fq_eq") => mk2_impl!(FloatFqEq, lhs, rhs),
+            (Q::F32 | Q::F64, "fp_eq") => mk2_impl!(FloatFqEq, lhs, rhs),
     
             _ => anyhow::bail!("unknown intrinsic: {:?}::{}", ty_name, fn_name),
         };

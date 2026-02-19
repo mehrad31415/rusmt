@@ -22,7 +22,7 @@ cloc:
 		lang
 
 docs:
-	@cd doc/book && \
+	@cd book && \
 		mdbook clean && mdbook build && mdbook serve --open
 
 .PHONY: help lint cloc docs

@@ -27,40 +27,13 @@
 	)
 )
 
-; Define user-defined types
-(declare-datatypes
-
-                    	((BinTree 1))
-
-                    	(
-
-                    		(par (T) ((Leaf) (Node (record_BinTree_Node_left_ (BinTree T)) (record_BinTree_Node_right_ (BinTree T)) (record_BinTree_Node_value_ T))))
-
-                    	)
-
-                    )
-(declare-datatypes
-
-                    	((Forest 1) (Tree 1))
-
-                    	(
-
-                    		(par (T) ((Empty) (Trees (field_Forest_Trees_1_ (Tree T)) (field_Forest_Trees_2_ (Forest T))))) (par (T) ((mk-Tree (record_Tree_kids_ (Forest T)) (record_Tree_value_ T))))
-
-                    	)
-
-                    )
-(declare-datatypes
-
-                    	((Listx 1))
-
-                    	(
-
-                    		(par (T) ((Cons (field_Listx_Cons_1_ T) (field_Listx_Cons_2_ (Listx T))) (Nil)))
-
-                    	)
-
-                    )
+; Define user-defined functions
+(define-fun bool_ops ((a Bool) (b Bool)) Bool (and (or a b) (not (xor a b))))
+(define-fun int_arithmetic ((x Int) (y Int)) Int (+ (* x 2) (div y 3)))
+(define-fun is_in_range ((x Int) (low Int) (high Int)) Bool (and (>= x low) (<= x high)))
+(define-fun quadratic_discriminant ((a Real) (b Real) (c Real)) Real (- (* b b) (* (/ 4 1) (* a c))))
+(define-fun real_ops ((a Real) (b Real)) Real (+ (* a (/ 2 1)) (/ b (/ 2 1))))
+(define-fun string_ops ((s1 String) (s2 String)) Bool (and (str.prefixof """hello""" s1) (str.contains s2 """world""")))
 
 ; Helper functions for error handling
 (define-fun err-fresh ((id Int)) Error

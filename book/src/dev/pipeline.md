@@ -9,131 +9,53 @@ following the Rusmart [syntax](../user/syntax.md) and
 [type system](../user/typing.md)
 (which is more restrictive than Rust).
 
-Every Rusmart program (denoted as `P`) will first go through the
-{{#include ../../dict/crate-remark.md}} crate to
-enrich its abstract syntax tree (AST).
-The AST-extended program is a new Rust program (denoted as `P'`)
-which **can be concretely executed** if `P` is well-formed.
-(However, `P` itself may or may not be concretely executable.)
+At build time, the code is checked/processed in two layers:
 
-Derivation of the denotational semantics of `P`
-occurs in the {{#include ../../dict/crate-derive.md}} crate
-which will, in theory, re-check every property
-that is checked in the {{#include ../../dict/crate-remark.md}} crate.
-with the additional knowledge that
-`P'` **passes the Rust compiler** (both in syntax and in typing).
-Effectively, this means that Rusmart syntax and type checking
-is based on Rust (i.e., is a subset of Rust).
+- **Remarking** ({{#include ../../dict/crate-remark.md}}): enforces syntactic restrictions for `#[smt_fn]` / `#[smt_type]`.
+- **Derivation / transpilation** ({{#include ../../dict/crate-derive.md}}): parses the DSL subset, recognizes intrinsics, builds IR, emits SMT-LIB, and (for some workflows/tests) invokes Z3.
 
 ## AST Enrichment
 
 The logic about AST enrichment is encapsulated
 in the {{#include ../../dict/crate-remark.md}} crate.
-Briefly, a Rusmart program is enriched with the following AST fragments:
+Briefly, a Rusmart program is instrumented so that DSL types are easy to handle in both concrete execution and symbolic processing.
 
 ### On types
 
-- All `struct` types annotated with `#[smt_type]` will be instrumented with
-  `#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]`
-
-- All `enum` types annotated with `#[smt_type]` will be instrumented with
-  `#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]` and
-  the `Default` trait will be implemented for the type
-  (the first enum variant will be constructed using default values).
-
-- The `SMT` trait from [`stdlib`](../user/stdlib.md) will be implemented
-  for all types annotated with `#[smt_type]`
-
-To illustrate the AST enrichment on types:
-
-```rust
-#[smt_type]
-enum MyEnum {
-    V0 { a: MyTypeA, b: MyTypeB },
-    V1,
-    V2(MyTypeC)
-}
-
-// enriched AST
-#[smt_type]
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-enum MyEnum {
-    V0 { a: MyTypeA, b: MyTypeB },
-    V1,
-    V2(MyTypeC)
-}
-
-impl Default for MyEnum {
-    fn default() -> Self {
-        Self::V0 { a: MyTypeA::default(), b: MyTypeB::default() }
-    }
-}
-
-impl SMT for MyEnum {}
-```
+Types annotated with `#[smt_type]` are extended with derives (`Copy`, `Clone`, `Debug`, `Hash`, etc.) and an `SMT` impl (see `smt/remark` for exact rules).
 
 ### On functions
 
-- If a function `f` is annotated with either `#[smt_impl]` or `#[smt_spec]` and
-  the `method = <method_name>` attribute is specified, the receiver-style
-  method is derived for this function with an `impl` block on the type of
-  the first argument of `f`. In other words, in the derived method, `self`
-  is the first argument of `f`.
-
-To illustrate the AST enrichment on functions:
-
-```rust
-#[smt_impl(method = my_method)]
-fn my_func(x: MyTypeA, y: MyTypeB) -> MyTypeC { .. }
-
-// enriched AST
-#[smt_impl(method = my_method)]
-fn my_func(x: MyTypeA, y: MyTypeB) -> MyTypeC { .. }
-
-impl MyTypeA {
-    fn my_method(self, y: MyTypeB) -> MyTypeC { my_func(self, y) }
-}
-```
+Functions annotated with `#[smt_fn]` are marked as DSL entry points and are subject to syntactic restrictions (no `async`, no `unsafe`, no `where` clauses, etc.).
 
 ## SMT Derivation
 
-The logic about SMT derivation is encapsulated
-in the {{#include ../../dict/crate-derive.md}} crate,
-which can be further decomposed into three steps:
+The derivation logic lives in `smt/derive` and decomposes into:
 
-### Step 1: AST parsing and syntax checking
+### Step 1: Parse restricted Rust into a DSL AST
 
-Source code location: `src/parser`
+Source: `smt/derive/src/parser/*`
 
-While the exact AST parsing process is better read from the code,
-here is a brief outline of the parsing chain
-(by chasing the typestate of the parsing context as in `ctxt.rs`):
+This phase recognizes:
 
-- Collect all Rusmart code for the program `P`
-    - `&Path -> Context`
-- Collect generics in type definitions
-    - `Context -> ContextWithGenerics`
-- Build a type registry for `P` by parsing all type definitions
-    - `ContextWithGenerics -> ContextWithType`
-- Collect all function signatures
-    - `ContextWithType -> ContextWithSig`
-- Build a function registry for `P` by parsing all function definitions
-    - `ContextWithSig -> ContextWithFunc`
-- Finalize the context
-    - `ContextWithFunc -> ASTContext`
+- DSL function/type declarations (`#[smt_fn]`, `#[smt_type]`)
+- supported expression/statement forms
+- **intrinsics**: stdlib types and method names that map to SMT operators
 
-**TODO**: not fully tested
+Intrinsic plumbing lives mainly in:
 
-### Step 2: Type checking and IR validation
+- `parser/name.rs` (intrinsic allow-lists)
+- `parser/apply.rs` (overload resolution and intrinsic signatures)
+- `parser/intrinsics.rs` (map `(type, name)` into intrinsic opcodes)
 
-Source code location: `src/ir`
+### Step 2: Lower into IR with sort checking
 
-**TODO**: not documented
+Source: `smt/derive/src/ir/*`
 
-**TODO**: not tested
+This phase assigns SMT sorts to expressions and validates sort compatibility (e.g., boolean contexts, arithmetic contexts, polymorphic intrinsics).
 
-### Step 3: IR analysis and SMT generation
+### Step 3: Emit SMT-LIB (and optionally run Z3)
 
-Source code location: `src/analysis` and `src/backend`
+Source: `smt/derive/src/backend/*` (including `backend/z3/*`)
 
-**TODO**: not yet implemented
+The Z3 backend renders IR intrinsics into SMT-LIB 2 and can run Z3 to collect responses used by the translation tests.

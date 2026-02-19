@@ -107,47 +107,47 @@ impl ApplyDatabase {
     pub fn with_intrinsics() -> Self {
         use SysTypeName as Q;
         use TypeTag::*;
-    
+
         let mut db = Self::new();
         let empty = || Generics::intrinsic(vec![]);
-    
+
         let fn0 = |rty: TypeTag| TypeFn {
             generics: empty(),
             params: vec![],
             ret_ty: rty,
         };
-    
+
         let fn1 = |a0: TypeTag, rty: TypeTag| TypeFn {
             generics: empty(),
             params: vec![a0],
             ret_ty: rty,
         };
-    
+
         let fn2 = |a0: TypeTag, a1: TypeTag, rty: TypeTag| TypeFn {
             generics: empty(),
             params: vec![a0, a1],
             ret_ty: rty,
         };
-    
+
         let fn3 = |a0: TypeTag, a1: TypeTag, a2: TypeTag, rty: TypeTag| TypeFn {
             generics: empty(),
             params: vec![a0, a1, a2],
             ret_ty: rty,
         };
-    
+
         let fn1_arith = |t: TypeTag| fn1(t.clone(), t);
         let fn2_arith = |t: TypeTag| fn2(t.clone(), t.clone(), t);
         let fn2_cmp = |t: TypeTag| fn2(t.clone(), t, Boolean);
-    
+
         let t = || Parameter(TypeParamName::intrinsic("T"));
         let box_t = || Cloak(t().into());
         let seq_t = || Seq(t().into());
         let set_t = || Set(t().into());
-    
+
         let k = || Parameter(TypeParamName::intrinsic("K"));
         let v = || Parameter(TypeParamName::intrinsic("V"));
         let map_kv = || Array(k().into(), v().into());
-    
+
         db.builtin("not", Q::Boolean, fn1_arith(Boolean));
         db.builtin("and", Q::Boolean, fn2_arith(Boolean));
         db.builtin("or", Q::Boolean, fn2_arith(Boolean));
@@ -157,8 +157,18 @@ impl ApplyDatabase {
         db.builtin("xnor", Q::Boolean, fn2_arith(Boolean));
         db.builtin("implies", Q::Boolean, fn2_arith(Boolean));
         db.builtin("iff", Q::Boolean, fn2_arith(Boolean));
-        db.builtin("ite", Q::Boolean, fn3(Boolean, t(), t(), t()));
-    
+        // `Boolean::ite` is function-generic (T), not type-generic.
+        // We must declare the function generic so it can be inferred from the then/else arguments.
+        db.builtin(
+            "ite",
+            Q::Boolean,
+            TypeFn {
+                generics: empty(),
+                params: vec![Boolean, t(), t()],
+                ret_ty: t(),
+            },
+        );
+
         db.builtin("neg", Q::Integer, fn1_arith(Integer));
         db.builtin("add", Q::Integer, fn2_arith(Integer));
         db.builtin("sub", Q::Integer, fn2_arith(Integer));
@@ -192,7 +202,7 @@ impl ApplyDatabase {
         db.builtin("is_gt_i32_max", Q::Integer, fn1(Integer, Boolean));
         db.builtin("is_lt_u32_min", Q::Integer, fn1(Integer, Boolean));
         db.builtin("is_gt_u32_max", Q::Integer, fn1(Integer, Boolean));
-    
+
         db.builtin("neg", Q::Real, fn1_arith(Real));
         db.builtin("add", Q::Real, fn2_arith(Real));
         db.builtin("sub", Q::Real, fn2_arith(Real));
@@ -211,7 +221,7 @@ impl ApplyDatabase {
         db.builtin("to_int", Q::Real, fn1(Real, Integer));
         db.builtin("to_f32", Q::Real, fn1(Real, F32));
         db.builtin("to_f64", Q::Real, fn1(Real, F64));
-    
+
         db.builtin("new", Q::String, fn0(String));
         db.builtin("length", Q::String, fn1(String, Integer));
         db.builtin("concat", Q::String, fn2_arith(String));
@@ -229,15 +239,19 @@ impl ApplyDatabase {
         db.builtin("gt", Q::String, fn2_cmp(String));
         db.builtin("ge", Q::String, fn2_cmp(String));
         db.builtin("replace", Q::String, fn3(String, String, String, String));
-        db.builtin("replace_all", Q::String, fn3(String, String, String, String));
+        db.builtin(
+            "replace_all",
+            Q::String,
+            fn3(String, String, String, String),
+        );
         db.builtin("to_int", Q::String, fn1(String, Integer));
         db.builtin("from_int", Q::String, fn1(Integer, String));
         db.builtin("from_code", Q::String, fn1(U32, String));
         db.builtin("to_code", Q::String, fn1(String, U32));
-    
+
         db.builtin("shield", Q::Cloak, fn1(t(), box_t()));
         db.builtin("reveal", Q::Cloak, fn1(box_t(), t()));
-    
+
         db.builtin("new", Q::Seq, fn0(seq_t()));
         db.builtin("unit", Q::Seq, fn1(t(), seq_t()));
         db.builtin("length", Q::Seq, fn1(seq_t(), Integer));
@@ -253,7 +267,7 @@ impl ApplyDatabase {
         db.builtin("suffix_of", Q::Seq, fn2(seq_t(), seq_t(), Boolean));
         db.builtin("replace", Q::Seq, fn3(seq_t(), t(), t(), seq_t()));
         db.builtin("is_empty", Q::Seq, fn1(seq_t(), Boolean));
-    
+
         db.builtin("new", Q::Set, fn0(set_t()));
         db.builtin("length", Q::Set, fn1(set_t(), Integer));
         db.builtin("insert", Q::Set, fn2(set_t(), t(), set_t()));
@@ -263,12 +277,16 @@ impl ApplyDatabase {
         db.builtin("intersection", Q::Set, fn2(set_t(), set_t(), set_t()));
         db.builtin("union", Q::Set, fn2(set_t(), set_t(), set_t()));
         db.builtin("difference", Q::Set, fn2(set_t(), set_t(), set_t()));
-        db.builtin("symmetric_difference", Q::Set, fn2(set_t(), set_t(), set_t()));
+        db.builtin(
+            "symmetric_difference",
+            Q::Set,
+            fn2(set_t(), set_t(), set_t()),
+        );
         db.builtin("is_subset", Q::Set, fn2(set_t(), set_t(), Boolean));
         db.builtin("is_proper_subset", Q::Set, fn2(set_t(), set_t(), Boolean));
         db.builtin("is_disjoint", Q::Set, fn2(set_t(), set_t(), Boolean));
         db.builtin("has_size", Q::Set, fn2(set_t(), Integer, Boolean));
-    
+
         db.builtin("new", Q::Array, fn0(map_kv()));
         db.builtin("length", Q::Array, fn1(map_kv(), Integer));
         db.builtin("store", Q::Array, fn3(map_kv(), k(), v(), map_kv()));
@@ -276,9 +294,15 @@ impl ApplyDatabase {
         db.builtin("del", Q::Array, fn2(map_kv(), k(), map_kv()));
         db.builtin("contains_key", Q::Array, fn2(map_kv(), k(), Boolean));
         db.builtin("is_empty", Q::Array, fn1(map_kv(), Boolean));
-    
+
         for &q in &[Q::I32, Q::I64, Q::U32, Q::U64] {
-            let ty = match q { Q::I32 => I32, Q::I64 => I64, Q::U32 => U32, Q::U64 => U64, _ => unreachable!() };
+            let ty = match q {
+                Q::I32 => I32,
+                Q::I64 => I64,
+                Q::U32 => U32,
+                Q::U64 => U64,
+                _ => unreachable!(),
+            };
             db.builtin("bv_not", q, fn1_arith(ty.clone()));
             db.builtin("bv_and", q, fn2_arith(ty.clone()));
             db.builtin("bv_or", q, fn2_arith(ty.clone()));
@@ -306,7 +330,7 @@ impl ApplyDatabase {
             db.builtin("bv_ge", q, fn2_cmp(ty.clone()));
             db.builtin("to_int", q, fn1(ty, Integer));
         }
-    
+
         for &q in &[Q::F32, Q::F64] {
             let ty = if q == Q::F32 { F32 } else { F64 };
             db.builtin("add", q, fn2_arith(ty.clone()));
@@ -345,13 +369,13 @@ impl ApplyDatabase {
             db.builtin("floor", q, fn1(ty.clone(), ty.clone()));
             db.builtin("trunc", q, fn1(ty.clone(), ty.clone()));
             db.builtin("nearest", q, fn1(ty.clone(), ty.clone()));
-            db.builtin("fq_eq", q, fn2_cmp(ty.clone()));
+            db.builtin("fp_eq", q, fn2_cmp(ty.clone()));
             db.builtin("from_hex_str", q, fn1(String, ty));
         }
-    
+
         db.builtin("fresh", Q::Error, fn0(Error));
         db.builtin("merge", Q::Error, fn2_arith(Error));
-    
+
         db
     }
 

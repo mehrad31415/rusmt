@@ -608,6 +608,7 @@ dependencies = [
  "rusmart-smt-derive",
  "rusmart-smt-remark-derive",
  "rusmart-smt-stdlib",
+ "tempfile",
 ]
 
 [[package]]

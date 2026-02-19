@@ -1017,7 +1017,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         let sort = self.parent.resolve_type(&inst.ty);
         match exp_ty {
             None => (),
-            Some(ety) => Self::check_sort(&sort, ety),
+            Some(ety) => Self::check_sort(ety, &sort),
         }
 
         // parse the expression

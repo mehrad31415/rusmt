@@ -5,8 +5,8 @@ use crate::backend::z3::fun::{format_sort_for_fn, resolve_function_name};
 use crate::backend::z3::intrinsics::format_intrinsic;
 use crate::backend::z3::ty::resolve_type_name;
 use crate::ir::exp::{EnumSelector, Expression, VarKind, VariantCtor};
-use crate::ir::index::UsrFunId;
-use crate::ir::sort::DataType;
+use crate::ir::index::{UsrFunId, UsrSortId};
+use crate::ir::sort::{DataType, Sort};
 use crate::ir::{ctxt::IRContext, exp::ExpRegistry, index::ExpId};
 use std::collections::BTreeSet;
 
@@ -18,6 +18,30 @@ pub fn format_expression(
     param_names: &std::collections::HashSet<String>,
     scc_fids: &BTreeSet<UsrFunId>,
 ) -> String {
+    fn user_sort_of_base(exp_registry: &ExpRegistry, base: ExpId, ir: &IRContext) -> (UsrSortId, Option<String>) {
+        let base_exp = exp_registry.lookup_exp(&base);
+        match base_exp {
+            Expression::Record { sort, .. } => (*sort, None),
+            Expression::Enum { sort, branch, .. } => (*sort, Some(branch.clone())),
+            Expression::Pack { sort, .. } | Expression::Tuple { sort, .. } => (*sort, None),
+            Expression::Var(var_id) => {
+                let var = exp_registry.lookup_var(var_id);
+                match &var.sort {
+                    Sort::User(sid) => (*sid, None),
+                    s => panic!("Access base must have user sort, got {s}"),
+                }
+            }
+            Expression::Procedure { callee, .. } => {
+                let ret = ir.fn_registry.retrieve_sig(*callee).ret_ty.clone();
+                match ret {
+                    Sort::User(sid) => (sid, None),
+                    s => panic!("Access base must return user sort, got {s}"),
+                }
+            }
+            other => panic!("Access base must be a user-typed expression, got {other:?}"),
+        }
+    }
+
     let exp = exp_registry.lookup_exp(&exp_id);
 
     match exp {
@@ -152,13 +176,7 @@ pub fn format_expression(
 
         Expression::AccessSlot { base, slot } => {
             let base_str = format_expression(exp_registry, *base, ir, param_names, scc_fids);
-            let base_sort = {
-                let base_exp = exp_registry.lookup_exp(base);
-                match base_exp {
-                    Expression::Pack { sort, .. } | Expression::Tuple { sort, .. } => *sort,
-                    _ => panic!("AccessSlot base must be Pack or Tuple"),
-                }
-            };
+            let (base_sort, _) = user_sort_of_base(exp_registry, *base, ir);
             let type_name = resolve_type_name(ir, base_sort);
             let accessor_name = format!("field_{}_{}_", type_name, slot + 1);
             format!("({} {})", accessor_name, base_str)
@@ -166,14 +184,7 @@ pub fn format_expression(
 
         Expression::AccessField { base, field } => {
             let base_str = format_expression(exp_registry, *base, ir, param_names, scc_fids);
-            let (base_sort, variant_name) = {
-                let base_exp = exp_registry.lookup_exp(base);
-                match base_exp {
-                    Expression::Record { sort, .. } => (*sort, None),
-                    Expression::Enum { sort, branch, .. } => (*sort, Some(branch.clone())),
-                    _ => panic!("AccessField base must be Record or Enum"),
-                }
-            };
+            let (base_sort, variant_name) = user_sort_of_base(exp_registry, *base, ir);
             let type_name = resolve_type_name(ir, base_sort);
             let accessor_name = if let Some(variant) = variant_name {
                 format!("record_{}_{}_{}_", type_name, variant, field)

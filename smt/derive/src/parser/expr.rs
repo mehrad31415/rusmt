@@ -2577,7 +2577,12 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         // Recursively convert the inner expression using the function's return type
                         // as the expected type, not the current expression's expected type
                         let ret_ty = self.root.ret_ty.clone();
-                        return self.fork(ret_ty).convert_expr(unifier, inner_expr);
+                        // IMPORTANT: keep already-collected `let` bindings in this block.
+                        // `fork()` clears `bindings`, which would drop locals declared before `return`
+                        // and later cause "no such variable" in IR building.
+                        let mut ctxt = self;
+                        ctxt.exp_ty = ret_ty;
+                        return ctxt.convert_expr(unifier, inner_expr);
                     }
                     None => {
                         // return without value - not allowed in SMT functions

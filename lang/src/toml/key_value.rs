@@ -85,9 +85,7 @@ fn parse_keyval_sep(state: State) -> ParseResult<String> {
     match c {
         Optional::Some(ch) => {
             if *ch.eq(String::from("=")) {
-                let state_after_eq = advance(state_after_ws);
-                let state_after_ws2 = parse_ws(state_after_eq);
-                ParseResult::Ok(ch, state_after_ws2)
+                ParseResult::Ok(ch, parse_ws(advance(state_after_ws)))
             } else {
                 // expected '=' but found something else
                 // println!("expected '=' but found another character {:?}", ch);
@@ -131,9 +129,7 @@ fn parse_dot_sep(state: State) -> ParseResult<String> {
     match c {
         Optional::Some(ch) => {
             if *ch.eq(String::from(".")) {
-                let state_after_dot = advance(state_after_ws);
-                let state_after_ws2 = parse_ws(state_after_dot);
-                return ParseResult::Ok(ch, state_after_ws2)
+                return ParseResult::Ok(ch, parse_ws(advance(state_after_ws)))
             } else {
                 return ParseResult::NoMatch // cannot happen
             }

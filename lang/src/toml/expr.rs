@@ -138,9 +138,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                         ),
                                                                     )
                                                                 };
-                                                                let state_after_ws2 =
-                                                                    parse_ws(new_state_after_kv);
-                                                                match parse_comment(state_after_ws2)
+                                                                match parse_comment(parse_ws(new_state_after_kv))
                                                                 {
                                                                     ParseResult::Err(e) => {
                                                                         ParseResult::Err(e)
@@ -148,7 +146,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                     ParseResult::NoMatch => {
                                                                         return ParseResult::Ok(
                                                                             patch,
-                                                                            state_after_ws2,
+                                                                            parse_ws(new_state_after_kv),
                                                                         );
                                                                     }
                                                                     ParseResult::Ok(
@@ -231,9 +229,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                 cursor: cursor,
                                                                 context: new_context,
                                                             };
-                                                            let state_after_ws2 =
-                                                                parse_ws(_state_after_std_table);
-                                                            match parse_comment(state_after_ws2) {
+                                                            match parse_comment(parse_ws(_state_after_std_table)) {
                                                                 ParseResult::Err(e) => {
                                                                     ParseResult::Err(e)
                                                                 } // cannot happen
@@ -241,7 +237,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                     // return empty table
                                                                     return ParseResult::Ok(
                                                                         patch,
-                                                                        state_after_ws2,
+                                                                        parse_ws(_state_after_std_table),
                                                                     );
                                                                 }
                                                                 ParseResult::Ok(
@@ -325,15 +321,13 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         new_array_table_name,
                                                         arr,
                                                     );
-                                                    let state_after_ws2 =
-                                                        parse_ws(_state_after_array_table);
-                                                    match parse_comment(state_after_ws2) {
+                                                    match parse_comment(parse_ws(_state_after_array_table)) {
                                                         ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                                         ParseResult::NoMatch => {
                                                             // return empty array
                                                             return ParseResult::Ok(
                                                                 patch,
-                                                                state_after_ws2,
+                                                                parse_ws(_state_after_array_table),
                                                             );
                                                         }
                                                         ParseResult::Ok(

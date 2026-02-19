@@ -9,11 +9,7 @@ use crate::toml::{
     parse_ws, parse_wschar,
 };
 use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{
-    Boolean, Error, Integer, String, U32,
-    bitvector::BitvectorOps,
-    smt::SMT,
-};
+use rusmart_smt_stdlib::{Boolean, Error, Integer, String, U32, bitvector::BitvectorOps, smt::SMT};
 
 /// `string = ml-basic-string / basic-string / ml-literal-string / literal-string`
 #[smt_fn]
@@ -51,14 +47,17 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch, // not happening
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_basic_string_delim(new_state) {
-                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
+                                    return ParseResult::Ok(
+                                        s,
+                                        advance(advance(advance(new_state))),
+                                    );
                                 } else {
                                     return {
                                         // println!(
                                         //    "missing closing delimiter for multi-line basic string"
                                         // );
                                         ParseResult::Err(Error::fresh())
-                                    } // missing closing delimiter
+                                    }; // missing closing delimiter
                                 }
                             }
                         }
@@ -70,7 +69,10 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch, // not happening
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_basic_string_delim(new_state) {
-                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
+                                    return ParseResult::Ok(
+                                        s,
+                                        advance(advance(advance(new_state))),
+                                    );
                                 } else {
                                     // println!(
                                     //    "missing closing delimiter for multi-line basic string where newline was present"
@@ -353,49 +355,49 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                     {
                                         return ParseResult::Ok(String::from("\t"), advance(state));
                                     } else {
-                                        let needed = if *c.eq(String::from("u")) {
-                                            Integer::from(4)
-                                        } else {
-                                            if *c.eq(String::from("U")) {
-                                                Integer::from(8)
+                                        if *c.eq(String::from("u")).not().and(c.eq(String::from("U")).not()) {
+                                            if *val.eq(Integer::from(0)) {
+                                                return ParseResult::NoMatch; // for multi-line string try other escape sequences
                                             } else {
-                                                if *val.eq(Integer::from(0)) {
-                                                    return ParseResult::NoMatch; // for multi-line string try other escape sequences
-                                                } else {
-                                                    // println!(
-                                                    //    "invalid escape sequence in basic string: {:?}",
-                                                    //     c
-                                                    // );
-                                                    return ParseResult::Err(Error::fresh()); // for basic strings, other escape sequences are invalid
-                                                }
-                                            }
-                                        };
-                                        let start_state = advance(state);
-                                        match parse_n_hex_digits(
-                                            start_state,
-                                            needed,
-                                            String::from(""),
-                                        ) {
-                                            ParseResult::NoMatch => {
                                                 // println!(
-                                                //    "invalid hex digits in unicode escape sequence"
+                                                //    "invalid escape sequence in basic string: {:?}",
+                                                //     c
                                                 // );
-                                                return ParseResult::Err(Error::fresh());
-                                            } // Invalid Hex
-                                            ParseResult::Err(e) => ParseResult::Err(e),
-                                            ParseResult::Ok(hex_str, hex_state) => {
-                                                let code_point = Integer::from_hex_str(hex_str); // mathematically cannot panic!
-                                                let code_point_u32 = code_point.to_u32(); // cannot panic
-                                                if *is_valid_unicode_scalar(code_point_u32) {
-                                                    let char_str =
-                                                        String::from_code(code_point_u32);
-                                                    return ParseResult::Ok(char_str, hex_state);
-                                                } else {
+                                                return ParseResult::Err(Error::fresh()); // for basic strings, other escape sequences are invalid
+                                            }
+                                        } else {
+                                            let needed = if *c.eq(String::from("u")) {
+                                                Integer::from(4)
+                                            } else {
+                                                Integer::from(8)
+                                            };
+                                            let start_state = advance(state);
+                                            match parse_n_hex_digits(
+                                                start_state,
+                                                needed,
+                                                String::from(""),
+                                            ) {
+                                                ParseResult::NoMatch => {
                                                     // println!(
-                                                    //    "invalid unicode scalar value in escape sequence: {:?}",
-                                                    //    code_point
+                                                    //    "invalid hex digits in unicode escape sequence"
                                                     // );
                                                     return ParseResult::Err(Error::fresh());
+                                                } // Invalid Hex
+                                                ParseResult::Err(e) => ParseResult::Err(e),
+                                                ParseResult::Ok(hex_str, hex_state) => {
+                                                    let code_point = Integer::from_hex_str(hex_str); // mathematically cannot panic!
+                                                    let code_point_u32 = code_point.to_u32(); // cannot panic
+                                                    if *is_valid_unicode_scalar(code_point_u32) {
+                                                        return ParseResult::Ok(
+                                                            String::from_code(code_point_u32), hex_state,
+                                                        );
+                                                    } else {
+                                                        // println!(
+                                                        //    "invalid unicode scalar value in escape sequence: {:?}",
+                                                        //    code_point
+                                                        // );
+                                                        return ParseResult::Err(Error::fresh());
+                                                    }
                                                 }
                                             }
                                         }
@@ -633,7 +635,10 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch, // not happening
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_literal_string_delim(new_state) {
-                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
+                                    return ParseResult::Ok(
+                                        s,
+                                        advance(advance(advance(new_state))),
+                                    );
                                 } else {
                                     // println!(
                                     //     "missing closing delimiter for multi-line literal string"
@@ -650,7 +655,10 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
                             ParseResult::NoMatch => return ParseResult::NoMatch,
                             ParseResult::Ok(s, new_state) => {
                                 if *is_ml_literal_string_delim(new_state) {
-                                    return ParseResult::Ok(s, advance(advance(advance(new_state))));
+                                    return ParseResult::Ok(
+                                        s,
+                                        advance(advance(advance(new_state))),
+                                    );
                                 } else {
                                     // println!(
                                     //     "missing closing delimiter for multi-line literal string where newline was present"
@@ -944,7 +952,10 @@ pub(crate) fn parse_basic_string(state: State) -> ParseResult<String> {
                             } // missing closing quotation mark
                             Optional::Some(closing_char) => {
                                 if *is_quotation_mark(closing_char) {
-                                    return ParseResult::Ok(content_str, advance(state_after_content));
+                                    return ParseResult::Ok(
+                                        content_str,
+                                        advance(state_after_content),
+                                    );
                                 } else {
                                     // println!("missing closing quotation mark for basic string");
                                     return ParseResult::Err(Error::fresh());
@@ -1076,7 +1087,10 @@ pub(crate) fn parse_literal_string(state: State) -> ParseResult<String> {
                             }
                             Optional::Some(closing_char) => {
                                 if *is_apostrophe(closing_char) {
-                                    return ParseResult::Ok(content_str, advance(state_after_content));
+                                    return ParseResult::Ok(
+                                        content_str,
+                                        advance(state_after_content),
+                                    );
                                 } else {
                                     // println!("missing closing apostrophe for literal string");
                                     return ParseResult::Err(Error::fresh());

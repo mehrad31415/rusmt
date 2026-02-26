@@ -8,13 +8,12 @@ use crate::parser::expr::{Expr, LetBinding, Op, Unpack, VarDecl};
 use crate::parser::intrinsics::Intrinsic as Native;
 use crate::parser::name::VarName;
 use crate::parser::path::ADTBranch;
-use crate::parser::ty::TypeTag;
 use std::collections::BTreeMap;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 /// The origin of a variable
 pub enum VarKind {
-    /// function parameter (x in fn f(x: i32) -> i32 { x + 1 })
+    /// function parameter in signature (x in fn f(x: i32) -> i32 { x + 1 })
     Param,
     /// bounded variable used in a quantifier (forall, exists)
     /// x in  ∀x. P(x)
@@ -925,18 +924,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         vid
     }
 
-    /// Add a quantified variable (i.e., free variable)
-    fn free_quant_var(&mut self, name: &VarName, tag: &TypeTag) -> (VarId, Sort) {
-        let sort = self.parent.resolve_type(&tag.into());
-        let sym = Symbol::from(name);
-        let vid = self.registry.add_quant_var(sym.clone(), sort.clone());
-        match self.namespace.insert(sym, vid) {
-            None => (),
-            Some(_) => panic!("naming conflict: {name}"),
-        }
-        (vid, sort)
-    }
-
     /// Add an axiomatized variable induced by iteration
     fn iter_axiom_var(&mut self, name: &VarName, expr: ExpId) -> VarId {
         let sym = Symbol::from(name);
@@ -952,18 +939,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             Some(_) => panic!("naming conflict: {name}"),
         }
         vid
-    }
-
-    /// Add an axiomatized variable
-    fn free_axiom_var(&mut self, name: &VarName, tag: &TypeTag) -> (VarId, Sort) {
-        let sort = self.parent.resolve_type(&tag.into());
-        let sym = Symbol::from(name);
-        let vid = self.registry.add_axiom_var(sym.clone(), sort.clone());
-        match self.namespace.insert(sym, vid) {
-            None => (),
-            Some(_) => panic!("naming conflict: {name}"),
-        }
-        (vid, sort)
     }
 
     /// Process an expression

@@ -38,7 +38,8 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                                             let cursor = after_close_temp.cursor;
                                             let context = after_close_temp.context;
                                             let context_temp = context;
-                                            let current_table_path = context_temp.current_table_path;
+                                            let current_table_path =
+                                                context_temp.current_table_path;
                                             let explicit_tables = context_temp.explicit_tables;
                                             let closed_tables = context_temp.closed_tables;
                                             let inline_tables = context_temp.inline_tables;
@@ -63,7 +64,10 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                                                     cursor,
                                                     context: new_context,
                                                 };
-                                                return ParseResult::Ok(Seq::<Value>::new(), new_state);
+                                                return ParseResult::Ok(
+                                                    Seq::<Value>::new(),
+                                                    new_state,
+                                                );
                                             }
                                         } else {
                                             parse_array_values(key, after_ws)
@@ -144,13 +148,17 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
                                                     );
                                                 } else {
                                                     match parse_array_values(key, after_ws3) {
-                                                        ParseResult::Err(e) => return ParseResult::Err(e),
+                                                        ParseResult::Err(e) => {
+                                                            return ParseResult::Err(e);
+                                                        }
                                                         ParseResult::NoMatch => {
                                                             ParseResult::NoMatch
                                                         } // cannot happen
                                                         ParseResult::Ok(res, final_state) => {
-                                                            let new_seq: Seq<Value> = Seq::<Value>::new().append(val);
-                                                            let rest_vals: Seq<Value> = new_seq.concat(res);
+                                                            let new_seq: Seq<Value> =
+                                                                Seq::<Value>::new().append(val);
+                                                            let rest_vals: Seq<Value> =
+                                                                new_seq.concat(res);
                                                             ParseResult::Ok(rest_vals, final_state)
                                                         }
                                                     }

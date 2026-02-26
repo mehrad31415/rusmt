@@ -1,0 +1,21 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "another",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "#    This is not a comment",
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

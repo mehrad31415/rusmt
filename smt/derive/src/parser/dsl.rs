@@ -1,14 +1,12 @@
 //! Module for parsing quantifiers in the macro system.
 //! `exists`, `forall`, and `choose`.
 
+use crate::bail_on;
 use crate::parser::expr::CtxtForExpr;
 use crate::parser::name::{ReservedIdent, VarName};
-use crate::parser::ty::TypeTag;
-use crate::{bail_if_exists, bail_on};
 use proc_macro2::TokenTree;
 use syn::{
-    Expr, ExprClosure, ExprMacro, Ident, Macro, MacroDelimiter, Pat, PatType, Result, ReturnType,
-    Token,
+    Expr, ExprMacro, Ident, Macro, MacroDelimiter, Result, Token,
     parse::{Parse, ParseStream},
     parse2,
     punctuated::Punctuated,
@@ -97,55 +95,25 @@ impl Parse for IterQuant {
     }
 }
 
-/// Represents a quantified operation in the macro system.
+/// Represents an iterated quantifier: `var in collection => predicate`.
 ///
-/// A quantifier can be either typed (using closure syntax) or iterated (using foreach syntax).
-pub enum Quantifier {
-    /// A typed quantifier using closure syntax.
-    ///
-    /// For example: `exists(|x: i32| x > 0)`.
-    /// This falls under the first pattern of forall!, exists! and choose! macros in the stdlib/exp.rs file.
-    Typed {
-        /// The name of the quantifier (`exists`, `forall`, `choose`).
-        name: SysMacroName,
-        /// The list of variable declarations with their types.
-        vars: Vec<(VarName, TypeTag)>,
-        /// The body expression of the quantifier.
-        body: Expr,
-    },
-    /// An iterated quantifier using foreach syntax.
-    ///
-    /// For example: `exists(x in xs => x > 0)`.
-    /// This falls under the second pattern of forall!, exists! and choose! macros in the stdlib/exp.rs file.
-    Iterated {
-        /// The name of the quantifier (`exists`, `forall`, `choose`).
-        name: SysMacroName,
-        /// The list of variable declarations with their collections.
-        vars: Vec<(VarName, Expr)>,
-        /// The body expression of the quantifier.
-        body: Expr,
-    },
+/// Only the iteration form is supported in function bodies.
+pub struct Quantifier {
+    /// The name of the quantifier (`exists`, `forall`, `choose`).
+    pub name: SysMacroName,
+    /// Variable–collection pairs, e.g. `(x, xs)` from `x in xs`.
+    pub vars: Vec<(VarName, Expr)>,
+    /// The predicate body.
+    pub body: Expr,
 }
 
 impl Quantifier {
     /// Parses a `Quantifier` from an `ExprMacro`.
     ///
-    /// The macro can be in either closure style or iterated style.
-    ///
-    /// - Closure style: `quantifier(|x: Type| body)`
-    /// - Iterated style: `quantifier(x in collection => body)`
-    ///
-    /// # Arguments
-    ///
-    /// * `ctxt` - The parsing context, suitable for expr analysis.
-    /// * `expr` - The macro invocation expression; for example: `format!("{}", q)`.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Quantifier` if parsing succeeds, or a `syn::Error` otherwise.
+    /// Expects the iterated form: `quantifier(x in collection => body)`.
     ///
     /// This function is used in parsing an expression macro in the `convert_expr` function of the `expr` module.
-    pub fn parse<T: CtxtForExpr>(ctxt: &T, expr: &ExprMacro) -> Result<Self> {
+    pub fn parse<T: CtxtForExpr>(_ctxt: &T, expr: &ExprMacro) -> Result<Self> {
         // Destructure the macro expression to extract the macro path, delimiter, and tokens
         let ExprMacro {
             attrs: _,
@@ -171,85 +139,16 @@ impl Quantifier {
         let tester = tokens.clone();
 
         // Determine the style of the quantifier based on the first token
-        let parsed = match tester.into_iter().next() {
-            // token stream needs an owned iterator (into_iter())to iterate over the tokens.
-            None => bail_on!(expr, "expect content"), // if the token stream is empty, return an error
+        match tester.into_iter().next() {
+            None => bail_on!(expr, "expect content"),
             Some(TokenTree::Punct(punct)) if punct.as_char() == '|' => {
-                // Closure style quantifier
-                let stream = tokens.clone();
-
-                // Parse the tokens as a closure expression
-                let closure = parse2::<ExprClosure>(stream)?;
-
-                let ExprClosure {
-                    attrs: _,
-                    lifetimes,
-                    constness,
-                    movability,
-                    asyncness,
-                    capture,
-                    or1_token: _,
-                    inputs,
-                    or2_token: _,
-                    output,
-                    body,
-                } = closure;
-
-                // Ensure that unsupported closure features are not used
-                bail_if_exists!(lifetimes);
-                bail_if_exists!(constness);
-                bail_if_exists!(movability);
-                bail_if_exists!(asyncness);
-                bail_if_exists!(capture);
-
-                // Collect the parameter declarations
-                let mut param_decls = vec![];
-                for param in inputs {
-                    match param {
-                        Pat::Type(typed) => {
-                            let PatType {
-                                attrs: _,
-                                pat,
-                                colon_token: _,
-                                ty,
-                            } = typed;
-
-                            // Convert the pattern to a variable name
-                            // this returns an error if the pattern is not an identifier pattern, or has a ref keyword, or has a mut keyword, or has a subpattern.
-                            let name: VarName = pat.as_ref().try_into()?;
-
-                            // Check for conflicting variable names
-                            if param_decls.iter().any(|(n, _)| n == &name) {
-                                bail_on!(pat, "conflicting quantifier variable name");
-                            }
-
-                            // Resolve the type tag from the type
-                            let ty = TypeTag::from_type(ctxt, &ty)?; // convert the type to TypeTag abstract syntax tree
-                            param_decls.push((name, ty));
-                        }
-                        _ => bail_on!(param, "invalid quantifier variable declaration"),
-                    }
-                }
-
-                // Expect no return type in the closure
-                // a ReturnType enum has two variants: Default and Type. Default is `()` for functions without a return type, and closures default to type inference. Type is a tuple struct with two fields: Arrow and Type - Type(Token![->], Box<Type>).
-                match output {
-                    ReturnType::Default => (),
-                    ReturnType::Type(_, rty) => bail_on!(rty, "unexpected return type"),
-                };
-
-                // Return the parsed typed quantifier
-                Self::Typed {
-                    name,
-                    vars: param_decls,
-                    body: *body,
-                }
+                bail_on!(
+                    expr,
+                    "typed quantifier syntax is not allowed; use `var in collection =>`"
+                );
             }
             Some(_) => {
-                // Iterated style quantifier
                 let stream = tokens.clone();
-
-                // Parse the tokens as an iterative quantifier
                 let syntax = parse2::<IterQuant>(stream)?;
                 let IterQuant {
                     vars,
@@ -257,7 +156,6 @@ impl Quantifier {
                     body,
                 } = syntax;
 
-                // Collect the variable declarations
                 let mut var_decls = vec![];
                 for var in vars {
                     let IterVar {
@@ -266,26 +164,21 @@ impl Quantifier {
                         collection,
                     } = var;
 
-                    // Convert the identifier to a variable name
-                    // this returns an error if the identifier is a reserved keyword or an underscore.
                     let name: VarName = (&ident).try_into()?;
 
-                    // Check for conflicting variable names
                     if var_decls.iter().any(|(n, _)| n == &name) {
                         bail_on!(&ident, "conflicting quantifier variable name");
                     }
                     var_decls.push((name, collection));
                 }
 
-                // Return the parsed iterated quantifier
-                Self::Iterated {
+                Ok(Self {
                     name,
                     vars: var_decls,
                     body,
-                }
+                })
             }
-        };
-        Ok(parsed)
+        }
     }
 }
 

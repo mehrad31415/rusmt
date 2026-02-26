@@ -126,22 +126,6 @@ pub enum Expression {
     /// `if (<c1>) { <v1> } else if (<c2>) { <v2> } ... else { <default> }` - Phi { nodes: Vec<PhiNode>, default: Expr } in the parser
     // basically the name just the Expr is replaced by the ExpId
     Phi { cases: Vec<PhiCase>, default: ExpId },
-    /// `forall!(|<v>: <t>| {<expr>})` - Forall { vars: Vec<(VarName, TypeTag)>, body: Expr } in the parser
-    Forall {
-        vars: BTreeMap<VarId, Sort>,
-        body: ExpId,
-    },
-    /// `exists!(|<v>: <t>| {<expr>})` - Exists { vars: Vec<(VarName, TypeTag)>, body: Expr } in the parser
-    Exists {
-        vars: BTreeMap<VarId, Sort>,
-        body: ExpId,
-    },
-    /// `choose!(|<v>: <t>| {<expr>})` - Choose { vars: Vec<(VarName, TypeTag)>, body: Expr } in the parser
-    Choose {
-        vars: BTreeMap<VarId, Sort>,
-        body: ExpId,
-        rets: Vec<VarId>,
-    },
     /// `forall!(<v> in <c> ... => <expr>)` - IterForall { vars: Vec<(VarName, Expr)>, body: Expr } in the parser
     IterForall {
         vars: BTreeMap<VarId, ExpId>,
@@ -353,19 +337,6 @@ impl ExpRegistry {
                     called_fns.append(&mut self.collect_called_functions(&case.body));
                 }
                 called_fns.append(&mut self.collect_called_functions(default));
-            }
-            Expression::Forall { vars: _, body } => {
-                called_fns.append(&mut self.collect_called_functions(body));
-            }
-            Expression::Exists { vars: _, body } => {
-                called_fns.append(&mut self.collect_called_functions(body));
-            }
-            Expression::Choose {
-                vars: _,
-                body,
-                rets: _,
-            } => {
-                called_fns.append(&mut self.collect_called_functions(body));
             }
             Expression::IterForall { vars, body } => {
                 for (_, e) in vars {
@@ -685,7 +656,7 @@ impl ExpRegistry {
                 called_fns.append(&mut self.collect_called_functions(offset));
                 called_fns.append(&mut self.collect_called_functions(len));
             }
-            | Intrinsic::SeqIndexOf {
+            Intrinsic::SeqIndexOf {
                 seq, sub, offset, ..
             } => {
                 called_fns.append(&mut self.collect_called_functions(seq));
@@ -1231,45 +1202,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 Expression::Phi {
                     cases,
                     default: converted_default,
-                }
-            }
-            Op::Forall { vars, body } => {
-                let mut free_vars = BTreeMap::new();
-                for (var_name, var_tag) in vars {
-                    let (vid, var_sort) = self.free_quant_var(var_name, var_tag);
-                    free_vars.insert(vid, var_sort);
-                }
-                let converted_body = self.resolve(body, Some(&Sort::Boolean));
-                Expression::Forall {
-                    vars: free_vars,
-                    body: converted_body,
-                }
-            }
-            Op::Exists { vars, body } => {
-                let mut free_vars = BTreeMap::new();
-                for (var_name, var_tag) in vars {
-                    let (vid, var_sort) = self.free_quant_var(var_name, var_tag);
-                    free_vars.insert(vid, var_sort);
-                }
-                let converted_body = self.resolve(body, Some(&Sort::Boolean));
-                Expression::Exists {
-                    vars: free_vars,
-                    body: converted_body,
-                }
-            }
-            Op::Choose { vars, body } => {
-                let mut axiom_vars = BTreeMap::new();
-                let mut axiom_rets = vec![];
-                for (var_name, var_tag) in vars {
-                    let (vid, var_sort) = self.free_axiom_var(var_name, var_tag);
-                    axiom_vars.insert(vid, var_sort);
-                    axiom_rets.push(vid);
-                }
-                let converted_body = self.resolve(body, Some(&Sort::Boolean));
-                Expression::Choose {
-                    vars: axiom_vars,
-                    body: converted_body,
-                    rets: axiom_rets,
                 }
             }
             Op::IterForall { vars, body } => {
@@ -2473,31 +2405,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 }
                 case_sort
             }
-            Expression::Forall { .. }
-            | Expression::Exists { .. }
-            | Expression::IterForall { .. }
-            | Expression::IterExists { .. } => Sort::Boolean,
-            Expression::Choose {
-                vars,
-                body: _,
-                rets,
-            } => {
-                let mut inst = vec![];
-                for vid in rets {
-                    match vars.get(vid) {
-                        None => panic!("invalid axiom variable to return"),
-                        Some(sort) => {
-                            inst.push(sort.clone());
-                        }
-                    }
-                }
-                // unwrap the single-element tuple for choose
-                if inst.len() == 1 {
-                    inst.into_iter().next().unwrap()
-                } else {
-                    Sort::User(self.parent.lookup_type(None, &inst))
-                }
-            }
+            Expression::IterForall { .. } | Expression::IterExists { .. } => Sort::Boolean,
             Expression::IterChoose {
                 vars,
                 body: _,

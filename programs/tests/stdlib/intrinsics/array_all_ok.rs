@@ -16,4 +16,3 @@ pub fn array_all(m: Array<Integer, String>, k: Integer, v: String) -> Boolean {
 
     Boolean::from(true)
 }
-

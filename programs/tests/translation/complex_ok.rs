@@ -26,18 +26,9 @@ pub enum EvalResult {
 pub fn eval_expr(e: Expr) -> Integer {
     match e {
         Expr::Const(n) => n,
-        Expr::Add(left, right) => Integer::add(
-            eval_expr(left.reveal()),
-            eval_expr(right.reveal()),
-        ),
-        Expr::Mul(left, right) => Integer::mul(
-            eval_expr(left.reveal()),
-            eval_expr(right.reveal()),
-        ),
-        Expr::Sub(left, right) => Integer::sub(
-            eval_expr(left.reveal()),
-            eval_expr(right.reveal()),
-        ),
+        Expr::Add(left, right) => Integer::add(eval_expr(left.reveal()), eval_expr(right.reveal())),
+        Expr::Mul(left, right) => Integer::mul(eval_expr(left.reveal()), eval_expr(right.reveal())),
+        Expr::Sub(left, right) => Integer::sub(eval_expr(left.reveal()), eval_expr(right.reveal())),
         Expr::Neg(inner) => Integer::neg(eval_expr(inner.reveal())),
     }
 }
@@ -54,9 +45,7 @@ pub fn is_positive_expr(e: Expr) -> Boolean {
 pub fn expr_depth(e: Expr) -> Integer {
     match e {
         Expr::Const(_) => Integer::from(1),
-        Expr::Neg(inner) => {
-            Integer::add(Integer::from(1), expr_depth(inner.reveal()))
-        }
+        Expr::Neg(inner) => Integer::add(Integer::from(1), expr_depth(inner.reveal())),
         Expr::Add(l, r) | Expr::Mul(l, r) | Expr::Sub(l, r) => {
             let left_depth = expr_depth(l.reveal());
             let right_depth = expr_depth(r.reveal());

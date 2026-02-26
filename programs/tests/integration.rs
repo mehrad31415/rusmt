@@ -61,7 +61,7 @@ fn check_mod(path: &Path) -> datatest_stable::Result<()> {
             }
         } else {
             match name.strip_suffix(".rs") {
-                None  => return Err(anyhow!("invalid file: {}", name).into()),
+                None => return Err(anyhow!("invalid file: {}", name).into()),
                 Some("mod") => continue,
                 Some(base) => {
                     files.insert(base.to_string());

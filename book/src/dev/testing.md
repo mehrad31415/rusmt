@@ -21,4 +21,3 @@ Rust DSL → parser AST → IR → SMT-LIB → Z3 invocation → stable expected
 Because SMT-LIB emission can be non-deterministic in ordering, the tests compare **Z3 responses** (`response.exp`) against recorded baselines.
 
 If you need to regenerate baselines, the harness supports an “update baseline” mode (see `programs/tests/integration.rs`).
-

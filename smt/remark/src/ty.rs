@@ -629,7 +629,10 @@ mod tests {
 
         let res = derive_for_enum(&mut item_enum);
         assert!(res.is_err());
-        assert_eq!(res.err().unwrap().to_string(), "unexpected discriminant in enum variant");
+        assert_eq!(
+            res.err().unwrap().to_string(),
+            "unexpected discriminant in enum variant"
+        );
     }
 
     #[test]

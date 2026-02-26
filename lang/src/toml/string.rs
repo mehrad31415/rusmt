@@ -355,7 +355,11 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                     {
                                         return ParseResult::Ok(String::from("\t"), advance(state));
                                     } else {
-                                        if *c.eq(String::from("u")).not().and(c.eq(String::from("U")).not()) {
+                                        if *c
+                                            .eq(String::from("u"))
+                                            .not()
+                                            .and(c.eq(String::from("U")).not())
+                                        {
                                             if *val.eq(Integer::from(0)) {
                                                 return ParseResult::NoMatch; // for multi-line string try other escape sequences
                                             } else {
@@ -389,7 +393,8 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                     let code_point_u32 = code_point.to_u32(); // cannot panic
                                                     if *is_valid_unicode_scalar(code_point_u32) {
                                                         return ParseResult::Ok(
-                                                            String::from_code(code_point_u32), hex_state,
+                                                            String::from_code(code_point_u32),
+                                                            hex_state,
                                                         );
                                                     } else {
                                                         // println!(

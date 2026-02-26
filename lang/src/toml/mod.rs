@@ -2,9 +2,7 @@
 
 use crate::toml::{ast::Value, expr::parse_expression, table::recursive_merge_tables};
 use rusmart_smt_remark_derive::{smt_fn, smt_type};
-use rusmart_smt_stdlib::{
-    Array, Boolean, Cloak, Error, Integer, Seq, String, smt::SMT,
-};
+use rusmart_smt_stdlib::{Array, Boolean, Cloak, Error, Integer, Seq, String, smt::SMT};
 
 /// array
 mod array;
@@ -98,7 +96,7 @@ fn parse_newline(input: State) -> ParseResult<String> {
             return ParseResult::Ok(String::from("\r\n"), advance(advance(input)));
         }
     } else {
-        return ParseResult::NoMatch
+        return ParseResult::NoMatch;
     }
 }
 
@@ -162,7 +160,7 @@ fn parse_wschar(input: State) -> ParseResult<String> {
                 ParseResult::Ok(c, advance(input))
             } else {
                 // we expect a whitespace character but something else found
-                return ParseResult::NoMatch
+                return ParseResult::NoMatch;
             }
         }
         // we expect a whitespace character but no more input
@@ -231,7 +229,7 @@ fn parse_comment(state: State) -> ParseResult<String> {
                 parse_comment_rest(String::from(""), advance(state))
             } else {
                 // not a comment start (another symbol)
-                return ParseResult::NoMatch
+                return ParseResult::NoMatch;
             }
         }
         // we expect a '#' to start a comment (# missing)

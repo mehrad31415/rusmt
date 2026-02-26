@@ -5,12 +5,7 @@ use num_traits::Euclid;
 fn main() {
     println!("=== Rust BigInt / operator (truncates toward zero) ===\n");
 
-    let test_cases = vec![
-        (-7, 3),
-        (7, 3),
-        (-7, -3),
-        (7, -3),
-    ];
+    let test_cases = vec![(-7, 3), (7, 3), (-7, -3), (7, -3)];
 
     for (a, b) in test_cases {
         let dividend = BigInt::from(a);

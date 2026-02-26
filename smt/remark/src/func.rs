@@ -100,7 +100,10 @@ mod tests {
         let result = check(&item_fn);
 
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected constness in function declaration");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "unexpected constness in function declaration"
+        );
     }
 
     #[test]
@@ -114,7 +117,10 @@ mod tests {
         let result = check(&item_fn);
 
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected asyncness in function declaration");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "unexpected asyncness in function declaration"
+        );
     }
 
     #[test]
@@ -128,7 +134,10 @@ mod tests {
         let result = check(&item_fn);
 
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected unsafety in function declaration");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "unexpected unsafety in function declaration"
+        );
     }
 
     #[test]
@@ -143,7 +152,10 @@ mod tests {
         let result = check(&item_fn);
 
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected ABI in function declaration");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "unexpected ABI in function declaration"
+        );
     }
 
     #[test]
@@ -157,7 +169,10 @@ mod tests {
         let result = check(&item_fn);
 
         assert!(result.is_err());
-        assert_eq!(result.err().unwrap().to_string(), "unexpected variadic parameters in function declaration");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "unexpected variadic parameters in function declaration"
+        );
     }
 
     // Extract the function generics.

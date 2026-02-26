@@ -8,4 +8,3 @@ pub fn error_all() -> Boolean {
     let _m = Error::merge(e1, e2);
     Boolean::from(true)
 }
-

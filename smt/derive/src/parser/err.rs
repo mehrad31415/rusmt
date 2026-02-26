@@ -77,7 +77,7 @@ macro_rules! bail_if_exists {
     ($item:expr) => {
         match $item {
             None => (),
-            Some(__v) => $crate::bail_on!(__v.clone(), "unexpected {:?}", __v),
+            Some(__v) => $crate::bail_on!(__v.clone(), "unexpected"),
         }
     };
 }

@@ -11,7 +11,7 @@ The procedural macros live in `smt/remark/remark_derive` and delegate most logic
 
 ### What it does *not* do
 
-The remark layer does not try to “translate to SMT”. It intentionally does only lightweight checking (no `async`, no `unsafe`, restricted generics, etc.). Deeper checks and translation happen in `rusmart-smt-derive`.
+The remark layer does not try to “translate to SMT”. It intentionally does only lightweight syntactic checking (no `async`, no `unsafe`, restricted generics, etc.). Deeper checks and translation happen in `rusmart-smt-derive`.
 
 For the current set of enforced rules, see `smt/remark/README.md`.
 

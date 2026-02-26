@@ -50,7 +50,7 @@ impl<T: SMT> Seq<T> {
 
     /// `(seq.extract s offset length)`
     /// Extracts a subsequence starting at `offset` with given `length`.
-    /// 
+    ///
     /// # Panics
     /// Panics if offset or length are negative or too large to convert to usize.
     /// Panics if offset is beyond the sequence length.
@@ -58,10 +58,10 @@ impl<T: SMT> Seq<T> {
     pub fn extract(self, offset: Integer, length: Integer) -> Self {
         let start = offset.inner.to_usize().unwrap();
         let len = length.inner.to_usize().unwrap();
-        
+
         // Clamp end to sequence length (like substr for strings)
         let end = (start + len).min(self.inner.len());
-        
+
         let new_vec = self.inner[start..end].to_vec();
         Self {
             inner: Intern::new(new_vec),
@@ -70,7 +70,7 @@ impl<T: SMT> Seq<T> {
 
     /// `(seq.indexof s sub offset)`
     /// Returns the first index where subsequence `sub` appears in `self`, starting search at `offset`.
-    /// 
+    ///
     /// # Panics
     /// - Panics if offset is negative or too large to convert to usize
     /// - Panics if offset is beyond the sequence length
@@ -81,7 +81,7 @@ impl<T: SMT> Seq<T> {
         if sub.inner.is_empty() {
             return offset;
         }
-        
+
         // Search for subsequence using a sliding window
         let sub_len = sub.inner.len();
         for i in start_pos..=(self.inner.len().saturating_sub(sub_len)) {
@@ -90,7 +90,7 @@ impl<T: SMT> Seq<T> {
                 return Integer::from(i);
             }
         }
-        
+
         panic!(
             "index_of: subsequence not found in sequence starting from offset {}",
             start_pos
@@ -132,7 +132,6 @@ impl<T: SMT> Seq<T> {
     }
 
     /// iterator over the indices of the sequence: `s.iterator()`
-    /// This is mainly useful for testing and translates to forall k >= 0 and k < (seq.len s).
     // this method should not be used in the direct implementation of the interpreters so it should not be translated to SMT-LIB.
     // it is used in the expression macros for iterating over the sequence.
     pub fn iterator(self) -> Vec<Integer> {

@@ -272,12 +272,12 @@ impl TypeTag {
         pack: &AngleBracketedGenericArguments,
     ) -> Result<Vec<Self>> {
         let AngleBracketedGenericArguments {
-            colon2_token: _,  // Allow turbofish syntax (::) - just ignore it
+            colon2_token: _, // Allow turbofish syntax (::) - just ignore it
             lt_token: _,
             args,
             gt_token: _,
         } = pack;
-        
+
         Self::from_args(ctxt, args)
     }
 

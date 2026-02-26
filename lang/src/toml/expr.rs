@@ -8,10 +8,7 @@ use crate::toml::{
     table::{parse_array_table, parse_std_table},
 };
 use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{
-    Array, Boolean, Cloak, Error, Integer, Seq, String,
-    smt::SMT,
-};
+use rusmart_smt_stdlib::{Array, Boolean, Cloak, Error, Integer, Seq, String, smt::SMT};
 
 /// `expression = ws [ comment ] / ws keyval ws [ comment ] / ws table ws [ comment ]`
 #[smt_fn]
@@ -57,12 +54,15 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                     let cursor = state_after_kv_temp.cursor;
                                                     let context = state_after_kv_temp.context;
                                                     let context_temp = context;
-                                                    let current_table_path = context_temp.current_table_path;
-                                                    let explicit_tables = context_temp.explicit_tables;
+                                                    let current_table_path =
+                                                        context_temp.current_table_path;
+                                                    let explicit_tables =
+                                                        context_temp.explicit_tables;
                                                     let closed_tables = context_temp.closed_tables;
                                                     let inline_tables = context_temp.inline_tables;
                                                     let inline_arrays = context_temp.inline_arrays;
-                                                    let array_of_tables = context_temp.array_of_tables;
+                                                    let array_of_tables =
+                                                        context_temp.array_of_tables;
                                                     let implicit_tables = make_tables_from_key(
                                                         current_table_path,
                                                         key,
@@ -138,15 +138,18 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                         ),
                                                                     )
                                                                 };
-                                                                match parse_comment(parse_ws(new_state_after_kv))
-                                                                {
+                                                                match parse_comment(parse_ws(
+                                                                    new_state_after_kv,
+                                                                )) {
                                                                     ParseResult::Err(e) => {
                                                                         ParseResult::Err(e)
                                                                     }
                                                                     ParseResult::NoMatch => {
                                                                         return ParseResult::Ok(
                                                                             patch,
-                                                                            parse_ws(new_state_after_kv),
+                                                                            parse_ws(
+                                                                                new_state_after_kv,
+                                                                            ),
                                                                         );
                                                                     }
                                                                     ParseResult::Ok(
@@ -173,7 +176,8 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                             let cursor = _state_after_table_temp.cursor;
                                             let context = _state_after_table_temp.context;
                                             let context_temp = context;
-                                            let _current_table_path = context_temp.current_table_path;
+                                            let _current_table_path =
+                                                context_temp.current_table_path;
                                             let explicit_tables = context_temp.explicit_tables;
                                             let closed_tables = context_temp.closed_tables;
                                             let inline_tables = context_temp.inline_tables;
@@ -229,7 +233,9 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                 cursor: cursor,
                                                                 context: new_context,
                                                             };
-                                                            match parse_comment(parse_ws(_state_after_std_table)) {
+                                                            match parse_comment(parse_ws(
+                                                                _state_after_std_table,
+                                                            )) {
                                                                 ParseResult::Err(e) => {
                                                                     ParseResult::Err(e)
                                                                 } // cannot happen
@@ -237,7 +243,9 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                     // return empty table
                                                                     return ParseResult::Ok(
                                                                         patch,
-                                                                        parse_ws(_state_after_std_table),
+                                                                        parse_ws(
+                                                                            _state_after_std_table,
+                                                                        ),
                                                                     );
                                                                 }
                                                                 ParseResult::Ok(
@@ -321,8 +329,12 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         new_array_table_name,
                                                         arr,
                                                     );
-                                                    match parse_comment(parse_ws(_state_after_array_table)) {
-                                                        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
+                                                    match parse_comment(parse_ws(
+                                                        _state_after_array_table,
+                                                    )) {
+                                                        ParseResult::Err(e) => {
+                                                            return ParseResult::Err(e);
+                                                        } // cannot happen
                                                         ParseResult::NoMatch => {
                                                             // return empty array
                                                             return ParseResult::Ok(
@@ -406,7 +418,6 @@ pub(crate) fn make_tables_from_key(
     } else {
         make_tables_from_key_inner(table_keyname, droplast(key_parts), acc)
     }
-    
 }
 
 /// inner recursive function for make_tables_from_key

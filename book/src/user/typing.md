@@ -36,5 +36,5 @@ All intrinsic sorts implement the `SMT` trait, which provides:
 - `eq(self, rhs) -> Boolean`
 - `ne(self, rhs) -> Boolean`
 
-These are also available for any user-defined type that implements `SMT`.
+These are also available for any user-defined type that implements `SMT`. Note that no type in the standard library or implemeting the `SMT` trait implements the `Eq, PartialEq, Ord, PartialOrd` traits. For comparison please use the methods provided by the `SMT` trait. By banning those traits and forcing everything through `.eq(), .lt()`, etc. which return _Boolean_, every comparison stays inside the DSL's type system and is visible to the transpiler. There is no way to accidentally write a comparison that produces a Rust _bool_ and escapes into the symbolic layer unnoticed.
 

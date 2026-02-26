@@ -63,7 +63,7 @@ fn format_sort(
         Sort::User(sid) => {
             let type_name = resolve_type_name(ir, *sid);
             let (_, user_type_params) = ir.ty_registry.reverse_lookup(*sid);
-            
+
             // If this type has type parameters, we need to format them
             if !user_type_params.is_empty() {
                 let formatted_params: Vec<String> = user_type_params

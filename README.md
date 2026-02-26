@@ -46,10 +46,7 @@ This generates SMT formulas representing the interpreter's semantics.
 
 ### 3. Synthesize Test Programs
 
-Query the SMT solver to generate programs that:
-- Trigger specific error conditions
-- Produce particular output values
-- Exercise edge cases
+Ask Z3 to find inputs that reach a specific path — an error, a target output, or an edge case.
 
 ```smt2
 (assert (exists ((p Program)) 
@@ -108,7 +105,6 @@ rusmart/
 │   └── derive/       # Parser + IR + SMT-LIB code generator
 ├── lang/             # Language interpreters (TOML, WASM, Rego, etc.)
 ├── programs/         # Example programs for testing
-└── solver/           # Bundled Z3 solver (self-contained build)
 ```
 
 ## Current Implementation
@@ -141,9 +137,10 @@ cargo run -p rusmart-smt-derive
 Provides SMT-compatible types that work in both concrete and symbolic contexts:
 
 - **Primitive types**: `Boolean`, `Integer`, `Real`, `String`
-- **Bitvectors & Floats**: `I32`, `I64`, `F32`, `F64`
+- **Bitvectors & Floats**: `I32`, `I64`, `U32`, `U64`, `F32`, `F64`
 - **Collections**: `Seq<T>`, `Set<T>`, `Array<K,V>`
 - **Quantifiers**: `forall`, `exists`, `choice`
+- **Error**: a path marker used by the SMT solver to synthesize inputs that reach a specific code path (e.g., an error case or edge case)
 - **Recursive types**: `Cloak<T>` for defining recursive data structures
 
 ### Constraints
@@ -159,7 +156,7 @@ To ensure transpilability, the DSL enforces:
 
 ### Prerequisites
 - Rust (edition 2024)
-- CMake (for building bundled Z3)
+- Z3 binary on your `$PATH` (e.g. `brew install z3` on macOS, `apt install z3` on Ubuntu)
 
 ### Build
 ```bash

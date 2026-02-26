@@ -356,21 +356,6 @@ pub enum Op {
     },
     /// `if (<c1>) { <v1> } else if (<c2>) { <v2> } ... else { <default> }`
     Phi { nodes: Vec<PhiNode>, default: Expr },
-    /// `forall!(|<v>: <t>| {<expr>})`
-    Forall {
-        vars: Vec<(VarName, TypeTag)>,
-        body: Expr,
-    },
-    /// `exists!(|<v>: <t>| {<expr>})`
-    Exists {
-        vars: Vec<(VarName, TypeTag)>,
-        body: Expr,
-    },
-    /// `choose!(|<v>: <t>| {<expr>})`
-    Choose {
-        vars: Vec<(VarName, TypeTag)>,
-        body: Expr,
-    },
     /// `forall!(<v> in <c> ... => <expr>)`
     IterForall {
         vars: Vec<(VarName, Expr)>,
@@ -474,33 +459,6 @@ impl Display for Op {
                 }
                 writeln!(f, "  default => {default}")?;
                 write!(f, "}}")
-            }
-            Self::Forall { vars, body } => {
-                write!(
-                    f,
-                    "forall [{}] {}",
-                    vars.iter()
-                        .format_with(",", |(n, t), p| p(&format_args!("{n}:{t}"))),
-                    body
-                )
-            }
-            Self::Exists { vars, body } => {
-                write!(
-                    f,
-                    "exists [{}] {}",
-                    vars.iter()
-                        .format_with(",", |(n, t), p| p(&format_args!("{n}:{t}"))),
-                    body
-                )
-            }
-            Self::Choose { vars, body } => {
-                write!(
-                    f,
-                    "choose [{}] {}",
-                    vars.iter()
-                        .format_with(",", |(n, t), p| p(&format_args!("{n}:{t}"))),
-                    body
-                )
             }
             Self::IterForall { vars, body } => {
                 write!(
@@ -689,11 +647,6 @@ impl Expr {
                     node.body.visit(ty, pre, post)?;
                 }
                 default.visit(ty, pre, post)?;
-            }
-            Op::Forall { vars: _, body }
-            | Op::Exists { vars: _, body }
-            | Op::Choose { vars: _, body } => {
-                body.visit(ty, pre, post)?;
             }
             Op::IterForall { vars, body }
             | Op::IterExists { vars, body }
@@ -2261,8 +2214,13 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                     let mut instantiated_params = Vec::new();
                                     for slot_ty in &tuple_def.slots {
                                         match inst.instantiate(slot_ty) {
-                                            None => bail_on!(expr_call, "[invariant] no such type parameter in tuple slot"),
-                                            Some(instantiated) => instantiated_params.push(instantiated),
+                                            None => bail_on!(
+                                                expr_call,
+                                                "[invariant] no such type parameter in tuple slot"
+                                            ),
+                                            Some(instantiated) => {
+                                                instantiated_params.push(instantiated)
+                                            }
                                         }
                                     }
                                     instantiated_params
@@ -2296,8 +2254,13 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                 let mut instantiated_params = Vec::new();
                                 for slot_ty in &tuple_def.slots {
                                     match inst.instantiate(slot_ty) {
-                                        None => bail_on!(expr_call, "[invariant] no such type parameter in enum variant slot"),
-                                        Some(instantiated) => instantiated_params.push(instantiated),
+                                        None => bail_on!(
+                                            expr_call,
+                                            "[invariant] no such type parameter in enum variant slot"
+                                        ),
+                                        Some(instantiated) => {
+                                            instantiated_params.push(instantiated)
+                                        }
                                     }
                                 }
                                 instantiated_params
@@ -2439,136 +2402,82 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
             // SMT-specific macro (i.e., DSL)
             // A macro invocation expression: `format!("{}", q)`.
             Exp::Macro(expr_macro) => {
-                let quant = Quantifier::parse(self.root, expr_macro)?;
-                match quant {
-                    Quantifier::Typed { name, vars, body } => {
-                        // parse body
-                        // the return type of the body must be a Boolean
-                        let mut new_ctxt = self.fork(TypeRef::Boolean);
+                let Quantifier { name, vars, body } = Quantifier::parse(self.root, expr_macro)?;
 
-                        for (var, ty) in &vars {
-                            if new_ctxt.vars.insert(var.clone(), ty.into()).is_some() {
-                                bail_on!(expr_macro, "duplicated variable binding");
-                            }
+                // context for body parsing
+                let mut new_ctxt = self.fork(TypeRef::Boolean);
+                // holds the types of the collection expressions for example xs and ys in
+                // forall x in xs, y in ys => x + y == 0
+                let mut var_tys = vec![];
+                // holds the (x, xs) and (y, ys) pairs... but the difference between var_exprs and vars is that the expressions in vars are the original expressions in rust syntax and the expressions in var_exprs are the converted expressions in rusmart
+                let mut var_exprs = vec![];
+
+                // parse collection expressions
+                for (var, collection) in vars {
+                    // tentatively mark the type of the collection as a type variable
+                    let sub_ctxt = self.fork(TypeRef::Var(unifier.mk_var()));
+                    let sub_expr = sub_ctxt.convert_expr(unifier, &collection)?;
+                    let var_ty = match sub_expr.ty() {
+                        TypeRef::Seq(_) => TypeRef::Integer, // because in the stdlib in the iterator of Seq we have integer from 0 to n-1 where n is the length of the Seq
+                        TypeRef::Set(sub) => sub.as_ref().clone(),
+                        TypeRef::Array(key, _) => key.as_ref().clone(),
+                        TypeRef::Var(_) => {
+                            bail_on!(&collection, "unable to infer collection type")
                         }
-                        let quant_body = new_ctxt.convert_expr(unifier, &body)?;
+                        // only Seq, Set, and array are allowed
+                        _ => bail_on!(&collection, "not a collection type"),
+                    };
 
-                        // decide return type and opcode
-                        let (rty, op) = match name {
-                            SysMacroName::Forall => (
-                                TypeRef::Boolean,
-                                Op::Forall {
-                                    vars,
-                                    body: quant_body,
-                                },
-                            ),
-                            SysMacroName::Exists => (
-                                TypeRef::Boolean,
-                                Op::Exists {
-                                    vars,
-                                    body: quant_body,
-                                },
-                            ),
-                            SysMacroName::Choose => {
-                                let rty = if vars.len() == 1 {
-                                    let (_, ty) = vars.first().expect("[invariant] non-empty");
-                                    ty.into()
-                                } else {
-                                    TypeRef::Pack(vars.iter().map(|(_, t)| t.into()).collect())
-                                };
-                                (
-                                    rty,
-                                    Op::Choose {
-                                        vars,
-                                        body: quant_body,
-                                    },
-                                )
-                            }
-                        };
-
-                        // unify the return type
-                        ti_unify!(unifier, &rty, &self.exp_ty, target);
-
-                        // done
-                        op
+                    // add the variable declaration to the context of body parsing
+                    if new_ctxt.vars.insert(var.clone(), var_ty.clone()).is_some() {
+                        bail_on!(expr_macro, "duplicated variable binding");
                     }
-                    Quantifier::Iterated { name, vars, body } => {
-                        // context for body parsing
-                        let mut new_ctxt = self.fork(TypeRef::Boolean);
-                        // holds the types of the collection expressions for example xs and ys in
-                        // forall x in xs, y in ys => x + y == 0
-                        let mut var_tys = vec![];
-                        // holds the (x, xs) and (y, ys) pairs... but the difference between var_exprs and vars is that the expressions in vars are the original expressions in rust syntax and the expressions in var_exprs are the converted expressions in rusmart
-                        let mut var_exprs = vec![];
 
-                        // parse collection expressions
-                        for (var, collection) in vars {
-                            // tentatively mark the type of the collection as a type variable
-                            let sub_ctxt = self.fork(TypeRef::Var(unifier.mk_var()));
-                            let sub_expr = sub_ctxt.convert_expr(unifier, &collection)?;
-                            let var_ty = match sub_expr.ty() {
-                                TypeRef::Seq(_) => TypeRef::Integer, // because in the stdlib in the iterator of Seq we have integer from 0 to n-1 where n is the length of the Seq
-                                TypeRef::Set(sub) => sub.as_ref().clone(),
-                                TypeRef::Array(key, _) => key.as_ref().clone(),
-                                TypeRef::Var(_) => {
-                                    bail_on!(&collection, "unable to infer collection type")
-                                }
-                                // only Seq, Set, and array are allowed
-                                _ => bail_on!(&collection, "not a collection type"),
-                            };
-
-                            // add the variable declaration to the context of body parsing
-                            if new_ctxt.vars.insert(var.clone(), var_ty.clone()).is_some() {
-                                bail_on!(expr_macro, "duplicated variable binding");
-                            }
-
-                            // save the variable expression and its type (for choose operator)
-                            var_tys.push(var_ty);
-                            var_exprs.push((var, sub_expr));
-                        }
-
-                        // parse the constraint
-                        let quant_body = new_ctxt.convert_expr(unifier, &body)?;
-
-                        // decide return type and opcode
-                        let (rty, op) = match name {
-                            SysMacroName::Forall => (
-                                TypeRef::Boolean,
-                                Op::IterForall {
-                                    vars: var_exprs,
-                                    body: quant_body,
-                                },
-                            ),
-                            SysMacroName::Exists => (
-                                TypeRef::Boolean,
-                                Op::IterExists {
-                                    vars: var_exprs,
-                                    body: quant_body,
-                                },
-                            ),
-                            SysMacroName::Choose => {
-                                let rty = if var_tys.len() == 1 {
-                                    var_tys.into_iter().next().unwrap()
-                                } else {
-                                    TypeRef::Pack(var_tys)
-                                };
-                                (
-                                    rty,
-                                    Op::IterChoose {
-                                        vars: var_exprs,
-                                        body: quant_body,
-                                    },
-                                )
-                            }
-                        };
-
-                        // unify the return type
-                        ti_unify!(unifier, &rty, &self.exp_ty, target);
-
-                        // done
-                        op
-                    }
+                    // save the variable expression and its type (for choose operator)
+                    var_tys.push(var_ty);
+                    var_exprs.push((var, sub_expr));
                 }
+
+                // parse the constraint
+                let quant_body = new_ctxt.convert_expr(unifier, &body)?;
+
+                // decide return type and opcode
+                let (rty, op) = match name {
+                    SysMacroName::Forall => (
+                        TypeRef::Boolean,
+                        Op::IterForall {
+                            vars: var_exprs,
+                            body: quant_body,
+                        },
+                    ),
+                    SysMacroName::Exists => (
+                        TypeRef::Boolean,
+                        Op::IterExists {
+                            vars: var_exprs,
+                            body: quant_body,
+                        },
+                    ),
+                    SysMacroName::Choose => {
+                        let rty = if var_tys.len() == 1 {
+                            var_tys.into_iter().next().unwrap()
+                        } else {
+                            TypeRef::Pack(var_tys)
+                        };
+                        (
+                            rty,
+                            Op::IterChoose {
+                                vars: var_exprs,
+                                body: quant_body,
+                            },
+                        )
+                    }
+                };
+
+                // unify the return type
+                ti_unify!(unifier, &rty, &self.exp_ty, target);
+
+                // done
+                op
             }
             // Return expressions - unwrap and convert the inner expression
             Exp::Return(expr_return) => {

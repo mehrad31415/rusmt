@@ -476,7 +476,11 @@ macro_rules! mk3 {
     ($op:ident, $ty_args:expr, $args:expr) => {{
         Intrinsic::unpack_ty_arg_0($ty_args)?;
         let (e1, e2, e3) = Intrinsic::unpack_expr_3($args)?;
-        Intrinsic::$op { cond: e1, then: e2, else_: e3 }
+        Intrinsic::$op {
+            cond: e1,
+            then: e2,
+            else_: e3,
+        }
     }};
 }
 
@@ -783,7 +787,7 @@ impl Intrinsic {
         args: Vec<Expr>,
     ) -> anyhow::Result<Self> {
         use SysTypeName as Q;
-    
+
         macro_rules! mk2_named {
             ($op:ident, $n1:ident, $n2:ident) => {{
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
@@ -791,7 +795,7 @@ impl Intrinsic {
                 Intrinsic::$op { $n1, $n2 }
             }};
         }
-    
+
         macro_rules! mk3_named {
             ($op:ident, $n1:ident, $n2:ident, $n3:ident) => {{
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
@@ -799,7 +803,7 @@ impl Intrinsic {
                 Intrinsic::$op { $n1, $n2, $n3 }
             }};
         }
-    
+
         macro_rules! mk3_t {
             ($op:ident, $n1:ident, $n2:ident, $n3:ident) => {{
                 let t1 = Intrinsic::unpack_ty_arg_1(ty_args)?;
@@ -812,7 +816,7 @@ impl Intrinsic {
                 }
             }};
         }
-    
+
         let get_impl_type = || -> anyhow::Result<TypeRef> {
             match ty_name {
                 Q::I32 => Ok(TypeRef::I32),
@@ -824,12 +828,14 @@ impl Intrinsic {
                 _ => anyhow::bail!("Type {:?} does not have a static TypeRef", ty_name),
             }
         };
-    
+
         macro_rules! mk0_impl {
             ($op:ident) => {{
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 Intrinsic::unpack_expr_0(args)?;
-                Intrinsic::$op { t: get_impl_type()? }
+                Intrinsic::$op {
+                    t: get_impl_type()?,
+                }
             }};
         }
         macro_rules! mk1_impl {
@@ -853,7 +859,7 @@ impl Intrinsic {
                 }
             }};
         }
-    
+
         let intrinsic = match (ty_name, fn_name.as_ref()) {
             (_, "eq") => {
                 let t = Intrinsic::unpack_ty_arg_1(ty_args)?;
@@ -865,14 +871,14 @@ impl Intrinsic {
                 let (lhs, rhs) = Intrinsic::unpack_expr_2(args)?;
                 Intrinsic::SmtNe { t, lhs, rhs }
             }
-    
+
             (Q::Error, "fresh") => {
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 Intrinsic::unpack_expr_0(args)?;
                 Intrinsic::ErrFresh
             }
             (Q::Error, "merge") => mk2!(ErrMerge, ty_args, args),
-    
+
             (Q::Boolean, "not") => mk1!(BoolNot, ty_args, args),
             (Q::Boolean, "and") => mk2!(BoolAnd, ty_args, args),
             (Q::Boolean, "or") => mk2!(BoolOr, ty_args, args),
@@ -883,7 +889,7 @@ impl Intrinsic {
             (Q::Boolean, "implies") => mk2!(BoolImplies, ty_args, args),
             (Q::Boolean, "iff") => mk2!(BoolIff, ty_args, args),
             (Q::Boolean, "ite") => mk3!(BoolIte, ty_args, args),
-    
+
             (Q::Integer, "neg") => mk1!(IntNeg, ty_args, args),
             (Q::Integer, "add") => mk2!(IntAdd, ty_args, args),
             (Q::Integer, "sub") => mk2!(IntSub, ty_args, args),
@@ -906,11 +912,11 @@ impl Intrinsic {
             (Q::Integer, "to_u64") => mk1!(IntToU64, ty_args, args),
             (Q::Integer, "to_f32") => mk1!(IntToF32, ty_args, args),
             (Q::Integer, "to_f64") => mk1!(IntToF64, ty_args, args),
-    
+
             (Q::Integer, "from_hex_str") => mk1!(IntFromHex, ty_args, args),
             (Q::Integer, "from_oct_str") => mk1!(IntFromOct, ty_args, args),
             (Q::Integer, "from_bin_str") => mk1!(IntFromBin, ty_args, args),
-    
+
             (Q::Integer, "is_gt_i64_max") => mk1!(IntIsGtI64Max, ty_args, args),
             (Q::Integer, "is_lt_i64_min") => mk1!(IntIsLtI64Min, ty_args, args),
             (Q::Integer, "is_gt_u64_max") => mk1!(IntIsGtU64Max, ty_args, args),
@@ -919,7 +925,7 @@ impl Intrinsic {
             (Q::Integer, "is_gt_i32_max") => mk1!(IntIsGtI32Max, ty_args, args),
             (Q::Integer, "is_lt_u32_min") => mk1!(IntIsLtU32Min, ty_args, args),
             (Q::Integer, "is_gt_u32_max") => mk1!(IntIsGtU32Max, ty_args, args),
-    
+
             (Q::Real, "neg") => mk1!(RealNeg, ty_args, args),
             (Q::Real, "add") => mk2!(RealAdd, ty_args, args),
             (Q::Real, "sub") => mk2!(RealSub, ty_args, args),
@@ -930,17 +936,17 @@ impl Intrinsic {
             (Q::Real, "round") => mk1!(RealRound, ty_args, args),
             (Q::Real, "floor") => mk1!(RealFloor, ty_args, args),
             (Q::Real, "ceil") => mk1!(RealCeil, ty_args, args),
-    
+
             (Q::Real, "is_integer") => mk1!(RealIsInt, ty_args, args),
             (Q::Real, "lt") => mk2!(RealLt, ty_args, args),
             (Q::Real, "le") => mk2!(RealLe, ty_args, args),
             (Q::Real, "gt") => mk2!(RealGt, ty_args, args),
             (Q::Real, "ge") => mk2!(RealGe, ty_args, args),
-    
+
             (Q::Real, "to_int") => mk1!(RealToInt, ty_args, args),
             (Q::Real, "to_f32") => mk1!(RealToF32, ty_args, args),
             (Q::Real, "to_f64") => mk1!(RealToF64, ty_args, args),
-    
+
             (Q::String, "new") => {
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 Intrinsic::unpack_expr_0(args)?;
@@ -975,15 +981,15 @@ impl Intrinsic {
             (Q::String, "gt") => mk2!(StrGt, ty_args, args),
             (Q::String, "replace") => mk3_named!(StrReplace, seq, src, dst),
             (Q::String, "replace_all") => mk3_named!(StrReplaceAll, seq, src, dst),
-    
+
             (Q::String, "to_int") => mk1!(StrToInt, ty_args, args),
             (Q::String, "from_int") => mk1!(StrFromInt, ty_args, args),
             (Q::String, "from_code") => mk1!(StrFromCode, ty_args, args),
             (Q::String, "to_code") => mk1!(StrToCode, ty_args, args),
-    
+
             (Q::Cloak, "shield") => mk1_t!(BoxShield, ty_args, args, val),
             (Q::Cloak, "reveal") => mk1_t!(BoxReveal, ty_args, args, val),
-    
+
             (Q::Seq, "new") => mk0_t!(SeqEmpty, ty_args, args),
             (Q::Seq, "unit") => mk1_t!(SeqUnit, ty_args, args, val),
             (Q::Seq, "length") => mk1_t!(SeqLen, ty_args, args, seq),
@@ -999,7 +1005,7 @@ impl Intrinsic {
             (Q::Seq, "suffix_of") => mk2_t!(SeqSuffixOf, ty_args, args, lhs, rhs),
             (Q::Seq, "replace") => mk3_t!(SeqReplace, seq, src, dst),
             (Q::Seq, "is_empty") => mk1_t!(SeqIsEmpty, ty_args, args, seq),
-    
+
             (Q::Set, "new") => mk0_t!(SetEmpty, ty_args, args),
             (Q::Set, "length") => mk1_t!(SetLen, ty_args, args, set),
             (Q::Set, "insert") => mk2_t!(SetInsert, ty_args, args, set, item),
@@ -1014,7 +1020,7 @@ impl Intrinsic {
             (Q::Set, "is_proper_subset") => mk2_t!(SetIsProperSubset, ty_args, args, lhs, rhs),
             (Q::Set, "is_disjoint") => mk2_t!(SetIsDisjoint, ty_args, args, lhs, rhs),
             (Q::Set, "has_size") => mk2_t!(SetHasSize, ty_args, args, set, size),
-    
+
             (Q::Array, "new") => mk0_kv!(ArrayEmpty, ty_args, args),
             (Q::Array, "length") => mk1_kv!(ArrayLen, ty_args, args, arr),
             (Q::Array, "store") => mk3_kv!(ArrayStore, ty_args, args, arr, key, val),
@@ -1022,13 +1028,13 @@ impl Intrinsic {
             (Q::Array, "del") => mk2_kv!(ArrayRemove, ty_args, args, arr, key),
             (Q::Array, "contains_key") => mk2_kv!(ArrayContainsKey, ty_args, args, arr, key),
             (Q::Array, "is_empty") => mk1_kv!(ArrayIsEmpty, ty_args, args, arr),
-    
+
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_not") => mk1_impl!(BvNot, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_neg") => mk1_impl!(BvNeg, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_redand") => mk1_impl!(BvRedAnd, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_redor") => mk1_impl!(BvRedOr, val),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "to_int") => mk1_impl!(BvToInt, val),
-    
+
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_and") => mk2_impl!(BvAnd, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_or") => mk2_impl!(BvOr, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_xor") => mk2_impl!(BvXor, lhs, rhs),
@@ -1045,18 +1051,20 @@ impl Intrinsic {
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_lshr") => mk2_impl!(BvLshr, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_ashr") => mk2_impl!(BvAshr, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_rotate_left") => mk2_impl!(BvRotLeft, lhs, rhs),
-            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_rotate_right") => mk2_impl!(BvRotRight, lhs, rhs),
+            (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_rotate_right") => {
+                mk2_impl!(BvRotRight, lhs, rhs)
+            }
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_lt") => mk2_impl!(BvLt, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_le") => mk2_impl!(BvLe, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_gt") => mk2_impl!(BvGt, lhs, rhs),
             (Q::I32 | Q::I64 | Q::U32 | Q::U64, "bv_ge") => mk2_impl!(BvGe, lhs, rhs),
-    
+
             (Q::F32 | Q::F64, "nan") => mk0_impl!(FloatNaN),
             (Q::F32 | Q::F64, "infinity") => mk0_impl!(FloatPosInf),
             (Q::F32 | Q::F64, "neg_infinity") => mk0_impl!(FloatNegInf),
             (Q::F32 | Q::F64, "pos_zero") => mk0_impl!(FloatPosZero),
             (Q::F32 | Q::F64, "neg_zero") => mk0_impl!(FloatNegZero),
-    
+
             (Q::F32 | Q::F64, "neg") => mk1_impl!(FloatNeg, val),
             (Q::F32 | Q::F64, "abs") => mk1_impl!(FloatAbs, val),
             (Q::F32 | Q::F64, "sqrt") => mk1_impl!(FloatSqrt, val),
@@ -1071,7 +1079,7 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "trunc") => mk1_impl!(FloatTrunc, val),
             (Q::F32 | Q::F64, "nearest") => mk1_impl!(FloatNearest, val),
             (Q::F32 | Q::F64, "from_hex_str") => mk1_impl!(FloatFromHexStr, val),
-    
+
             (Q::F32 | Q::F64, "is_nan") => mk1_impl!(FloatIsNaN, val),
             (Q::F32 | Q::F64, "is_infinite") => mk1_impl!(FloatIsInf, val),
             (Q::F32 | Q::F64, "is_zero") => mk1_impl!(FloatIsZero, val),
@@ -1079,7 +1087,7 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "is_subnormal") => mk1_impl!(FloatIsSubnormal, val),
             (Q::F32 | Q::F64, "is_negative") => mk1_impl!(FloatIsNeg, val),
             (Q::F32 | Q::F64, "is_positive") => mk1_impl!(FloatIsPos, val),
-    
+
             (Q::F32 | Q::F64, "add") => mk2_impl!(FloatAdd, lhs, rhs),
             (Q::F32 | Q::F64, "sub") => mk2_impl!(FloatSub, lhs, rhs),
             (Q::F32 | Q::F64, "mul") => mk2_impl!(FloatMul, lhs, rhs),
@@ -1092,13 +1100,13 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "gt") => mk2_impl!(FloatGt, lhs, rhs),
             (Q::F32 | Q::F64, "ge") => mk2_impl!(FloatGe, lhs, rhs),
             (Q::F32 | Q::F64, "fp_eq") => mk2_impl!(FloatFqEq, lhs, rhs),
-    
+
             _ => anyhow::bail!("unknown intrinsic: {:?}::{}", ty_name, fn_name),
         };
-    
+
         Ok(intrinsic)
     }
-    
+
     /// Utility to unpack 0 type argument
     fn unpack_ty_arg_0(ty_args: Vec<TypeRef>) -> anyhow::Result<()> {
         let mut iter = ty_args.into_iter();
@@ -1309,8 +1317,12 @@ impl Display for Intrinsic {
             Self::SeqConcat { lhs, rhs, .. } => write!(f, "({lhs} ++ {rhs})"),
             Self::SeqNth { seq, idx, .. } => write!(f, "{seq}[{idx}]"),
             Self::SeqAtSeq { seq, idx, .. } => write!(f, "at_seq({seq}, {idx})"),
-            Self::SeqExtract { seq, offset, len, .. } => write!(f, "{seq}[{offset}..{len}]"),
-            Self::SeqIndexOf { seq, sub, offset, .. } => write!(f, "index_of({seq}, {sub}, {offset})"),
+            Self::SeqExtract {
+                seq, offset, len, ..
+            } => write!(f, "{seq}[{offset}..{len}]"),
+            Self::SeqIndexOf {
+                seq, sub, offset, ..
+            } => write!(f, "index_of({seq}, {sub}, {offset})"),
             Self::SeqIndexOfDefault { seq, sub, .. } => write!(f, "index_of({seq}, {sub})"),
             Self::SeqContains { seq, item, .. } => write!(f, "contains({seq}, {item})"),
             Self::SeqPrefixOf { lhs, rhs, .. } => write!(f, "prefix_of({lhs}, {rhs})"),

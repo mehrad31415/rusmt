@@ -35,7 +35,7 @@ impl<K: SMT, V: SMT> Array<K, V> {
     }
 
     /// Performs the low-level SMT `select` operation: `(select self k)`.
-    /// 
+    ///
     /// # Panics
     /// Panics if key does not exist. Use `contains_key` to check first.
     pub fn select(self, k: K) -> V {
@@ -65,7 +65,6 @@ impl<K: SMT, V: SMT> Array<K, V> {
     }
 
     /// iterator over the keys of the array: `m.iterator()`
-    /// This is mainly useful for testing and translates to forall k in keys(arr)
     // this method should not be used in the direct implementation of the interpreters so it should not be translated to SMT-LIB.
     // it is used in the expression macros for iterating over the array.
     pub fn iterator(self) -> Vec<K> {

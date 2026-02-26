@@ -1,27 +1,24 @@
 ## Syntax subset (Rusmart DSL)
 
-Rusmart programs are **Rust programs** written under additional restrictions so they can be translated into SMT.
-At a high level, the DSL is:
+Rusmart programs are **Rust programs** written under additional restrictions so they can be translated into SMT. In short, we use `rusmart-smt-stdlib` types and intrinsic operations instead of Rust’s standard library.
 
-- **Expression-first and immutable**: model state via explicit values (e.g., `State` structs), not mutation.
-- **ADT + recursion friendly**: `enum`/`match` and recursion are the main control mechanisms.
-- **Stdlib-driven**: use `rusmart-smt-stdlib` types and intrinsic operations instead of Rust’s standard library.
+### Supported structures
 
-### Commonly used, supported Rust forms
+- `let` bindings (immutable): Every method in the standard library returns a new _object_. 
+- `if`: Every `if` statement must have a matching `else`. 
+- `struct` / `enum` / `match`: construction and pattern matching.
+- direct and mutually recursive function calls.
 
-- `let` bindings (immutable)
-- `if` / `match`
-- `struct` / `enum` construction and pattern matching
-- direct and mutually recursive function calls
+### Intentionally avoided structures
 
-### Commonly disallowed or intentionally avoided
-
-These are typically rejected by the remarking/transpilation pipeline or are not meaningful for SMT translation:
+These are typically rejected by the remarking/transpilation pipeline:
 
 - mutation (`let mut`, assignment)
 - loops (`for`, `while`)
 - references/pointers and borrowing (`&T`, `&mut T`)
-- arbitrary standard-library collections (use `Seq<T>`, `Set<T>`, `Array<K, V>`)
+- arbitrary standard-library collections (use `Seq<T>`, `Set<T>`, `Array<K, V>` instead)
+
+This list is not comprehensive.
 
 ### How to think about “parsing code” in the DSL
 

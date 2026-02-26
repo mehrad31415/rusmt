@@ -158,12 +158,12 @@ impl ApplyDatabase {
         db.builtin("implies", Q::Boolean, fn2_arith(Boolean));
         db.builtin("iff", Q::Boolean, fn2_arith(Boolean));
         // `Boolean::ite` is function-generic (T), not type-generic.
-        // We must declare the function generic so it can be inferred from the then/else arguments.
+        // T must be declared in generics so instantiate() can resolve it.
         db.builtin(
             "ite",
             Q::Boolean,
             TypeFn {
-                generics: empty(),
+                generics: Generics::intrinsic(vec![TypeParamName::intrinsic("T")]),
                 params: vec![Boolean, t(), t()],
                 ret_ty: t(),
             },

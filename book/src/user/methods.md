@@ -1,42 +1,4 @@
-# `stdlib`
-
-Rusmart’s standard library (short for `stdlib`) is the Rust-facing DSL (`rusmart-smt-stdlib`) that the transpiler recognizes and lowers into SMT.
-
-## What counts as an “intrinsic”
-
-An **intrinsic** is a type/method/operator/macro that the Rusmart compiler recognizes and gives **special SMT semantics** to (i.e., it does *not* treat it like a normal Rust function call).
-
-- **Method intrinsics** (most of the stdlib API): e.g. `Integer::add`, `Seq::concat`, `Array::select`, …
-- **Generic operator intrinsics** (on any `T: SMT`): `eq`, `ne`
-- **Expression intrinsics** (macros): `forall!`, `exists!`, `choose!`
-- **Literals**: booleans, integers, reals, strings, and numeric suffixes for bitvectors/floats
-
-Non-intrinsic helpers exist too. The main ones are **collection iterators** like `Seq::iterator`, `Set::iterator`, `Array::iterator`, `String::iterator`: they are **Rust-only** and are used to implement the *bounded* quantifier patterns of `forall!/exists!/choose!`.
-
-## Adding a new intrinsic-backed method (what files change)
-
-Assuming **a new method on an existing intrinsic type** (e.g., add `Integer::foo` or `Seq::bar`):
-
-- **Add/adjust the stdlib API (the method users call)**:
-  - `smt/stdlib/src/dt/<type>.rs` (or a trait like `dt/float.rs`, `dt/bitvector.rs`)
-- **Allow the method name as an intrinsic**:
-  - `smt/derive/src/parser/name.rs` (`UsrFuncName::intrinsic`)
-- **Register its type signature for overload resolution**:
-  - `smt/derive/src/parser/apply.rs` (`ApplyDatabase::with_intrinsics()`)
-- **Map (type, name) → parser intrinsic opcode**:
-  - `smt/derive/src/parser/intrinsics.rs` (`Intrinsic::new(...)`)
-  - Add a new `Intrinsic::...` variant here if needed.
-- **Carry it through IR and backend**:
-  - `smt/derive/src/ir/intrinsics.rs` (IR enum variant)
-  - `smt/derive/src/ir/exp.rs` (lowering from parser intrinsic → IR intrinsic)
-  - `smt/derive/src/backend/z3/intrinsics.rs` (SMT-LIB formatting)
-- **Update docs**:
-  - `book/src/user/stdlib.md` (intrinsic method list)
-  - Possibly `book/src/user/typing.md` if it introduces new types/sorts
-
-If instead you’re adding a **new intrinsic type** (a new SMT sort), you’ll additionally touch `UsrTypeName::intrinsic` / `SysTypeName` plumbing and sort formatting.
-
-## Types
+# Operations
 
 See [Type system](typing.md) for the authoritative list of intrinsic SMT sorts.
 
@@ -135,12 +97,43 @@ These are exposed via the `FloatOps` trait (receiver is `F32` or `F64`):
 
 ## Expression intrinsics (macros)
 
-- `forall!(|v1: T1, ..., vn: Tn| predicate)` (**SMT**: unbounded quantification)
-- `exists!(|v1: T1, ..., vn: Tn| predicate)` (**SMT**: unbounded quantification)
-- `choose!(|v1: T1, ..., vn: Tn| predicate)` (**SMT**: Hilbert-style choice)
-
 Bounded variants iterate in Rust over `c.iterator()` (collections like `Seq/Set/Array/String` provide these iterators for macro use):
 
 - `forall!(v1 in c1, ..., vn in cn => predicate)`
 - `exists!(v1 in c1, ..., vn in cn => predicate)`
 - `choose!(v1 in c1, ..., vn in cn => predicate)`
+
+
+## What counts as an “intrinsic”
+
+An **intrinsic** is a type/method/operator/macro that the Rusmart compiler recognizes and gives **special SMT semantics** to (i.e., it does *not* treat it like a normal Rust function call).
+
+- **Method intrinsics** (most of the stdlib API): e.g. `Integer::add`, `Seq::concat`, `Array::select`, …
+- **Generic operator intrinsics** (on any `T: SMT`): `eq`, `ne`
+- **Expression intrinsics** (macros): `forall!`, `exists!`, `choose!`
+- **Literals**: booleans, integers, reals, strings, and numeric suffixes for bitvectors/floats
+
+Non-intrinsic helpers exist too. The main ones are **collection iterators** like `Seq::iterator`, `Set::iterator`, `Array::iterator`, `String::iterator`: they are **Rust-only** and are used to implement the *bounded* quantifier patterns of `forall!/exists!/choose!`.
+
+## Adding a new intrinsic-backed method (what files change)
+
+Assuming **a new method on an existing intrinsic type** (e.g., add `Integer::foo` or `Seq::bar`):
+
+- **Add/adjust the stdlib API (the method users call)**:
+  - `smt/stdlib/src/dt/<type>.rs` (or a trait like `dt/float.rs`, `dt/bitvector.rs`)
+- **Allow the method name as an intrinsic**:
+  - `smt/derive/src/parser/name.rs` (`UsrFuncName::intrinsic`)
+- **Register its type signature for overload resolution**:
+  - `smt/derive/src/parser/apply.rs` (`ApplyDatabase::with_intrinsics()`)
+- **Map (type, name) → parser intrinsic opcode**:
+  - `smt/derive/src/parser/intrinsics.rs` (`Intrinsic::new(...)`)
+  - Add a new `Intrinsic::...` variant here if needed.
+- **Carry it through IR and backend**:
+  - `smt/derive/src/ir/intrinsics.rs` (IR enum variant)
+  - `smt/derive/src/ir/exp.rs` (lowering from parser intrinsic → IR intrinsic)
+  - `smt/derive/src/backend/z3/intrinsics.rs` (SMT-LIB formatting)
+- **Update docs**:
+  - `book/src/user/methods.md` (intrinsic method list)
+  - Possibly `book/src/user/typing.md` if it introduces new types/sorts
+
+If instead you’re adding a **new intrinsic type** (a new SMT sort), you’ll additionally touch `UsrTypeName::intrinsic` / `SysTypeName` plumbing and sort formatting.

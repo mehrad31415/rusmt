@@ -1,5 +1,5 @@
 use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{bitvector::BitvectorOps, Boolean, I32, Integer, U64};
+use rusmart_smt_stdlib::{Boolean, I32, Integer, U64, bitvector::BitvectorOps};
 
 #[smt_fn]
 pub fn bitvector_all(a: I32, b: I32, x: U64, y: U64) -> Boolean {
@@ -37,4 +37,3 @@ pub fn bitvector_all(a: I32, b: I32, x: U64, y: U64) -> Boolean {
 
     Boolean::from(true)
 }
-

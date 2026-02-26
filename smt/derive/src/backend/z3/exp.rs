@@ -18,7 +18,11 @@ pub fn format_expression(
     param_names: &std::collections::HashSet<String>,
     scc_fids: &BTreeSet<UsrFunId>,
 ) -> String {
-    fn user_sort_of_base(exp_registry: &ExpRegistry, base: ExpId, ir: &IRContext) -> (UsrSortId, Option<String>) {
+    fn user_sort_of_base(
+        exp_registry: &ExpRegistry,
+        base: ExpId,
+        ir: &IRContext,
+    ) -> (UsrSortId, Option<String>) {
         let base_exp = exp_registry.lookup_exp(&base);
         match base_exp {
             Expression::Record { sort, .. } => (*sort, None),
@@ -253,48 +257,6 @@ pub fn format_expression(
                 result = format!("(ite {} {} {})", cond_str, body_str, result);
             }
             result
-        }
-
-        Expression::Forall { vars, body } => {
-            let var_decls: Vec<String> = vars
-                .iter()
-                .map(|(var_id, sort)| {
-                    let var = exp_registry.lookup_var(var_id);
-                    format!("({} {})", var.name, format_sort_for_fn(sort, ir))
-                })
-                .collect();
-            let body_str = format_expression(exp_registry, *body, ir, param_names, scc_fids);
-            format!("(forall ({}) {})", var_decls.join(" "), body_str)
-        }
-
-        Expression::Exists { vars, body } => {
-            let var_decls: Vec<String> = vars
-                .iter()
-                .map(|(var_id, sort)| {
-                    let var = exp_registry.lookup_var(var_id);
-                    format!("({} {})", var.name, format_sort_for_fn(sort, ir))
-                })
-                .collect();
-            let body_str = format_expression(exp_registry, *body, ir, param_names, scc_fids);
-            format!("(exists ({}) {})", var_decls.join(" "), body_str)
-        }
-
-        Expression::Choose {
-            vars,
-            body,
-            rets: _,
-        } => {
-            // Choose is similar to exists but returns values
-            // For now, treat as exists
-            let var_decls: Vec<String> = vars
-                .iter()
-                .map(|(var_id, sort)| {
-                    let var = exp_registry.lookup_var(var_id);
-                    format!("({} {})", var.name, format_sort_for_fn(sort, ir))
-                })
-                .collect();
-            let body_str = format_expression(exp_registry, *body, ir, param_names, scc_fids);
-            format!("(exists ({}) {})", var_decls.join(" "), body_str)
         }
 
         Expression::IterForall { vars, body } => {

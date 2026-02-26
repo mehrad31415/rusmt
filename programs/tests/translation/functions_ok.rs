@@ -28,9 +28,7 @@ pub fn abs_val(x: Integer) -> Integer {
 pub fn list_length<T: SMT>(lst: Listx<T>) -> Integer {
     match lst {
         Listx::Nil => Integer::from(0),
-        Listx::Cons(_, tail) => {
-            Integer::add(Integer::from(1), list_length::<T>(tail.reveal()))
-        }
+        Listx::Cons(_, tail) => Integer::add(Integer::from(1), list_length::<T>(tail.reveal())),
     }
 }
 

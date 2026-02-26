@@ -33,14 +33,4 @@ Concretely (in `lang/src/toml/mod.rs`), it parses one `expression` and then loop
 
 ### Context tracking (`ParserContext`)
 
-TOML has “semantic constraints” beyond pure syntax, e.g. redefinition rules for tables.
-`ParserContext` tracks sets/sequences of:
-
-- the current table path,
-- explicit tables (`[x]`),
-- implicit/closed tables (created by dotted keys),
-- inline tables/arrays,
-- array-of-tables (`[[x]]`).
-
-These constraints become SMT constraints when the parser is symbolically compiled.
-
+TOML has _semantic constraints_ beyond pure syntax, e.g. redefinition rules for tables. For a complete overview of the constraints please look at [spec](https://toml.io/en/v1.1.0).

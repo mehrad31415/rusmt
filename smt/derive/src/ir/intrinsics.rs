@@ -28,7 +28,11 @@ pub enum Intrinsic {
     /// `Boolean::iff`
     BoolIff { lhs: ExpId, rhs: ExpId },
     /// `Boolean::ite`
-    BoolIte { cond: ExpId, then: ExpId, else_: ExpId },
+    BoolIte {
+        cond: ExpId,
+        then: ExpId,
+        else_: ExpId,
+    },
 
     /// `Integer::from`
     IntVal(BigInt),
@@ -155,11 +159,19 @@ pub enum Intrinsic {
     /// `String::at`
     StrAt { seq: ExpId, idx: ExpId },
     /// `String::index_of`
-    StrIndexOf { seq: ExpId, sub: ExpId, offset: ExpId },
+    StrIndexOf {
+        seq: ExpId,
+        sub: ExpId,
+        offset: ExpId,
+    },
     /// `String::index_of_default`
     StrIndexOfDefault { seq: ExpId, sub: ExpId },
     /// `String::substr`
-    StrSubstr { seq: ExpId, start: ExpId, len: ExpId },
+    StrSubstr {
+        seq: ExpId,
+        start: ExpId,
+        len: ExpId,
+    },
     /// `String::is_empty`
     StrIsEmpty { seq: ExpId },
     /// `String::contains`
@@ -211,9 +223,19 @@ pub enum Intrinsic {
     /// `Seq::at_seq`
     SeqAtSeq { t: Sort, seq: ExpId, idx: ExpId },
     /// `Seq::extract`
-    SeqExtract { t: Sort, seq: ExpId, offset: ExpId, len: ExpId },
+    SeqExtract {
+        t: Sort,
+        seq: ExpId,
+        offset: ExpId,
+        len: ExpId,
+    },
     /// `Seq::index_of`
-    SeqIndexOf { t: Sort, seq: ExpId, sub: ExpId, offset: ExpId },
+    SeqIndexOf {
+        t: Sort,
+        seq: ExpId,
+        sub: ExpId,
+        offset: ExpId,
+    },
     /// `Seq::index_of_default`
     SeqIndexOfDefault { t: Sort, seq: ExpId, sub: ExpId },
     /// `Seq::contains`
@@ -223,7 +245,12 @@ pub enum Intrinsic {
     /// `Seq::suffix_of`
     SeqSuffixOf { t: Sort, lhs: ExpId, rhs: ExpId },
     /// `Seq::replace`
-    SeqReplace { t: Sort, seq: ExpId, src: ExpId, dst: ExpId },
+    SeqReplace {
+        t: Sort,
+        seq: ExpId,
+        src: ExpId,
+        dst: ExpId,
+    },
     /// `Seq::is_empty`
     SeqIsEmpty { t: Sort, seq: ExpId },
 
@@ -261,13 +288,34 @@ pub enum Intrinsic {
     /// `Array::length`
     ArrayLen { k: Sort, v: Sort, arr: ExpId },
     /// `Array::store`
-    ArrayStore { k: Sort, v: Sort, arr: ExpId, key: ExpId, val: ExpId },
+    ArrayStore {
+        k: Sort,
+        v: Sort,
+        arr: ExpId,
+        key: ExpId,
+        val: ExpId,
+    },
     /// `Array::select`
-    ArraySelect { k: Sort, v: Sort, arr: ExpId, key: ExpId },
+    ArraySelect {
+        k: Sort,
+        v: Sort,
+        arr: ExpId,
+        key: ExpId,
+    },
     /// `Array::del`
-    ArrayRemove { k: Sort, v: Sort, arr: ExpId, key: ExpId },
+    ArrayRemove {
+        k: Sort,
+        v: Sort,
+        arr: ExpId,
+        key: ExpId,
+    },
     /// `Array::contains_key`
-    ArrayContainsKey { k: Sort, v: Sort, arr: ExpId, key: ExpId },
+    ArrayContainsKey {
+        k: Sort,
+        v: Sort,
+        arr: ExpId,
+        key: ExpId,
+    },
     /// `Array::is_empty`
     ArrayIsEmpty { k: Sort, v: Sort, arr: ExpId },
 

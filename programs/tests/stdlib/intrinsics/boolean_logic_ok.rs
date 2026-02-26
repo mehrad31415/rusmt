@@ -46,8 +46,8 @@ pub fn bool_implies(a: Boolean, b: Boolean) -> Boolean {
 pub fn bool_iff(a: Boolean, b: Boolean) -> Boolean {
     Boolean::iff(a, b)
 }
+
 #[smt_fn]
 pub fn bool_ite<T: SMT>(cond: Boolean, then: T, else_: T) -> T {
     Boolean::ite(cond, then, else_)
 }
-

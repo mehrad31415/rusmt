@@ -28,7 +28,7 @@ For more details, please refer to the `LICENSE` file included in this repository
 
 ### Rust Toolchain
 
-The project uses a `rust-toolchain` file to define the specific toolchain configuration. This file ensures that all developers working on the project are using the same version of Rust, promoting consistency. This file contains the following configuration:
+The project uses a `rust-toolchain` file to define the specific toolchain configuration. `rust-toolchain` in simple words is a pinning file that tells _rustup_ (the Rust version manager) which Rust version to use and which extra tools to install alongside it. When anyone runs `cargo build` or any Rust command inside this project folder, rustup automatically reads this file and switches to exactly that toolchain. This guarantees every developer and every CI machine uses the same Rust setup and no "works on my machine" issues. This file contains the following configuration:
 
 ```
 [toolchain]
@@ -43,40 +43,9 @@ components = ["rustfmt", "clippy"]
 
 These processes have been automated by the `make lint` command in the Makefile. Including `components = ["rustfmt", "clippy"]` in the `rust-toolchain` file ensures that anyone that clones the repository will automatically get these components.
 
-### Git Modules
-
-The `.gitmodules` file is used to manage Git submodules. A submodule is essentially a repository within another repository. The content of the file is as following:
-
-```
-[submodule "solver/z3.rs"]
-	path = solver/z3.rs
-	url = https://github.com/prove-rs/z3.rs
-	branch = master
-```
-
-This submodule provides the Rust Z3 bindings used by the SMT backend.
-
 ### Gitignore
 
-The `.gitignore` file specifies files and directories that should be ignored by Git. This helps prevent unnecessary files from being included in the repository when being pushed. The `.gitignore` file in this project includes the following entries:
-
-```
-# artifacts
-/studio/
-/target/
-
-# IDE
-/.idea/
-
-# MacOS
-.DS_Store
-
-# Z3 trace files
-.z3-trace
-
-# todo list
-todo.txt
-```
+The `.gitignore` file specifies files and directories that should be ignored by Git. This helps prevent unnecessary files from being included in the repository when being pushed.
 
 ### Code Coverage 
 
@@ -93,7 +62,7 @@ Now by openning the command pallet (cmd + shift + p in mac) and typing coverage,
 If we want to automatically update the coverage display inline in the editor whenever we write new tests, instead of running the tarpaulin command again and then toggling the watch coverage, we can do the following:
 
 1. Install the `cargo-watch` tool by running `cargo install cargo-watch`.
-2. Run the command `cargo watch -x 'tarpaulin --out Lcov' -i lcov.info` to automatically run the tarpaulin command whenever a file in the project changes. Note that do not write `cargo tarpaulin` here as the cargo is implicit.
+2. Run the command `cargo watch -x 'tarpaulin --out Lcov' -i lcov.info` to automatically run the tarpaulin command whenever a file in the project changes.
 
 `cargo-watch` is a command-line utility for Rust developers that automatically monitors changes in your project's files and executes specified commands whenever a change is detected. The `-x` flag tells cargo watch to execute what command whenever a change is detected. We can use this tool to run the tarpaulin command whenever a file in the project changes. This way, a new `Lcov` file will be automatically created whenever a source code is updated, and subsequently the inline coverage (provided by coverage gutters) will be updated as well. Note that coverage gutters provides the inline coverage in the editor by looking at the `Lcov` file. The `-i lcov.info` flag is used to ignore the lcov.info file when it changes. This is because the tarpaulin command will generate the lcov.info (in the root of the workspace by default) when it runs, so if we don't ignore it, the cargo watch command will run the tarpaulin command again when the lcov.info file changes, which will consequently create an infinite loop. So we need to ignore the lcov.info file when it changes. However, we can remove the -i lcov.info flag if the directory that we are watching and the directory where the lcov.info file is generated are different. For example, if we want to run the tarpaulin command inside a specific crate directory, because the lcov.info file will be created in the root of the workspace, it will not be in the directory of the crate, thus automatically ignoring it. To emphasize cargo watch only watches the files in the directory where it is run. However, the cargo tarpaulin will generate files in the root of the workspace by default. Lastly, instead of saying what to ignore, we can say what to include. For example, we can say `-w src/` to `watch` only the src directory. so the command will be `cargo watch -x 'tarpaulin --out Lcov' -w src`. The path must exist in the project. Note that the `-w` flag is only for the cargo watch command. The tarpaulin command will run for the entire workspace unless we specify otherwise. To have the lcov.info file generated in the target directory, we can use the `--output-dir` flag. For example, `cargo tarpaulin --out Lcov --output-dir target/tarpaulin`. This will generate the lcov.info file in the target/tarpaulin directory. Note that this directory already exists. This way we will have the file abstracted from the root of the workspace. Also whenever we run `cargo clean`, the target directory will be deleted, so the lcov.info file will be deleted as well.
 
@@ -110,12 +79,8 @@ The current workspace members are:
 - `lang`
 - `programs`
 
-Common shared dependencies include `syn`/`quote`/`proc-macro2` for macro/AST processing, `datatest-stable` for data-driven tests, and the `z3` crate (via the `solver/z3.rs` submodule) with the `bundled` feature enabled.
+Z3 is invoked as a system binary (`z3` on `$PATH`) rather than as a Rust crate dependency.
 
 ### Cargo.lock
 
 As mentioned earlier, the workspace has only one `Cargo.lock` file at the top level, rather than having a `Cargo.lock` in each crate’s directory. This ensures that all crates are using the same version of all dependencies. The `Cargo.lock` file is a file that Cargo generates to keep track of the exact versions of dependencies that are used in the project. The `Cargo.lock` file is automatically generated by Cargo when we run `cargo build` and is not meant to be edited manually.
-
-### Summary
-
-In short, the Makefile automates common tasks, the GPLv3 license ensures the software remains free and open, and the Rust toolchain configuration guarantees that all developers are using a consistent setup. The gitmodules and gitignore files manage the repository structure, and the code coverage setup helps track test coverage. The Cargo.toml and Cargo.lock files define the project's dependencies and configuration. Together, these components streamline the development and testing processes.

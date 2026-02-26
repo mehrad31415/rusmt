@@ -286,60 +286,53 @@ impl CodeGen for CodeGenZ3 {
             l!(x, "; Define user-defined functions");
 
             let edges = collect_function_call_edges(fn_registry);
-            
+
             // Get all function IDs
             let all_ids: BTreeSet<_> = fn_registry
                 .lookup
                 .values()
                 .flat_map(|insts| insts.iter().map(|(_, fn_id)| *fn_id))
                 .collect();
-            
+
             // Group functions that have dependencies on each other
             // We'll use define-funs-rec for any group of interdependent functions
             // and define-fun only for truly isolated functions with no dependencies
-            
+
             // Build a dependency graph: which functions have edges to/from other functions
             let mut has_dependencies: HashSet<UsrFunId> = HashSet::new();
             let all_fids: HashSet<UsrFunId> = all_ids.iter().copied().collect();
-            
+
             for &(from, to) in &edges {
                 if all_fids.contains(&from) && all_fids.contains(&to) {
                     has_dependencies.insert(from);
                     has_dependencies.insert(to);
                 }
             }
-            
+
             // Separate functions into two groups:
             // 1. Interdependent functions (use define-funs-rec for all)
             // 2. Truly isolated functions (use define-fun)
-            let has_dependencies_set: BTreeSet<UsrFunId> = has_dependencies.iter().copied().collect();
+            let has_dependencies_set: BTreeSet<UsrFunId> =
+                has_dependencies.iter().copied().collect();
             let mut interdependent_fids: Vec<UsrFunId> = has_dependencies.iter().copied().collect();
-            let mut isolated_fids: Vec<UsrFunId> = all_ids
-                .difference(&has_dependencies_set)
-                .copied()
-                .collect();
-            
+            let mut isolated_fids: Vec<UsrFunId> =
+                all_ids.difference(&has_dependencies_set).copied().collect();
+
             // Sort for deterministic output
             interdependent_fids.sort();
             isolated_fids.sort();
-            
+
             // Generate interdependent functions using define-funs-rec
             if !interdependent_fids.is_empty() {
                 let mut function_data: Vec<(UsrFunId, String, Vec<Sort>, &FunSig, &FunDef)> =
                     Vec::new();
                 let interdependent_set: BTreeSet<_> = interdependent_fids.iter().copied().collect();
-                
+
                 for fid in &interdependent_fids {
                     let (function_name, type_params) = resolve_function_name(ir, *fid);
                     let sig = ir.fn_registry.retrieve_sig(*fid);
                     let def = ir.fn_registry.retrieve_def(*fid);
-                    function_data.push((
-                        *fid,
-                        function_name.to_string(),
-                        type_params,
-                        sig,
-                        def,
-                    ));
+                    function_data.push((*fid, function_name.to_string(), type_params, sig, def));
                 }
 
                 let functions: Vec<_> = function_data
@@ -352,22 +345,16 @@ impl CodeGen for CodeGenZ3 {
                 let functions_str = mk_functions_rec_str(&functions, ir, &interdependent_set);
                 l!(x, "{}", functions_str);
             }
-            
+
             // Generate isolated functions using define-fun
             for fid in isolated_fids {
                 let (function_name, type_params) = resolve_function_name(ir, fid);
                 let sig = ir.fn_registry.retrieve_sig(fid);
                 let def = ir.fn_registry.retrieve_def(fid);
                 let scc_set = BTreeSet::from([fid]);
-                
-                let function_str = mk_function_str(
-                    function_name.as_ref(),
-                    &type_params,
-                    sig,
-                    def,
-                    ir,
-                    &scc_set,
-                );
+
+                let function_str =
+                    mk_function_str(function_name.as_ref(), &type_params, sig, def, ir, &scc_set);
                 l!(x, "{}", function_str);
             }
 

@@ -1,4 +1,0 @@
-[submodule "solver/z3.rs"]
-	path = solver/z3.rs
-	url = https://github.com/prove-rs/z3.rs
-	branch = master

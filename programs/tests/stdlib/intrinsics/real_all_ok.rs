@@ -27,4 +27,3 @@ pub fn real_all(a: Real, b: Real) -> Boolean {
 
     Boolean::from(true)
 }
-

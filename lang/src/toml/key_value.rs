@@ -123,7 +123,7 @@ fn parse_dotted_key_loop(acc: Seq<String>, state: State) -> ParseResult<Seq<Stri
             // there were no more keys after dot
             ParseResult::NoMatch => {
                 // println!("expected a key after '.' but none found");
-                return ParseResult::Err(Error::fresh())
+                return ParseResult::Err(Error::fresh());
             }
         },
         ParseResult::Err(e) => return ParseResult::Err(e),
@@ -139,9 +139,9 @@ fn parse_dot_sep(state: State) -> ParseResult<String> {
     match c {
         Optional::Some(ch) => {
             if *ch.eq(String::from(".")) {
-                return ParseResult::Ok(ch, parse_ws(advance(state_after_ws)))
+                return ParseResult::Ok(ch, parse_ws(advance(state_after_ws)));
             } else {
-                return ParseResult::NoMatch // cannot happen
+                return ParseResult::NoMatch; // cannot happen
             }
         }
         Optional::None => return ParseResult::NoMatch, // cannot happen
@@ -153,7 +153,7 @@ fn parse_dot_sep(state: State) -> ParseResult<String> {
 fn parse_simple_key(state: State) -> ParseResult<String> {
     match parse_quoted_key(state) {
         ParseResult::Ok(quoted_key, state_after_quoted) => {
-            return ParseResult::Ok(quoted_key, state_after_quoted)
+            return ParseResult::Ok(quoted_key, state_after_quoted);
         }
         ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::NoMatch => parse_unquoted_key(state),
@@ -295,7 +295,9 @@ pub(crate) fn parse_value(key: Seq<String>, input: State) -> ParseResult<Value> 
                                                     }
                                                 }
                                                 ParseResult::Err(e) => return ParseResult::Err(e),
-                                                ParseResult::NoMatch => return ParseResult::NoMatch,
+                                                ParseResult::NoMatch => {
+                                                    return ParseResult::NoMatch;
+                                                }
                                             }
                                         }
                                     }

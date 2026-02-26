@@ -7,4 +7,3 @@ pub fn cloak_all(x: Integer) -> Boolean {
     let y: Integer = Cloak::reveal(c);
     y.eq(x)
 }
-

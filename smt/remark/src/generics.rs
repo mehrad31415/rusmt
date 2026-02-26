@@ -164,7 +164,10 @@ mod tests {
         let type_param_group: Result<TypeParamGroup> = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "expecting no angle brackets");
+        assert_eq!(
+            type_param_group.err().unwrap().to_string(),
+            "expecting no angle brackets"
+        );
     }
 
     #[test]
@@ -222,7 +225,10 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "no equal sign expected");
+        assert_eq!(
+            type_param_group.err().unwrap().to_string(),
+            "no equal sign expected"
+        );
     }
 
     #[test]
@@ -255,7 +261,10 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "no extra bounds expected");
+        assert_eq!(
+            type_param_group.err().unwrap().to_string(),
+            "no extra bounds expected"
+        );
     }
 
     #[test]
@@ -304,7 +313,10 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "no lifetimes expected");
+        assert_eq!(
+            type_param_group.err().unwrap().to_string(),
+            "no lifetimes expected"
+        );
     }
 
     #[test]
@@ -320,7 +332,10 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "no leading colon expected");
+        assert_eq!(
+            type_param_group.err().unwrap().to_string(),
+            "no leading colon expected"
+        );
     }
 
     #[test]
@@ -336,7 +351,10 @@ mod tests {
         let type_param_group = TypeParamGroup::parse_generics(&generics);
 
         assert!(type_param_group.is_err());
-        assert_eq!(type_param_group.err().unwrap().to_string(), "no extra segments expected");
+        assert_eq!(
+            type_param_group.err().unwrap().to_string(),
+            "no extra segments expected"
+        );
     }
 
     // if !matches!(arguments, PathArguments::None) {

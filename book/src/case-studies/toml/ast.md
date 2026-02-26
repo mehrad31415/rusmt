@@ -1,4 +1,4 @@
-## AST and value model
+## AST
 
 The TOML parser’s output type is `Value` (defined in `lang/src/toml/ast.rs`).
 It represents TOML values *after* parsing succeeds, and is designed to be both:

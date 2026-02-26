@@ -77,11 +77,8 @@ pub fn solve<P: AsRef<Path>>(models: &IRContext, output: P) -> Result<()> {
                             x
                         );
                         // Still write the error to the response file so tests can detect it
-                        fs::write(
-                            &resp_path,
-                            format!("{}", x),
-                        )
-                        .expect("failed to write error response");
+                        fs::write(&resp_path, format!("{}", x))
+                            .expect("failed to write error response");
                     }
                 }
             }

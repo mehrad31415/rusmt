@@ -43,4 +43,3 @@ pub fn integer_all(x: Integer, y: Integer, z: Integer, s: String) -> Boolean {
 
     Boolean::from(true)
 }
-

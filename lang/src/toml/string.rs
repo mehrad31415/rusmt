@@ -314,7 +314,7 @@ fn parse_n_hex_digits(state: State, count: Integer, acc: String) -> ParseResult<
     }
 }
 
-/// escape-seq-char =  %x22 / %x5C / %x62 / %x66 / %x6E / %x72 / %x74 ; (", \, b, f, n, r, t)
+/// escape-seq-char =  %x22 / %x5C / %x62 / %x65 / %x66 / %x6E / %x72 / %x74 ; (", \, b, e, f, n, r, t)
 #[smt_fn]
 fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
     match current_char(state) {
@@ -335,73 +335,88 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                     {
                         return ParseResult::Ok(String::from("\x08"), advance(state));
                     } else {
-                        if *c.eq(String::from("f"))
-                        // %x66 - f
-                        {
-                            return ParseResult::Ok(String::from("\x0C"), advance(state));
+                        // %x65 - e
+                        if *c.eq(String::from("e")) {
+                            return ParseResult::Ok(String::from("\x1B"), advance(state));
                         } else {
-                            if *c.eq(String::from("n"))
-                            // %x6E - n
+                            if *c.eq(String::from("f"))
+                            // %x66 - f
                             {
-                                return ParseResult::Ok(String::from("\n"), advance(state));
+                                return ParseResult::Ok(String::from("\x0C"), advance(state));
                             } else {
-                                if *c.eq(String::from("r"))
-                                // %x72 - r
+                                if *c.eq(String::from("n"))
+                                // %x6E - n
                                 {
-                                    return ParseResult::Ok(String::from("\r"), advance(state));
+                                    return ParseResult::Ok(String::from("\n"), advance(state));
                                 } else {
-                                    if *c.eq(String::from("t"))
-                                    // %x74 - t
+                                    if *c.eq(String::from("r"))
+                                    // %x72 - r
                                     {
-                                        return ParseResult::Ok(String::from("\t"), advance(state));
+                                        return ParseResult::Ok(String::from("\r"), advance(state));
                                     } else {
-                                        if *c
-                                            .eq(String::from("u"))
-                                            .not()
-                                            .and(c.eq(String::from("U")).not())
+                                        if *c.eq(String::from("t"))
+                                        // %x74 - t
                                         {
-                                            if *val.eq(Integer::from(0)) {
-                                                return ParseResult::NoMatch; // for multi-line string try other escape sequences
-                                            } else {
-                                                // println!(
-                                                //    "invalid escape sequence in basic string: {:?}",
-                                                //     c
-                                                // );
-                                                return ParseResult::Err(Error::fresh()); // for basic strings, other escape sequences are invalid
-                                            }
+                                            return ParseResult::Ok(
+                                                String::from("\t"),
+                                                advance(state),
+                                            );
                                         } else {
-                                            let needed = if *c.eq(String::from("u")) {
-                                                Integer::from(4)
-                                            } else {
-                                                Integer::from(8)
-                                            };
-                                            let start_state = advance(state);
-                                            match parse_n_hex_digits(
-                                                start_state,
-                                                needed,
-                                                String::from(""),
-                                            ) {
-                                                ParseResult::NoMatch => {
+                                            if *c
+                                                .eq(String::from("u"))
+                                                .not()
+                                                .and(c.eq(String::from("U")).not())
+                                                .and(c.eq(String::from("x")).not())
+                                            {
+                                                if *val.eq(Integer::from(0)) {
+                                                    return ParseResult::NoMatch; // for multi-line string try other escape sequences
+                                                } else {
                                                     // println!(
-                                                    //    "invalid hex digits in unicode escape sequence"
+                                                    //    "invalid escape sequence in basic string: {:?}",
+                                                    //     c
                                                     // );
-                                                    return ParseResult::Err(Error::fresh());
-                                                } // Invalid Hex
-                                                ParseResult::Err(e) => ParseResult::Err(e),
-                                                ParseResult::Ok(hex_str, hex_state) => {
-                                                    let code_point = Integer::from_hex_str(hex_str); // mathematically cannot panic!
-                                                    let code_point_u32 = code_point.to_u32(); // cannot panic
-                                                    if *is_valid_unicode_scalar(code_point_u32) {
-                                                        return ParseResult::Ok(
-                                                            String::from_code(code_point_u32),
-                                                            hex_state,
-                                                        );
+                                                    return ParseResult::Err(Error::fresh()); // for basic strings, other escape sequences are invalid
+                                                }
+                                            } else {
+                                                let needed = if *c.eq(String::from("x")) {
+                                                    Integer::from(2)
+                                                } else {
+                                                    if *c.eq(String::from("u")) {
+                                                        Integer::from(4)
                                                     } else {
+                                                        Integer::from(8)
+                                                    }
+                                                };
+                                                let start_state = advance(state);
+                                                match parse_n_hex_digits(
+                                                    start_state,
+                                                    needed,
+                                                    String::from(""),
+                                                ) {
+                                                    ParseResult::NoMatch => {
                                                         // println!(
-                                                        //    "invalid unicode scalar value in escape sequence: {:?}",
-                                                        //    code_point
+                                                        //    "invalid hex digits in unicode escape sequence"
                                                         // );
                                                         return ParseResult::Err(Error::fresh());
+                                                    } // Invalid Hex
+                                                    ParseResult::Err(e) => ParseResult::Err(e),
+                                                    ParseResult::Ok(hex_str, hex_state) => {
+                                                        let code_point =
+                                                            Integer::from_hex_str(hex_str); // mathematically cannot panic!
+                                                        let code_point_u32 = code_point.to_u32(); // cannot panic
+                                                        if *is_valid_unicode_scalar(code_point_u32)
+                                                        {
+                                                            return ParseResult::Ok(
+                                                                String::from_code(code_point_u32),
+                                                                hex_state,
+                                                            );
+                                                        } else {
+                                                            // println!(
+                                                            //    "invalid unicode scalar value in escape sequence: {:?}",
+                                                            //    code_point
+                                                            // );
+                                                            return ParseResult::Err(Error::fresh());
+                                                        }
                                                     }
                                                 }
                                             }

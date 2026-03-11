@@ -3,11 +3,12 @@
 
 use crate::toml::{
     Optional, ParseResult, ParserContext, State, advance,
+    array::parse_ws_comment_newline,
     ast::Value,
     current_char,
     expr::make_nested_table,
     key_value::{parse_key, parse_key_value},
-    parse_newline, parse_ws,
+    parse_ws,
 };
 use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{Array, Cloak, Error, Integer, Seq, String, choose, forall, smt::SMT};
@@ -288,181 +289,194 @@ pub(crate) fn parse_inline_table(
 }
 
 /// `inline-table-keyvals = keyval [ inline-table-sep inline-table-keyvals ]`
+/// v1.1.0: newlines (via ws-comment-newline in open/sep/close) and trailing commas are permitted.
 #[smt_fn]
 fn parse_inline_table_keyvals(
     new_key: Seq<String>,
     state: State,
 ) -> ParseResult<Array<String, Value>> {
-    match parse_newline(state) {
-        ParseResult::Ok(_newline, _state_after_newline) => {
-            // Inline tables are intended to appear on a single line...
-            // println!("newlines not permitted in inline table");
-            ParseResult::Err(Error::fresh())
-        }
-        ParseResult::NoMatch => {
-            match parse_key_value(state) {
-                ParseResult::Ok(kv, state_after_kv) => {
-                    let key = kv.key;
-                    let val = kv.val;
-                    match current_char(state_after_kv) {
-                        Optional::None => {
-                            // println!("cannot have end of input here expecting }} or ,");
-                            ParseResult::Err(Error::fresh()) // cannot have end of input here expecting } or ,
+    match parse_key_value(state) {
+        ParseResult::Ok(kv, state_after_kv) => {
+            let key = kv.key;
+            let val = kv.val;
+            match current_char(state_after_kv) {
+                Optional::None => {
+                    // println!("cannot have end of input here expecting }} or ,");
+                    ParseResult::Err(Error::fresh()) // cannot have end of input here expecting } or ,
+                }
+                Optional::Some(_ch) => {
+                    match parse_inline_table_close(state_after_kv) {
+                        ParseResult::Ok(_close_brace, state_after_close) => {
+                            let nested_table = make_nested_table(key, val);
+                            let state_after_close_temp = state_after_close;
+                            let stream = state_after_close_temp.stream;
+                            let cursor = state_after_close_temp.cursor;
+                            let context = state_after_close_temp.context;
+                            let context_tmp = context;
+                            let current_table_path3 = context_tmp.current_table_path;
+                            let explicit_tables3 = context_tmp.explicit_tables;
+                            let closed_tables3 = context_tmp.closed_tables;
+                            let inline_tables3 = context_tmp.inline_tables;
+                            let inline_arrays3 = context_tmp.inline_arrays;
+                            let array_of_tables3 = context_tmp.array_of_tables;
+                            let new_context = ParserContext {
+                                current_table_path: current_table_path3,
+                                explicit_tables: explicit_tables3,
+                                closed_tables: closed_tables3,
+                                inline_tables: inline_tables3.append(new_key),
+                                inline_arrays: inline_arrays3,
+                                array_of_tables: array_of_tables3,
+                            };
+                            let new_state_after_close = State {
+                                stream,
+                                cursor,
+                                context: new_context,
+                            };
+                            ParseResult::Ok(nested_table, new_state_after_close)
                         }
-                        Optional::Some(_ch) => {
-                            match parse_inline_table_close(state_after_kv) {
-                                ParseResult::Ok(_close_brace, state_after_close) => {
-                                    let nested_table = make_nested_table(key, val);
-                                    let state_after_close_temp = state_after_close;
-                                    let stream = state_after_close_temp.stream;
-                                    let cursor = state_after_close_temp.cursor;
-                                    let context = state_after_close_temp.context;
-                                    let context_tmp = context;
-                                    let current_table_path3 = context_tmp.current_table_path;
-                                    let explicit_tables3 = context_tmp.explicit_tables;
-                                    let closed_tables3 = context_tmp.closed_tables;
-                                    let inline_tables3 = context_tmp.inline_tables;
-                                    let inline_arrays3 = context_tmp.inline_arrays;
-                                    let array_of_tables3 = context_tmp.array_of_tables;
-                                    let new_context = ParserContext {
-                                        current_table_path: current_table_path3,
-                                        explicit_tables: explicit_tables3,
-                                        closed_tables: closed_tables3,
-                                        inline_tables: inline_tables3.append(new_key),
-                                        inline_arrays: inline_arrays3,
-                                        array_of_tables: array_of_tables3,
-                                    };
-                                    let new_state_after_close = State {
-                                        stream,
-                                        cursor,
-                                        context: new_context,
-                                    };
-                                    ParseResult::Ok(nested_table, new_state_after_close)
-                                }
-                                ParseResult::NoMatch => {
-                                    // Try to parse inline-table-sep
-                                    match parse_inline_table_sep(state_after_kv) {
-                                        ParseResult::Ok(_sep, state_after_sep) => {
-                                            match parse_inline_table_close(state_after_sep) {
-                                                ParseResult::Ok(
-                                                    _close_brace,
-                                                    _state_after_close,
-                                                ) => {
-                                                    // A terminating comma (also called trailing comma) is not permitted after the last key/value pair in an inline table.
-                                                    // println!(
-                                                    //     "trailing comma not permitted in inline table"
-                                                    // );
-                                                    ParseResult::Err(Error::fresh())
-                                                }
-                                                ParseResult::NoMatch => {
-                                                    // Parse the next key-value pair(s) recursively
-                                                    match parse_inline_table_keyvals(
-                                                        key,
-                                                        state_after_sep,
-                                                    ) {
-                                                        ParseResult::Ok(rest_kvs, final_state) => {
-                                                            let nested_table =
-                                                                make_nested_table(key, val);
-                                                            let combined = recursive_merge_tables(
-                                                                nested_table,
-                                                                rest_kvs,
-                                                            );
-                                                            match combined {
-                                                                Optional::Some(merged_table) => {
-                                                                    let final_state_temp =
-                                                                        final_state;
-                                                                    let stream =
-                                                                        final_state_temp.stream;
-                                                                    let cursor =
-                                                                        final_state_temp.cursor;
-                                                                    let context =
-                                                                        final_state_temp.context;
-                                                                    let context_tmp2 = context;
-                                                                    let current_table_path4 =
-                                                                        context_tmp2
-                                                                            .current_table_path;
-                                                                    let explicit_tables4 =
-                                                                        context_tmp2
-                                                                            .explicit_tables;
-                                                                    let closed_tables4 =
-                                                                        context_tmp2.closed_tables;
-                                                                    let inline_tables4 =
-                                                                        context_tmp2.inline_tables;
-                                                                    let inline_arrays4 =
-                                                                        context_tmp2.inline_arrays;
-                                                                    let array_of_tables4 =
-                                                                        context_tmp2
-                                                                            .array_of_tables;
-                                                                    let new_context =
-                                                                        ParserContext {
-                                                                            current_table_path:
-                                                                                current_table_path4,
-                                                                            explicit_tables:
-                                                                                explicit_tables4,
-                                                                            closed_tables:
-                                                                                closed_tables4,
-                                                                            inline_tables:
-                                                                                inline_tables4
-                                                                                    .append(new_key),
-                                                                            inline_arrays:
-                                                                                inline_arrays4,
-                                                                            array_of_tables:
-                                                                                array_of_tables4,
-                                                                        };
-                                                                    let new_final_state = State {
-                                                                        stream,
-                                                                        cursor,
-                                                                        context: new_context,
-                                                                    };
-                                                                    ParseResult::Ok(
-                                                                        merged_table,
-                                                                        new_final_state,
-                                                                    )
-                                                                }
-                                                                // merging failed because of conflicting keys
-                                                                Optional::None => {
-                                                                    // println!("conflicting keys in inline table");
-                                                                    ParseResult::Err(Error::fresh())
-                                                                }
-                                                            }
+                        ParseResult::NoMatch => {
+                            // Try to parse inline-table-sep
+                            match parse_inline_table_sep(state_after_kv) {
+                                ParseResult::Ok(_sep, state_after_sep) => {
+                                    match parse_inline_table_close(state_after_sep) {
+                                        ParseResult::Ok(_close_brace, state_after_close_tc) => {
+                                            // v1.1.0: trailing comma is permitted
+                                            let nested_table = make_nested_table(key, val);
+                                            let state_tc_temp = state_after_close_tc;
+                                            let stream_tc = state_tc_temp.stream;
+                                            let cursor_tc = state_tc_temp.cursor;
+                                            let context_tc = state_tc_temp.context;
+                                            let context_tmp_tc = context_tc;
+                                            let ctp_tc = context_tmp_tc.current_table_path;
+                                            let et_tc = context_tmp_tc.explicit_tables;
+                                            let ct_tc = context_tmp_tc.closed_tables;
+                                            let it_tc = context_tmp_tc.inline_tables;
+                                            let ia_tc = context_tmp_tc.inline_arrays;
+                                            let aot_tc = context_tmp_tc.array_of_tables;
+                                            let new_context_tc = ParserContext {
+                                                current_table_path: ctp_tc,
+                                                explicit_tables: et_tc,
+                                                closed_tables: ct_tc,
+                                                inline_tables: it_tc.append(new_key),
+                                                inline_arrays: ia_tc,
+                                                array_of_tables: aot_tc,
+                                            };
+                                            let new_state_tc = State {
+                                                stream: stream_tc,
+                                                cursor: cursor_tc,
+                                                context: new_context_tc,
+                                            };
+                                            ParseResult::Ok(nested_table, new_state_tc)
+                                        }
+                                        ParseResult::NoMatch => {
+                                            // Parse the next key-value pair(s) recursively
+                                            match parse_inline_table_keyvals(
+                                                key,
+                                                state_after_sep,
+                                            ) {
+                                                ParseResult::Ok(rest_kvs, final_state) => {
+                                                    let nested_table =
+                                                        make_nested_table(key, val);
+                                                    let combined = recursive_merge_tables(
+                                                        nested_table,
+                                                        rest_kvs,
+                                                    );
+                                                    match combined {
+                                                        Optional::Some(merged_table) => {
+                                                            let final_state_temp =
+                                                                final_state;
+                                                            let stream =
+                                                                final_state_temp.stream;
+                                                            let cursor =
+                                                                final_state_temp.cursor;
+                                                            let context =
+                                                                final_state_temp.context;
+                                                            let context_tmp2 = context;
+                                                            let current_table_path4 =
+                                                                context_tmp2
+                                                                    .current_table_path;
+                                                            let explicit_tables4 =
+                                                                context_tmp2
+                                                                    .explicit_tables;
+                                                            let closed_tables4 =
+                                                                context_tmp2.closed_tables;
+                                                            let inline_tables4 =
+                                                                context_tmp2.inline_tables;
+                                                            let inline_arrays4 =
+                                                                context_tmp2.inline_arrays;
+                                                            let array_of_tables4 =
+                                                                context_tmp2
+                                                                    .array_of_tables;
+                                                            let new_context =
+                                                                ParserContext {
+                                                                    current_table_path:
+                                                                        current_table_path4,
+                                                                    explicit_tables:
+                                                                        explicit_tables4,
+                                                                    closed_tables:
+                                                                        closed_tables4,
+                                                                    inline_tables:
+                                                                        inline_tables4
+                                                                            .append(new_key),
+                                                                    inline_arrays:
+                                                                        inline_arrays4,
+                                                                    array_of_tables:
+                                                                        array_of_tables4,
+                                                                };
+                                                            let new_final_state = State {
+                                                                stream,
+                                                                cursor,
+                                                                context: new_context,
+                                                            };
+                                                            ParseResult::Ok(
+                                                                merged_table,
+                                                                new_final_state,
+                                                            )
                                                         }
-                                                        ParseResult::NoMatch => {
-                                                            ParseResult::NoMatch
-                                                        } // cannot happen
-                                                        ParseResult::Err(e) => {
-                                                            return ParseResult::Err(e);
+                                                        // merging failed because of conflicting keys
+                                                        Optional::None => {
+                                                            // println!("conflicting keys in inline table");
+                                                            ParseResult::Err(Error::fresh())
                                                         }
                                                     }
                                                 }
-                                                ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
+                                                ParseResult::NoMatch => {
+                                                    ParseResult::NoMatch
+                                                } // cannot happen
+                                                ParseResult::Err(e) => {
+                                                    return ParseResult::Err(e);
+                                                }
                                             }
                                         }
-                                        ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
-                                        ParseResult::Err(e) => return ParseResult::Err(e),
+                                        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                     }
                                 }
-                                ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
+                                ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+                                ParseResult::Err(e) => return ParseResult::Err(e),
                             }
                         }
+                        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                     }
                 }
-                ParseResult::NoMatch => return ParseResult::NoMatch, // will not happen
-                ParseResult::Err(e) => return ParseResult::Err(e),
             }
         }
-        ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
+        ParseResult::NoMatch => return ParseResult::NoMatch, // will not happen
+        ParseResult::Err(e) => return ParseResult::Err(e),
     }
 }
 
-/// `inline-table-open  = %x7B ws     ; {`
+/// `inline-table-open  = %x7B ws-comment-newline     ; {`
 #[smt_fn]
 fn parse_inline_table_open(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(ch) => {
             if *ch.eq(String::from("{")) {
                 let next_state = advance(state);
-                let state_after_ws = parse_ws(next_state);
-                ParseResult::Ok(ch, state_after_ws)
+                match parse_ws_comment_newline(next_state) {
+                    ParseResult::Ok(_ws, state_after_ws) => ParseResult::Ok(ch, state_after_ws),
+                    ParseResult::Err(e) => ParseResult::Err(e),
+                    ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+                }
             } else {
                 ParseResult::NoMatch
             }
@@ -471,44 +485,55 @@ fn parse_inline_table_open(state: State) -> ParseResult<String> {
     }
 }
 
-/// `inline-table-close = ws %x7D     ; }`
+/// `inline-table-close = ws-comment-newline %x7D     ; }`
 #[smt_fn]
 fn parse_inline_table_close(state: State) -> ParseResult<String> {
-    let state_after_ws = parse_ws(state);
-    match current_char(state_after_ws) {
-        Optional::Some(ch) => {
-            if *ch.eq(String::from("}")) {
-                let next_state = advance(state_after_ws);
-                ParseResult::Ok(ch, next_state)
-            } else {
-                ParseResult::NoMatch
+    match parse_ws_comment_newline(state) {
+        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+        ParseResult::Ok(_ws, state_after_ws) => match current_char(state_after_ws) {
+            Optional::Some(ch) => {
+                if *ch.eq(String::from("}")) {
+                    let next_state = advance(state_after_ws);
+                    ParseResult::Ok(ch, next_state)
+                } else {
+                    ParseResult::NoMatch
+                }
             }
-        }
-        Optional::None => ParseResult::NoMatch,
+            Optional::None => ParseResult::NoMatch,
+        },
     }
 }
 
-/// `inline-table-sep   = ws %x2C ws  ; , Comma`
+/// `inline-table-sep   = ws-comment-newline %x2C ws-comment-newline  ; , Comma`
 #[smt_fn]
 fn parse_inline_table_sep(state: State) -> ParseResult<String> {
-    let state_after_ws1 = parse_ws(state);
-    match current_char(state_after_ws1) {
-        Optional::Some(ch) => {
-            if *ch.eq(String::from(",")) {
-                let next_state = advance(state_after_ws1);
-                let state_after_ws2 = parse_ws(next_state);
-                ParseResult::Ok(ch, state_after_ws2)
-            } else {
-                // Another character present where comma expected
-                // println!("found another character where , expected");
+    match parse_ws_comment_newline(state) {
+        ParseResult::Err(e) => ParseResult::Err(e),
+        ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+        ParseResult::Ok(_ws1, state_after_ws1) => match current_char(state_after_ws1) {
+            Optional::Some(ch) => {
+                if *ch.eq(String::from(",")) {
+                    let next_state = advance(state_after_ws1);
+                    match parse_ws_comment_newline(next_state) {
+                        ParseResult::Ok(_ws2, state_after_ws2) => {
+                            ParseResult::Ok(ch, state_after_ws2)
+                        }
+                        ParseResult::Err(e) => ParseResult::Err(e),
+                        ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
+                    }
+                } else {
+                    // Another character present where comma expected
+                    // println!("found another character where , expected");
+                    ParseResult::Err(Error::fresh())
+                }
+            }
+            // No character present where comma expected
+            Optional::None => {
+                // println!("reached end of input where , expected");
                 ParseResult::Err(Error::fresh())
             }
-        }
-        // No character present where comma expected
-        Optional::None => {
-            // println!("reached end of input where , expected");
-            ParseResult::Err(Error::fresh())
-        }
+        },
     }
 }
 

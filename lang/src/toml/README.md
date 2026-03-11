@@ -1,5 +1,5 @@
 ## TOML Language
-This module provides a declarative parser for [TOML v1.0.0 specification](https://toml.io/en/v1.0.0#spec). TOML (Tom's Obvious, Minimal Language) is a minimal configuration file format that's easy to read due to obvious semantics.
+This module provides a declarative parser for [TOML v1.1.0 specification](https://toml.io/en/v1.1.0#spec). TOML (Tom's Obvious, Minimal Language) is a minimal configuration file format that's easy to read due to obvious semantics.
 
 ### Language syntax
 TOML's syntax is based on key-value pairs, which are organized into sections called tables. It also supports arrays of values and nested tables. The syntax is designed to map unambiguously to a hash table. The ABNF of TOML is as follows:
@@ -7,6 +7,9 @@ TOML's syntax is based on key-value pairs, which are organized into sections cal
 ```toml
 ;; This document describes TOML's syntax, using the ABNF format (defined in
 ;; RFC 5234 -- https://www.ietf.org/rfc/rfc5234.txt).
+;;
+;; Although a TOML document must be valid UTF-8, this grammar refers to the
+;; Unicode Code Points you get after you decode the UTF-8 input.
 ;;
 ;; All valid TOML documents will match this description, however certain
 ;; invalid documents would need to be rejected as per the semantics described
@@ -43,25 +46,26 @@ newline =/ %x0D.0A  ; CRLF
 
 comment-start-symbol = %x23 ; #
 non-ascii = %x80-D7FF / %xE000-10FFFF
-non-eol = %x09 / %x20-7F / non-ascii
+non-eol = %x09 / %x20-7E / non-ascii
 
 comment = comment-start-symbol *non-eol
 
 ;; Key-Value pairs
 
 keyval = key keyval-sep val
-
 key = simple-key / dotted-key
-simple-key = quoted-key / unquoted-key
+val = string / boolean / array / inline-table / date-time / float / integer
 
+simple-key = quoted-key / unquoted-key
 unquoted-key = 1*( ALPHA / DIGIT / %x2D / %x5F ) ; A-Z / a-z / 0-9 / - / _
+
+;; Quoted and dotted key
+
 quoted-key = basic-string / literal-string
 dotted-key = simple-key 1*( dot-sep simple-key )
 
 dot-sep   = ws %x2E ws  ; . Period
 keyval-sep = ws %x3D ws ; =
-
-val = string / boolean / array / inline-table / date-time / float / integer
 
 ;; String
 
@@ -81,12 +85,14 @@ escape = %x5C                   ; \
 escape-seq-char =  %x22         ; "    quotation mark  U+0022
 escape-seq-char =/ %x5C         ; \    reverse solidus U+005C
 escape-seq-char =/ %x62         ; b    backspace       U+0008
+escape-seq-char =/ %x65         ; e    escape          U+001B
 escape-seq-char =/ %x66         ; f    form feed       U+000C
 escape-seq-char =/ %x6E         ; n    line feed       U+000A
 escape-seq-char =/ %x72         ; r    carriage return U+000D
 escape-seq-char =/ %x74         ; t    tab             U+0009
-escape-seq-char =/ %x75 4HEXDIG ; uXXXX                U+XXXX
-escape-seq-char =/ %x55 8HEXDIG ; UXXXXXXXX            U+XXXXXXXX
+escape-seq-char =/ %x78 2HEXDIG ; xHH                  U+00HH
+escape-seq-char =/ %x75 4HEXDIG ; uHHHH                U+HHHH
+escape-seq-char =/ %x55 8HEXDIG ; UHHHHHHHH            U+HHHHHHHH
 
 ;; Multiline Basic String
 
@@ -95,10 +101,8 @@ ml-basic-string = ml-basic-string-delim [ newline ] ml-basic-body
 ml-basic-string-delim = 3quotation-mark
 ml-basic-body = *mlb-content *( mlb-quotes 1*mlb-content ) [ mlb-quotes ]
 
-mlb-content = mlb-char / newline / mlb-escaped-nl
-mlb-char = mlb-unescaped / escaped
+mlb-content = basic-char / newline / mlb-escaped-nl
 mlb-quotes = 1*2quotation-mark
-mlb-unescaped = wschar / %x21 / %x23-5B / %x5D-7E / non-ascii
 mlb-escaped-nl = escape ws newline *( wschar / newline )
 
 ;; Literal String
@@ -116,8 +120,7 @@ ml-literal-string = ml-literal-string-delim [ newline ] ml-literal-body
 ml-literal-string-delim = 3apostrophe
 ml-literal-body = *mll-content *( mll-quotes 1*mll-content ) [ mll-quotes ]
 
-mll-content = mll-char / newline
-mll-char = %x09 / %x20-26 / %x28-7E / non-ascii
+mll-content = literal-char / newline
 mll-quotes = 1*2apostrophe
 
 ;; Integer
@@ -156,8 +159,8 @@ exp = "e" float-exp-part
 float-exp-part = [ minus / plus ] zero-prefixable-int
 
 special-float = [ minus / plus ] ( inf / nan )
-inf = %x69.6e.66  ; inf
-nan = %x6e.61.6e  ; nan
+inf = %x69.6E.66  ; inf
+nan = %x6E.61.6E  ; nan
 
 ;; Boolean
 
@@ -181,7 +184,7 @@ time-secfrac   = "." 1*DIGIT
 time-numoffset = ( "+" / "-" ) time-hour ":" time-minute
 time-offset    = "Z" / time-numoffset
 
-partial-time   = time-hour ":" time-minute ":" time-second [ time-secfrac ]
+partial-time   = time-hour ":" time-minute [ ":" time-second [ time-secfrac ] ]
 full-date      = date-fullyear "-" date-month "-" date-mday
 full-time      = partial-time time-offset
 
@@ -228,13 +231,14 @@ std-table-close = ws %x5D     ; ] Right square bracket
 
 ;; Inline Table
 
-inline-table = inline-table-open [ inline-table-keyvals ] inline-table-close
+inline-table = inline-table-open [ inline-table-keyvals ] ws-comment-newline inline-table-close
 
-inline-table-open  = %x7B ws     ; {
-inline-table-close = ws %x7D     ; }
-inline-table-sep   = ws %x2C ws  ; , Comma
+inline-table-open  = %x7B  ; {
+inline-table-close = %x7D  ; }
+inline-table-sep   = %x2C  ; , Comma
 
-inline-table-keyvals = keyval [ inline-table-sep inline-table-keyvals ]
+inline-table-keyvals =  ws-comment-newline keyval ws-comment-newline inline-table-sep inline-table-keyvals
+inline-table-keyvals =/ ws-comment-newline keyval ws-comment-newline [ inline-table-sep ]
 
 ;; Array Table
 

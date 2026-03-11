@@ -1,4 +1,4 @@
-//! A parser for the TOML v1.0.0 specification.
+//! A parser for the TOML v1.1.0 specification.
 
 use crate::toml::{ast::Value, expr::parse_expression, table::recursive_merge_tables};
 use rusmart_smt_remark_derive::{smt_fn, smt_type};
@@ -210,13 +210,13 @@ fn is_non_ascii(c: String) -> Boolean {
     is_above_ascii.and(not_surrogate).and(is_valid_unicode)
 }
 
-/// `non-eol = %x09 / %x20-7F / non-ascii`
+/// `non-eol = %x09 / %x20-7E / non-ascii`
 #[smt_fn]
 fn is_non_eol(c: String) -> Boolean {
     c.eq(String::from("\t")) // %x09
         .or(c
             .ge(String::from("\u{0020}"))
-            .and(c.le(String::from("\u{007E}")))) // %x20-7F
+            .and(c.le(String::from("\u{007E}")))) // %x20-7E
         .or(is_non_ascii(c)) // non-ascii
 }
 

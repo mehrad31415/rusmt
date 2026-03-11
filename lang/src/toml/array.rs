@@ -190,7 +190,7 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
 
 /// ws-comment-newline = *( wschar / [ comment ] newline )
 #[smt_fn]
-fn parse_ws_comment_newline(input: State) -> ParseResult<String> {
+pub(crate) fn parse_ws_comment_newline(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::None => ParseResult::Ok(String::from(""), input),
         Optional::Some(_first_char) => match parse_wschar(input) {

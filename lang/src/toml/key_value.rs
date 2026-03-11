@@ -225,10 +225,54 @@ fn parse_quoted_key(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(c) => {
             if *is_quotation_mark(c) {
-                parse_basic_string(state)
+                // TOML: quoted keys may not use multi-line string delimiters ("""...""").
+                // If input starts with `"""`, fail with a dedicated error rather than
+                // mis-parsing it as an empty string and failing later.
+                match current_char(advance(state)) {
+                    Optional::Some(c2) => {
+                        if *is_quotation_mark(c2) {
+                            match current_char(advance(advance(state))) {
+                                Optional::Some(c3) => {
+                                    if *is_quotation_mark(c3) {
+                                        // multiline quoted key is not allowed
+                                        // println!("multiline quoted key is not allowed");
+                                        return ParseResult::Err(Error::fresh());
+                                    } else {
+                                        parse_basic_string(state)
+                                    }
+                                }
+                                Optional::None => parse_basic_string(state),
+                            }
+                        } else {
+                            parse_basic_string(state)
+                        }
+                    }
+                    Optional::None => parse_basic_string(state),
+                }
             } else {
                 if *is_apostrophe(c) {
-                    parse_literal_string(state)
+                    // TOML: quoted keys may not use multi-line string delimiters ('''...''').
+                    match current_char(advance(state)) {
+                        Optional::Some(c2) => {
+                            if *is_apostrophe(c2) {
+                                match current_char(advance(advance(state))) {
+                                    Optional::Some(c3) => {
+                                        if *is_apostrophe(c3) {
+                                            // multiline quoted key is not allowed
+                                            // println!("multiline quoted key is not allowed");
+                                            return ParseResult::Err(Error::fresh());
+                                        } else {
+                                            parse_literal_string(state)
+                                        }
+                                    }
+                                    Optional::None => parse_literal_string(state),
+                                }
+                            } else {
+                                parse_literal_string(state)
+                            }
+                        }
+                        Optional::None => parse_literal_string(state),
+                    }
                 } else {
                     ParseResult::NoMatch
                 }

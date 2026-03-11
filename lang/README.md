@@ -38,7 +38,7 @@ graph TD
 ### Structure
 This crate is organized by language, with each language implemented in its own module.
 
-> src/toml/: A parser for the TOML v1.0.0 specification.
+> src/toml/: A parser for the TOML v1.1.0 specification.
 
 > src/wasm/: (Future Work) An interpreter for a subset of the WebAssembly virtual machine.
 

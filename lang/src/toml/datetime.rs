@@ -275,8 +275,47 @@ fn partial_time(input: State) -> ParseResult<String> {
                     } // invalid partial-time
                     Optional::Some(c2) => {
                         if *c2.eq(String::from(":")).not() {
-                            // println!("another char found instead of second colon when the first colon is found");
-                            return ParseResult::Err(Error::fresh()); // invalid partial-time
+                            // it doesnt have second only minutes and time and seconds is assumed to be 00
+                            match parse_time_hour(input) {
+                                ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                                ParseResult::Err(e) => return ParseResult::Err(e),
+                                ParseResult::Ok(time_hour, state_after_time_hour) => {
+                                    let after_colon = advance(state_after_time_hour);
+                                    match parse_time_minute(after_colon) {
+                                        ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                                        ParseResult::Err(e) => return ParseResult::Err(e),
+                                        ParseResult::Ok(time_minute, state_after_time_minute) => {
+                                            // it can still have time-secfrac
+                                            match parse_time_secfrac(state_after_time_minute) {
+                                                ParseResult::Ok(
+                                                    time_secfrac,
+                                                    state_after_secfrac,
+                                                ) => {
+                                                    let time_str = time_hour
+                                                        .concat(String::from(":"))
+                                                        .concat(time_minute)
+                                                        .concat(String::from(":"))
+                                                        .concat(String::from("00"))
+                                                        .concat(time_secfrac);
+                                                    ParseResult::Ok(time_str, state_after_secfrac)
+                                                }
+                                                ParseResult::Err(e) => return ParseResult::Err(e),
+                                                ParseResult::NoMatch => {
+                                                    let time_str = time_hour
+                                                        .concat(String::from(":"))
+                                                        .concat(time_minute)
+                                                        .concat(String::from(":"))
+                                                        .concat(String::from("00"));
+                                                    ParseResult::Ok(
+                                                        time_str,
+                                                        state_after_time_minute,
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         } else {
                             // it's partial time
                             match parse_time_hour(input) {

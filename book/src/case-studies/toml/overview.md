@@ -1,6 +1,6 @@
 ## TOML v1.0 case study
 
-The `rusmart-lang` crate contains a TOML v1.0.0 parser implemented *in the Rusmart DSL* (restricted Rust + `rusmart-smt-stdlib`).
+The `rusmart-lang` crate contains a TOML v1.1.0 parser implemented *in the Rusmart DSL* (restricted Rust + `rusmart-smt-stdlib`).
 It serves as the _reference semantics_ example for:
 
 - **Concrete execution**: run it as a normal Rust program (`cargo run -p rusmart-lang -- toml ...`)

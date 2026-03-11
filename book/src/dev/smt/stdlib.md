@@ -1,5 +1,104 @@
 ### Rusmart Standard Library (stdlib)
 
+---
+
+## Stdlib Semantics and the Soundness Invariant
+
+### What the stdlib represents
+
+Every stdlib function has **two sides** that must agree:
+
+1. **The Rust implementation** — runs concretely when you execute your interpreter.
+2. **The Z3 translation** — the SMT-LIB formula emitted when transpiling to Z3.
+
+The core soundness requirement is:
+
+> **For every stdlib function `f` and every concrete input `x`:**
+> ```
+> rust_impl(f, x) == z3_eval(z3_formula(f), x)
+> ```
+> That is, evaluating `f` concretely in Rust must yield the same result as evaluating Z3's formula for `f` on the same concrete value.
+
+This matters because the workflow is:
+1. You write an interpreter for a target language using the DSL.
+2. The DSL is transpiled to Z3.
+3. Z3 finds **models** — concrete inputs that trigger specific path conditions.
+4. Those models are fed back into the **Rust interpreter** to generate conformance test cases.
+
+If the Rust side and the Z3 side disagree, a model that Z3 finds "satisfies condition C" may not actually satisfy C when run concretely — producing **unsound test cases**.
+
+### What the stdlib does NOT represent
+
+The stdlib represents **Z3's mathematical theories** — not Rust's native semantics, and not the semantics of any specific target language.
+
+- **Not Rust semantics.** Rust's `i32` overflows; `Integer` (backed by `BigInt`) does not. Rust's integer division truncates; `Integer::div` is Euclidean. These deliberate divergences make the stdlib match Z3, not Rust.
+- **Not target language semantics.** WebAssembly, Python, C, and JavaScript all have different overflow, rounding, and division rules. The stdlib cannot simultaneously model all of them. This is the **interpreter author's responsibility**.
+
+Think of it as three layers:
+
+```
+Layer 3: Conformance test case (a Z3 model — concrete inputs)
+               ↑  produced by
+Layer 2: Your interpreter (encodes YOUR target language's semantics)
+               ↑  uses as building blocks
+Layer 1: Stdlib (Z3-correct primitives — the vocabulary)
+```
+
+### Adapting stdlib operations to your target language
+
+When a target language operation matches a stdlib primitive exactly, use it directly:
+
+```rust
+// Python's // uses floor division — Integer::div is Euclidean = floor for ints
+fn python_floordiv(a: Integer, b: Integer) -> Integer {
+    a.div(b)
+}
+
+// C/Rust/Java's / uses truncation division — use div_trunc
+fn c_divide(a: Integer, b: Integer) -> Integer {
+    a.div_trunc(b)
+}
+```
+
+When a target language semantics only diverges for **specific inputs** (e.g., error cases, overflow, NaN), use **guard branches** to handle the diverging cases and fall through to the stdlib for the rest:
+
+```rust
+fn wasm_i32_div_s(a: I32, b: I32) -> Result<I32, Error> {
+    // WebAssembly traps on division by zero and on i32::MIN / -1
+    if b.eq(I32::from(0)) {
+        return Err(trap());
+    }
+    if a.eq(I32::from(i32::MIN)) && b.eq(I32::from(-1)) {
+        return Err(trap());  // would overflow
+    }
+    Ok(a.bv_div(b))  // stdlib is correct for all other inputs
+}
+```
+
+When no single stdlib primitive matches, compose multiple primitives:
+
+```rust
+// Saturating 32-bit addition (clamps at ±MAX instead of wrapping)
+fn lang_sat_add(a: I32, b: I32) -> I32 {
+    let r = a.to_int().add(b.to_int());  // lift to unbounded Integer
+    if r.gt(Integer::from(i32::MAX)) {
+        I32::from(i32::MAX)
+    } else if r.lt(Integer::from(i32::MIN)) {
+        I32::from(i32::MIN)
+    } else {
+        r.to_i32()
+    }
+}
+```
+
+### The if-then-else pattern — summary
+
+> **If stdlib function `f` matches your target language for most inputs but diverges for some specific cases, write guard branches for the diverging cases first, then use `f` in the final else branch.**
+
+The guards encode the diverging cases as Z3-checkable conditions. Z3 will find models for each branch independently. For each model, the concrete Rust execution follows the same branch as Z3 predicted — so soundness is preserved in every branch.
+
+---
+
 Rusmart standard library (_stdlib_) contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT. The _rusmart-smt-stdlib_ package consists of one _library crate_. The crate contains two modules: `dt` and `exp`. The `dt` module contains data types part of the type system in Rusmart, while the `exp` module contains expressions. Both modules are re-exported in the root of the crate to allow users to use data types and expressions directly.
 
 #### Trait

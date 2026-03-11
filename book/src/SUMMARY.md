@@ -23,4 +23,5 @@
     - [stdlib](dev/smt/stdlib.md)
     - [remark](dev/smt/remark.md)
     - [derive](dev/smt/derive.md)
+    - [type unification](dev/smt/unification.md)
   - [testing](dev/testing.md)

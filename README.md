@@ -109,7 +109,7 @@ rusmart/
 
 ## Current Implementation
 
-### TOML v1.0.0 Parser
+### TOML v1.1.0 Parser
 
 The first language implementation is a complete TOML parser demonstrating the full Rusmart workflow:
 

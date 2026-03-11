@@ -1,9 +1,13 @@
-Complete list of todos:
+1 -  Check the toml parser has been implemented correctly according to the specs                                                                     
+  1. Fix TOML v1.1.0 implementation (check the parser against the ABNF spec)
+  2. Create the error index file
+  3. Assess `Error::merge()`.
+2 - Check whether the stdlib internal definitions & methods are sound? 
+  1. Each method must represent the z3 semantics 
+  2. Where the semantics of z3 and the target language diverge we branch
+  3. We do not replicate the internal working of rust or the target languages as this framework will be used to model multuple languages.
+3 - whether the type unification is sound and how it works
+  1. The unification algorithm is a simplified Hindley-Milner style inference using a union-find data structure (equivalence groups of type variables).
+  2. Book chapter written: book/src/dev/smt/unification.md
 
-1 - Add bitvector size I8, U8, I16, U16 and so on (make the bitvector modular) also do it for floating points
-2 - Z3_mk_set_complement in sets
-3 - Maybe change the whole structure so that IR stores functions that cannot natively be converted to SMT instead of giving it to the backend
-4 - Rust: Rounds ties away from zero (2.5 $\to$ 3.0).Wasm/Z3: Rounds ties to even (2.5 $\to$ 2.0). So what do we do? what if the behaviour of z3 is different than the language we are writing the interpreter for using the DSL and that is different than the behaviour of Rust itself? - remove floating point
-5 - change the functions to result instead of panicking in derive!
-6 - check if the tuples with the same elements are added once from the parser expr analysis!
-7 - check the error locations in the IR populate them correctly and fix the intrinsics in the IR and parser and backend and how to the expression handling has been done in the parser and in the IR and in backend (function body)!
+*** whether handling the body of the functions is sound - what exactly the IR building does? - change the functions to result instead of panicking in derive! - fix the z3 smtlib generation so that it doesnt crash or we have performance good - create a loop for all errors id that for each one we get a model and store it - check if the tuples with the same elements are added once from the parser expr analysis! - update the tests in the program - update the unit tests for full coverage

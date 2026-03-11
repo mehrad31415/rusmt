@@ -1902,3 +1902,9 @@ pub enum ParseError {
 # Date Time
 > Millisecond precision is required. Further precision of fractional seconds is implementation-specific. If the value contains greater precision than the implementation can support, the additional precision must be truncated, not rounded.
 
+
+1 - Add bitvector size I8, U8, I16, U16 and so on (make the bitvector modular) also do it for floating points
+2 - Z3_mk_set_complement in sets
+3 - Maybe change the whole structure so that IR stores functions that cannot natively be converted to SMT instead of giving it to the backend
+4 - Rust: Rounds ties away from zero (2.5 $\to$ 3.0).Wasm/Z3: Rounds ties to even (2.5 $\to$ 2.0). So what do we do? what if the behaviour of z3 is different than the language we are writing the interpreter for using the DSL and that is different than the behaviour of Rust itself? - remove floating point
+5 - check the error locations in the IR populate them correctly and fix the intrinsics in the IR and parser and backend and how to the expression handling has been done in the parser and in the IR and in backend (function body)!

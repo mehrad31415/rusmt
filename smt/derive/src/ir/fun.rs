@@ -21,6 +21,7 @@ pub struct FunSig {
 }
 
 impl FunSig {
+    /// Returns the symbols of the parameters in the function signature
     pub fn get_params(&self) -> Vec<Symbol> {
         let mut symbols = vec![];
         for (name, _) in &self.params {

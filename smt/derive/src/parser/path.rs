@@ -13,8 +13,10 @@ use syn::{Expr as Exp, ExprPath, Path, PathArguments, PathSegment, Result};
 /// An identifier for a ADT variant
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct ADTBranch {
-    pub ty_name: UsrTypeName, // the enum type name
-    pub variant: String,      // the variant name
+    /// The enum type name.
+    pub ty_name: UsrTypeName,
+    /// The variant name.
+    pub variant: String,
 }
 
 impl Display for ADTBranch {
@@ -41,6 +43,10 @@ impl TuplePath {
 
         // type
         let PathSegment { ident, arguments } = bail_if_missing!(iter.next(), path, "type name");
+
+        // ensure that there are no more tokens (there is only one segment allowed)
+        bail_if_exists!(iter.next());
+        
         let ty_name = ident.try_into()?;
         let generics = match ctxt.get_type_def(&ty_name) {
             None => bail_on!(ident, "no such type"),
@@ -55,8 +61,6 @@ impl TuplePath {
         // match the type arguments with the generics
         let ty_args = GenericsInstPartial::from_args(ctxt, generics, arguments)?;
 
-        // ensure that there are no more tokens (there is only one segment allowed)
-        bail_if_exists!(iter.next());
         Ok(Self { ty_name, ty_args })
     }
 
@@ -277,7 +281,6 @@ pub enum QualifiedPath {
         SysTypeName,
         GenericsInstPartial,
         UsrFuncName,
-        GenericsInstPartial,
     ),
 }
 
@@ -352,11 +355,10 @@ impl QualifiedPath {
                 }
                 TypeName::Sys(ty_name) => match ctxt.lookup_usr_func_on_sys_type(&ty_name, name) {
                     None => bail_on!(ident, "no such intrinsic function"),
-                    Some(fty) => {
-                        let inst_for_fn =
-                            GenericsInstPartial::from_args(ctxt, &fty.generics, arguments)?;
+                    Some(_fty) => {
                         // the first parameter is like Integer, the second parameter is the mappping of the type arguments, the third is like add, the fourth is the mapping of the function arguments for example in Integer::<U>::add::<V>(x, y) the first parameter is Integer, the second is U, the third is add, the fourth is V
-                        Self::UsrFuncOnSysType(ty_name, inst_for_ty, name.clone(), inst_for_fn)
+                        // Self::UsrFuncOnSysType(ty_name, inst_for_ty, name.clone(), inst_for_fn) - all functions on a system type take no type arguments
+                        Self::UsrFuncOnSysType(ty_name, inst_for_ty, name.clone())
                     }
                 },
                 TypeName::Usr(_) => {
@@ -461,7 +463,7 @@ impl ExprPathAsCallee {
                 ) {
                     (Ok(_), Ok(_)) => bail_on!(path, "ambiguous callee"),
                     (Ok(adt), Err(_)) => Self::CtorEnum(adt), // like let a = MyEnum::MyVariant(13) where enum MyEnum { MyVariant(i32) }
-                    (Err(_), Ok(qualified)) => Self::FuncWithType(qualified), // like let a = MyType::my_func() where fn my_func() -> i32 { 1 } in this case my)func is either a function on a system type or a method in the smt of a user type (becaue impl blocks are not read into the context)
+                    (Err(_), Ok(qualified)) => Self::FuncWithType(qualified), // like let a = MyType::my_func() where fn my_func() -> i32 { 1 } in this case my)func is a function on a system type.
                     (Err(_), Err(e2)) => return Err(e2),
                 }
             }

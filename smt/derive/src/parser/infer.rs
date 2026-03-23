@@ -9,6 +9,7 @@ use std::fmt::{Display, Formatter};
 
 /// An error for type inference
 pub enum TIError {
+    /// A cyclic unification error.
     CyclicUnification,
 }
 
@@ -56,8 +57,7 @@ pub(crate) use ti_unify; // this makes the ti_unify! macro available to other mo
 ///
 /// Each `TypeVar` is identified by a unique `usize` index.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
-pub struct TypeVar(usize); // usize can only store non-negative values (it cannot represent negative numbers).
-// The exact size of usize depends on whether the system is 32-bit or 64-bit.
+pub struct TypeVar(usize);
 
 impl Display for TypeVar {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

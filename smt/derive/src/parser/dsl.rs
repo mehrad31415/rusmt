@@ -4,7 +4,6 @@
 use crate::bail_on;
 use crate::parser::expr::CtxtForExpr;
 use crate::parser::name::{ReservedIdent, VarName};
-use proc_macro2::TokenTree;
 use syn::{
     Expr, ExprMacro, Ident, Macro, MacroDelimiter, Result, Token,
     parse::{Parse, ParseStream},
@@ -109,9 +108,6 @@ pub struct Quantifier {
 
 impl Quantifier {
     /// Parses a `Quantifier` from an `ExprMacro`.
-    ///
-    /// Expects the iterated form: `quantifier(x in collection => body)`.
-    ///
     /// This function is used in parsing an expression macro in the `convert_expr` function of the `expr` module.
     pub fn parse<T: CtxtForExpr>(_ctxt: &T, expr: &ExprMacro) -> Result<Self> {
         // Destructure the macro expression to extract the macro path, delimiter, and tokens
@@ -135,21 +131,10 @@ impl Quantifier {
         // This will return an error if the path has leading colons, or the path does not have one and only one segment, or the path has arguments. It will also return an error if the path is not `exists`, `forall`, or `choose`.
         let name = SysMacroName::parse_path(path)?;
 
-        // Clone the tokens to inspect the first token
-        let tester = tokens.clone();
-
-        // Determine the style of the quantifier based on the first token
-        match tester.into_iter().next() {
-            None => bail_on!(expr, "expect content"),
-            Some(TokenTree::Punct(punct)) if punct.as_char() == '|' => {
-                bail_on!(
-                    expr,
-                    "typed quantifier syntax is not allowed; use `var in collection =>`"
-                );
-            }
+        match tokens.clone().into_iter().next() {
+            None => bail_on!(expr, "must have at least one token in the quantifier"),
             Some(_) => {
-                let stream = tokens.clone();
-                let syntax = parse2::<IterQuant>(stream)?;
+                let syntax = parse2::<IterQuant>(tokens.clone())?;
                 let IterQuant {
                     vars,
                     _imply_token: _,

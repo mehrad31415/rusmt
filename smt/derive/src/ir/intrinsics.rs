@@ -10,455 +10,1415 @@ pub enum Intrinsic {
     /// `Boolean::from`
     BoolVal(bool),
     /// `Boolean::not`
-    BoolNot { val: ExpId },
+    BoolNot { 
+        /// The value of the boolean not
+        val: ExpId,
+    },
     /// `Boolean::and`
-    BoolAnd { lhs: ExpId, rhs: ExpId },
+    BoolAnd { 
+        /// The left operand of the boolean and
+        lhs: ExpId,
+        /// The right operand of the boolean and
+        rhs: ExpId,
+    },
     /// `Boolean::or`
-    BoolOr { lhs: ExpId, rhs: ExpId },
+    BoolOr { 
+        /// The left operand of the boolean or
+        lhs: ExpId,
+        /// The right operand of the boolean or
+        rhs: ExpId,
+    },
     /// `Boolean::xor`
-    BoolXor { lhs: ExpId, rhs: ExpId },
+    BoolXor { 
+        /// The left operand of the boolean xor
+        lhs: ExpId,
+        /// The right operand of the boolean xor
+        rhs: ExpId,
+    },
     /// `Boolean::nand`
-    BoolNand { lhs: ExpId, rhs: ExpId },
+    BoolNand { 
+        /// The left operand of the boolean nand
+        lhs: ExpId,
+        /// The right operand of the boolean nand
+        rhs: ExpId,
+    },
     /// `Boolean::nor`
-    BoolNor { lhs: ExpId, rhs: ExpId },
+    BoolNor { 
+        /// The left operand of the boolean nor
+        lhs: ExpId,
+        /// The right operand of the boolean nor
+        rhs: ExpId,
+    },
     /// `Boolean::xnor`
-    BoolXnor { lhs: ExpId, rhs: ExpId },
+    BoolXnor { 
+        /// The left operand of the boolean xnor
+        lhs: ExpId,
+        /// The right operand of the boolean xnor
+        rhs: ExpId,
+    },
     /// `Boolean::implies`
-    BoolImplies { lhs: ExpId, rhs: ExpId },
+    BoolImplies { 
+        /// The left operand of the boolean implies
+        lhs: ExpId,
+        /// The right operand of the boolean implies
+        rhs: ExpId,
+    },
     /// `Boolean::iff`
-    BoolIff { lhs: ExpId, rhs: ExpId },
+    BoolIff { 
+        /// The left operand of the boolean iff
+        lhs: ExpId,
+        /// The right operand of the boolean iff
+        rhs: ExpId,
+    },
     /// `Boolean::ite`
     BoolIte {
+        /// The condition of the boolean ite
         cond: ExpId,
+        /// The then operand of the boolean ite
         then: ExpId,
+        /// The else operand of the boolean ite
         else_: ExpId,
     },
 
     /// `Integer::from`
     IntVal(BigInt),
     /// `Integer::neg`
-    IntNeg { val: ExpId },
+    IntNeg { 
+        /// The value of the integer neg
+        val: ExpId,
+    },
     /// `Integer::add`
-    IntAdd { lhs: ExpId, rhs: ExpId },
+    IntAdd { 
+        /// The left operand of the integer add
+        lhs: ExpId,
+        /// The right operand of the integer add
+        rhs: ExpId,
+    },
     /// `Integer::sub`
-    IntSub { lhs: ExpId, rhs: ExpId },
+    IntSub { 
+        /// The left operand of the integer sub
+        lhs: ExpId,
+        /// The right operand of the integer sub
+        rhs: ExpId,
+    },
     /// `Integer::mul`
-    IntMul { lhs: ExpId, rhs: ExpId },
+    IntMul { 
+        /// The left operand of the integer mul
+        lhs: ExpId,
+        /// The right operand of the integer mul
+        rhs: ExpId,
+    },
     /// `Integer::div`
-    IntDiv { lhs: ExpId, rhs: ExpId },
+    IntDiv { 
+        /// The left operand of the integer div
+        lhs: ExpId,
+        /// The right operand of the integer div
+        rhs: ExpId,
+    },
     /// `Integer::div_trunc`
-    IntDivTrunc { lhs: ExpId, rhs: ExpId },
+    IntDivTrunc { 
+        /// The left operand of the integer div_trunc
+        lhs: ExpId,
+        /// The right operand of the integer div_trunc
+        rhs: ExpId,
+    },
     /// `Integer::modulo`
-    IntMod { lhs: ExpId, rhs: ExpId },
+    IntMod { 
+        /// The left operand of the integer modulo
+        lhs: ExpId,
+        /// The right operand of the integer modulo
+        rhs: ExpId,
+    },
     /// `Integer::rem`
-    IntRem { lhs: ExpId, rhs: ExpId },
+    IntRem { 
+        /// The left operand of the integer rem
+        lhs: ExpId,
+        /// The right operand of the integer rem
+        rhs: ExpId,
+    },
     /// `Integer::pow`
-    IntPow { base: ExpId, exp: ExpId },
+    IntPow { 
+        /// The base of the integer pow
+        base: ExpId,
+        /// The exponent of the integer pow
+        exp: ExpId,
+    },
     /// `Integer::abs`
-    IntAbs { val: ExpId },
+    IntAbs { 
+        /// The value of the integer abs
+        val: ExpId,
+    },
     /// `Integer::divides`
-    IntDivides { lhs: ExpId, rhs: ExpId },
+    IntDivides { 
+        /// The left operand of the integer divides
+        lhs: ExpId,
+        /// The right operand of the integer divides
+        rhs: ExpId,
+    },
     /// `Integer::lt`
-    IntLt { lhs: ExpId, rhs: ExpId },
+    IntLt { 
+        /// The left operand of the integer lt
+        lhs: ExpId,
+        /// The right operand of the integer lt
+        rhs: ExpId,
+    },
     /// `Integer::le`
-    IntLe { lhs: ExpId, rhs: ExpId },
+    IntLe { 
+        /// The left operand of the integer le
+        lhs: ExpId,
+        /// The right operand of the integer le
+        rhs: ExpId,
+    },
     /// `Integer::gt`
-    IntGt { lhs: ExpId, rhs: ExpId },
+    IntGt { 
+        /// The left operand of the integer gt
+        lhs: ExpId,
+        /// The right operand of the integer gt
+        rhs: ExpId,
+    },
     /// `Integer::ge`
-    IntGe { lhs: ExpId, rhs: ExpId },
+    IntGe { 
+        /// The left operand of the integer ge
+        lhs: ExpId,
+        /// The right operand of the integer ge
+        rhs: ExpId,
+    },
 
     // Integer Conversions
     /// `Integer::to_real`
-    IntToReal { val: ExpId },
+    IntToReal { 
+        /// The value of the integer to real
+        val: ExpId,
+    },
     /// `Integer::to_i32`
-    IntToI32 { val: ExpId },
+    IntToI32 { 
+        /// The value of the integer to i32
+        val: ExpId,
+    },
     /// `Integer::to_i64`
-    IntToI64 { val: ExpId },
+    IntToI64 { 
+        /// The value of the integer to i64
+        val: ExpId,
+    },
     /// `Integer::to_u32`
-    IntToU32 { val: ExpId },
+    IntToU32 { 
+        /// The value of the integer to u32
+        val: ExpId,
+    },
     /// `Integer::to_u64`
-    IntToU64 { val: ExpId },
+    IntToU64 { 
+        /// The value of the integer to u64
+        val: ExpId,
+    },
     /// `Integer::to_f32`
-    IntToF32 { val: ExpId },
+    IntToF32 { 
+        /// The value of the integer to f32
+        val: ExpId,
+    },
     /// `Integer::to_f64`
-    IntToF64 { val: ExpId },
+    IntToF64 { 
+        /// The value of the integer to f64
+        val: ExpId,
+    },
 
     // Integer Parsing
     /// `Integer::from_hex_str`
-    IntFromHex { val: ExpId },
+    IntFromHex { 
+        /// The value of the integer from hex str
+        val: ExpId,
+    },
     /// `Integer::from_oct_str`
-    IntFromOct { val: ExpId },
+    IntFromOct { 
+        /// The value of the integer from oct str
+        val: ExpId,
+    },
     /// `Integer::from_bin_str`
-    IntFromBin { val: ExpId },
+    IntFromBin { 
+        /// The value of the integer from bin str
+        val: ExpId,
+    },
 
     // Integer Range Checks
     /// `Integer::is_gt_i64_max`
-    IntIsGtI64Max { val: ExpId },
+    IntIsGtI64Max { 
+        /// The value of the integer is gt i64 max
+        val: ExpId,
+    },
     /// `Integer::is_lt_i64_min`
-    IntIsLtI64Min { val: ExpId },
+    IntIsLtI64Min { 
+        /// The value of the integer is lt i64 min
+        val: ExpId,
+    },
     /// `Integer::is_gt_u64_max`
-    IntIsGtU64Max { val: ExpId },
+    IntIsGtU64Max { 
+        /// The value of the integer is gt u64 max
+        val: ExpId,
+    },
     /// `Integer::is_lt_u64_min`
-    IntIsLtU64Min { val: ExpId },
+    IntIsLtU64Min { 
+        /// The value of the integer is lt u64 min
+        val: ExpId,
+    },
     /// `Integer::is_lt_i32_min`
-    IntIsLtI32Min { val: ExpId },
+    IntIsLtI32Min { 
+        /// The value of the integer is lt i32 min
+        val: ExpId,
+    },
     /// `Integer::is_gt_i32_max`
-    IntIsGtI32Max { val: ExpId },
+    IntIsGtI32Max { 
+        /// The value of the integer is gt i32 max
+        val: ExpId,
+    },
     /// `Integer::is_lt_u32_min`
-    IntIsLtU32Min { val: ExpId },
+    IntIsLtU32Min { 
+        /// The value of the integer is lt u32 min
+        val: ExpId,
+    },
     /// `Integer::is_gt_u32_max`
-    IntIsGtU32Max { val: ExpId },
+    IntIsGtU32Max { 
+        /// The value of the integer is gt u32 max
+        val: ExpId,
+    },
 
     /// `Real::from`
     RealVal(BigRational),
     /// `Real::neg`
-    RealNeg { val: ExpId },
+    RealNeg { 
+        /// The value of the real neg
+        val: ExpId,
+    },
     /// `Real::add`
-    RealAdd { lhs: ExpId, rhs: ExpId },
+    RealAdd { 
+        /// The left operand of the real add
+        lhs: ExpId,
+        /// The right operand of the real add
+        rhs: ExpId,
+    },
     /// `Real::sub`
-    RealSub { lhs: ExpId, rhs: ExpId },
+    RealSub { 
+        /// The left operand of the real sub
+        lhs: ExpId,
+        /// The right operand of the real sub
+        rhs: ExpId,
+    },
     /// `Real::mul`
-    RealMul { lhs: ExpId, rhs: ExpId },
+    RealMul { 
+        /// The left operand of the real mul
+        lhs: ExpId,
+        /// The right operand of the real mul
+        rhs: ExpId,
+    },
     /// `Real::div`
-    RealDiv { lhs: ExpId, rhs: ExpId },
+    RealDiv { 
+        /// The left operand of the real div
+        lhs: ExpId,
+        /// The right operand of the real div
+        rhs: ExpId,
+    },
     /// `Real::pow`
-    RealPow { base: ExpId, exp: ExpId },
+    RealPow { 
+        /// The base operand of the real pow
+        base: ExpId,
+        /// The exponent operand of the real pow
+        exp: ExpId,
+    },
     /// `Real::abs`
-    RealAbs { val: ExpId },
+    RealAbs { 
+        /// The value of the real abs
+        val: ExpId,
+    },
     /// `Real::round`
-    RealRound { val: ExpId },
+    RealRound { 
+        /// The value of the real round
+        val: ExpId,
+    },
     /// `Real::floor`
-    RealFloor { val: ExpId },
+    RealFloor { 
+        /// The value of the real floor
+        val: ExpId,
+    },
     /// `Real::ceil`
-    RealCeil { val: ExpId },
+    RealCeil { 
+        /// The value of the real ceil
+        val: ExpId,
+    },
     /// `Real::is_integer`
-    RealIsInt { val: ExpId },
+    RealIsInt { 
+        /// The value of the real is integer
+        val: ExpId,
+    },
     /// `Real::lt`
-    RealLt { lhs: ExpId, rhs: ExpId },
+    RealLt { 
+        /// The left operand of the real lt
+        lhs: ExpId,
+        /// The right operand of the real lt
+        rhs: ExpId,
+    },
     /// `Real::le`
-    RealLe { lhs: ExpId, rhs: ExpId },
+    RealLe { 
+        /// The left operand of the real le
+        lhs: ExpId,
+        /// The right operand of the real le
+        rhs: ExpId,
+    },
     /// `Real::gt`
-    RealGt { lhs: ExpId, rhs: ExpId },
+    RealGt { 
+        /// The left operand of the real gt
+        lhs: ExpId,
+        /// The right operand of the real gt
+        rhs: ExpId,
+    },
     /// `Real::ge`
-    RealGe { lhs: ExpId, rhs: ExpId },
+    RealGe { 
+        /// The left operand of the real ge
+        lhs: ExpId,
+        /// The right operand of the real ge
+        rhs: ExpId,
+    },
     /// `Real::to_int`
-    RealToInt { val: ExpId },
+    RealToInt { 
+        /// The value of the real to int
+        val: ExpId,
+    },
     /// `Real::to_f32`
-    RealToF32 { val: ExpId },
+    RealToF32 { 
+        /// The value of the real to f32
+        val: ExpId,
+    },
     /// `Real::to_f64`
-    RealToF64 { val: ExpId },
+    RealToF64 { 
+        /// The value of the real to f64
+        val: ExpId,
+    },
 
     /// `String::from`
     StrVal(String),
     /// `String::new`
     StrNew,
     /// `String::length`
-    StrLen { seq: ExpId },
-    /// `String::concat`
-    StrConcat { lhs: ExpId, rhs: ExpId },
-    /// `String::at`
-    StrAt { seq: ExpId, idx: ExpId },
-    /// `String::index_of`
-    StrIndexOf {
+    StrLen { 
+        /// The sequence of the string length
         seq: ExpId,
+    },
+    /// `String::concat`
+    StrConcat { 
+        /// The left operand of the string concat
+        lhs: ExpId,
+        /// The right operand of the string concat
+        rhs: ExpId,
+    },
+    /// `String::at`
+    StrAt { 
+        /// The sequence of the string at
+        seq: ExpId,
+        /// The index of the string at
+        idx: ExpId,
+    },
+    /// `String::index_of`
+    StrIndexOf {    
+        /// The sequence of the string index of
+        seq: ExpId,
+        /// The substring of the string index of
         sub: ExpId,
+        /// The offset of the string index of
         offset: ExpId,
     },
     /// `String::index_of_default`
-    StrIndexOfDefault { seq: ExpId, sub: ExpId },
+    StrIndexOfDefault { 
+        /// The sequence of the string index of default
+        seq: ExpId,
+        /// The substring of the string index of default
+        sub: ExpId,
+    },
     /// `String::substr`
     StrSubstr {
+        /// The sequence of the string substr
         seq: ExpId,
+        /// The start of the string substr
         start: ExpId,
+        /// The length of the string substr
         len: ExpId,
     },
     /// `String::is_empty`
-    StrIsEmpty { seq: ExpId },
+    StrIsEmpty { 
+        /// The sequence of the string is empty
+        seq: ExpId,
+    },
     /// `String::contains`
-    StrContains { seq: ExpId, item: ExpId },
+    StrContains { 
+        /// The sequence of the string contains
+        seq: ExpId,
+        /// The item of the string contains
+        item: ExpId,
+    },
     /// `String::starts_with`
-    StrStartsWith { seq: ExpId, item: ExpId },
+    StrStartsWith { 
+        /// The sequence of the string starts with
+        seq: ExpId,
+        /// The item of the string starts with
+        item: ExpId,
+    },
     /// `String::ends_with`
-    StrEndsWith { seq: ExpId, item: ExpId },
+    StrEndsWith { 
+        /// The sequence of the string ends with
+        seq: ExpId,
+        /// The item of the string ends with
+        item: ExpId,
+    },
     /// `String::is_digit`
-    StrIsDigit { seq: ExpId },
+    StrIsDigit { 
+        /// The sequence of the string is digit
+        seq: ExpId,
+    },
     /// `String::le`
-    StrLe { lhs: ExpId, rhs: ExpId },
+    StrLe { 
+        /// The left operand of the string le
+        lhs: ExpId,
+        /// The right operand of the string le
+        rhs: ExpId,
+    },
     /// `String::lt`
-    StrLt { lhs: ExpId, rhs: ExpId },
+    StrLt { 
+        /// The left operand of the string lt
+        lhs: ExpId,
+        /// The right operand of the string lt
+        rhs: ExpId,
+    },
     /// `String::ge`
-    StrGe { lhs: ExpId, rhs: ExpId },
+    StrGe { 
+        /// The left operand of the string ge
+        lhs: ExpId,
+        /// The right operand of the string ge
+        rhs: ExpId,
+    },
     /// `String::gt`
-    StrGt { lhs: ExpId, rhs: ExpId },
+    StrGt { 
+        /// The left operand of the string gt
+        lhs: ExpId,
+        /// The right operand of the string gt
+        rhs: ExpId,
+    },
     /// `String::replace`
-    StrReplace { seq: ExpId, src: ExpId, dst: ExpId },
+    StrReplace { 
+        /// The sequence of the string replace
+        seq: ExpId,
+        /// The source of the string replace
+        src: ExpId,
+        /// The destination of the string replace
+        dst: ExpId,
+    },
     /// `String::replace_all`
-    StrReplaceAll { seq: ExpId, src: ExpId, dst: ExpId },
+    StrReplaceAll { 
+        /// The sequence of the string replace all
+        seq: ExpId,
+        /// The source of the string replace all
+        src: ExpId,
+        /// The destination of the string replace all
+        dst: ExpId,
+    },
     /// `String::to_int`
-    StrToInt { val: ExpId },
+    StrToInt { 
+        /// The value of the string to int
+        val: ExpId,
+    },
     /// `String::from_int`
-    StrFromInt { val: ExpId },
+    StrFromInt { 
+        /// The value of the string from int
+        val: ExpId,
+    },
     /// `String::from_code`
-    StrFromCode { val: ExpId },
+    StrFromCode { 
+        /// The value of the string from code
+        val: ExpId,
+    },
     /// `String::to_code`
-    StrToCode { val: ExpId },
+    StrToCode { 
+        /// The value of the string to code
+        val: ExpId,
+    },
 
     /// `Cloak::shield`
-    BoxShield { t: Sort, val: ExpId },
+    BoxShield { 
+        /// The type of the box shield
+        t: Sort,
+        /// The value of the box shield
+        val: ExpId,
+    },
     /// `Cloak::reveal`
-    BoxReveal { t: Sort, val: ExpId },
+    BoxReveal { 
+        /// The type of the box reveal
+        t: Sort,
+        /// The value of the box reveal
+        val: ExpId,
+    },
 
     /// `Seq::new` (Empty)
-    SeqEmpty { t: Sort },
+    SeqEmpty { 
+        /// The type of the sequence empty
+        t: Sort,
+    },
     /// `Seq::unit`
-    SeqUnit { t: Sort, val: ExpId },
+    SeqUnit { 
+        /// The type of the sequence unit
+        t: Sort,
+        /// The value of the sequence unit
+        val: ExpId,
+    },
     /// `Seq::length`
-    SeqLen { t: Sort, seq: ExpId },
+    SeqLen { 
+        /// The type of the sequence length
+        t: Sort,
+        /// The sequence of the sequence length
+        seq: ExpId,
+    },
     /// `Seq::append`
-    SeqPush { t: Sort, seq: ExpId, item: ExpId },
+    SeqPush { 
+        /// The type of the sequence push
+        t: Sort,
+        /// The sequence of the sequence push
+        seq: ExpId,
+        /// The item of the sequence push
+        item: ExpId,
+    },
     /// `Seq::concat`
-    SeqConcat { t: Sort, lhs: ExpId, rhs: ExpId },
+    SeqConcat { 
+        /// The type of the sequence concat
+        t: Sort,
+        /// The left operand of the sequence concat
+        lhs: ExpId,
+        /// The right operand of the sequence concat
+        rhs: ExpId,
+    },
     /// `Seq::at` (nth)
-    SeqNth { t: Sort, seq: ExpId, idx: ExpId },
+    SeqNth { 
+        /// The type of the sequence nth
+        t: Sort,
+        /// The sequence of the sequence nth
+        seq: ExpId,
+        /// The index of the sequence nth
+        idx: ExpId,
+    },
     /// `Seq::at_seq`
-    SeqAtSeq { t: Sort, seq: ExpId, idx: ExpId },
+    SeqAtSeq { 
+        /// The type of the sequence at seq
+        t: Sort,
+        /// The sequence of the sequence at seq
+        seq: ExpId,
+        /// The index of the sequence at seq
+        idx: ExpId,
+    },
     /// `Seq::extract`
     SeqExtract {
+        /// The type of the sequence extract
         t: Sort,
+        /// The sequence of the sequence extract
         seq: ExpId,
+        /// The offset of the sequence extract
         offset: ExpId,
+        /// The length of the sequence extract
         len: ExpId,
     },
     /// `Seq::index_of`
     SeqIndexOf {
+        /// The type of the sequence index of
         t: Sort,
+        /// The sequence of the sequence index of
         seq: ExpId,
+        /// The subsequence of the sequence index of
         sub: ExpId,
+        /// The offset of the sequence index of
         offset: ExpId,
     },
     /// `Seq::index_of_default`
-    SeqIndexOfDefault { t: Sort, seq: ExpId, sub: ExpId },
+    SeqIndexOfDefault { 
+        /// The type of the sequence index of default
+        t: Sort,
+        /// The sequence of the sequence index of default
+        seq: ExpId,
+        /// The subsequence of the sequence index of default
+        sub: ExpId,
+    },
     /// `Seq::contains`
-    SeqContains { t: Sort, seq: ExpId, item: ExpId },
+    SeqContains { 
+        /// The type of the sequence contains
+        t: Sort,
+        /// The sequence of the sequence contains
+        seq: ExpId,
+        /// The item of the sequence contains
+        item: ExpId,
+    },
     /// `Seq::prefix_of`
-    SeqPrefixOf { t: Sort, lhs: ExpId, rhs: ExpId },
+    SeqPrefixOf { 
+        /// The type of the sequence prefix of
+        t: Sort,
+        /// The left operand of the sequence prefix of
+        lhs: ExpId,
+        /// The right operand of the sequence prefix of
+        rhs: ExpId,
+    },
     /// `Seq::suffix_of`
-    SeqSuffixOf { t: Sort, lhs: ExpId, rhs: ExpId },
+    SeqSuffixOf { 
+        /// The type of the sequence suffix of
+        t: Sort,
+        /// The left operand of the sequence suffix of
+        lhs: ExpId,
+        /// The right operand of the sequence suffix of
+        rhs: ExpId,
+    },
     /// `Seq::replace`
     SeqReplace {
+        /// The type of the sequence replace
         t: Sort,
+        /// The sequence of the sequence replace
         seq: ExpId,
+        /// The source of the sequence replace
         src: ExpId,
+        /// The destination of the sequence replace
         dst: ExpId,
     },
     /// `Seq::is_empty`
-    SeqIsEmpty { t: Sort, seq: ExpId },
+    SeqIsEmpty {
+        /// The type of the sequence is empty
+        t: Sort,
+        /// The sequence of the sequence is empty
+        seq: ExpId,
+    },
 
     /// `Set::new`
-    SetEmpty { t: Sort },
+    SetEmpty { 
+        /// The type of the set is empty
+        t: Sort,
+    },
     /// `Set::length`
-    SetLen { t: Sort, set: ExpId },
+    SetLen { 
+        /// The type of the set length
+        t: Sort,
+        /// The set of the set length
+        set: ExpId,
+    },
     /// `Set::insert`
-    SetInsert { t: Sort, set: ExpId, item: ExpId },
+    SetInsert { 
+        /// The type of the set insert
+        t: Sort,
+        /// The set of the set insert
+        set: ExpId,
+        /// The item of the set insert
+        item: ExpId,
+    },
     /// `Set::remove`
-    SetRemove { t: Sort, set: ExpId, item: ExpId },
+    SetRemove { 
+        /// The type of the set remove
+        t: Sort,
+        /// The set of the set remove
+        set: ExpId,
+        /// The item of the set remove
+        item: ExpId,
+    },
     /// `Set::contains`
-    SetContains { t: Sort, set: ExpId, item: ExpId },
+    SetContains { 
+        /// The type of the set contains
+        t: Sort,
+        /// The set of the set contains
+        set: ExpId,
+        /// The item of the set contains
+        item: ExpId,
+    },
     /// `Set::is_empty`
-    SetIsEmpty { t: Sort, set: ExpId },
+    SetIsEmpty { 
+        /// The type of the set is empty
+        t: Sort,
+        /// The set of the set is empty
+        set: ExpId,
+    },
     /// `Set::intersection`
-    SetIntersect { t: Sort, lhs: ExpId, rhs: ExpId },
+    SetIntersect { 
+        /// The type of the set intersect
+        t: Sort,
+        /// The left operand of the set intersect
+        lhs: ExpId,
+        /// The right operand of the set intersect
+        rhs: ExpId,
+    },
     /// `Set::union`
-    SetUnion { t: Sort, lhs: ExpId, rhs: ExpId },
+    SetUnion { 
+        /// The type of the set union
+        t: Sort,
+        /// The left operand of the set union
+        lhs: ExpId,
+        /// The right operand of the set union
+        rhs: ExpId,
+    },
     /// `Set::difference`
-    SetDiff { t: Sort, lhs: ExpId, rhs: ExpId },
+    SetDiff { 
+        /// The type of the set difference
+        t: Sort,
+        /// The left operand of the set difference
+        lhs: ExpId,
+        /// The right operand of the set difference
+        rhs: ExpId,
+    },
     /// `Set::symmetric_difference`
-    SetSymDiff { t: Sort, lhs: ExpId, rhs: ExpId },
+    SetSymDiff { 
+        /// The type of the set symmetric difference
+        t: Sort,
+        /// The left operand of the set symmetric difference
+        lhs: ExpId,
+        /// The right operand of the set symmetric difference
+        rhs: ExpId,
+    },
     /// `Set::is_subset`
-    SetIsSubset { t: Sort, lhs: ExpId, rhs: ExpId },
+    SetIsSubset { 
+        /// The type of the set is subset
+        t: Sort,
+        /// The left operand of the set is subset
+        lhs: ExpId,
+        /// The right operand of the set is subset
+        rhs: ExpId,
+    },
     /// `Set::is_proper_subset`
-    SetIsProperSubset { t: Sort, lhs: ExpId, rhs: ExpId },
+    SetIsProperSubset { 
+        /// The type of the set is proper subset
+        t: Sort,
+        /// The left operand of the set is proper subset
+        lhs: ExpId,
+        /// The right operand of the set is proper subset
+        rhs: ExpId,
+    },
     /// `Set::is_disjoint`
-    SetIsDisjoint { t: Sort, lhs: ExpId, rhs: ExpId },
+    SetIsDisjoint { 
+        /// The type of the set is disjoint
+        t: Sort,
+        /// The left operand of the set is disjoint
+        lhs: ExpId,
+        /// The right operand of the set is disjoint
+        rhs: ExpId,
+    },
     /// `Set::has_size`
-    SetHasSize { t: Sort, set: ExpId, size: ExpId },
+    SetHasSize { 
+        /// The type of the set has size
+        t: Sort,
+        /// The set of the set has size
+        set: ExpId,
+        /// The size of the set has size
+        size: ExpId,
+    },
 
     /// `Array::new`
-    ArrayEmpty { k: Sort, v: Sort },
+    ArrayEmpty { 
+        /// The type of the array empty
+        k: Sort,
+        /// The value type of the array empty
+        v: Sort,
+    },
     /// `Array::length`
-    ArrayLen { k: Sort, v: Sort, arr: ExpId },
+    ArrayLen { 
+        /// The type of the array length
+        k: Sort,
+        /// The value type of the array length
+        v: Sort,
+        /// The array of the array length
+        arr: ExpId,
+    },
     /// `Array::store`
     ArrayStore {
+        /// The type of the array store
         k: Sort,
+        /// The value type of the array store
         v: Sort,
+        /// The array of the array store
         arr: ExpId,
+        /// The key of the array store
         key: ExpId,
+        /// The value of the array store
         val: ExpId,
     },
     /// `Array::select`
     ArraySelect {
+        /// The type of the array select
         k: Sort,
+        /// The value type of the array select
         v: Sort,
+        /// The array of the array select
         arr: ExpId,
+        /// The key of the array select
         key: ExpId,
     },
     /// `Array::del`
     ArrayRemove {
+        /// The type of the array remove
         k: Sort,
+        /// The value type of the array remove
         v: Sort,
+        /// The array of the array remove
         arr: ExpId,
+        /// The key of the array remove
         key: ExpId,
     },
     /// `Array::contains_key`
     ArrayContainsKey {
+        /// The type of the array contains key
         k: Sort,
+        /// The value type of the array contains key
         v: Sort,
+        /// The array of the array contains key
         arr: ExpId,
+        /// The key of the array contains key
         key: ExpId,
     },
     /// `Array::is_empty`
-    ArrayIsEmpty { k: Sort, v: Sort, arr: ExpId },
+    ArrayIsEmpty { 
+        /// The type of the array is empty
+        k: Sort,
+        /// The value type of the array is empty
+        v: Sort,
+        /// The array of the array is empty
+        arr: ExpId,
+    },
 
     /// `bv_val`
-    BvVal { t: Sort, val: BigInt },
+    BvVal { 
+        /// The type of the bv val
+        t: Sort,
+        /// The value of the bv val
+        val: BigInt,
+    },
     /// `bv_not`
-    BvNot { t: Sort, val: ExpId },
+    BvNot { 
+        /// The type of the bv not
+        t: Sort,
+        /// The value of the bv not
+        val: ExpId,
+    },
     /// `bv_and`
-    BvAnd { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvAnd { 
+        /// The type of the bv and
+        t: Sort,
+        /// The left operand of the bv and
+        lhs: ExpId,
+        /// The right operand of the bv and
+        rhs: ExpId,
+    },
     /// `bv_or`
-    BvOr { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvOr { 
+        /// The type of the bv or
+        t: Sort,
+        /// The left operand of the bv or
+        lhs: ExpId,
+        /// The right operand of the bv or
+        rhs: ExpId,
+    },
     /// `bv_xor`
-    BvXor { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvXor { 
+        /// The type of the bv xor
+        t: Sort,
+        /// The left operand of the bv xor
+        lhs: ExpId,
+        /// The right operand of the bv xor
+        rhs: ExpId,
+    },
     /// `bv_nand`
-    BvNand { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvNand { 
+        /// The type of the bv nand
+        t: Sort,
+        /// The left operand of the bv nand
+        lhs: ExpId,
+        /// The right operand of the bv nand
+        rhs: ExpId,
+    },
     /// `bv_nor`
-    BvNor { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvNor { 
+        /// The type of the bv nor
+        t: Sort,
+        /// The left operand of the bv nor
+        lhs: ExpId,
+        /// The right operand of the bv nor
+        rhs: ExpId,
+    },
     /// `bv_xnor`
-    BvXnor { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvXnor { 
+        /// The type of the bv xnor
+        t: Sort,
+        /// The left operand of the bv xnor
+        lhs: ExpId,
+        /// The right operand of the bv xnor
+        rhs: ExpId,
+    },
     /// `bv_redand`
-    BvRedAnd { t: Sort, val: ExpId },
+    BvRedAnd { 
+        /// The type of the bv redand
+        t: Sort,
+        /// The value of the bv redand
+        val: ExpId,
+    },
     /// `bv_redor`
-    BvRedOr { t: Sort, val: ExpId },
+    BvRedOr { 
+        /// The type of the bv redor
+        t: Sort,
+        /// The value of the bv redor
+        val: ExpId,
+    },
     /// `bv_neg`
-    BvNeg { t: Sort, val: ExpId },
+    BvNeg { 
+        /// The type of the bv neg
+        t: Sort,
+        /// The value of the bv neg
+        val: ExpId,
+    },
     /// `bv_add`
-    BvAdd { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvAdd { 
+        /// The type of the bv add
+        t: Sort,
+        /// The left operand of the bv add
+        lhs: ExpId,
+        /// The right operand of the bv add
+        rhs: ExpId,
+    },
     /// `bv_sub`
-    BvSub { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvSub { 
+        /// The type of the bv sub
+        t: Sort,
+        /// The left operand of the bv sub
+        lhs: ExpId,
+        /// The right operand of the bv sub
+        rhs: ExpId,
+    },
     /// `bv_mul`
-    BvMul { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvMul { 
+        /// The type of the bv mul
+        t: Sort,
+        /// The left operand of the bv mul
+        lhs: ExpId,
+        /// The right operand of the bv mul
+        rhs: ExpId,
+    },
     /// `bv_div`
-    BvDiv { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvDiv { 
+        /// The type of the bv div
+        t: Sort,
+        /// The left operand of the bv div
+        lhs: ExpId,
+        /// The right operand of the bv div
+        rhs: ExpId,
+    },
     /// `bv_rem`
-    BvRem { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvRem { 
+        /// The type of the bv rem
+        t: Sort,
+        /// The left operand of the bv rem
+        lhs: ExpId,
+        /// The right operand of the bv rem
+        rhs: ExpId,
+    },
     /// `bv_mod`
-    BvMod { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvMod { 
+        /// The type of the bv mod
+        t: Sort,
+        /// The left operand of the bv mod
+        lhs: ExpId,
+        /// The right operand of the bv mod
+        rhs: ExpId,
+    },
     /// `bv_shl`
-    BvShl { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvShl { 
+        /// The type of the bv shl
+        t: Sort,
+        /// The left operand of the bv shl
+        lhs: ExpId,
+        /// The right operand of the bv shl
+        rhs: ExpId,
+    },
     /// `bv_lshr`
-    BvLshr { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvLshr { 
+        /// The type of the bv lshr
+        t: Sort,
+        /// The left operand of the bv lshr
+        lhs: ExpId,
+        /// The right operand of the bv lshr
+        rhs: ExpId,
+    },
     /// `bv_ashr`
-    BvAshr { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvAshr { 
+        /// The type of the bv ashr
+        t: Sort,
+        /// The left operand of the bv ashr
+        lhs: ExpId,
+        /// The right operand of the bv ashr
+        rhs: ExpId,
+    },
     /// `bv_rotate_left`
-    BvRotLeft { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvRotLeft { 
+        /// The type of the bv rotate left
+        t: Sort,
+        /// The left operand of the bv rotate left
+        lhs: ExpId,
+        /// The right operand of the bv rotate left
+        rhs: ExpId,
+    },
     /// `bv_rotate_right`
-    BvRotRight { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvRotRight { 
+        /// The type of the bv rotate right
+        t: Sort,
+        /// The left operand of the bv rotate right
+        lhs: ExpId,
+        /// The right operand of the bv rotate right
+        rhs: ExpId,
+    },
     /// `bv_lt`
-    BvLt { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvLt { 
+        /// The type of the bv lt
+        t: Sort,
+        /// The left operand of the bv lt
+        lhs: ExpId,
+        /// The right operand of the bv lt
+        rhs: ExpId,
+    },
     /// `bv_le`
-    BvLe { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvLe { 
+        /// The type of the bv le
+        t: Sort,
+        /// The left operand of the bv le
+        lhs: ExpId,
+        /// The right operand of the bv le
+        rhs: ExpId,
+    },
     /// `bv_gt`
-    BvGt { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvGt { 
+        /// The type of the bv gt
+        t: Sort,
+        /// The left operand of the bv gt
+        lhs: ExpId,
+        /// The right operand of the bv gt
+        rhs: ExpId,
+    },
     /// `bv_ge`
-    BvGe { t: Sort, lhs: ExpId, rhs: ExpId },
+    BvGe { 
+        /// The type of the bv ge
+        t: Sort,
+        /// The left operand of the bv ge
+        lhs: ExpId,
+        /// The right operand of the bv ge
+        rhs: ExpId,
+    },
     /// `bv_to_int`
-    BvToInt { t: Sort, val: ExpId },
+    BvToInt { 
+        /// The type of the bv to int
+        t: Sort,
+        /// The value of the bv to int
+        val: ExpId,
+    },
 
     /// `Float::val`
-    FloatVal { t: Sort, val: BigRational },
+    FloatVal { 
+        /// The type of the float val
+        t: Sort,
+        /// The value of the float val
+        val: BigRational,
+    },
     /// `FloatOps::add`
-    FloatAdd { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatAdd { 
+        /// The type of the float add
+        t: Sort,
+        /// The left operand of the float add
+        lhs: ExpId,
+        /// The right operand of the float add
+        rhs: ExpId,
+    },
     /// `FloatOps::sub`
-    FloatSub { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatSub { 
+        /// The type of the float sub
+        t: Sort,
+        /// The left operand of the float sub
+        lhs: ExpId,
+        /// The right operand of the float sub
+        rhs: ExpId,
+    },
     /// `FloatOps::mul`
-    FloatMul { t: Sort, lhs: ExpId, rhs: ExpId },
-    /// `FloatOps::div`
-    FloatDiv { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatMul { 
+        /// The type of the float mul
+        t: Sort,
+        /// The left operand of the float mul
+        lhs: ExpId,
+        /// The right operand of the float mul
+        rhs: ExpId,
+    },
+    /// `FloatOps::div` 
+    FloatDiv { 
+        /// The type of the float div
+        t: Sort,
+        /// The left operand of the float div
+        lhs: ExpId,
+        /// The right operand of the float div
+        rhs: ExpId,
+    },
     /// `FloatOps::neg`
-    FloatNeg { t: Sort, val: ExpId },
+    FloatNeg { 
+        /// The type of the float neg
+        t: Sort,
+        /// The value of the float neg
+        val: ExpId,
+    },
     /// `FloatOps::abs`
-    FloatAbs { t: Sort, val: ExpId },
+    FloatAbs { 
+        /// The type of the float abs
+        t: Sort,
+        /// The value of the float abs
+        val: ExpId,
+    },
     /// `FloatOps::rem`
-    FloatRem { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatRem { 
+        /// The type of the float rem
+        t: Sort,
+        /// The left operand of the float rem
+        lhs: ExpId,
+        /// The right operand of the float rem
+        rhs: ExpId,
+    },
     /// `FloatOps::sqrt`
-    FloatSqrt { t: Sort, val: ExpId },
+    FloatSqrt { 
+        /// The type of the float sqrt
+        t: Sort,
+        /// The value of the float sqrt
+        val: ExpId,
+    },
     /// `FloatOps::min`
-    FloatMin { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatMin { 
+        /// The type of the float min
+        t: Sort,
+        /// The left operand of the float min
+        lhs: ExpId,
+        /// The right operand of the float min
+        rhs: ExpId,
+    },
     /// `FloatOps::max`
-    FloatMax { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatMax { 
+        /// The type of the float max
+        t: Sort,
+        /// The left operand of the float max
+        lhs: ExpId,
+        /// The right operand of the float max
+        rhs: ExpId,
+    },
     /// `FloatOps::is_nan`
-    FloatIsNaN { t: Sort, val: ExpId },
+    FloatIsNaN { 
+        /// The type of the float is nan
+        t: Sort,
+        /// The value of the float is nan
+        val: ExpId,
+    },
     /// `FloatOps::is_infinite`
-    FloatIsInf { t: Sort, val: ExpId },
-    /// `FloatOps::is_zero`
-    FloatIsZero { t: Sort, val: ExpId },
+    FloatIsInf { 
+        /// The type of the float is infinite
+        t: Sort,
+        /// The value of the float is infinite
+        val: ExpId,
+    },
+    /// `FloatOps::is_zero` 
+    FloatIsZero { 
+        /// The type of the float is zero
+        t: Sort,
+        /// The value of the float is zero
+        val: ExpId,
+    },
     /// `FloatOps::is_normal`
-    FloatIsNormal { t: Sort, val: ExpId },
+    FloatIsNormal { 
+        /// The type of the float is normal
+        t: Sort,
+        /// The value of the float is normal
+        val: ExpId,
+    },
     /// `FloatOps::is_subnormal`
-    FloatIsSubnormal { t: Sort, val: ExpId },
+    FloatIsSubnormal { 
+        /// The type of the float is subnormal
+        t: Sort,
+        /// The value of the float is subnormal
+        val: ExpId,
+    },
     /// `FloatOps::is_negative`
-    FloatIsNeg { t: Sort, val: ExpId },
+    FloatIsNeg { 
+        /// The type of the float is negative
+        t: Sort,
+        /// The value of the float is negative
+        val: ExpId,
+    },
     /// `FloatOps::is_positive`
-    FloatIsPos { t: Sort, val: ExpId },
+    FloatIsPos { 
+        /// The type of the float is positive
+        t: Sort,
+        /// The value of the float is positive
+        val: ExpId,
+    },
     /// `FloatOps::lt`
-    FloatLt { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatLt { 
+        /// The type of the float lt
+        t: Sort,
+        /// The left operand of the float lt
+        lhs: ExpId,
+        /// The right operand of the float lt
+        rhs: ExpId,
+    },
     /// `FloatOps::le`
-    FloatLe { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatLe { 
+        /// The type of the float le
+        t: Sort,
+        /// The left operand of the float le
+        lhs: ExpId,
+        /// The right operand of the float le
+        rhs: ExpId,
+    },
     /// `FloatOps::gt`
-    FloatGt { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatGt { 
+        /// The type of the float gt
+        t: Sort,
+        /// The left operand of the float gt
+        lhs: ExpId,
+        /// The right operand of the float gt
+        rhs: ExpId,
+    },
     /// `FloatOps::ge`
-    FloatGe { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatGe { 
+        /// The type of the float ge
+        t: Sort,
+        /// The left operand of the float ge
+        lhs: ExpId,
+        /// The right operand of the float ge
+        rhs: ExpId,
+    },
     /// `FloatOps::nan`
-    FloatNaN { t: Sort },
+    FloatNaN { 
+        /// The type of the float nan
+        t: Sort,
+    },
     /// `FloatOps::infinity`
-    FloatPosInf { t: Sort },
+    FloatPosInf { 
+        /// The type of the float pos infinity
+        t: Sort,
+    },
     /// `FloatOps::neg_infinity`
-    FloatNegInf { t: Sort },
+    FloatNegInf { 
+        /// The type of the float neg infinity
+        t: Sort,
+    },
     /// `FloatOps::pos_zero`
-    FloatPosZero { t: Sort },
+    FloatPosZero { 
+        /// The type of the float pos zero
+        t: Sort,
+    },
     /// `FloatOps::neg_zero`
-    FloatNegZero { t: Sort },
+    FloatNegZero { 
+        /// The type of the float neg zero
+        t: Sort,
+    },
     /// `FloatOps::to_integer`
-    FloatToInt { t: Sort, val: ExpId },
+    FloatToInt { 
+        /// The type of the float to integer
+        t: Sort,
+        /// The value of the float to integer
+        val: ExpId,
+    },
     /// `FloatOps::to_real`
-    FloatToReal { t: Sort, val: ExpId },
+    FloatToReal { 
+        /// The type of the float to real
+        t: Sort,
+        /// The value of the float to real
+        val: ExpId,
+    },
     /// `FloatOps::to_u32`
-    FloatToU32 { t: Sort, val: ExpId },
+    FloatToU32 { 
+        /// The type of the float to u32
+        t: Sort,
+        /// The value of the float to u32
+        val: ExpId,
+    },
     /// `FloatOps::to_i32`
-    FloatToI32 { t: Sort, val: ExpId },
+    FloatToI32 { 
+        /// The type of the float to i32
+        t: Sort,
+        /// The value of the float to i32
+        val: ExpId,
+    },
     /// `FloatOps::to_u64`
-    FloatToU64 { t: Sort, val: ExpId },
+    FloatToU64 { 
+        /// The type of the float to u64
+        t: Sort,
+        /// The value of the float to u64
+        val: ExpId,
+    },
     /// `FloatOps::to_i64`
-    FloatToI64 { t: Sort, val: ExpId },
+    FloatToI64 { 
+        /// The type of the float to i64
+        t: Sort,
+        /// The value of the float to i64
+        val: ExpId,
+    },
     /// `FloatOps::ceil`
-    FloatCeil { t: Sort, val: ExpId },
+    FloatCeil { 
+        /// The type of the float ceil
+        t: Sort,
+        /// The value of the float ceil
+        val: ExpId,
+    },
     /// `FloatOps::floor`
-    FloatFloor { t: Sort, val: ExpId },
+    FloatFloor { 
+        /// The type of the float floor
+        t: Sort,
+        /// The value of the float floor
+        val: ExpId,
+    },
     /// `FloatOps::trunc`
-    FloatTrunc { t: Sort, val: ExpId },
+    FloatTrunc { 
+        /// The type of the float trunc
+        t: Sort,
+        /// The value of the float trunc
+        val: ExpId,
+    },
     /// `FloatOps::nearest`
-    FloatNearest { t: Sort, val: ExpId },
+    FloatNearest { 
+        /// The type of the float nearest
+        t: Sort,
+        /// The value of the float nearest
+        val: ExpId,
+    },
     /// `FloatOps::fq_eq`
-    FloatFqEq { t: Sort, lhs: ExpId, rhs: ExpId },
+    FloatFqEq { 
+        /// The type of the float fq eq
+        t: Sort,
+        /// The left operand
+        lhs: ExpId,
+        /// The right operand
+        rhs: ExpId,
+    },
     /// `FloatOps::from_hex_str`
-    FloatFromHexStr { t: Sort, val: ExpId },
-
-    /// `Error::fresh`
-    ErrFresh,
+    FloatFromHexStr { 
+        /// The type of the float from hex str
+        t: Sort,
+        /// The value of the float from hex str
+        val: ExpId,
+    },
+    /// `Error::fresh` - carries the globally unique error ID assigned at IR-build time
+    ErrFresh(usize),
     /// `Error::merge`
-    ErrMerge { lhs: ExpId, rhs: ExpId },
+    ErrMerge { 
+        /// The left operand
+        lhs: ExpId,
+        /// The right operand
+        rhs: ExpId,
+    },
     /// `<any-smt-type>::eq`
-    SmtEq { t: Sort, lhs: ExpId, rhs: ExpId },
+    SmtEq { 
+        /// The type of the smt eq
+        t: Sort,
+        /// The left operand
+        lhs: ExpId,
+        /// The right operand
+        rhs: ExpId,
+    },
     /// `<any-smt-type>::ne`
-    SmtNe { t: Sort, lhs: ExpId, rhs: ExpId },
+    SmtNe { 
+        /// The type of the smt ne
+        t: Sort,
+        /// The left operand
+        lhs: ExpId,
+        /// The right operand
+        rhs: ExpId,
+    },
 }

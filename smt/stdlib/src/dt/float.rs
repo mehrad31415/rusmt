@@ -253,8 +253,11 @@ impl FloatOps for F32 {
     }
 
     fn rem(self, rhs: Self) -> Self {
+        // Z3's fp.rem is IEEE 754 remainder (rounds quotient to nearest),
+        // NOT Rust's % which is fmod (truncation remainder).
+        // Use libm::remainderf which computes IEEE 754 remainder.
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 % rhs.inner.0)),
+            inner: Intern::new(OrderedFloat(libm::remainderf(self.inner.0, rhs.inner.0))),
         }
     }
 
@@ -305,11 +308,17 @@ impl FloatOps for F32 {
     }
 
     fn is_negative(self) -> Boolean {
-        self.inner.0.is_sign_negative().into()
+        // Z3's fp.isNegative returns false for NaN (all NaNs).
+        // Rust's is_sign_negative returns true for -NaN.
+        // Guard with !is_nan to match Z3.
+        (!self.inner.0.is_nan() && self.inner.0.is_sign_negative()).into()
     }
 
     fn is_positive(self) -> Boolean {
-        self.inner.0.is_sign_positive().into()
+        // Z3's fp.isPositive returns false for NaN (all NaNs).
+        // Rust's is_sign_positive returns true for +NaN.
+        // Guard with !is_nan to match Z3.
+        (!self.inner.0.is_nan() && self.inner.0.is_sign_positive()).into()
     }
 
     fn is_normal(self) -> Boolean {
@@ -321,7 +330,9 @@ impl FloatOps for F32 {
     }
 
     fn to_integer(self) -> Integer {
-        BigInt::from_f32(self.inner.0.trunc())
+        // Z3: (to_int (fp.to_real self)) applies floor (rounds toward -∞).
+        // Must use .floor() not .trunc(): for -1.5, floor=-2 but trunc=-1.
+        BigInt::from_f32(self.inner.0.floor())
             .map(|bi| Integer {
                 inner: Intern::new(bi),
             })
@@ -337,7 +348,7 @@ impl FloatOps for F32 {
     }
 
     fn to_i32(self) -> I32 {
-        // .to_i32() in Rust performs truncation (RTZ).
+        // .to_i32() in Rust performs truncation (RTZ) — matches Z3's ((_ fp.to_sbv 32) RTZ self).
         // Note: Returns None (unwrap panics) on NaN or Overflow.
         // Your interpreter guards should catch those before calling this.
         I32 {
@@ -403,9 +414,11 @@ impl FloatOps for F32 {
         }
     }
 
-    fn fp_eq(self, rhs: Self) -> Boolean {
-        (self.inner.0 == rhs.inner.0).into()
-    }
+    fn fp_eq(self, rhs: Self) -> Boolean {                                                                                                                                         
+        let a: f32 = self.inner.0.into();                                                                                                                                          
+        let b: f32 = rhs.inner.0.into();
+        (a == b).into()                                                                                                                                                            
+    }   
 }
 
 /// Operations for F64.
@@ -477,8 +490,11 @@ impl FloatOps for F64 {
     }
 
     fn rem(self, rhs: Self) -> Self {
+        // Z3's fp.rem is IEEE 754 remainder (rounds quotient to nearest),
+        // NOT Rust's % which is fmod (truncation remainder).
+        // Use libm::remainder which computes IEEE 754 remainder.
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 % rhs.inner.0)),
+            inner: Intern::new(OrderedFloat(libm::remainder(self.inner.0, rhs.inner.0))),
         }
     }
 
@@ -529,11 +545,17 @@ impl FloatOps for F64 {
     }
 
     fn is_negative(self) -> Boolean {
-        self.inner.0.is_sign_negative().into()
+        // Z3's fp.isNegative returns false for NaN (all NaNs).
+        // Rust's is_sign_negative returns true for -NaN.
+        // Guard with !is_nan to match Z3.
+        (!self.inner.0.is_nan() && self.inner.0.is_sign_negative()).into()
     }
 
     fn is_positive(self) -> Boolean {
-        self.inner.0.is_sign_positive().into()
+        // Z3's fp.isPositive returns false for NaN (all NaNs).
+        // Rust's is_sign_positive returns true for +NaN.
+        // Guard with !is_nan to match Z3.
+        (!self.inner.0.is_nan() && self.inner.0.is_sign_positive()).into()
     }
 
     fn is_normal(self) -> Boolean {
@@ -545,7 +567,9 @@ impl FloatOps for F64 {
     }
 
     fn to_integer(self) -> Integer {
-        BigInt::from_f64(self.inner.0.trunc())
+        // Z3: (to_int (fp.to_real self)) applies floor (rounds toward -∞).
+        // Must use .floor() not .trunc(): for -1.5, floor=-2 but trunc=-1.
+        BigInt::from_f64(self.inner.0.floor())
             .map(|bi| Integer {
                 inner: Intern::new(bi),
             })
@@ -623,6 +647,8 @@ impl FloatOps for F64 {
     }
 
     fn fp_eq(self, rhs: Self) -> Boolean {
-        (self.inner.0 == rhs.inner.0).into()
+        let a: f64 = self.inner.0.into();
+        let b: f64 = rhs.inner.0.into();
+        (a == b).into()
     }
 }

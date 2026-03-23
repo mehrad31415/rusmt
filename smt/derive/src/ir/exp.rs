@@ -22,15 +22,22 @@ pub enum VarKind {
     Axiom,
     /// let-binding to an expression
     /// let x = e where x is assigned to e
-    Bound { bind: ExpId },
+    Bound {
+        /// The bound expression
+        bind: ExpId,
+    },
     /// match-introduced
     /// match (e1,e2....) { (a1,a2,...) => e1 } where head is (e1,e2,...) and sort defines the type of the match
     /// and branch is the name of the enum variant
     /// and selector is how to destruct the enum variant
     Match {
+        /// The head of the match
         head: ExpId,
+        /// The sort of the match
         sort: UsrSortId,
+        /// The branch of the match
         branch: String,
+        /// The selector of the match
         selector: EnumSelector,
     },
 }
@@ -38,54 +45,73 @@ pub enum VarKind {
 #[derive(Debug, Clone)]
 /// Information about a variable
 pub struct Variable {
-    pub name: Symbol, // the name of the variable (in the Intermediate Representation a variable is represented by a Symbol)
-    pub kind: VarKind, // the kind of the variable
-    pub sort: Sort, // the type of the variable (in the Intermediate Representation a type is represented by a Sort)
+    /// the name of the variable (in the Intermediate Representation a variable is represented by a Symbol)
+    pub name: Symbol,
+    /// the kind of the variable
+    pub kind: VarKind,
+    /// the type of the variable (in the Intermediate Representation a type is represented by a Sort)
+    pub sort: Sort,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 /// Denotes how a variable gets match-bounded
 pub enum EnumSelector {
+    /// The index of the tuple variant
     Tuple(usize),
+    /// The field of the record variant
     Record(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Denotes how to construct an enum variant
 pub enum VariantCtor {
+    /// The unit variant
     Unit,
+    /// The tuple variant
     Tuple(Vec<ExpId>),
+    /// The record variant
     Record(BTreeMap<String, ExpId>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Denotes how to destruct an enum variant and bind variables
 pub enum VariantDtor {
+    /// The unit variant
     Unit,
+    /// The tuple variant
     Tuple(Vec<Option<VarId>>),
+    /// The record variant
     Record(BTreeMap<String, Option<VarId>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One atom in the match case to unpack
 pub struct MatchAtom {
+    /// The head of the match atom
     pub head: ExpId,
+    /// The sort of the match atom
     pub sort: UsrSortId,
+    /// The branch of the match atom
     pub branch: String,
+    /// The variant of the match atom
     pub variant: VariantDtor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One match case
 pub struct MatchCase {
+    /// The atoms of the match case
     pub atoms: Vec<MatchAtom>,
+    /// The body of the match case
     pub body: ExpId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One phi case (i.e., conditional branch)
 pub struct PhiCase {
+    /// The condition of the phi case
     pub cond: ExpId,
+    /// The body of the phi case
     pub body: ExpId,
 }
 
@@ -97,55 +123,102 @@ pub enum Expression {
     /// `(v1, v2, ...)` - Pack { elems: Vec<Expr> } in the parser
     // UsrSortId is a unique identifier for a user-defined type (a tuple is represented as a user-defined type without a name in the IR)
     // ExpId is a unique identifier for an expression
-    Pack { sort: UsrSortId, elems: Vec<ExpId> },
+    Pack { 
+        
+        /// The sort of the pack
+        sort: UsrSortId,
+        /// The elements of the pack
+        elems: Vec<ExpId>,
+    },
     /// `<tuple-name>(<inst>?)(v1, v2. ...)` -     Tuple { name: UsrTypeName, inst: Vec<TypeRef>, slots: Vec<Expr>} in the parser
     // UsrSortId is a unique identifier for a user-defined type (a struct tuple is represented as a user-defined type without a name in the IR)
     // the name and the inst are stored in the TypeRegistry where using the UsrSortId we can retrieve the name and the inst
-    Tuple { sort: UsrSortId, slots: Vec<ExpId> },
+    Tuple { 
+        
+        /// The sort of the tuple
+        sort: UsrSortId,
+        /// The slots of the tuple
+        slots: Vec<ExpId>,
+    },
     /// `<record-name>(<inst>?){ f1: v1, f2: v2, ... }`  - Record { name: UsrTypeName, inst: Vec<TypeRef>, fields: BTreeMap<String, Expr>} in the parser
     // UsrSortId is a unique identifier for a user-defined type (a struct record is represented as a user-defined type without a name in the IR)
     // the name and the inst are stored in the TypeRegistry where using the UsrSortId we can retrieve the name and the inst
     Record {
+        /// The sort of the record
         sort: UsrSortId,
+        /// The fields of the record
         fields: BTreeMap<String, ExpId>,
     },
     /// `<adt-name>(<inst>?)::<branch>(<ctor>)` - Op has three different variants EnumUnit, EnumTuple, EnumRecord where they are all represented as Enum in the IR
     /// An Enum is a user-defined type (UserSortId)
     Enum {
-        sort: UsrSortId, // the name and the inst are stored in the TypeRegistry where using the UsrSortId we can retrieve the name and the inst
-        branch: String,  // the name of the enum variant
-        variant: VariantCtor, // the call to the constructor of the enum variant (can be unit, tuple or record)
+        /// The sort of the enum
+        sort: UsrSortId,
+        /// The branch of the enum
+        branch: String,
+        /// The variant of the enum
+        variant: VariantCtor,
     },
     /// `<base>.<index>` - AccessSlot { base: Expr, slot: usize } in the parser
-    AccessSlot { base: ExpId, slot: usize },
+    AccessSlot { 
+        /// The base of the access slot
+        base: ExpId,
+        /// The slot of the access slot
+        slot: usize,
+    },
     /// `<base>.<field>` - AccessField { base: Expr, field: String } in the parser
-    AccessField { base: ExpId, field: String },
+    AccessField { 
+        /// The base of the access field
+        base: ExpId,
+        /// The field of the access field
+        field: String,
+    },
     /// `match (v1, v2, ...) { (a1, a2, ...) => <body1> } ...` - Match { heads: Vec<Expr>, combo: Vec<MatchCombo> } in the parser
-    Match { cases: Vec<MatchCase> },
+    Match { 
+        /// The cases of the match
+        cases: Vec<MatchCase>,
+    },
     /// `if (<c1>) { <v1> } else if (<c2>) { <v2> } ... else { <default> }` - Phi { nodes: Vec<PhiNode>, default: Expr } in the parser
     // basically the name just the Expr is replaced by the ExpId
-    Phi { cases: Vec<PhiCase>, default: ExpId },
+    Phi { 
+        /// The cases of the phi
+        cases: Vec<PhiCase>,
+        /// The default of the phi
+        default: ExpId,
+    },
     /// `forall!(<v> in <c> ... => <expr>)` - IterForall { vars: Vec<(VarName, Expr)>, body: Expr } in the parser
     IterForall {
+        /// The variables of the iter forall
         vars: BTreeMap<VarId, ExpId>,
+        /// The body of the iter forall
         body: ExpId,
     },
     /// `exists!(<v> in <c> ... => <expr>)` - IterExists { vars: Vec<(VarName, Expr)>, body: Expr } in the parser
     IterExists {
+        /// The variables of the iter exists
         vars: BTreeMap<VarId, ExpId>,
+        /// The body of the iter exists
         body: ExpId,
     },
     /// `choose!(<v> in <c> ... => <expr>)` - IterChoose { vars: Vec<(VarName, Expr)>, body: Expr } in the parser
     IterChoose {
+        /// The variables of the iter choose
         vars: BTreeMap<VarId, ExpId>,
+        /// The body of the iter choose
         body: ExpId,
+        /// The return variables of the iter choose
         rets: Vec<VarId>,
     },
     /// `<class>::<method>(<a1>, <a2>, ...)` - Intrinsic(Intrinsic) in the parser (the definition of the intrinsic is in the IR)
     Intrinsic(Box<Intrinsic>),
     /// `<function>(<a1>, <a2>, ...)` - Procedure { name: UsrFuncName, inst: Vec<TypeRef>, args: Vec<Expr>} in the parser
     // in the FunRegistry, the name, inst, signature and the body are stored where using the UsrFunId they can be retrieved
-    Procedure { callee: UsrFunId, args: Vec<ExpId> },
+    Procedure { 
+        /// The callee of the procedure
+        callee: UsrFunId,
+        /// The arguments of the procedure
+        args: Vec<ExpId>,
+    },
 }
 
 /// A registry of expressions (organized around a function body)
@@ -278,12 +351,20 @@ impl ExpRegistry {
         self.exps.get(idx).expect("no such exp id")
     }
 
+    /// Collect all called functions from an expression
     pub fn collect_called_functions(&self, exp_id: &ExpId) -> Vec<UsrFunId> {
         let mut called_fns = vec![];
         let exp = self.lookup_exp(exp_id);
         // recursively traverse the expression to find called functions
         match exp {
-            Expression::Var(_) => (),
+            Expression::Var(var_id) => {
+                // Follow bound variables to find function calls hidden behind let-bindings.
+                // format_expression also follows bound vars, so we must too for consistency.
+                let var = self.lookup_var(var_id);
+                if let VarKind::Bound { bind } = &var.kind {
+                    called_fns.append(&mut self.collect_called_functions(bind));
+                }
+            }
             Expression::Pack { sort: _, elems } => {
                 for e in elems {
                     called_fns.append(&mut self.collect_called_functions(e));
@@ -373,6 +454,93 @@ impl ExpRegistry {
         called_fns
     }
 
+    /// Collect all error IDs (from `ErrFresh(id)` intrinsics) that appear directly in the
+    /// expression tree rooted at `exp_id`. Does NOT follow calls into other functions.
+    pub fn collect_error_ids(&self, exp_id: &ExpId) -> Vec<usize> {
+        let mut ids = vec![];
+        let exp = self.lookup_exp(exp_id);
+        match exp {
+            Expression::Var(_) => (),
+            Expression::Pack { elems, .. } => {
+                for e in elems {
+                    ids.extend(self.collect_error_ids(e));
+                }
+            }
+            Expression::Tuple { slots, .. } => {
+                for s in slots {
+                    ids.extend(self.collect_error_ids(s));
+                }
+            }
+            Expression::Record { fields, .. } => {
+                for (_, f) in fields {
+                    ids.extend(self.collect_error_ids(f));
+                }
+            }
+            Expression::Enum { variant, .. } => match variant {
+                VariantCtor::Unit => (),
+                VariantCtor::Tuple(elems) => {
+                    for e in elems {
+                        ids.extend(self.collect_error_ids(e));
+                    }
+                }
+                VariantCtor::Record(fields) => {
+                    for (_, f) in fields {
+                        ids.extend(self.collect_error_ids(f));
+                    }
+                }
+            },
+            Expression::AccessSlot { base, .. } => ids.extend(self.collect_error_ids(base)),
+            Expression::AccessField { base, .. } => ids.extend(self.collect_error_ids(base)),
+            Expression::Match { cases } => {
+                for case in cases {
+                    for atom in &case.atoms {
+                        ids.extend(self.collect_error_ids(&atom.head));
+                    }
+                    ids.extend(self.collect_error_ids(&case.body));
+                }
+            }
+            Expression::Phi { cases, default } => {
+                for case in cases {
+                    ids.extend(self.collect_error_ids(&case.cond));
+                    ids.extend(self.collect_error_ids(&case.body));
+                }
+                ids.extend(self.collect_error_ids(default));
+            }
+            Expression::IterForall { vars, body } => {
+                for (_, e) in vars {
+                    ids.extend(self.collect_error_ids(e));
+                }
+                ids.extend(self.collect_error_ids(body));
+            }
+            Expression::IterExists { vars, body } => {
+                for (_, e) in vars {
+                    ids.extend(self.collect_error_ids(e));
+                }
+                ids.extend(self.collect_error_ids(body));
+            }
+            Expression::IterChoose { vars, body, .. } => {
+                for (_, e) in vars {
+                    ids.extend(self.collect_error_ids(e));
+                }
+                ids.extend(self.collect_error_ids(body));
+            }
+            Expression::Procedure { args, .. } => {
+                for a in args {
+                    ids.extend(self.collect_error_ids(a));
+                }
+            }
+            Expression::Intrinsic(intrinsic) => match intrinsic.as_ref() {
+                Intrinsic::ErrFresh(id) => ids.push(*id),
+                Intrinsic::ErrMerge { lhs, rhs } => {
+                    ids.extend(self.collect_error_ids(lhs));
+                    ids.extend(self.collect_error_ids(rhs));
+                }
+                _ => {}
+            },
+        }
+        ids
+    }
+
     fn collect_fn_from_intrinsic(&self, intrinsic: &Intrinsic) -> Vec<UsrFunId> {
         let mut called_fns = vec![];
 
@@ -393,7 +561,7 @@ impl ExpRegistry {
             | Intrinsic::FloatNegInf { .. }
             | Intrinsic::FloatPosZero { .. }
             | Intrinsic::FloatNegZero { .. }
-            | Intrinsic::ErrFresh => {}
+            | Intrinsic::ErrFresh(_) => {}
 
             // --- 1 ExpId Argument (Unary Ops / Conversions) ---
             Intrinsic::BoolNot { val }
@@ -2256,7 +2424,11 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     }
 
                     // --- Error / SMT ---
-                    Native::ErrFresh => Intrinsic::ErrFresh,
+                    Native::ErrFresh => {
+                        let id = self.parent.ir.error_count;
+                        self.parent.ir.error_count += 1;
+                        Intrinsic::ErrFresh(id)
+                    }
                     Native::ErrMerge { lhs, rhs } => Intrinsic::ErrMerge {
                         lhs: self.resolve(lhs, None),
                         rhs: self.resolve(rhs, None),
@@ -2674,7 +2846,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 // -------------------------------------------------------------
                 // Error / Generic
                 // -------------------------------------------------------------
-                Intrinsic::ErrFresh | Intrinsic::ErrMerge { .. } => Sort::Error,
+                Intrinsic::ErrFresh(_) | Intrinsic::ErrMerge { .. } => Sort::Error,
 
                 Intrinsic::SmtEq { .. } | Intrinsic::SmtNe { .. } => Sort::Boolean,
             },

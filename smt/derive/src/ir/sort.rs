@@ -75,9 +75,12 @@ impl Display for Sort {
 #[derive(Debug)]
 /// A helper enum representing a variant definition for algebraic data types (ADTs).
 pub enum Variant {
-    Unit,                           // A unit variant like MyEnum::MyVariant
-    Tuple(Vec<Sort>),               //MyEnum::MyVariant(1,2,3)
-    Record(BTreeMap<String, Sort>), // MyEnum::MyVariant{x:1,y:2,z:3}
+    /// A unit variant like MyEnum::MyVariant   
+    Unit,
+    /// A tuple variant like MyEnum::MyVariant(1,2,3)
+    Tuple(Vec<Sort>),               
+    /// A record variant like MyEnum::MyVariant{x:1,y:2,z:3}
+    Record(BTreeMap<String, Sort>), 
 }
 
 impl Display for Variant {
@@ -100,8 +103,11 @@ impl Display for Variant {
 /// Complete definition of a user-defined data type.
 /// It can be a tuple type, a record type, or an enum (ADT) with multiple variants.
 pub enum DataType {
+    /// A tuple type like (i32, i32, i32)
     Tuple(Vec<Sort>),
+    /// A record type like {x: i32, y: i32, z: i32}
     Record(BTreeMap<String, Sort>),
+    /// An enum type like MyEnum::MyVariant{x:1,y:2,z:3}
     Enum(BTreeMap<String, Variant>),
 }
 

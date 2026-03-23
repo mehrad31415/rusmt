@@ -43,20 +43,35 @@ impl CtxtForType for TypeParseCtxt<'_> {
 /// Reserved type name
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum SysTypeName {
+    /// The boolean type.
     Boolean,
+    /// The integer type.
     Integer,
+    /// The real type.
     Real,
+    /// The 32-bit float type.
     F32,
+    /// The 64-bit float type.
     F64,
+    /// The 32-bit integer type.
     I32,
+    /// The 64-bit integer type.
     I64,
+    /// The 32-bit unsigned integer type.
     U32,
+    /// The 64-bit unsigned integer type.
     U64,
+    /// The string type.
     String,
+    /// The cloak type.
     Cloak,
+    /// The sequence type.
     Seq,
+    /// The set type.
     Set,
+    /// The array type.
     Array,
+    /// The error type.
     Error,
 }
 
@@ -164,8 +179,11 @@ impl SysTypeName {
 /// The three variants replicate a system defined type, a user defined type, and a generic type parameter
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum TypeName {
+    /// A system defined type.
     Sys(SysTypeName),
+    /// A user defined type.
     Usr(UsrTypeName),
+    /// A generic type parameter.
     Param(TypeParamName),
 }
 
@@ -208,37 +226,37 @@ impl Display for TypeName {
 /// A unique and complete reference to an SMT-related type
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum TypeTag {
-    /// boolean
+    /// The boolean type.
     Boolean,
-    /// integer (unlimited precision)
+    /// The integer type.
     Integer,
-    /// rational numbers (unlimited precision)
+    /// The real type.
     Real,
-    /// floating point 32-bit
+    /// The 32-bit float type.
     F32,
-    /// floating point 64-bit
+    /// The 64-bit float type.
     F64,
-    /// signed 32-bit integer
+    /// The 32-bit integer type.
     I32,
-    /// signed 64-bit integer
+    /// The 64-bit integer type.
     I64,
-    /// unsigned 32-bit integer
+    /// The 32-bit unsigned integer type.
     U32,
-    /// unsigned 64-bit integer
+    /// The 64-bit unsigned integer type.
     U64,
-    /// string
+    /// The string type.
     String,
-    /// inductively defined type
+    /// The cloak type.
     Cloak(Box<TypeTag>),
-    /// SMT-sequence
+    /// The sequence type.
     Seq(Box<TypeTag>),
-    /// SMT-set
+    /// The set type.
     Set(Box<TypeTag>),
-    /// SMT-array
+    /// The array type.
     Array(Box<TypeTag>, Box<TypeTag>),
-    /// dynamic error type
+    /// The error type.
     Error,
-    /// user-defined type with type parameters as a list
+    /// A user-defined type with type parameters as a list
     User(UsrTypeName, Vec<TypeTag>),
     /// a tuple of types
     Pack(Vec<TypeTag>),
@@ -459,7 +477,8 @@ impl TypeTag {
     }
 
     /// Convert a series of generic arguments
-    /// This function is used when calling a function with generic arguments. like: MyType::<i32, i32>. The function is called on the ::<i32,i32> in this case.
+    /// This function is used when calling a method with generic arguments. like: x.push::<i32,i32>(a). The method is called on the ::<i32,i32> in this case.
+    /// The number of type arguments and value arguments are independent.
     pub fn from_generics<CTX: CtxtForType>(
         ctxt: &CTX,
         generics: &AngleBracketedGenericArguments,
@@ -526,6 +545,7 @@ impl Display for TypeTag {
 /// ADT for a struct with unnamed fields or an enum variant with unnamed fields
 /// for example: struct MyStruct(i32,String); or X in enum MyEnum {X(String,i32),}
 pub struct TypeTuple {
+    /// The list of types in the tuple struct
     pub slots: Vec<TypeTag>,
 }
 
@@ -579,6 +599,7 @@ impl Display for TypeTuple {
 /// TypeRecord encapsulates a map between the field names and their respective types
 /// ADT for a struct with named fields or an enum variant with named fields
 pub struct TypeRecord {
+    /// The map between the field names and their respective types
     pub fields: BTreeMap<String, TypeTag>,
 }
 
@@ -646,8 +667,11 @@ impl Display for TypeRecord {
 /// - Record: named fields like Variant3 {sub_variant:i32}
 ///   These three variations are exactly similar for an empty struct, tuple struct, and record struct respectively.
 pub enum EnumVariant {
+    /// A unit variant like Variant1
     Unit,
+    /// A tuple variant like Variant2(i32)
     Tuple(TypeTuple),
+    /// A record variant like Variant3 {sub_variant:i32}
     Record(TypeRecord),
 }
 
@@ -686,6 +710,7 @@ impl Display for EnumVariant {
 /// Represents an ADT definition
 /// TypeEnum encapsulates a map between the variant names and their respective EnumVariant (structure) for a single enum type
 pub struct TypeEnum {
+    /// The map between the variant names and their respective EnumVariant
     pub variants: BTreeMap<String, EnumVariant>,
 }
 
@@ -749,8 +774,11 @@ impl Display for TypeEnum {
 /// enums are represented by TypeBody::Enum(TypeEnum)
 /// structs are represented by TypeBody::Tuple(TypeTuple) or TypeBody::Record(TypeRecord)
 pub enum TypeBody {
+    /// A tuple struct
     Tuple(TypeTuple),
+    /// A record struct
     Record(TypeRecord),
+    /// An enum
     Enum(TypeEnum),
 }
 
@@ -839,7 +867,9 @@ impl Display for TypeBody {
 #[derive(Debug)]
 /// A complete definition of a type (generics + body)
 pub struct TypeDef {
+    /// The generics of the type
     pub head: Generics,
+    /// The body of the type
     pub body: TypeBody,
 }
 

@@ -7,7 +7,22 @@ use crate::ir::exp::ExpRegistry;
 use crate::ir::index::UsrFunId;
 use crate::ir::intrinsics::Intrinsic;
 use crate::ir::sort::Sort;
+use num_bigint::BigInt;
 use std::collections::BTreeSet;
+
+/// Generate an SMT-LIB constant name for the "null" (absent) sentinel of an array value sort.
+/// This constant is declared in the base SMT-LIB file with `(declare-const ...)` so that
+/// Z3 can reason about it symbolically without needing a concrete default value.
+pub fn array_null_const_name(v: &Sort, ir: &IRContext) -> String {
+    let vs = format_sort_for_fn(v, ir);
+    // Sanitize the sort string to be a valid SMT-LIB identifier
+    let safe = vs
+        .replace(' ', "_")
+        .replace('(', "")
+        .replace(')', "")
+        .replace('_', "_");
+    format!("array_null_{}", safe)
+}
 
 /// Convert an intrinsic operation to SMT-LIB string format.
 pub fn format_intrinsic(
@@ -53,7 +68,13 @@ pub fn format_intrinsic(
         Intrinsic::IntRem { lhs, rhs } => format!("(rem {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::IntPow { base, exp } => format!("(^ {} {})", fmt(*base), fmt(*exp)),
         Intrinsic::IntAbs { val } => format!("(abs {})", fmt(*val)),
-        Intrinsic::IntDivides { lhs, rhs } => format!("(= (mod {} {}) 0)", fmt(*rhs), fmt(*lhs)),
+        // Guard: divides(0, x) is false for all x (matches Rust impl).
+        // Without this guard, Z3's (mod x 0) = x, so divides(0,0) would be true in Z3 but false in Rust.
+        Intrinsic::IntDivides { lhs, rhs } => {
+            let l = fmt(*lhs);
+            let r = fmt(*rhs);
+            format!("(and (not (= {} 0)) (= (mod {} {}) 0))", l, r, l)
+        }
         Intrinsic::IntLt { lhs, rhs } => format!("(< {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::IntLe { lhs, rhs } => format!("(<= {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::IntGt { lhs, rhs } => format!("(> {} {})", fmt(*lhs), fmt(*rhs)),
@@ -69,11 +90,10 @@ pub fn format_intrinsic(
         Intrinsic::IntToF64 { val } => format!("((_ to_fp 11 53) RNE (to_real {}))", fmt(*val)),
 
         // --- Integer Parsing ---
-        Intrinsic::IntFromHex { val }
-        | Intrinsic::IntFromOct { val }
-        | Intrinsic::IntFromBin { val } => {
-            format!("(str.to_int {})", fmt(*val))
-        }
+        // str.to_int only handles decimal; hex/oct/bin use rusmart_* helpers emitted by common.rs.
+        Intrinsic::IntFromHex { val } => format!("(rusmart_from_hex_str {})", fmt(*val)),
+        Intrinsic::IntFromOct { val } => format!("(rusmart_from_oct_str {})", fmt(*val)),
+        Intrinsic::IntFromBin { val } => format!("(rusmart_from_bin_str {})", fmt(*val)),
 
         // --- Integer Range Checks ---
         Intrinsic::IntIsGtI64Max { val } => format!("(> {} 9223372036854775807)", fmt(*val)),
@@ -94,9 +114,12 @@ pub fn format_intrinsic(
         Intrinsic::RealDiv { lhs, rhs } => format!("(/ {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::RealPow { base, exp } => format!("(^ {} {})", fmt(*base), fmt(*exp)),
         Intrinsic::RealAbs { val } => format!("(abs {})", fmt(*val)),
-        Intrinsic::RealRound { val } => format!("(to_real (to_int (+ {} 0.5)))", fmt(*val)),
-        Intrinsic::RealFloor { val } => format!("(to_real (to_int {}))", fmt(*val)),
-        Intrinsic::RealCeil { val } => format!("(- (to_real (to_int (- {}))))", fmt(*val)),
+        // round(x) = floor(x + 0.5).  Returns Integer.
+        Intrinsic::RealRound { val } => format!("(to_int (+ {} (/ 1.0 2.0)))", fmt(*val)),
+        // floor(x) = Z3's (to_int x), which rounds toward -∞.  Returns Integer.
+        Intrinsic::RealFloor { val } => format!("(to_int {})", fmt(*val)),
+        // ceil(x) = -floor(-x) = -(to_int (- x)).  Returns Integer.
+        Intrinsic::RealCeil { val } => format!("(- (to_int (- {})))", fmt(*val)),
         Intrinsic::RealIsInt { val } => format!("(is_int {})", fmt(*val)),
         Intrinsic::RealLt { lhs, rhs } => format!("(< {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::RealLe { lhs, rhs } => format!("(<= {} {})", fmt(*lhs), fmt(*rhs)),
@@ -149,8 +172,12 @@ pub fn format_intrinsic(
         ),
         Intrinsic::StrToInt { val } => format!("(str.to_int {})", fmt(*val)),
         Intrinsic::StrFromInt { val } => format!("(str.from_int {})", fmt(*val)),
-        Intrinsic::StrFromCode { val } => format!("(str.from_code {})", fmt(*val)),
-        Intrinsic::StrToCode { val } => format!("(str.to_code {})", fmt(*val)),
+        // Z3's str.from_code expects Int, but in Rusmart from_code takes U32 (BitVec 32).
+        // Wrap with bv2int to convert the unsigned code point to Int before passing to Z3.
+        Intrinsic::StrFromCode { val } => format!("(str.from_code (bv2int {}))", fmt(*val)),
+        // Z3's str.to_code returns Int, but Rusmart expects U32 (BitVec 32).
+        // Wrap with int2bv to convert the Int result to a 32-bit bitvector.
+        Intrinsic::StrToCode { val } => format!("((_ int2bv 32) (str.to_code {}))", fmt(*val)),
 
         // --- Cloak Operations ---
         Intrinsic::BoxShield { val, .. } | Intrinsic::BoxReveal { val, .. } => fmt(*val),
@@ -185,8 +212,13 @@ pub fn format_intrinsic(
         Intrinsic::SeqSuffixOf { lhs, rhs, .. } => {
             format!("(seq.suffixof {} {})", fmt(*lhs), fmt(*rhs))
         }
+        // Z3's seq.replace expects subsequences, not bare elements.
+        // Wrap src and dst with seq.unit to convert elements to singleton sequences.
         Intrinsic::SeqReplace { seq, src, dst, .. } => {
-            format!("(seq.replace {} {} {})", fmt(*seq), fmt(*src), fmt(*dst))
+            format!(
+                "(seq.replace {} (seq.unit {}) (seq.unit {}))",
+                fmt(*seq), fmt(*src), fmt(*dst)
+            )
         }
         Intrinsic::SeqIsEmpty { seq, .. } => format!("(= (seq.len {}) 0)", fmt(*seq)),
 
@@ -223,38 +255,79 @@ pub fn format_intrinsic(
             let (l, r) = (fmt(*lhs), fmt(*rhs));
             format!("(and (set.subset {l} {r}) (not (= {l} {r})))")
         }
-        Intrinsic::SetIsDisjoint { lhs, rhs, .. } => {
-            format!("(= (set.inter {} {}) set.empty)", fmt(*lhs), fmt(*rhs))
+        Intrinsic::SetIsDisjoint { t, lhs, rhs } => {
+            let ts = format_sort_for_fn(t, ir);
+            format!(
+                "(= (set.inter {} {}) (as set.empty (Set {})))",
+                fmt(*lhs), fmt(*rhs), ts
+            )
         }
         Intrinsic::SetHasSize { set, size, .. } => {
             format!("(= (set.card {}) {})", fmt(*set), fmt(*size))
         }
 
         // --- Array Operations ---
+        // Note: Z3's `@default` is an internal output symbol, not a valid input.
+        // We use a declared symbolic null constant instead so Z3 can reason about
+        // "key absent" vs "key present" without requiring a concrete default value.
         Intrinsic::ArrayEmpty { k, v } => {
             let (ks, vs) = (format_sort_for_fn(k, ir), format_sort_for_fn(v, ir));
-            format!("((as const (Array {ks} {vs})) (as @default {vs}))")
+            let null = array_null_const_name(v, ir);
+            format!("((as const (Array {ks} {vs})) {null})")
         }
-        Intrinsic::ArrayLen { arr, .. } => format!("(array.size {})", fmt(*arr)), // Z3 extension
+        // array.size is not standard SMT-LIB2 and not supported in Z3's -smt2 mode.
+        // Encode ArrayLen as an uninterpreted expression (just returns 0 as placeholder,
+        // since ArrayLen is not currently used in the TOML parser synthesis).
+        Intrinsic::ArrayLen { arr, v, .. } => {
+            let null = array_null_const_name(v, ir);
+            // Count non-null entries: use a placeholder 0 since SMT-LIB2 has no array size.
+            // TODO: declare array_len as an uninterpreted function if needed.
+            format!(
+                "(ite (forall ((_ak_ String)) (= (select {} _ak_) {})) 0 1)",
+                fmt(*arr),
+                null
+            )
+        }
         Intrinsic::ArrayStore { arr, key, val, .. } => {
             format!("(store {} {} {})", fmt(*arr), fmt(*key), fmt(*val))
         }
         Intrinsic::ArraySelect { arr, key, .. } => format!("(select {} {})", fmt(*arr), fmt(*key)),
-        Intrinsic::ArrayRemove { arr, key, .. } => {
-            format!("(store {} {} @default)", fmt(*arr), fmt(*key))
+        Intrinsic::ArrayRemove { arr, key, v, .. } => {
+            let null = array_null_const_name(v, ir);
+            format!("(store {} {} {})", fmt(*arr), fmt(*key), null)
         }
-        Intrinsic::ArrayContainsKey { arr, key, .. } => {
-            format!("(not (= (select {} {}) @default))", fmt(*arr), fmt(*key))
+        Intrinsic::ArrayContainsKey { arr, key, v, .. } => {
+            let null = array_null_const_name(v, ir);
+            format!("(not (= (select {} {}) {}))", fmt(*arr), fmt(*key), null)
         }
-        Intrinsic::ArrayIsEmpty { arr, .. } => format!("(= (array.size {}) 0)", fmt(*arr)),
+        // array.size is not standard SMT-LIB2. Encode isEmpty as: ∀k. select(arr,k) = null
+        Intrinsic::ArrayIsEmpty { arr, k, v } => {
+            let null = array_null_const_name(v, ir);
+            let k_sort = format_sort_for_fn(k, ir);
+            format!(
+                "(forall ((_ak_ {})) (= (select {} _ak_) {}))",
+                k_sort,
+                fmt(*arr),
+                null
+            )
+        }
 
         // --- BitVector Operations ---
         Intrinsic::BvVal { t, val } => {
-            let width = match t {
+            let width: u32 = match t {
                 Sort::I32 | Sort::U32 => 32,
                 _ => 64,
             };
-            format!("(_ bv{} {})", val, width)
+            // SMT-LIB2 requires non-negative value in (_ bvN w).
+            // Negative values (e.g. I32::from(-1)) must be converted to their
+            // unsigned two's complement: the same bit pattern, just as a positive number.
+            // Z3 rejects (_ bv-1 32) with "unknown constant bv-1".
+            let unsigned_val = if val.sign() == num_bigint::Sign::Minus {
+                val + (BigInt::from(1u64) << width)
+            } else {
+                val.clone()
+            };
+            format!("(_ bv{} {})", unsigned_val, width)
         }
         Intrinsic::BvNot { val, .. } => format!("(bvnot {})", fmt(*val)),
         Intrinsic::BvAnd { lhs, rhs, .. } => format!("(bvand {} {})", fmt(*lhs), fmt(*rhs)),
@@ -269,9 +342,21 @@ pub fn format_intrinsic(
         Intrinsic::BvAdd { lhs, rhs, .. } => format!("(bvadd {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::BvSub { lhs, rhs, .. } => format!("(bvsub {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::BvMul { lhs, rhs, .. } => format!("(bvmul {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::BvDiv { lhs, rhs, .. } => format!("(bvudiv {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::BvRem { lhs, rhs, .. } => format!("(bvurem {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::BvMod { lhs, rhs, .. } => format!("(bvsmod {} {})", fmt(*lhs), fmt(*rhs)),
+        // Signed types (I32, I64) use signed BV operations; unsigned (U32, U64) use unsigned.
+        Intrinsic::BvDiv { t, lhs, rhs } => match t {
+            Sort::I32 | Sort::I64 => format!("(bvsdiv {} {})", fmt(*lhs), fmt(*rhs)),
+            _ => format!("(bvudiv {} {})", fmt(*lhs), fmt(*rhs)),
+        },
+        Intrinsic::BvRem { t, lhs, rhs } => match t {
+            Sort::I32 | Sort::I64 => format!("(bvsrem {} {})", fmt(*lhs), fmt(*rhs)),
+            _ => format!("(bvurem {} {})", fmt(*lhs), fmt(*rhs)),
+        },
+        Intrinsic::BvMod { t, lhs, rhs } => match t {
+            // bvsmod: result has the same sign as the divisor (signed modulo)
+            Sort::I32 | Sort::I64 => format!("(bvsmod {} {})", fmt(*lhs), fmt(*rhs)),
+            // For unsigned types mod == rem (always non-negative)
+            _ => format!("(bvurem {} {})", fmt(*lhs), fmt(*rhs)),
+        },
         Intrinsic::BvShl { lhs, rhs, .. } => format!("(bvshl {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::BvLshr { lhs, rhs, .. } => format!("(bvlshr {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::BvAshr { lhs, rhs, .. } => format!("(bvashr {} {})", fmt(*lhs), fmt(*rhs)),
@@ -281,11 +366,36 @@ pub fn format_intrinsic(
         Intrinsic::BvRotRight { lhs, rhs, .. } => {
             format!("(ext_rotate_right {} {})", fmt(*lhs), fmt(*rhs))
         }
-        Intrinsic::BvLt { lhs, rhs, .. } => format!("(bvult {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::BvLe { lhs, rhs, .. } => format!("(bvule {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::BvGt { lhs, rhs, .. } => format!("(bvugt {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::BvGe { lhs, rhs, .. } => format!("(bvuge {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::BvToInt { val, .. } => format!("(bv2int {})", fmt(*val)),
+        Intrinsic::BvLt { t, lhs, rhs } => match t {
+            Sort::I32 | Sort::I64 => format!("(bvslt {} {})", fmt(*lhs), fmt(*rhs)),
+            _ => format!("(bvult {} {})", fmt(*lhs), fmt(*rhs)),
+        },
+        Intrinsic::BvLe { t, lhs, rhs } => match t {
+            Sort::I32 | Sort::I64 => format!("(bvsle {} {})", fmt(*lhs), fmt(*rhs)),
+            _ => format!("(bvule {} {})", fmt(*lhs), fmt(*rhs)),
+        },
+        Intrinsic::BvGt { t, lhs, rhs } => match t {
+            Sort::I32 | Sort::I64 => format!("(bvsgt {} {})", fmt(*lhs), fmt(*rhs)),
+            _ => format!("(bvugt {} {})", fmt(*lhs), fmt(*rhs)),
+        },
+        Intrinsic::BvGe { t, lhs, rhs } => match t {
+            Sort::I32 | Sort::I64 => format!("(bvsge {} {})", fmt(*lhs), fmt(*rhs)),
+            _ => format!("(bvuge {} {})", fmt(*lhs), fmt(*rhs)),
+        },
+        // Z3's bv2int always interprets the bitvector as unsigned.
+        // For signed types (I32/I64), we need a two's complement conversion:
+        //   if val < 0 (signed) then bv2int(val) - 2^width else bv2int(val)
+        Intrinsic::BvToInt { t, val } => match t {
+            Sort::I32 => format!(
+                "(ite (bvslt {} (_ bv0 32)) (- (bv2int {}) 4294967296) (bv2int {}))",
+                fmt(*val), fmt(*val), fmt(*val)
+            ),
+            Sort::I64 => format!(
+                "(ite (bvslt {} (_ bv0 64)) (- (bv2int {}) 18446744073709551616) (bv2int {}))",
+                fmt(*val), fmt(*val), fmt(*val)
+            ),
+            _ => format!("(bv2int {})", fmt(*val)),
+        },
 
         // --- Floating-Point Operations ---
         Intrinsic::FloatVal { t, val } => {
@@ -359,10 +469,11 @@ pub fn format_intrinsic(
         }
         Intrinsic::FloatToInt { val, .. } => format!("(to_int (fp.to_real {}))", fmt(*val)),
         Intrinsic::FloatToReal { val, .. } => format!("(fp.to_real {})", fmt(*val)),
-        Intrinsic::FloatToU32 { val, .. } => format!("((_ fp.to_ubv 32) RNE {})", fmt(*val)),
-        Intrinsic::FloatToI32 { val, .. } => format!("((_ fp.to_sbv 32) RNE {})", fmt(*val)),
-        Intrinsic::FloatToU64 { val, .. } => format!("((_ fp.to_ubv 64) RNE {})", fmt(*val)),
-        Intrinsic::FloatToI64 { val, .. } => format!("((_ fp.to_sbv 64) RNE {})", fmt(*val)),
+        // RTZ (round toward zero / truncation) matches Rust's .to_u32()/.to_i32() etc.
+        Intrinsic::FloatToU32 { val, .. } => format!("((_ fp.to_ubv 32) RTZ {})", fmt(*val)),
+        Intrinsic::FloatToI32 { val, .. } => format!("((_ fp.to_sbv 32) RTZ {})", fmt(*val)),
+        Intrinsic::FloatToU64 { val, .. } => format!("((_ fp.to_ubv 64) RTZ {})", fmt(*val)),
+        Intrinsic::FloatToI64 { val, .. } => format!("((_ fp.to_sbv 64) RTZ {})", fmt(*val)),
         Intrinsic::FloatCeil { val, .. } => format!("(fp.roundToIntegral RTP {})", fmt(*val)),
         Intrinsic::FloatFloor { val, .. } => format!("(fp.roundToIntegral RTN {})", fmt(*val)),
         Intrinsic::FloatTrunc { val, .. } => format!("(fp.roundToIntegral RTZ {})", fmt(*val)),
@@ -371,7 +482,8 @@ pub fn format_intrinsic(
         Intrinsic::FloatFromHexStr { val, .. } => format!("(fp.from_str {})", fmt(*val)), // Z3 extension
 
         // --- Error & Generic Operations ---
-        Intrinsic::ErrFresh => "ErrFresh".to_string(),
+        // ErrFresh(id) emits the ErrSingle constructor directly with its unique integer ID.
+        Intrinsic::ErrFresh(id) => format!("(ErrSingle {})", id),
         Intrinsic::ErrMerge { lhs, rhs } => format!("(ErrMerge {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),

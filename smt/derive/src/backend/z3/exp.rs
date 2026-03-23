@@ -133,18 +133,35 @@ pub fn format_expression(
             branch,
             variant,
         } => {
-            let _type_name = resolve_type_name(ir, *sort);
             match variant {
-                VariantCtor::Unit => branch.clone(),
+                // Unit variants must be qualified with their sort to avoid ambiguity when
+                // multiple polymorphic instantiations share the same constructor name
+                // (e.g. `None` can be `Optional<String>` or `Optional<Integer>`).
+                // SMT-LIB2 qualified syntax: (as ConstructorName SortExpr)
+                VariantCtor::Unit => {
+                    let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
+                    format!("(as {} {})", branch, sort_str)
+                }
                 VariantCtor::Tuple(elems) => {
+                    // Qualify the constructor with its sort to avoid ambiguity
+                    // in polymorphic types (e.g. Ok in ParseResult<Float> vs ParseResult<Int>).
+                    // SMT-LIB2 qualified constructor syntax: ((as Constructor Sort) args...)
+                    let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
                     let elem_strs: Vec<String> = elems
                         .iter()
                         .map(|e| format_expression(exp_registry, *e, ir, param_names, scc_fids))
                         .collect();
-                    format!("({} {})", branch, elem_strs.join(" "))
+                    format!(
+                        "((as {} {}) {})",
+                        branch,
+                        sort_str,
+                        elem_strs.join(" ")
+                    )
                 }
                 VariantCtor::Record(fields) => {
                     // For enum record variants, we need to provide values in order
+                    // Also qualify the constructor with its sort for polymorphic types.
+                    let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
                     let dt = ir.ty_registry.retrieve(*sort);
                     if let DataType::Enum(variants) = dt {
                         if let Some(variant_def) = variants.get(branch) {
@@ -164,7 +181,12 @@ pub fn format_expression(
                                         )
                                     })
                                     .collect();
-                                format!("({} {})", branch, ordered_values.join(" "))
+                                format!(
+                                    "((as {} {}) {})",
+                                    branch,
+                                    sort_str,
+                                    ordered_values.join(" ")
+                                )
                             } else {
                                 branch.clone()
                             }

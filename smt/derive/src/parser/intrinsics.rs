@@ -19,435 +19,1408 @@ pub enum Intrinsic {
     /// `Boolean::from`
     BoolVal(bool),
     /// `Boolean::not`
-    BoolNot { val: Expr },
+    BoolNot {
+        /// The expression to negate
+        val: Expr,
+    },
     /// `Boolean::and`
-    BoolAnd { lhs: Expr, rhs: Expr },
+    BoolAnd {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::or`
-    BoolOr { lhs: Expr, rhs: Expr },
+    BoolOr {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::xor`
-    BoolXor { lhs: Expr, rhs: Expr },
+    BoolXor {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::nand`
-    BoolNand { lhs: Expr, rhs: Expr },
+    BoolNand {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::nor`
-    BoolNor { lhs: Expr, rhs: Expr },
+    BoolNor {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::xnor`
-    BoolXnor { lhs: Expr, rhs: Expr },
+    BoolXnor {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::implies`
-    BoolImplies { lhs: Expr, rhs: Expr },
+    BoolImplies {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::iff`
-    BoolIff { lhs: Expr, rhs: Expr },
+    BoolIff {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Boolean::ite`
-    BoolIte { cond: Expr, then: Expr, else_: Expr },
+    BoolIte {
+        /// The condition
+        cond: Expr,
+        /// The then operand
+        then: Expr,
+        /// The else operand
+        else_: Expr,
+    },
     /// `Integer::from` (Literal)
     IntVal(BigInt),
     // Arithmetic
     /// `Integer::neg`
-    IntNeg { val: Expr },
+    IntNeg {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::add`
-    IntAdd { lhs: Expr, rhs: Expr },
+    IntAdd {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::sub`
-    IntSub { lhs: Expr, rhs: Expr },
+    IntSub {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::mul`
-    IntMul { lhs: Expr, rhs: Expr },
+    IntMul {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::div`
-    IntDiv { lhs: Expr, rhs: Expr },
+    IntDiv {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::div_trunc`
-    IntDivTrunc { lhs: Expr, rhs: Expr },
+    IntDivTrunc {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::modulo`
-    IntMod { lhs: Expr, rhs: Expr },
+    IntMod {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::rem` (Rust % operator behavior)
-    IntRem { lhs: Expr, rhs: Expr },
+    IntRem {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::pow`
-    IntPow { base: Expr, exp: Expr },
+    IntPow {
+        /// The base operand
+        base: Expr,
+        /// The exponent operand
+        exp: Expr,
+    },
     /// `Integer::abs`
-    IntAbs { val: Expr },
+    IntAbs {
+        /// The operand
+        val: Expr,
+    },
     // Predicates
     /// `Integer::divides` (Check if lhs divides rhs)
-    IntDivides { lhs: Expr, rhs: Expr },
+    IntDivides {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::lt`
-    IntLt { lhs: Expr, rhs: Expr },
+    IntLt {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::le`
-    IntLe { lhs: Expr, rhs: Expr },
+    IntLe {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::gt`
-    IntGt { lhs: Expr, rhs: Expr },
+    IntGt {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Integer::ge`
-    IntGe { lhs: Expr, rhs: Expr },
+    IntGe {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     // Type Conversions
     /// `Integer::to_real`
-    IntToReal { val: Expr },
+    IntToReal {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::to_i32`
-    IntToI32 { val: Expr },
+    IntToI32 {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::to_i64`
-    IntToI64 { val: Expr },
+    IntToI64 {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::to_u32`
-    IntToU32 { val: Expr },
+    IntToU32 {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::to_u64`
-    IntToU64 { val: Expr },
+    IntToU64 {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::to_f32`
-    IntToF32 { val: Expr },
+    IntToF32 {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::to_f64`
-    IntToF64 { val: Expr },
+    IntToF64 {
+        /// The operand
+        val: Expr,
+    },
     // String Parsing Constructors
     /// `Integer::from_hex_str`
-    IntFromHex { val: Expr },
+    IntFromHex {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::from_oct_str`
-    IntFromOct { val: Expr },
+    IntFromOct {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::from_bin_str`
-    IntFromBin { val: Expr },
+    IntFromBin {
+        /// The operand
+        val: Expr,
+    },
     // Range Checks
     /// `Integer::is_gt_i64_max`
-    IntIsGtI64Max { val: Expr },
+    IntIsGtI64Max {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::is_lt_i64_min`
-    IntIsLtI64Min { val: Expr },
+    IntIsLtI64Min {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::is_gt_u64_max`
-    IntIsGtU64Max { val: Expr },
+    IntIsGtU64Max {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::is_lt_u64_min`
-    IntIsLtU64Min { val: Expr },
+    IntIsLtU64Min {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::is_lt_i32_min`
-    IntIsLtI32Min { val: Expr },
+    IntIsLtI32Min {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::is_gt_i32_max`
-    IntIsGtI32Max { val: Expr },
+    IntIsGtI32Max {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::is_lt_u32_min`
-    IntIsLtU32Min { val: Expr },
+    IntIsLtU32Min {
+        /// The operand
+        val: Expr,
+    },
     /// `Integer::is_gt_u32_max`
-    IntIsGtU32Max { val: Expr },
+    IntIsGtU32Max {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::from` (Literal)
     RealVal(BigRational),
     // Arithmetic
     /// `Real::neg`
-    RealNeg { val: Expr },
+    RealNeg {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::add`
-    RealAdd { lhs: Expr, rhs: Expr },
+    RealAdd {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::sub`
-    RealSub { lhs: Expr, rhs: Expr },
+    RealSub {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::mul`
-    RealMul { lhs: Expr, rhs: Expr },
+    RealMul {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::div`
-    RealDiv { lhs: Expr, rhs: Expr },
+    RealDiv {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::pow`
-    RealPow { base: Expr, exp: Expr },
+    RealPow {
+        /// The base operand
+        base: Expr,
+        /// The exponent operand
+        exp: Expr,
+    },
     /// `Real::abs`
-    RealAbs { val: Expr },
+    RealAbs {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::round`
-    RealRound { val: Expr },
+    RealRound {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::floor`
-    RealFloor { val: Expr },
+    RealFloor {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::ceil`
-    RealCeil { val: Expr },
+    RealCeil {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::is_integer`
-    RealIsInt { val: Expr },
+    RealIsInt {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::lt`
-    RealLt { lhs: Expr, rhs: Expr },
+    RealLt {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::le`
-    RealLe { lhs: Expr, rhs: Expr },
+    RealLe {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::gt`
-    RealGt { lhs: Expr, rhs: Expr },
+    RealGt {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::ge`
-    RealGe { lhs: Expr, rhs: Expr },
+    RealGe {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Real::to_int` (Truncate to Integer)
-    RealToInt { val: Expr },
+    RealToInt {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::to_f32`
-    RealToF32 { val: Expr },
+    RealToF32 {
+        /// The operand
+        val: Expr,
+    },
     /// `Real::to_f64`
-    RealToF64 { val: Expr },
+    RealToF64 {
+        /// The operand
+        val: Expr,
+    },
     /// `String::from` (Literal)
     StrVal(String),
     /// `String::new` (Empty string)
     StrNew,
     /// `String::length`
-    StrLen { seq: Expr },
+    StrLen {
+        /// The operand
+        seq: Expr,
+    },
     /// `String::concat`
-    StrConcat { lhs: Expr, rhs: Expr },
+    StrConcat {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `String::at`
-    StrAt { seq: Expr, idx: Expr },
+    StrAt {
+        /// The operand
+        seq: Expr,
+        /// The index operand
+        idx: Expr,
+    },
     /// `String::index_of`
-    StrIndexOf { seq: Expr, sub: Expr, offset: Expr },
+    StrIndexOf {
+        /// The operand
+        seq: Expr,
+        /// The substring operand
+        sub: Expr,
+        /// The offset operand
+        offset: Expr,
+    },
     /// `String::index_of_default`
-    StrIndexOfDefault { seq: Expr, sub: Expr },
+    StrIndexOfDefault {
+        /// The operand
+        seq: Expr,
+        /// The substring operand
+        sub: Expr,
+    },
     /// `String::substr`
-    StrSubstr { seq: Expr, start: Expr, len: Expr },
+    StrSubstr {
+        /// The operand
+        seq: Expr,
+        /// The start operand
+        start: Expr,
+        /// The length operand
+        len: Expr,
+    },
     /// `String::is_empty`
-    StrIsEmpty { seq: Expr },
+    StrIsEmpty {
+        /// The operand
+        seq: Expr,
+    },
     /// `String::contains`
-    StrContains { seq: Expr, item: Expr },
+    StrContains {
+        /// The operand
+        seq: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `String::starts_with`
-    StrStartsWith { seq: Expr, item: Expr },
+    StrStartsWith {
+        /// The operand
+        seq: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `String::ends_with`
-    StrEndsWith { seq: Expr, item: Expr },
+    StrEndsWith {
+        /// The operand
+        seq: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `String::is_digit`
-    StrIsDigit { seq: Expr },
+    StrIsDigit {
+        /// The operand
+        seq: Expr,
+    },
     /// `String::le`
-    StrLe { lhs: Expr, rhs: Expr },
+    StrLe {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `String::lt`
-    StrLt { lhs: Expr, rhs: Expr },
+    StrLt {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `String::ge`
-    StrGe { lhs: Expr, rhs: Expr },
+    StrGe {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `String::gt`
-    StrGt { lhs: Expr, rhs: Expr },
+    StrGt {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `String::replace` (Single occurrence)
-    StrReplace { seq: Expr, src: Expr, dst: Expr },
+    StrReplace {
+        /// The operand
+        seq: Expr,
+        /// The source operand
+        src: Expr,
+        /// The destination operand
+        dst: Expr,
+    },
     /// `String::replace_all` (All occurrences)
-    StrReplaceAll { seq: Expr, src: Expr, dst: Expr },
+    StrReplaceAll {
+        /// The operand
+        seq: Expr,
+        /// The source operand
+        src: Expr,
+        /// The destination operand
+        dst: Expr,
+    },
     /// `String::to_int`
-    StrToInt { val: Expr },
+    StrToInt {
+        /// The operand
+        val: Expr,
+    },
     /// `String::from_int`
-    StrFromInt { val: Expr },
+    StrFromInt {
+        /// The operand
+        val: Expr,
+    },
     /// `String::from_code`
-    StrFromCode { val: Expr },
+    StrFromCode {
+        /// The operand
+        val: Expr,
+    },
     /// `String::to_code`
-    StrToCode { val: Expr },
+    StrToCode {
+        /// The operand
+        val: Expr,
+    },
     /// `Cloak::shield`
-    BoxShield { t: TypeRef, val: Expr },
+    BoxShield {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `Cloak::reveal`
-    BoxReveal { t: TypeRef, val: Expr },
+    BoxReveal {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `Seq::new` (Empty sequence)
-    SeqEmpty { t: TypeRef },
+    SeqEmpty {
+        /// The type operand
+        t: TypeRef,
+    },
     /// `Seq::unit` (Create singleton sequence [e])
-    SeqUnit { t: TypeRef, val: Expr },
+    SeqUnit {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `Seq::length`
-    SeqLen { t: TypeRef, seq: Expr },
+    SeqLen {
+        /// The type operand
+        t: TypeRef,
+        /// The sequence operand
+        seq: Expr,
+    },
     /// `Seq::append` (Push single element to end)
-    SeqPush { t: TypeRef, seq: Expr, item: Expr },
+    SeqPush {
+        /// The type operand
+        t: TypeRef,
+        /// The sequence operand
+        seq: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `Seq::concat` (Join two sequences)
-    SeqConcat { t: TypeRef, lhs: Expr, rhs: Expr },
+    SeqConcat {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Seq::at` (Get element at index, corresponds to `seq.nth`)
-    SeqNth { t: TypeRef, seq: Expr, idx: Expr },
+    SeqNth {
+        /// The type operand
+        t: TypeRef,
+        /// The sequence operand
+        seq: Expr,
+        /// The index operand
+        idx: Expr,
+    },
     /// `Seq::at_seq` (Get singleton sequence at index)
-    SeqAtSeq { t: TypeRef, seq: Expr, idx: Expr },
+    SeqAtSeq {
+        /// The type operand
+        t: TypeRef,
+        /// The sequence operand
+        seq: Expr,
+        /// The index operand
+        idx: Expr,
+    },
     /// `Seq::extract` (Sub-sequence, corresponds to `seq.extract`)
     SeqExtract {
+        /// The type operand
         t: TypeRef,
+        /// The sequence operand
         seq: Expr,
+        /// The offset operand
         offset: Expr,
+        /// The length operand
         len: Expr,
     },
     /// `Seq::index_of` (Find subsequence position with offset)
     SeqIndexOf {
+        /// The type operand
         t: TypeRef,
+        /// The sequence operand
         seq: Expr,
+        /// The substring operand
         sub: Expr,
+        /// The offset operand
         offset: Expr,
     },
     /// `Seq::index_of_default` (Find subsequence position from start)
-    SeqIndexOfDefault { t: TypeRef, seq: Expr, sub: Expr },
+    SeqIndexOfDefault {
+        /// The type operand
+        t: TypeRef,
+        /// The sequence operand
+        seq: Expr,
+        /// The substring operand
+        sub: Expr,
+    },
     /// `Seq::contains` (Check if sequence contains element)
-    SeqContains { t: TypeRef, seq: Expr, item: Expr },
+    SeqContains {
+        /// The type operand
+        t: TypeRef,
+        /// The sequence operand
+        seq: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `Seq::prefix_of` (Check if self is prefix of other)
-    SeqPrefixOf { t: TypeRef, lhs: Expr, rhs: Expr },
+    SeqPrefixOf {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Seq::suffix_of` (Check if self is suffix of other)
-    SeqSuffixOf { t: TypeRef, lhs: Expr, rhs: Expr },
+    SeqSuffixOf {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Seq::replace` (Replace first occurrence of element `src` with `dst`)
     SeqReplace {
+        /// The type operand
         t: TypeRef,
+        /// The sequence operand
         seq: Expr,
+        /// The source operand
         src: Expr,
+        /// The destination operand
         dst: Expr,
     },
     /// `Seq::is_empty`
-    SeqIsEmpty { t: TypeRef, seq: Expr },
+    SeqIsEmpty {
+        /// The type operand
+        t: TypeRef,
+        /// The sequence operand
+        seq: Expr,
+    },
     /// `Set::new` (Empty set)
-    SetEmpty { t: TypeRef },
+    SetEmpty {
+        /// The type operand
+        t: TypeRef,
+    },
     /// `Set::length` (Cardinality)
-    SetLen { t: TypeRef, set: Expr },
+    SetLen {
+        /// The type operand
+        t: TypeRef,
+        /// The set operand
+        set: Expr,
+    },
     /// `Set::insert` (Functional insert)
-    SetInsert { t: TypeRef, set: Expr, item: Expr },
+    SetInsert {
+        /// The type operand
+        t: TypeRef,
+        /// The set operand
+        set: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `Set::remove` (Functional remove)
-    SetRemove { t: TypeRef, set: Expr, item: Expr },
+    SetRemove {
+        /// The type operand
+        t: TypeRef,
+        /// The set operand
+        set: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `Set::contains` (Membership check)
-    SetContains { t: TypeRef, set: Expr, item: Expr },
+    SetContains {
+        /// The type operand
+        t: TypeRef,
+        /// The set operand
+        set: Expr,
+        /// The item operand
+        item: Expr,
+    },
     /// `Set::is_empty`
-    SetIsEmpty { t: TypeRef, set: Expr },
+    SetIsEmpty {
+        /// The type operand
+        t: TypeRef,
+        /// The set operand
+        set: Expr,
+    },
     /// `Set::intersection`
-    SetIntersect { t: TypeRef, lhs: Expr, rhs: Expr },
+    SetIntersect {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Set::union`
-    SetUnion { t: TypeRef, lhs: Expr, rhs: Expr },
+    SetUnion {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Set::difference` (Set minus)
-    SetDiff { t: TypeRef, lhs: Expr, rhs: Expr },
+    SetDiff {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Set::symmetric_difference`
-    SetSymDiff { t: TypeRef, lhs: Expr, rhs: Expr },
+    SetSymDiff {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Set::is_subset` (Subset or equal)
-    SetIsSubset { t: TypeRef, lhs: Expr, rhs: Expr },
+    SetIsSubset {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Set::is_proper_subset` (Strict subset)
-    SetIsProperSubset { t: TypeRef, lhs: Expr, rhs: Expr },
+    SetIsProperSubset {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Set::is_disjoint` (No common elements)
-    SetIsDisjoint { t: TypeRef, lhs: Expr, rhs: Expr },
+    SetIsDisjoint {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `Set::has_size` (Check if cardinality equals specific integer)
-    SetHasSize { t: TypeRef, set: Expr, size: Expr },
+    SetHasSize {
+        /// The type operand
+        t: TypeRef,
+        /// The set operand
+        set: Expr,
+        /// The size operand
+        size: Expr,
+    },
     /// `Array::new`
-    ArrayEmpty { k: TypeRef, v: TypeRef },
+    ArrayEmpty {
+        /// The key type operand
+        k: TypeRef,
+        /// The value type operand
+        v: TypeRef,
+    },
     /// `Array::length`
-    ArrayLen { k: TypeRef, v: TypeRef, arr: Expr },
+    ArrayLen {
+        /// The key type operand
+        k: TypeRef,
+        /// The value type operand
+        v: TypeRef,
+        /// The array operand
+        arr: Expr,
+    },
     /// `Array::store`
     ArrayStore {
+        /// The key type operand
         k: TypeRef,
+        /// The value type operand
         v: TypeRef,
+        /// The array operand
         arr: Expr,
+        /// The key operand
         key: Expr,
+        /// The value operand
         val: Expr,
     },
     /// `Array::select`
     ArraySelect {
+        /// The key type operand
         k: TypeRef,
+        /// The value type operand
         v: TypeRef,
+        /// The array operand
         arr: Expr,
+        /// The key operand
         key: Expr,
     },
     /// `Array::del`
     ArrayRemove {
+        /// The key type operand
         k: TypeRef,
+        /// The value type operand
         v: TypeRef,
+        /// The array operand
         arr: Expr,
+        /// The key operand
         key: Expr,
     },
     /// `Array::contains_key`
     ArrayContainsKey {
+        /// The key type operand
         k: TypeRef,
+        /// The value type operand
         v: TypeRef,
+        /// The array operand
         arr: Expr,
+        /// The key operand
         key: Expr,
     },
     /// `Array::is_empty`
-    ArrayIsEmpty { k: TypeRef, v: TypeRef, arr: Expr },
+    ArrayIsEmpty {
+        /// The key type operand
+        k: TypeRef,
+        /// The value type operand
+        v: TypeRef,
+        /// The array operand
+        arr: Expr,
+    },
     /// `bv_val` (Literal)
-    BvVal { t: TypeRef, val: BigInt },
+    BvVal {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: BigInt,
+    },
     /// `bv_not`
-    BvNot { t: TypeRef, val: Expr },
+    BvNot {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `bv_and`
-    BvAnd { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvAnd {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_or`
-    BvOr { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvOr {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_xor`
-    BvXor { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvXor {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_nand`
-    BvNand { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvNand {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_nor`
-    BvNor { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvNor {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_xnor`
-    BvXnor { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvXnor {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_redand`
-    BvRedAnd { t: TypeRef, val: Expr },
+    BvRedAnd {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `bv_redor`
-    BvRedOr { t: TypeRef, val: Expr },
+    BvRedOr {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `bv_neg`
-    BvNeg { t: TypeRef, val: Expr },
+    BvNeg {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `bv_add`
-    BvAdd { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvAdd {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_sub`
-    BvSub { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvSub {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_mul`
-    BvMul { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvMul {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_div` (Signed/Unsigned handled by type `t`)
-    BvDiv { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvDiv {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_rem`
-    BvRem { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvRem {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_mod`
-    BvMod { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvMod {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_shl`
-    BvShl { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvShl {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_lshr`
-    BvLshr { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvLshr {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_ashr`
-    BvAshr { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvAshr {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_rotate_left`
-    BvRotLeft { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvRotLeft {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_rotate_right`
-    BvRotRight { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvRotRight {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_lt`
-    BvLt { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvLt {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_le`
-    BvLe { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvLe {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_gt`
-    BvGt { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvGt {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `bv_ge`
-    BvGe { t: TypeRef, lhs: Expr, rhs: Expr },
+    BvGe {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `to_int`
-    BvToInt { t: TypeRef, val: Expr },
+    BvToInt {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// Literal Value
-    FloatVal { t: TypeRef, val: BigRational },
+    FloatVal {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: BigRational,
+    },
     /// `FloatOps::add`
-    FloatAdd { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatAdd {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::sub`
-    FloatSub { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatSub {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::mul`
-    FloatMul { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatMul {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::div`
-    FloatDiv { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatDiv {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::neg`
-    FloatNeg { t: TypeRef, val: Expr },
+    FloatNeg {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::abs`
-    FloatAbs { t: TypeRef, val: Expr },
+    FloatAbs {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::rem`
-    FloatRem { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatRem {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::sqrt`
-    FloatSqrt { t: TypeRef, val: Expr },
+    FloatSqrt {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::min`
-    FloatMin { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatMin {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::max`
-    FloatMax { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatMax {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::is_nan`
-    FloatIsNaN { t: TypeRef, val: Expr },
+    FloatIsNaN {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::is_infinite`
-    FloatIsInf { t: TypeRef, val: Expr },
+    FloatIsInf {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::is_zero`
-    FloatIsZero { t: TypeRef, val: Expr },
+    FloatIsZero {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::is_normal`
-    FloatIsNormal { t: TypeRef, val: Expr },
+    FloatIsNormal {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::is_subnormal`
-    FloatIsSubnormal { t: TypeRef, val: Expr },
+    FloatIsSubnormal {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::is_negative`
-    FloatIsNeg { t: TypeRef, val: Expr },
+    FloatIsNeg {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::is_positive`
-    FloatIsPos { t: TypeRef, val: Expr },
+    FloatIsPos {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::lt`
-    FloatLt { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatLt {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::le`
-    FloatLe { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatLe {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::gt`
-    FloatGt { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatGt {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::ge`
-    FloatGe { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatGe {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::nan`
-    FloatNaN { t: TypeRef },
+    FloatNaN {
+        /// The type operand
+        t: TypeRef,
+    },
     /// `FloatOps::infinity`
-    FloatPosInf { t: TypeRef },
+    FloatPosInf {
+        /// The type operand
+        t: TypeRef,
+    },
     /// `FloatOps::neg_infinity`
-    FloatNegInf { t: TypeRef },
+    FloatNegInf {
+        /// The type operand
+        t: TypeRef,
+    },
     /// `FloatOps::pos_zero`
-    FloatPosZero { t: TypeRef },
+    FloatPosZero {
+        /// The type operand
+        t: TypeRef,
+    },
     /// `FloatOps::neg_zero`
-    FloatNegZero { t: TypeRef },
+    FloatNegZero {
+        /// The type operand
+        t: TypeRef,
+    },
     /// `FloatOps::to_integer`
-    FloatToInt { t: TypeRef, val: Expr },
+    FloatToInt {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::to_real`
-    FloatToReal { t: TypeRef, val: Expr },
+    FloatToReal {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::to_u32`
-    FloatToU32 { t: TypeRef, val: Expr },
+    FloatToU32 {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::to_i32`
-    FloatToI32 { t: TypeRef, val: Expr },
+    FloatToI32 {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::to_u64`
-    FloatToU64 { t: TypeRef, val: Expr },
+    FloatToU64 {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::to_i64`
-    FloatToI64 { t: TypeRef, val: Expr },
+    FloatToI64 {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::ceil`
-    FloatCeil { t: TypeRef, val: Expr },
+    FloatCeil {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::floor`
-    FloatFloor { t: TypeRef, val: Expr },
+    FloatFloor { 
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::trunc`
-    FloatTrunc { t: TypeRef, val: Expr },
+    FloatTrunc {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::nearest`
-    FloatNearest { t: TypeRef, val: Expr },
+    FloatNearest {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `FloatOps::fq_eq`
-    FloatFqEq { t: TypeRef, lhs: Expr, rhs: Expr },
+    FloatFqEq { 
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `FloatOps::from_hex_str`
-    FloatFromHexStr { t: TypeRef, val: Expr },
+    FloatFromHexStr {
+        /// The type operand
+        t: TypeRef,
+        /// The value operand
+        val: Expr,
+    },
     /// `Error::fresh`
     ErrFresh,
     /// `Error::merge`
-    ErrMerge { lhs: Expr, rhs: Expr },
+    ErrMerge {
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `<any-smt-type>::eq`
-    SmtEq { t: TypeRef, lhs: Expr, rhs: Expr },
+    SmtEq {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
     /// `<any-smt-type>::ne`
-    SmtNe { t: TypeRef, lhs: Expr, rhs: Expr },
+    SmtNe {
+        /// The type operand
+        t: TypeRef,
+        /// The left operand
+        lhs: Expr,
+        /// The right operand
+        rhs: Expr,
+    },
 }
 
 // mk1!(BoolNot, ty_args, args) //no type arguments expected for this function.
@@ -679,98 +1652,114 @@ impl Intrinsic {
     }
 
     /// Convert an expression to a literal
-    pub fn parse_literal_into(receiver: &Exp) -> Result<(Self, TypeRef)> {
+    /// Convert a literal expression into an intrinsic based on the expected type.
+    /// The expected type (from context) determines what type the literal is converted to.
+    /// For example, `5.into()` where the expected type is I32 produces BvVal(5, I32).
+    pub fn parse_literal_into(receiver: &Exp, exp_ty: &TypeRef) -> Result<(Self, TypeRef)> {
         let (intrinsic, ty) = match receiver {
-            // A literal in place of an expression: `1`, `"foo"`.
             Exp::Lit(expr_lit) => {
                 let ExprLit { attrs: _, lit } = expr_lit;
-                match lit {
-                    Lit::Bool(val) => (Self::BoolVal(val.value), TypeRef::Boolean),
-                    Lit::Str(val) => (Self::StrVal(val.value()), TypeRef::String),
-                    Lit::Int(val) => {
-                        // Extract value string (digits) and suffix (type)
+                match (lit, exp_ty) {
+                    // Boolean literal → Boolean
+                    (Lit::Bool(val), TypeRef::Boolean) => {
+                        (Self::BoolVal(val.value), TypeRef::Boolean)
+                    }
+                    // String literal → String
+                    (Lit::Str(val), TypeRef::String) => {
+                        (Self::StrVal(val.value()), TypeRef::String)
+                    }
+                    // Integer literal → target type determined by exp_ty
+                    (Lit::Int(val), target_ty) => {
                         let raw_digits = val.base10_digits();
-                        let suffix = val.suffix();
-
-                        // Parse the number into BigInt
                         let big_int = match raw_digits.parse::<BigInt>() {
                             Ok(v) => v,
                             Err(_) => bail_on!(val, "unable to parse literal integer"),
                         };
-
-                        // Decide TypeRef based on suffix
-                        match suffix {
-                            "" => (Self::IntVal(big_int), TypeRef::Integer),
-                            "u32" => (
-                                Self::BvVal {
-                                    t: TypeRef::U32,
-                                    val: big_int,
-                                },
-                                TypeRef::U32,
-                            ),
-                            "u64" => (
-                                Self::BvVal {
-                                    t: TypeRef::U64,
-                                    val: big_int,
-                                },
-                                TypeRef::U64,
-                            ),
-                            "i32" => (
+                        match target_ty {
+                            TypeRef::Integer => (Self::IntVal(big_int), TypeRef::Integer),
+                            TypeRef::I32 => (
                                 Self::BvVal {
                                     t: TypeRef::I32,
                                     val: big_int,
                                 },
                                 TypeRef::I32,
                             ),
-                            "i64" => (
+                            TypeRef::I64 => (
                                 Self::BvVal {
                                     t: TypeRef::I64,
                                     val: big_int,
                                 },
                                 TypeRef::I64,
                             ),
-                            // otherwise bail
-                            _ => bail_on!(val, "unsupported integer suffix: '{}'", suffix),
+                            TypeRef::U32 => (
+                                Self::BvVal {
+                                    t: TypeRef::U32,
+                                    val: big_int,
+                                },
+                                TypeRef::U32,
+                            ),
+                            TypeRef::U64 => (
+                                Self::BvVal {
+                                    t: TypeRef::U64,
+                                    val: big_int,
+                                },
+                                TypeRef::U64,
+                            ),
+                            TypeRef::Real => (
+                                Self::RealVal(BigRational::from_integer(big_int)),
+                                TypeRef::Real,
+                            ),
+                            TypeRef::F32 => (
+                                Self::FloatVal {
+                                    t: TypeRef::F32,
+                                    val: BigRational::from_integer(big_int),
+                                },
+                                TypeRef::F32,
+                            ),
+                            TypeRef::F64 => (
+                                Self::FloatVal {
+                                    t: TypeRef::F64,
+                                    val: BigRational::from_integer(big_int),
+                                },
+                                TypeRef::F64,
+                            ),
+                            _ => bail_on!(val, "cannot convert integer literal to {}", target_ty),
                         }
                     }
-                    Lit::Float(val) => {
-                        // Extract value string and suffix
+                    // Float literal → target type determined by exp_ty
+                    (Lit::Float(val), target_ty) => {
                         let raw_digits = val.base10_digits();
-                        let suffix = val.suffix();
-
-                        // Parse into BigRational (Standard for SMT Reals)
                         let big_rat = match raw_digits.parse::<BigRational>() {
                             Ok(v) => v,
-                            // Fallback: try parsing as f64 then converting if BigRational string parse fails
                             Err(_) => match raw_digits.parse::<f64>() {
                                 Ok(f) => BigRational::from_float(f)
                                     .unwrap_or_else(|| BigRational::from_float(0.0).unwrap()),
                                 Err(_) => bail_on!(val, "unable to parse literal float"),
                             },
                         };
-
-                        match suffix {
-                            "" => (Self::RealVal(big_rat), TypeRef::Real),
-                            "f32" => (
+                        match target_ty {
+                            TypeRef::Real => (Self::RealVal(big_rat), TypeRef::Real),
+                            TypeRef::F32 => (
                                 Self::FloatVal {
                                     t: TypeRef::F32,
                                     val: big_rat,
                                 },
                                 TypeRef::F32,
                             ),
-                            "f64" => (
+                            TypeRef::F64 => (
                                 Self::FloatVal {
                                     t: TypeRef::F64,
                                     val: big_rat,
                                 },
                                 TypeRef::F64,
                             ),
-                            _ => bail_on!(val, "unsupported float suffix: '{}'", suffix),
+                            _ => bail_on!(val, "unsupported float"),
                         }
                     }
                     _ => bail_on!(
                         lit,
-                        "not an expected literal type (char, byte, etc. not supported)"
+                        "literal type incompatible with expected type {}",
+                        exp_ty
                     ),
                 }
             }
@@ -780,6 +1769,7 @@ impl Intrinsic {
         Ok((intrinsic, ty))
     }
 
+    /// Create a new intrinsic function call
     pub fn new(
         ty_name: &SysTypeName,
         fn_name: &UsrFuncName,

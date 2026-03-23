@@ -20,6 +20,7 @@ use syn::{
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub enum SysTrait {
+    /// The SMT trait.
     SMT,
 }
 
@@ -107,6 +108,7 @@ impl SysTrait {
 /// For a simple type, the vector of type parameters is empty
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct Generics {
+    /// The vector of type parameters.
     pub params: Vec<TypeParamName>,
 }
 
@@ -344,7 +346,7 @@ impl GenericsInstFull {
         let rev: BTreeMap<_, _> = self
             .args
             .iter()
-            .map(|(_, (i, t))| (*i, t.clone()))
+            .map(|(_tp_name, (i, t))| (*i, t.clone()))
             .collect();
         rev.into_values().collect()
     }
@@ -366,11 +368,17 @@ impl GenericsInstFull {
 
     /// Merge two generics into one
     pub fn merge(&self, other: &Self) -> Option<Self> {
+        let offset = self.args.len();
         let args: BTreeMap<_, _> = self
             .args
             .iter()
-            .chain(&other.args)
-            .map(|(name, (idx, ty))| (name.clone(), (*idx + self.args.len(), ty.clone())))
+            .map(|(name, (idx, ty))| (name.clone(), (*idx, ty.clone())))
+            .chain(
+                other
+                    .args
+                    .iter()
+                    .map(|(name, (idx, ty))| (name.clone(), (idx + offset, ty.clone()))),
+            )
             .collect();
 
         // should not have conflicting type parameter names

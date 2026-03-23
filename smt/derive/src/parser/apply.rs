@@ -1,12 +1,12 @@
 //! This module defines the `ApplyDatabase` struct, which is used to store function signatures and their types.
 
-use crate::parser::expr::{CtxtForExpr, Expr, Op};
+use crate::parser::expr::{Expr, Op};
 use crate::parser::func::FuncSig;
 use crate::parser::generics::{Generics, GenericsInstFull, GenericsInstPartial};
 use crate::parser::infer::{TIError, TypeRef, TypeUnifier};
 use crate::parser::intrinsics::Intrinsic;
 use crate::parser::name::{TypeParamName, UsrFuncName};
-use crate::parser::ty::{SysTypeName, TypeName, TypeTag};
+use crate::parser::ty::{SysTypeName, TypeTag};
 use anyhow::{Result, bail};
 use std::collections::BTreeMap;
 
@@ -412,45 +412,34 @@ impl ApplyDatabase {
     }
 
     /// Queries for a function with type inference, given a function name and arguments.
-    pub fn query_with_inference<T: CtxtForExpr>(
+    pub fn query_with_inference(
         &self,
         unifier: &mut TypeUnifier,
-        ctxt: &T,
         name: &UsrFuncName,
         inst: Option<&[TypeTag]>,
         args: Vec<Expr>,
         rval: &TypeRef,
     ) -> Result<Op> {
-        // Collect candidate functions matching the name and kind.
-        let mut candidates = vec![];
-        // first look at methods defined on the system types.
-        match self.on_sys_type.get(name) {
-            None => (),
-            Some(options) => candidates.extend(options.iter().map(|(n, t)| (TypeName::Sys(*n), t))),
-        }
+        // Collect candidate intrinsic functions (defined on system types) matching the name.
+        let candidates: Vec<(&SysTypeName, &TypeFn)> = self
+            .on_sys_type
+            .get(name)
+            .map(|options| options.iter().collect())
+            .unwrap_or_default();
 
         // Variable to hold a suitable candidate if found.
         let mut suitable = None;
-        // ty_name is the type the method is defined on
+        // sys_name is the system type the method is defined on
         // fty is the function signature
-        for (ty_name, fty) in candidates {
+        for (sys_name, fty) in candidates {
             // Early filter by number of parameters.
             // the length of the parameters of the function signature should be the same as the length of the arguments. If they are not the same, we move to the next candidate.
             if fty.params.len() != args.len() {
                 continue;
             }
 
-            // Instantiate type parameters for the type name.
-            // ty_inst is the generics of the type the method is defined on.
-            let ty_inst = match &ty_name {
-                TypeName::Sys(sys_name) => {
-                    GenericsInstPartial::new_without_args(&sys_name.generics())
-                }
-                TypeName::Usr(usr_name) => GenericsInstPartial::new_without_args(
-                    ctxt.get_type_generics(usr_name).expect("user-defined type"),
-                ),
-                TypeName::Param(_) => panic!("unexpected type parameter in type name"),
-            };
+            // Instantiate type parameters for the system type the method is defined on.
+            let ty_inst = GenericsInstPartial::new_without_args(&sys_name.generics());
             // Instantiate function generics, possibly using provided type arguments.
             // fn_inst is the generics of the function signature.
             let fn_inst = match inst {
@@ -517,11 +506,11 @@ impl ApplyDatabase {
             if suitable.is_some() {
                 bail!("more than one candidate match the method call");
             }
-            suitable = Some((ty_name, probing, inst_full)); // Store the suitable candidate.
+            suitable = Some((*sys_name, probing, inst_full)); // Store the suitable candidate.
         }
 
         // Ensure a suitable function was found.
-        let (ty_name, probing, inst_full) = match suitable {
+        let (sys_name, probing, inst_full) = match suitable {
             None => bail!("no candidates matches the method call"),
             Some(matched) => matched,
         };
@@ -529,26 +518,14 @@ impl ApplyDatabase {
         // Update the main unifier with the successful unification.
         *unifier = probing;
 
-        // Construct the operation to represent the function call.
-        let op = match ty_name {
-            TypeName::Sys(sys_name) => {
-                // Extract type arguments from the type's generics (not function's generics)
-                // For intrinsic functions on generic types, type parameters come from the type
-                let ty_generics = sys_name.generics();
-                let ty_args = match inst_full.vec_for_generics(&ty_generics) {
-                    None => bail!("missing type parameter in instantiation"),
-                    Some(args) => args,
-                };
-                let intrinsic = Intrinsic::new(&sys_name, name, ty_args, args)?;
-                Op::Intrinsic(Box::new(intrinsic))
-            }
-            TypeName::Usr(_) => Op::Procedure {
-                name: name.clone(),
-                inst: inst_full.vec(),
-                args,
-            },
-            TypeName::Param(_) => panic!("unexpected type parameter in type name"),
+        // Extract type arguments from the type's generics (not function's generics).
+        // For intrinsic functions on generic types, type parameters come from the type.
+        let ty_generics = sys_name.generics();
+        let ty_args = match inst_full.vec_for_generics(&ty_generics) {
+            None => bail!("missing type parameter in instantiation"),
+            Some(args) => args,
         };
-        Ok(op) // Return the operation.
+        let intrinsic = Intrinsic::new(&sys_name, name, ty_args, args)?;
+        Ok(Op::Intrinsic(Box::new(intrinsic)))
     }
 }

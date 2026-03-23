@@ -109,15 +109,32 @@ impl String {
     }
 
     /// `(str.to_int s)`
+    /// Z3's str.to_int only handles non-negative decimal integers.
+    /// Returns -1 for any string that is not a non-negative integer (including negative numbers).
     pub fn to_int(self) -> Integer {
-        Integer {
-            inner: Intern::new(self.inner.parse::<BigInt>().unwrap()),
+        // Z3 semantics: only parse non-negative decimal digit strings.
+        // If the string contains non-digit characters (including '-'), return -1.
+        let s = self.inner.as_ref();
+        if s.is_empty() || !s.chars().all(|c| c.is_ascii_digit()) {
+            Integer {
+                inner: Intern::new(BigInt::from(-1)),
+            }
+        } else {
+            Integer {
+                inner: Intern::new(s.parse::<BigInt>().unwrap()),
+            }
         }
     }
 
     /// `(str.from_int i)`
+    /// Z3's str.from_int returns "" for negative integers.
     pub fn from_int(i: Integer) -> Self {
-        Self::from(i.inner.to_string())
+        use num_traits::Signed;
+        if i.inner.is_negative() {
+            Self::from("")
+        } else {
+            Self::from(i.inner.to_string())
+        }
     }
 
     /// Lexicographical less than or equal to

@@ -168,6 +168,7 @@ macro_rules! name {
         $(#[$meta])*
         #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Debug)]
         pub struct $name {
+            /// The identifier of the name.
             pub ident: String,
         }
 

@@ -26,6 +26,19 @@ pub(crate) trait CodeGen {
 
     /// Invokes the backend solver with the given source code file.
     fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response>;
+
+    /// For a given `error_id`, generate per-function SMT-LIB query strings.
+    ///
+    /// Returns a list of `(function_name, query_code)` pairs.  Each pair targets
+    /// a function that **directly** contains `Error::fresh()` calls for `error_id`.
+    /// The `query_code` extends `base_code` with fresh input constants, an error
+    /// assertion, `(check-sat)`, and `(get-model)`.
+    fn process_error_queries(
+        &self,
+        base_code: &str,
+        ir: &IRContext,
+        error_id: usize,
+    ) -> Vec<(String, String)>;
 }
 
 /// A utility for source code builder

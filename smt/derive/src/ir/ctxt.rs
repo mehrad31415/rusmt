@@ -18,6 +18,9 @@ pub struct IRContext {
     /// function registry (lookup, signature, definition). The lookup is a map from user-defined functions to a map from list of parameter types to function id.
     /// The signature is a map from function id to function signature. The definition is a map from function id to function body.
     pub fn_registry: FunRegistry,
+    /// Total number of unique Error IDs generated via `Error::fresh()` across all functions.
+    /// Each call to `Error::fresh()` is assigned the next available integer (starting from 0).
+    pub error_count: usize,
 }
 
 impl IRContext {
@@ -28,12 +31,14 @@ impl IRContext {
             undef_sorts: BTreeSet::new(),
             ty_registry: TypeRegistry::new(),
             fn_registry: FunRegistry::new(),
+            error_count: 0,
         }
     }
 }
 
 /// IRBuilder is responsible for constructing the IR by integrating information from the AST from parser.
 pub struct IRBuilder<'a, 'ctx: 'a> {
+    /// the context with function
     pub ctxt: &'ctx ContextWithFunc,
     /// type instantiation in the current context (current mapping from type parameter names to IR-level sorts.)
     pub ty_inst: BTreeMap<TypeParamName, Sort>,

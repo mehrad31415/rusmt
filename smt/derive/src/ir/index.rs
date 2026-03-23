@@ -4,6 +4,7 @@ macro_rules! index {
         $(#[$meta])*
         #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
         pub struct $name {
+            /// The index of the index
             pub index: usize,
         }
 

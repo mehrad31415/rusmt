@@ -10,15 +10,18 @@ use crate::backend::response::Response;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::resolve_function_name;
 use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str};
+use crate::backend::z3::intrinsics::array_null_const_name;
 use crate::backend::z3::ty::get_generic_param_count;
 use crate::backend::z3::ty::{collect_type_edges, resolve_type_name, scc_from_edges};
 use crate::backend::z3::ty::{
     mk_enum_str, mk_named_tuple_str, mk_record_str, mk_unnamed_tuple_str,
 };
+use crate::backend::z3::fun::format_sort_for_fn;
 use crate::ir::ctxt::IRContext;
+use crate::ir::exp::Expression;
 use crate::ir::fun::{FunDef, FunSig};
 use crate::ir::index::{UsrFunId, UsrSortId};
-use crate::ir::sort::{DataType, Sort};
+use crate::ir::sort::{DataType, Sort, Variant};
 use command_group::CommandGroup;
 use log::{debug, warn};
 use std::collections::HashMap;
@@ -59,6 +62,7 @@ impl CodeGen for CodeGenZ3 {
             undef_sorts,
             ty_registry,
             fn_registry,
+            error_count: _,
         } = ir;
 
         // disable success messages
@@ -281,17 +285,144 @@ impl CodeGen for CodeGenZ3 {
             l!(x); // Empty line after types
         }
 
+        // Declare null sentinel constants for every concrete user-defined sort.
+        // Z3's @default is an output-only symbol (not valid input) for user-defined datatypes,
+        // so ArrayEmpty / ArrayRemove / ArrayContainsKey use these symbolic constants instead.
+        // Must appear BEFORE function definitions since function bodies may reference them.
+        // Skip abstract/polymorphic sorts (those whose SMT names include uninterpreted sorts).
+        {
+            let mut declared_null_names: HashSet<String> = HashSet::new();
+            let mut null_decls: Vec<(String, String)> = Vec::new();
+            for sid in ty_registry.data_types().keys() {
+                let (_, type_args) = ty_registry.reverse_lookup(*sid);
+                // Skip abstract instantiations (those with uninterpreted sort arguments)
+                if type_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))) {
+                    continue;
+                }
+                let v_sort = Sort::User(*sid);
+                let const_name = array_null_const_name(&v_sort, ir);
+                if declared_null_names.insert(const_name.clone()) {
+                    let sort_str = format_sort_for_fn(&v_sort, ir);
+                    null_decls.push((const_name, sort_str));
+                }
+            }
+            if !null_decls.is_empty() {
+                l!(x, "; Null sentinel constants for array default values");
+                for (const_name, sort_str) in null_decls {
+                    l!(x, "(declare-const {} {})", const_name, sort_str);
+                }
+                l!(x);
+            }
+        }
+
+        // Integer string parsing helpers (hex / octal / binary).
+        // Z3's built-in str.to_int only handles decimal; these define-fun-rec helpers
+        // implement the correct base conversions.  They must be emitted BEFORE any
+        // user-defined function that calls rusmart_from_hex/oct/bin_str.
+        l!(x, "; Integer string parsing helpers");
+        // --- hex ---
+        l!(x, "(define-fun rusmart_hex_char_to_int ((s String)) Int");
+        l!(x, "\t(ite (and (str.<= \"0\" s) (str.<= s \"9\")) (- (str.to_code s) 48)");
+        l!(x, "\t(ite (and (str.<= \"A\" s) (str.<= s \"F\")) (- (str.to_code s) 55)");
+        l!(x, "\t(ite (and (str.<= \"a\" s) (str.<= s \"f\")) (- (str.to_code s) 87)");
+        l!(x, "\t0))))");
+        l!(x);
+        l!(x, "(define-fun-rec rusmart_from_hex_str_impl ((s String) (acc Int)) Int");
+        l!(x, "\t(ite (= (str.len s) 0)");
+        l!(x, "\t\tacc");
+        l!(x, "\t\t(rusmart_from_hex_str_impl");
+        l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
+        l!(x, "\t\t\t(+ (* acc 16) (rusmart_hex_char_to_int (str.at s 0))))))");
+        l!(x);
+        l!(
+            x,
+            "(define-fun rusmart_from_hex_str ((s String)) Int (rusmart_from_hex_str_impl s 0))"
+        );
+        l!(x);
+        // --- octal ---
+        l!(x, "(define-fun rusmart_oct_char_to_int ((s String)) Int");
+        l!(x, "\t(ite (and (str.<= \"0\" s) (str.<= s \"7\")) (- (str.to_code s) 48) 0))");
+        l!(x);
+        l!(x, "(define-fun-rec rusmart_from_oct_str_impl ((s String) (acc Int)) Int");
+        l!(x, "\t(ite (= (str.len s) 0)");
+        l!(x, "\t\tacc");
+        l!(x, "\t\t(rusmart_from_oct_str_impl");
+        l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
+        l!(x, "\t\t\t(+ (* acc 8) (rusmart_oct_char_to_int (str.at s 0))))))");
+        l!(x);
+        l!(
+            x,
+            "(define-fun rusmart_from_oct_str ((s String)) Int (rusmart_from_oct_str_impl s 0))"
+        );
+        l!(x);
+        // --- binary ---
+        l!(x, "(define-fun-rec rusmart_from_bin_str_impl ((s String) (acc Int)) Int");
+        l!(x, "\t(ite (= (str.len s) 0)");
+        l!(x, "\t\tacc");
+        l!(x, "\t\t(rusmart_from_bin_str_impl");
+        l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
+        l!(x, "\t\t\t(+ (* acc 2) (ite (= (str.at s 0) \"1\") 1 0)))))");
+        l!(x);
+        l!(
+            x,
+            "(define-fun rusmart_from_bin_str ((s String)) Int (rusmart_from_bin_str_impl s 0))"
+        );
+        l!(x);
+
         // Function registry
         if !fn_registry.lookup.is_empty() {
             l!(x, "; Define user-defined functions");
 
+            // Detect IterChoose functions (those whose root body is IterChoose).
+            // These use Hilbert choice semantics which can't be expressed as a define-fun
+            // body in standard SMT-LIB2. Instead we generate them as uninterpreted
+            // declare-fun declarations so callers can reference them with the right types.
+            let mut choose_fids: BTreeSet<UsrFunId> = BTreeSet::new();
+            for (_, instantiations) in &fn_registry.lookup {
+                for (_, &fid) in instantiations {
+                    let FunDef::Defined(exp_registry, root_exp_id) =
+                        fn_registry.retrieve_def(fid);
+                    let root_exp = exp_registry.lookup_exp(root_exp_id);
+                    if matches!(root_exp, Expression::IterChoose { .. }) {
+                        choose_fids.insert(fid);
+                    }
+                }
+            }
+
+            // Emit choose functions as uninterpreted declare-fun BEFORE define-funs-rec
+            // so they are available when called from within the recursive block.
+            if !choose_fids.is_empty() {
+                l!(x, "; Uninterpreted functions (Hilbert choice / epsilon semantics)");
+                let mut sorted_choose: Vec<UsrFunId> = choose_fids.iter().copied().collect();
+                sorted_choose.sort();
+                for fid in &sorted_choose {
+                    let (function_name, _type_params) = resolve_function_name(ir, *fid);
+                    let sig = fn_registry.retrieve_sig(*fid);
+                    let param_list: Vec<String> = sig
+                        .params
+                        .iter()
+                        .map(|(_, sort)| format_sort_for_fn(sort, ir))
+                        .collect();
+                    let ret_sort = format_sort_for_fn(&sig.ret_ty, ir);
+                    l!(
+                        x,
+                        "(declare-fun {} ({}) {})",
+                        function_name,
+                        param_list.join(" "),
+                        ret_sort
+                    );
+                }
+                l!(x);
+            }
+
             let edges = collect_function_call_edges(fn_registry);
 
-            // Get all function IDs
+            // Get all function IDs, excluding choose functions (already declared above)
             let all_ids: BTreeSet<_> = fn_registry
                 .lookup
                 .values()
                 .flat_map(|insts| insts.iter().map(|(_, fn_id)| *fn_id))
+                .filter(|fid| !choose_fids.contains(fid))
                 .collect();
 
             // Group functions that have dependencies on each other
@@ -392,8 +523,12 @@ impl CodeGen for CodeGenZ3 {
 
     /// Execute the backend solver on the generated SMTLIB2 file.
     fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response> {
+        // Pass Z3's own timeout flag so Z3 self-terminates even if the parent process dies.
+        // Z3 -t:N sets the timeout in milliseconds; on expiry Z3 outputs "unknown" and exits 0.
+        let timeout_ms = BACKEND_TIMEOUT.as_millis();
         let mut cmd = Command::new("z3");
         cmd.arg("-smt2")
+            .arg(format!("-t:{}", timeout_ms))
             .arg(&path_src)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -454,6 +589,10 @@ impl CodeGen for CodeGenZ3 {
             BackendError
         })?;
 
+        // Capture elapsed time here. `start` is Instant (Copy), so it was copied into the
+        // monitor_thread closure above; the original is still valid in this scope.
+        let elapsed = start.elapsed();
+
         // Get the outputs from the reader threads
         let output = stdout_thread.join().map_err(|_| {
             warn!("Stdout thread panicked");
@@ -472,13 +611,47 @@ impl CodeGen for CodeGenZ3 {
         // Interpret the output
         let response = match status {
             None => {
+                // Rust monitor killed Z3 (backup path: Z3 didn't respect its own -t:N flag).
                 if !output.is_empty() {
                     warn!("Output received from timeout execution: {}", output);
                 }
                 Response::Timeout
             }
             Some(exit_status) => {
-                if !exit_status.success() {
+                // Z3 may print extra lines after the primary result (e.g. "(error "model is not
+                // available")" on stdout when (get-model) follows an "unknown" check-sat).
+                // Use the first line as the canonical result.
+                let first_line = output.lines().next().unwrap_or("").trim();
+
+                // Interpret the primary result from the first output line.
+                // Always use output content over exit code: Z3 can exit non-zero for benign
+                // reasons (e.g., (get-model) after "unknown" gives exit 1; model generation
+                // segfaults give exit 139 after printing "sat").
+                if first_line == "unknown" {
+                    // Z3 times out (via -t:N) or genuinely can't decide.
+                    // Use elapsed time to distinguish a Z3 self-timeout from a genuine unknown.
+                    if elapsed >= BACKEND_TIMEOUT {
+                        Response::Timeout
+                    } else {
+                        Response::Unknown
+                    }
+                } else if first_line == "unsat" {
+                    Response::Unsat
+                } else if first_line.starts_with("sat") {
+                    if !exit_status.success() {
+                        // Z3 found sat but crashed during model output (e.g. segfault in get-model).
+                        // The "sat" result is still valid; we just won't have a full model.
+                        warn!(
+                            "Z3 exited with status {} after reporting sat (model may be incomplete)",
+                            exit_status
+                        );
+                    }
+                    Response::Sat(output)
+                } else if first_line.is_empty() {
+                    warn!("Z3 returned empty output (likely only declarations, no queries)");
+                    Response::Unknown
+                } else {
+                    // Completely unrecognized output — this is a real failure.
                     warn!("Backend execution failed with status: {}", exit_status);
                     if !output.is_empty() {
                         warn!("Stdout: {}", output);
@@ -488,25 +661,140 @@ impl CodeGen for CodeGenZ3 {
                     }
                     return Err(BackendError);
                 }
-
-                let trimmed = output.trim();
-
-                if trimmed == "unknown" {
-                    Response::Unknown
-                } else if trimmed == "unsat" {
-                    Response::Unsat
-                } else if trimmed.starts_with("sat") {
-                    Response::Sat(output)
-                } else if trimmed.is_empty() {
-                    warn!("Z3 returned empty output (likely only declarations, no queries)");
-                    Response::Unknown
-                } else {
-                    warn!("Invalid Z3 response: {}", trimmed);
-                    return Err(BackendError);
-                }
             }
         };
 
         Ok(response)
+    }
+
+    fn process_error_queries(
+        &self,
+        base_code: &str,
+        ir: &IRContext,
+        error_id: usize,
+    ) -> Vec<(String, String)> {
+        let mut results = Vec::new();
+
+        for (fn_name, instantiations) in &ir.fn_registry.lookup {
+            for (ty_args, fn_id) in instantiations {
+                // Skip polymorphic abstract instantiations (those with uninterpreted sorts).
+                // Concrete functions (ty_args empty or all concrete sorts) are queryable.
+                if ty_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))) {
+                    continue;
+                }
+
+                let FunDef::Defined(exp_registry, root_exp_id) =
+                    ir.fn_registry.retrieve_def(*fn_id);
+
+                // Only query functions that directly contain this error ID.
+                if !exp_registry.collect_error_ids(root_exp_id).contains(&error_id) {
+                    continue;
+                }
+
+                let sig = ir.fn_registry.retrieve_sig(*fn_id);
+                let smt_fn_name = fn_name.to_string();
+
+                // Declare fresh SMT constants for each function parameter.
+                let mut query = base_code.to_string();
+                let mut param_vars: Vec<String> = Vec::new();
+                for (i, (_, param_sort)) in sig.params.iter().enumerate() {
+                    let var_name = format!("input_{}_{}", fn_name, i);
+                    let sort_str = format_sort_for_fn(param_sort, ir);
+                    query.push_str(&format!("(declare-const {} {})\n", var_name, sort_str));
+                    param_vars.push(var_name);
+                }
+
+                // Build the call expression: either bare name or applied to inputs.
+                let call_expr = if param_vars.is_empty() {
+                    smt_fn_name.clone()
+                } else {
+                    format!("({} {})", smt_fn_name, param_vars.join(" "))
+                };
+
+                // Build an assertion that the call result contains error_id.
+                if let Some(assertion) =
+                    extract_error_assertion(&sig.ret_ty, &call_expr, error_id, ir)
+                {
+                    query.push_str(&format!(
+                        "; Query: find input triggering error ID {} in function {}\n",
+                        error_id, fn_name
+                    ));
+                    query.push_str(&format!("(assert {})\n", assertion));
+                    query.push_str("(check-sat)\n");
+                    query.push_str("(get-model)\n");
+                    results.push((fn_name.to_string(), query));
+                }
+            }
+        }
+
+        results
+    }
+}
+
+/// Given the return sort of a function and an SMT expression representing its result,
+/// build an SMT-LIB assertion that "the result contains `error_id`".
+///
+/// Returns `None` if the sort does not (directly) contain an `Error` value.
+fn extract_error_assertion(
+    ret_sort: &Sort,
+    call_expr: &str,
+    error_id: usize,
+    ir: &IRContext,
+) -> Option<String> {
+    match ret_sort {
+        // Function directly returns Error — straightforward containment check.
+        Sort::Error => Some(format!("(err-contains {} {})", call_expr, error_id)),
+
+        // Function returns a user-defined type — search enum variants for an Error field.
+        Sort::User(sid) => {
+            let dt = ir.ty_registry.retrieve(*sid);
+            let type_name = resolve_type_name(ir, *sid);
+            match dt {
+                DataType::Enum(variants) => {
+                    let mut assertions: Vec<String> = Vec::new();
+                    for (vname, vdef) in variants {
+                        match vdef {
+                            Variant::Tuple(slots) => {
+                                for (i, slot_sort) in slots.iter().enumerate() {
+                                    if *slot_sort == Sort::Error {
+                                        let tester = format!("is-{}", vname);
+                                        let accessor =
+                                            format!("field_{}_{}_{}_", type_name, vname, i + 1);
+                                        assertions.push(format!(
+                                            "(and ({} {}) (err-contains ({} {}) {}))",
+                                            tester, call_expr, accessor, call_expr, error_id
+                                        ));
+                                    }
+                                }
+                            }
+                            Variant::Record(fields) => {
+                                for (field_key, field_sort) in fields {
+                                    if *field_sort == Sort::Error {
+                                        let tester = format!("is-{}", vname);
+                                        let accessor = format!(
+                                            "record_{}_{}_{}_",
+                                            type_name, vname, field_key
+                                        );
+                                        assertions.push(format!(
+                                            "(and ({} {}) (err-contains ({} {}) {}))",
+                                            tester, call_expr, accessor, call_expr, error_id
+                                        ));
+                                    }
+                                }
+                            }
+                            Variant::Unit => {}
+                        }
+                    }
+                    match assertions.len() {
+                        0 => None,
+                        1 => Some(assertions.remove(0)),
+                        _ => Some(format!("(or {})", assertions.join(" "))),
+                    }
+                }
+                _ => None,
+            }
+        }
+
+        _ => None,
     }
 }

@@ -69,21 +69,32 @@ impl Real {
         }
     }
 
-    /// Rounds the real number to the nearest integer.
+    /// Rounds to the nearest integer; ties toward +∞ (i.e. floor(x + 0.5)).
+    ///
+    /// Corresponds to Z3: `(to_int (+ x (/ 1.0 2.0)))`
+    ///
+    /// Note: This is NOT "ties away from zero" — negative half-integers round toward zero.
+    /// Example: round(-2.5) = -2 (not -3), round(2.5) = 3.
     pub fn round(self) -> Integer {
+        // floor(x + 0.5) matches Z3's (to_int (+ x 0.5))
+        let half = BigRational::new(BigInt::from(1), BigInt::from(2));
         Integer {
-            inner: Intern::new(self.inner.as_ref().round().to_integer()),
+            inner: Intern::new((self.inner.as_ref() + &half).floor().to_integer()),
         }
     }
 
-    /// Floors the real number to the nearest integer less than or equal to the number.
+    /// Floors the real number to the nearest integer ≤ x (rounds toward −∞).
+    ///
+    /// Corresponds to Z3: `(to_int x)`
     pub fn floor(self) -> Integer {
         Integer {
             inner: Intern::new(self.inner.as_ref().floor().to_integer()),
         }
     }
 
-    /// Ceils the real number to the nearest integer greater than or equal to the number.
+    /// Ceils the real number to the nearest integer ≥ x (rounds toward +∞).
+    ///
+    /// Corresponds to Z3: `(- (to_int (- x)))`
     pub fn ceil(self) -> Integer {
         Integer {
             inner: Intern::new(self.inner.as_ref().ceil().to_integer()),
@@ -115,11 +126,14 @@ impl Real {
         (self.inner.as_ref() >= rhs.inner.as_ref()).into()
     }
 
-    /// converts a Real to an Integer
-    /// (to_int x)
+    /// Converts a Real to an Integer by rounding toward −∞ (floor).
+    ///
+    /// Corresponds to Z3: `(to_int x)` — Z3's `to_int` on Real is floor, not truncation.
+    /// Example: to_int(-1.5) = -2 (not -1).
     pub fn to_int(self) -> Integer {
+        // BigRational::to_integer() truncates toward zero; we need floor.
         Integer {
-            inner: Intern::new(self.inner.to_integer()),
+            inner: Intern::new(self.inner.as_ref().floor().to_integer()),
         }
     }
 

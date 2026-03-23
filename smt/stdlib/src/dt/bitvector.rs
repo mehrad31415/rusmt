@@ -157,14 +157,23 @@ impl BitvectorOps for I32 {
     }
 
     fn bv_shl(self, rhs: Self) -> Self {
+        // Treat shift amount as the unsigned bit-pattern of the BV.
+        // Z3's bvshl returns 0 when shift >= bit-width; wrapping_shl would wrap instead.
         let shift_amt = *rhs.inner as u32;
+        if shift_amt >= 32 {
+            return Self { inner: Intern::new(0i32) };
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_shl(shift_amt)),
         }
     }
 
     fn bv_lshr(self, rhs: Self) -> Self {
+        // Z3's bvlshr returns 0 when shift >= bit-width.
         let shift_amt = *rhs.inner as u32;
+        if shift_amt >= 32 {
+            return Self { inner: Intern::new(0i32) };
+        }
         let unsigned_val = *self.inner as u32;
         Self {
             inner: Intern::new(unsigned_val.wrapping_shr(shift_amt) as i32),
@@ -172,9 +181,12 @@ impl BitvectorOps for I32 {
     }
 
     fn bv_ashr(self, rhs: Self) -> Self {
+        // Z3's bvashr with shift >= bit-width fills with the sign bit.
+        // Shifting by 31 propagates the sign bit to all positions.
         let shift_amt = *rhs.inner as u32;
+        let shift = if shift_amt >= 32 { 31 } else { shift_amt };
         Self {
-            inner: Intern::new(self.inner.wrapping_shr(shift_amt)),
+            inner: Intern::new(self.inner.wrapping_shr(shift)),
         }
     }
 
@@ -311,21 +323,33 @@ impl BitvectorOps for U32 {
     }
 
     fn bv_shl(self, rhs: Self) -> Self {
+        // Z3's bvshl returns 0 when shift >= bit-width.
+        let shift_amt = *rhs.inner;
+        if shift_amt >= 32 {
+            return Self { inner: Intern::new(0u32) };
+        }
         Self {
-            inner: Intern::new(self.inner.wrapping_shl(*rhs.inner)),
+            inner: Intern::new(self.inner.wrapping_shl(shift_amt)),
         }
     }
 
     fn bv_lshr(self, rhs: Self) -> Self {
+        // Z3's bvlshr returns 0 when shift >= bit-width.
+        let shift_amt = *rhs.inner;
+        if shift_amt >= 32 {
+            return Self { inner: Intern::new(0u32) };
+        }
         Self {
-            inner: Intern::new((*self.inner).wrapping_shr(*rhs.inner)),
+            inner: Intern::new((*self.inner).wrapping_shr(shift_amt)),
         }
     }
 
     fn bv_ashr(self, rhs: Self) -> Self {
+        // Z3's bvashr with shift >= bit-width fills with the sign bit.
         let signed_val = *self.inner as i32;
         let shift_amt = *rhs.inner;
-        let result = signed_val.wrapping_shr(shift_amt);
+        let shift = if shift_amt >= 32 { 31 } else { shift_amt };
+        let result = signed_val.wrapping_shr(shift);
         Self {
             inner: Intern::new(result as u32),
         }
@@ -471,22 +495,35 @@ impl BitvectorOps for I64 {
     }
 
     fn bv_shl(self, rhs: Self) -> Self {
+        // Interpret shift amount as unsigned (the raw bit-pattern).
+        // Z3's bvshl returns 0 when shift >= bit-width.
+        let shift_amt = *rhs.inner as u64;
+        if shift_amt >= 64 {
+            return Self { inner: Intern::new(0i64) };
+        }
         Self {
-            inner: Intern::new(self.inner.wrapping_shl(*rhs.inner as u32)),
+            inner: Intern::new(self.inner.wrapping_shl(shift_amt as u32)),
         }
     }
 
     fn bv_lshr(self, rhs: Self) -> Self {
+        // Z3's bvlshr returns 0 when shift >= bit-width.
+        let shift_amt = *rhs.inner as u64;
+        if shift_amt >= 64 {
+            return Self { inner: Intern::new(0i64) };
+        }
         let unsigned_val = *self.inner as u64;
-        let shift_amt = *rhs.inner as u32;
         Self {
-            inner: Intern::new(unsigned_val.wrapping_shr(shift_amt) as i64),
+            inner: Intern::new(unsigned_val.wrapping_shr(shift_amt as u32) as i64),
         }
     }
 
     fn bv_ashr(self, rhs: Self) -> Self {
+        // Z3's bvashr with shift >= bit-width fills with the sign bit.
+        let shift_amt = *rhs.inner as u64;
+        let shift = if shift_amt >= 64 { 63 } else { shift_amt as u32 };
         Self {
-            inner: Intern::new(self.inner.wrapping_shr(*rhs.inner as u32)),
+            inner: Intern::new(self.inner.wrapping_shr(shift)),
         }
     }
 
@@ -623,21 +660,33 @@ impl BitvectorOps for U64 {
     }
 
     fn bv_shl(self, rhs: Self) -> Self {
+        // Z3's bvshl returns 0 when shift >= bit-width.
+        let shift_amt = *rhs.inner;
+        if shift_amt >= 64 {
+            return Self { inner: Intern::new(0u64) };
+        }
         Self {
-            inner: Intern::new(self.inner.wrapping_shl(*rhs.inner as u32)),
+            inner: Intern::new(self.inner.wrapping_shl(shift_amt as u32)),
         }
     }
 
     fn bv_lshr(self, rhs: Self) -> Self {
+        // Z3's bvlshr returns 0 when shift >= bit-width.
+        let shift_amt = *rhs.inner;
+        if shift_amt >= 64 {
+            return Self { inner: Intern::new(0u64) };
+        }
         Self {
-            inner: Intern::new((*self.inner).wrapping_shr(*rhs.inner as u32)),
+            inner: Intern::new((*self.inner).wrapping_shr(shift_amt as u32)),
         }
     }
 
     fn bv_ashr(self, rhs: Self) -> Self {
+        // Z3's bvashr with shift >= bit-width fills with the sign bit.
         let signed_val = *self.inner as i64;
-        let shift_amt = *rhs.inner as u32;
-        let result = signed_val.wrapping_shr(shift_amt);
+        let shift_amt = *rhs.inner;
+        let shift = if shift_amt >= 64 { 63 } else { shift_amt as u32 };
+        let result = signed_val.wrapping_shr(shift);
         Self {
             inner: Intern::new(result as u64),
         }

@@ -21,11 +21,14 @@ use walkdir::WalkDir;
 #[derive(Debug)]
 /// SMT-marked type
 pub enum MarkedType {
+    /// An enum type.
     Enum(ItemEnum),
+    /// A struct type.
     Struct(ItemStruct),
 }
 
 impl MarkedType {
+    /// Get the name of the type.
     pub fn name(&self) -> &Ident {
         match self {
             Self::Enum(item) => &item.ident,
@@ -41,6 +44,7 @@ pub struct MarkedFunc {
 }
 
 impl MarkedFunc {
+    /// Get the name of the function.
     pub fn name(&self) -> &Ident {
         &self.item.sig.ident
     }
@@ -407,6 +411,7 @@ impl ContextWithType {
 pub struct ContextWithSig {
     types: BTreeMap<UsrTypeName, TypeDef>,
     funcs: BTreeMap<UsrFuncName, (FuncSig, Vec<Stmt>)>, // all functions with their signatures and bodies
+    /// The database of functions.
     pub fn_db: ApplyDatabase,
 }
 
@@ -468,7 +473,9 @@ impl ContextWithSig {
 #[derive(Debug)]
 /// Context manager after type, signature, and expression conversion is done
 pub struct ContextWithFunc {
+    /// The registered types in the context (types marked with #[smt_type])
     pub types: BTreeMap<UsrTypeName, TypeDef>,
+    /// The registered functions in the context (functions marked with #[smt_fn])
     pub funcs: BTreeMap<UsrFuncName, FuncDef>,
 }
 

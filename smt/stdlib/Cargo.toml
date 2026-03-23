@@ -14,6 +14,7 @@ anyhow = { workspace = true }
 bitvec = { workspace = true }
 hexf-parse = {workspace = true }
 internment = { workspace = true }
+libm = { workspace = true }
 itertools = { workspace = true }
 num-bigint = { workspace = true }
 num-rational = { workspace = true }

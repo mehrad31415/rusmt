@@ -1908,3 +1908,141 @@ pub enum ParseError {
 3 - Maybe change the whole structure so that IR stores functions that cannot natively be converted to SMT instead of giving it to the backend
 4 - Rust: Rounds ties away from zero (2.5 $\to$ 3.0).Wasm/Z3: Rounds ties to even (2.5 $\to$ 2.0). So what do we do? what if the behaviour of z3 is different than the language we are writing the interpreter for using the DSL and that is different than the behaviour of Rust itself? - remove floating point
 5 - check the error locations in the IR populate them correctly and fix the intrinsics in the IR and parser and backend and how to the expression handling has been done in the parser and in the IR and in backend (function body)!
+
+
+        // Z3 prints "success" after every command by default.
+        // 500 declarations = 500 "success" lines before the actual sat/unsat result.
+        // Turn it off so our response parser only sees the verdict.
+        l!(x, "(set-option :print-success false)");
+        // When Z3 returns "sat", we need the actual concrete values (e.g., input_0 = "hello"),
+        // not just the fact that a solution exists. Without this, (get-model) fails.
+        l!(x, "(set-option :produce-models true)");
+        // Proof objects explain WHY something is unsatisfiable. Building them requires extra
+        // bookkeeping during search, slowing Z3 down. We only care whether sat/unsat, not why.
+        l!(x, "(set-option :produce-proofs false)");
+        // Unsat cores identify WHICH of your assertions conflict (e.g., "assertions 3 and 7
+        // are contradictory"). Computing this requires tracking assertion contributions.
+        // We don't debug unsatisfiability — we just move to the next error target.
+        l!(x, "(set-option :produce-unsat-cores false)");
+        // ── Reproducibility ──
+        // Z3 has two layers: an inner SAT solver (raw boolean variables) and an outer SMT solver
+        // (theories: integers, strings, sets). Both use randomization to decide things like
+        // "which variable to try next" or "which theory to check first."
+        //
+        // Without fixed seeds, the same input can produce different results across runs:
+        //   Monday: sat in 2 seconds (lucky variable ordering)
+        //   Tuesday: timeout at 60 seconds (unlucky ordering)
+        //
+        // Fixed seeds make the search deterministic: same input → same path → same result.
+        l!(x, "(set-option :sat.random_seed 42)");
+        l!(x, "(set-option :smt.random_seed 42)");
+        // ── Parallelism ──
+        // Z3 can split its search across multiple threads, each exploring a different part
+        // of the search space. If any thread finds a solution, Z3 returns sat.
+        // N threads on N cores = each thread gets a dedicated core, no contention.
+        l!(x, "(set-option :parallel.enable true)");
+        l!(x, "(set-option :parallel.threads.max {})", num_cpu_cores());
+        // "Cube and conquer": the main thread works alone, then after `delay` milliseconds
+        // splits the problem into subproblems for worker threads.
+        //   delay=10: "try alone for 10ms, if still stuck, split across threads"
+        //   delay=5000: waits 5s before splitting — if the problem solves in 3s, threads sat idle
+        //   delay=0: splits immediately, but splitting has overhead (copying state, coordination)
+        // 10ms is a good default for hard problems — start parallelizing quickly.
+        l!(x, "(set-option :parallel.conquer.delay 10)");
+        // ── SAT Solver: Restarts ──
+        // A restart throws away the current guess and starts over, but keeps learned facts.
+        // Example: Z3 guesses x=50000. Doesn't work. Nearby values don't work either.
+        // Restart: forget the guess, remember "50000 area is bad", try a different region.
+        // Each restart is smarter because of accumulated knowledge from previous attempts.
+        //
+        // 100,000 restarts allowed. Each carries over learned facts, so later restarts are
+        // much more targeted than early ones. Too low = gives up before finding a good path.
+        // Restarts are sequential (one thread retrying). Conquer is parallel (multiple threads
+        // searching different regions). They work together: each thread can restart within
+        // its own subproblem.
+        l!(x, "(set-option :sat.restart.max 100000)");
+        // ── SMT Solver: Arithmetic ──
+        //
+        // Z3 has multiple arithmetic engines (values: 2, 3, 6).
+        //   2 = old Simplex. Linear only (x + y = 5).
+        //   3 = adds basic integer support.
+        //   6 = newest. Handles mod, div, nonlinear (x * y), mixed int/real.
+        // We use 6 because our interpreter uses mod (bitvector ops), integer division,
+        // and set membership checks.
+        l!(x, "(set-option :smt.arith.solver 6)");
+        // ── SMT Solver: Case Splitting ──
+        //
+        // When Z3 encounters (or A B C), it must decide which branch to explore.
+        // Values: 0, 1, 2, 3, 5.
+        //   0 = try all branches blindly
+        //   3 = relevancy-based: only split on branches relevant to the current goal
+        //
+        // Example: (assert (or (= x 1) (= x 2) (= x 3))) with (assert (> x 100))
+        //   Mode 0: tries x=1, fails. Tries x=2, fails. Tries x=3, fails. Returns unsat.
+        //   Mode 3: sees (> x 100) immediately rules out all three. Returns unsat without trying.
+        //
+        // Mode 3 is critical for us: our interpreter has hundreds of ite branches (every
+        // if/match in Rust becomes an ite). Most are irrelevant to any given error target.
+        l!(x, "(set-option :smt.case_split 3)");
+        // ── SMT Solver: Phase Selection ──
+        //
+        // When Z3 picks a boolean variable to branch on, should it try true or false first?
+        // Values: 0 (always true), 1 (always false), 3 (always false + caching), 4 (random).
+        //
+        // Example: (assert (=> p (= x 1))) (assert (=> (not p) (= x 2))) (assert (> x 1))
+        //   Mode 0 (true first): tries p=true → x=1 → fails (> x 1). Backtracks, tries p=false.
+        //   Mode 3 (false first): tries p=false → x=2 → sat immediately.
+        //
+        // Mode 3 tends to prune faster for verification problems because negative assignments
+        // eliminate more possibilities. In our ite chains, the "else" branch is usually the
+        // common/fast path, and the "then" branch is the error/special case.
+        l!(x, "(set-option :smt.phase_selection 3)");
+        // ── Quantifier Handling ──
+        //
+        // Z3 can't check every integer for (forall ((k Int)) ...). These options control
+        // HOW Z3 picks which values to try.
+        //
+        // MBQI (Model-Based Quantifier Instantiation) — trial and error approach:
+        //   1. Z3 GUESSES a model (ignoring the forall)
+        //   2. CHECKS: does the forall hold in this model? Looks for a counterexample k.
+        //   3. If counterexample found, adds it as a constraint, goes back to step 1.
+        //   4. If no counterexample, the model is valid → sat.
+        //
+        // Example:
+        //   (forall ((k Int)) (>= (select arr k) 0))   ; all elements non-negative
+        //   (= (select arr 5) (- 3))                    ; but arr[5] = -3
+        //
+        //   Round 1: guess arr = all zeros. Forall holds. But arr[5]=0 conflicts with arr[5]=-3.
+        //   Round 2: fix arr[5]=-3. Check forall with k=5: -3 >= 0? No! Contradiction → unsat.
+        //
+        // Without MBQI, Z3 stares at the infinite forall and returns "unknown".
+        l!(x, "(set-option :smt.mbqi true)");
+        //
+        // E-matching — forward pattern matching approach (complementary to MBQI):
+        //   Z3 looks at terms it already knows (e.g., (select arr 7) from another assertion)
+        //   and matches them against quantifier patterns. If (select arr 7) matches the
+        //   forall's pattern (select arr k), Z3 instantiates k=7 and checks that case.
+        //
+        //   MBQI works BACKWARD from models. E-matching works FORWARD from known terms.
+        //   Both enabled = two independent strategies to attack quantifiers.
+        l!(x, "(set-option :smt.ematching true)");
+        //
+        // Eager threshold: how aggressively to instantiate quantifiers before they're needed.
+        //   Low (0.5) = only instantiate when stuck and need it (conservative)
+        //   High (10.0) = instantiate all matching terms immediately (aggressive)
+        // We use 10.0 because we have few quantifiers (ArrayIsEmpty) but they're critical.
+        // Instantiate eagerly → avoid backtracking later.
+        l!(x, "(set-option :smt.qi.eager_threshold 10.0)");
+        //
+        // Multi-patterns match multiple terms simultaneously in a forall.
+        // If Z3 knows 100 (select arr _) terms and 10 (> _ 0) terms, there are 1000 possible
+        // combinations. This cap controls how many combinations Z3 is allowed to try.
+        // 1000 is generous enough for our use case with few quantifiers.
+        l!(x, "(set-option :smt.qi.max_multi_patterns 1000)");
+        // ── Auto-configuration ──
+        //
+        // Z3 normally analyzes your input and auto-tunes its settings. This would override
+        // everything above. We disable it because we've tuned specifically for our problem
+        // structure: recursive ADTs, strings, sets, bitvectors, and few quantifiers.
+        l!(x, "(set-option :smt.auto_config false)");
+        l!(x);

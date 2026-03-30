@@ -88,7 +88,7 @@ pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
         Sort::U32 => "(_ BitVec 32)".to_string(),
         Sort::U64 => "(_ BitVec 64)".to_string(),
         Sort::Uninterpreted(x) => x.to_string(),
-        Sort::Error => "(Set Int)".to_string(), // Error is a set of integer IDs
+        Sort::Error => "(Array Int Bool)".to_string(), // Error is a set of integer IDs
     }
 }
 

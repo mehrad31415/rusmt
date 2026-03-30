@@ -110,7 +110,7 @@ fn format_sort(
                 x.to_string()
             }
         }
-        Sort::Error => "(Set Int)".to_string(), // Error is a set of integer IDs
+        Sort::Error => "(Array Int Bool)".to_string(), // Error is a set of integer IDs
     }
 }
 

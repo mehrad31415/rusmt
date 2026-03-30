@@ -9,5 +9,13 @@
 3 - whether the type unification is sound and how it works
   1. The unification algorithm is a simplified Hindley-Milner style inference using a union-find data structure (equivalence groups of type variables).
   2. Book chapter written: book/src/dev/smt/unification.md
+4 - 
 
-*** whether handling the body of the functions is sound - what exactly the IR building does? - change the functions to result instead of panicking in derive! - fix the z3 smtlib generation so that it doesnt crash or we have performance good - create a loop for all errors id that for each one we get a model and store it - check if the tuples with the same elements are added once from the parser expr analysis! - update the tests in the program - update the unit tests for full coverage
+*** whether handling the body of the functions is sound - the IR building? - change the functions to result instead of panicking is it better? - create a loop for all errors id that for each one we get a model and store it - check if the tuples with the same elements are added once from the parser expr analysis! -
+
+
+
+fix the z3 smtlib generation so that it doesnt crash or we have performance good -  
+
+
+not prioprity: update the unit tests for full coverage

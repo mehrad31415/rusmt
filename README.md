@@ -39,10 +39,10 @@ fn parse_toml(input: Seq<String>) -> Result<TomlValue, Error> {
 ### 2. Transpile to SMT-LIB
 
 ```bash
-cargo run -p rusmart-smt-derive
+cargo run -p rusmart-smt-derive -- toml parse_toml
 ```
 
-This generates SMT formulas representing the interpreter's semantics.
+This generates SMT-LIB formulas to `lang/src/synthesis/toml/`.
 
 ### 3. Synthesize Test Programs
 
@@ -169,7 +169,7 @@ cargo run -p rusmart-lang toml lang/toml/input/example.toml
 
 ### Generate SMT Formulas
 ```bash
-cargo run -p rusmart-smt-derive
+cargo run -p rusmart-smt-derive -- toml parse_toml
 ```
 
 ### Documentation

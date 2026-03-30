@@ -1656,10 +1656,32 @@ impl Intrinsic {
     /// The expected type (from context) determines what type the literal is converted to.
     /// For example, `5.into()` where the expected type is I32 produces BvVal(5, I32).
     pub fn parse_literal_into(receiver: &Exp, exp_ty: &TypeRef) -> Result<(Self, TypeRef)> {
+        // When the expected type is still an unresolved type variable (e.g., from
+        // method call arguments parsed before function resolution), infer the
+        // default type from the literal itself. Unification will verify consistency.
+        let resolved_ty = match exp_ty {
+            TypeRef::Var(_) => match receiver {
+                Exp::Lit(ExprLit {
+                    lit: Lit::Int(_), ..
+                }) => &TypeRef::Integer,
+                Exp::Lit(ExprLit {
+                    lit: Lit::Str(_), ..
+                }) => &TypeRef::String,
+                Exp::Lit(ExprLit {
+                    lit: Lit::Bool(_), ..
+                }) => &TypeRef::Boolean,
+                Exp::Lit(ExprLit {
+                    lit: Lit::Float(_),
+                    ..
+                }) => &TypeRef::Real,
+                _ => exp_ty,
+            },
+            other => other,
+        };
         let (intrinsic, ty) = match receiver {
             Exp::Lit(expr_lit) => {
                 let ExprLit { attrs: _, lit } = expr_lit;
-                match (lit, exp_ty) {
+                match (lit, resolved_ty) {
                     // Boolean literal → Boolean
                     (Lit::Bool(val), TypeRef::Boolean) => {
                         (Self::BoolVal(val.value), TypeRef::Boolean)

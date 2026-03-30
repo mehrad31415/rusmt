@@ -28,9 +28,4 @@ impl Display for Response {
             Self::Unsat => f.write_str("unsat"),                                                                                                                               
         }
     }                                                                                                                                                                          
-}   
-
-static NUM_CPU_CORES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-pub(crate) fn num_cpu_cores() -> usize {                                                                                                                                              
-    *NUM_CPU_CORES.get_or_init(num_cpus::get)                                                                                                                                  
-}     
+}

@@ -5,7 +5,6 @@ use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
-use crate::backend::response::num_cpu_cores;
 use crate::backend::response::Response;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
@@ -77,11 +76,9 @@ impl CodeGen for CodeGenZ3 {
         // Reproducibility - fixed seed = deterministic search order = same runtime every time.
         l!(x, "(set-option :sat.random_seed 42)"); // It decides the order to assign the variables
         l!(x, "(set-option :smt.random_seed 42)"); // like which theory to check first, which equality to propagate first.
-        // Parallelism
-        l!(x, "(set-option :parallel.enable true)");
-        l!(x, "(set-option :parallel.threads.max {})", num_cpu_cores());
-        // Conquer is parallel (multiple threads searching different regions simultaneously)
-        l!(x, "(set-option :parallel.conquer.delay 10)");
+        // Parallelism — disabled: Z3's parallel solver causes bus errors (crashes)
+        // on macOS with large recursive SMT files.
+        l!(x, "(set-option :parallel.enable false)");
         // SAT Solver Optimizations - restart is sequential (one thread retrying with better knowledge).
         l!(x, "(set-option :sat.restart.max 100000)");
         // SMT Solver Optimizations
@@ -691,8 +688,8 @@ impl CodeGen for CodeGenZ3 {
         };
 
         // Build assertions: for each error ID in the target, assert set membership.
-        // Single target {n}:     (set.member n (accessor result))
-        // Merge target {a,b,c}:  (and (set.member a ...) (set.member b ...) (set.member c ...))
+        // Single target {n}:     (select (accessor result) n)
+        // Merge target {a,b,c}:  (and (select ... a) (select ... b) (select ... c))
         let member_assertions: Vec<String> = target_ids
             .iter()
             .map(|&error_id| extract_error_assertion(&sig.ret_ty, &call_expr, error_id, ir))
@@ -724,9 +721,9 @@ impl CodeGen for CodeGenZ3 {
 /// # Background
 ///
 /// Error in RuSmart is `(Set Int)` in Z3. Each `ErrFresh(n)` in the interpreter
-/// becomes `(set.singleton n)`, and `ErrMerge` becomes `(set.union ...)`.
-/// To test whether a specific error site was reached, we check set membership:
-/// `(set.member error_id result)`.
+/// becomes `(store ((as const (Array Int Bool)) false) n true)`, and `ErrMerge` becomes
+/// `((_ map or) ...)`. To test whether a specific error site was reached, we use array select:
+/// `(select result error_id)`.
 ///
 /// # How it works
 ///
@@ -735,11 +732,11 @@ impl CodeGen for CodeGenZ3 {
 /// the return sort and generates the appropriate assertion:
 ///
 /// - **`Sort::Error`** — the function returns `Error` directly.
-///   Emits: `(set.member error_id (fn input_0 ...))`.
+///   Emits: `(select (fn input_0 ...) error_id)`.
 ///
 /// - **`Sort::User` (enum)** — scans each variant for fields of type `Sort::Error`.
 ///   For each such field, emits a guarded assertion:
-///   `(and (is-VariantName result) (set.member error_id (accessor result)))`.
+///   `(and (is-VariantName result) (select (accessor result) error_id))`.
 ///   If multiple variants carry Error fields, the assertions are OR'd together.
 ///
 /// # Limitations
@@ -767,12 +764,12 @@ fn extract_error_assertion(
 ) -> String {
     match ret_sort {
         // Function returns Error directly — just check membership.
-        // Example: (set.member 3 (parse_toml input_0))
-        Sort::Error => format!("(set.member {} {})", error_id, call_expr),
+        // Example: (select (parse_toml input_0) 3)
+        Sort::Error => format!("(select {} {})", call_expr, error_id),
         // Function returns a user-defined enum — find the variant(s) that carry an Error field.
         // Example for ParseResult with Err(Error):
         //   (and (is-Err (parse_toml input_0))
-        //        (set.member 3 (field_ParseResult_Err_1_ (parse_toml input_0))))
+        //        (select (field_ParseResult_Err_1_ (parse_toml input_0)) 3))
         Sort::User(sid) => {
             let dt = ir.ty_registry.retrieve(*sid);
             let type_name = resolve_type_name(ir, *sid);
@@ -788,8 +785,8 @@ fn extract_error_assertion(
                                         let accessor =
                                             format!("field_{}_{}_{}_", type_name, vname, i + 1);
                                         assertions.push(format!(
-                                            "(and ({} {}) (set.member {} ({} {})))",
-                                            tester, call_expr, error_id, accessor, call_expr
+                                            "(and ({} {}) (select ({} {}) {}))",
+                                            tester, call_expr, accessor, call_expr, error_id
                                         ));
                                     }
                                 }
@@ -803,8 +800,8 @@ fn extract_error_assertion(
                                             type_name, vname, field_key
                                         );
                                         assertions.push(format!(
-                                            "(and ({} {}) (set.member {} ({} {})))",
-                                            tester, call_expr, error_id, accessor, call_expr
+                                            "(and ({} {}) (select ({} {}) {}))",
+                                            tester, call_expr, accessor, call_expr, error_id
                                         ));
                                     }
                                 }

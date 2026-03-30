@@ -228,13 +228,23 @@ pub fn format_intrinsic(
         Intrinsic::SetInsert { set, item, .. } => {
             format!("(set.insert {} {})", fmt(*item), fmt(*set))
         }
-        Intrinsic::SetRemove { set, item, .. } => format!(
-            "(set.setminus {} (set.singleton {}))",
-            fmt(*set),
-            fmt(*item)
-        ),
-        Intrinsic::SetContains { set, item, .. } => {
-            format!("(set.member {} {})", fmt(*item), fmt(*set))
+        Intrinsic::SetRemove { set, item, t } => {
+            let sort = format_sort_for_fn(t, ir);
+            format!(
+                "(set.setminus {} (set.insert {} (as set.empty (Set {}))))",
+                fmt(*set),
+                fmt(*item),
+                sort
+            )
+        }
+        Intrinsic::SetContains { set, item, t } => {
+            let sort = format_sort_for_fn(t, ir);
+            format!(
+                "(set.subset (set.insert {} (as set.empty (Set {}))) {})",
+                fmt(*item),
+                sort,
+                fmt(*set)
+            )
         }
         Intrinsic::SetIsEmpty { set, .. } => format!("(= (set.card {}) 0)", fmt(*set)),
         Intrinsic::SetIntersect { lhs, rhs, .. } => {
@@ -471,8 +481,8 @@ pub fn format_intrinsic(
         Intrinsic::FloatNearest { val, .. } => format!("(fp.roundToIntegral RNE {})", fmt(*val)),
         Intrinsic::FloatFqEq { lhs, rhs, .. } => format!("(fp.eq {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::FloatFromHexStr { val, .. } => format!("(fp.from_str {})", fmt(*val)),
-        Intrinsic::ErrFresh(id) => format!("(set.singleton {})", id),
-        Intrinsic::ErrMerge { lhs, rhs, .. } => format!("(set.union {} {})", fmt(*lhs), fmt(*rhs)),
+        Intrinsic::ErrFresh(id) => format!("(store ((as const (Array Int Bool)) false) {} true)", id),
+        Intrinsic::ErrMerge { lhs, rhs, .. } => format!("((_ map or) {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),
     }

@@ -4,7 +4,7 @@
 
 ### Key entry points
 
-The crate exposes two workflows that are used by the test harness in `programs/tests/integration.rs`:
+The crate exposes two key entry points:
 
 - **`model`**: parse and lower a Rusmart program into the internal IR (no solver required)
 - **`derive`**: end-to-end compilation that emits SMT-LIB (Z3-oriented) and collects solver responses

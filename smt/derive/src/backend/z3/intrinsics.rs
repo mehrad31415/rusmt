@@ -311,8 +311,6 @@ pub fn format_intrinsic(
                 null
             )
         }
-
-        // --- BitVector Operations ---
         Intrinsic::BvVal { t, val } => {
             let width: u32 = match t {
                 Sort::I32 | Sort::U32 => 32,
@@ -342,7 +340,6 @@ pub fn format_intrinsic(
         Intrinsic::BvAdd { lhs, rhs, .. } => format!("(bvadd {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::BvSub { lhs, rhs, .. } => format!("(bvsub {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::BvMul { lhs, rhs, .. } => format!("(bvmul {} {})", fmt(*lhs), fmt(*rhs)),
-        // Signed types (I32, I64) use signed BV operations; unsigned (U32, U64) use unsigned.
         Intrinsic::BvDiv { t, lhs, rhs } => match t {
             Sort::I32 | Sort::I64 => format!("(bvsdiv {} {})", fmt(*lhs), fmt(*rhs)),
             _ => format!("(bvudiv {} {})", fmt(*lhs), fmt(*rhs)),
@@ -382,9 +379,6 @@ pub fn format_intrinsic(
             Sort::I32 | Sort::I64 => format!("(bvsge {} {})", fmt(*lhs), fmt(*rhs)),
             _ => format!("(bvuge {} {})", fmt(*lhs), fmt(*rhs)),
         },
-        // Z3's bv2int always interprets the bitvector as unsigned.
-        // For signed types (I32/I64), we need a two's complement conversion:
-        //   if val < 0 (signed) then bv2int(val) - 2^width else bv2int(val)
         Intrinsic::BvToInt { t, val } => match t {
             Sort::I32 => format!(
                 "(ite (bvslt {} (_ bv0 32)) (- (bv2int {}) 4294967296) (bv2int {}))",
@@ -396,8 +390,6 @@ pub fn format_intrinsic(
             ),
             _ => format!("(bv2int {})", fmt(*val)),
         },
-
-        // --- Floating-Point Operations ---
         Intrinsic::FloatVal { t, val } => {
             let (eb, sb) = match t {
                 Sort::F32 => (8, 24),
@@ -469,7 +461,6 @@ pub fn format_intrinsic(
         }
         Intrinsic::FloatToInt { val, .. } => format!("(to_int (fp.to_real {}))", fmt(*val)),
         Intrinsic::FloatToReal { val, .. } => format!("(fp.to_real {})", fmt(*val)),
-        // RTZ (round toward zero / truncation) matches Rust's .to_u32()/.to_i32() etc.
         Intrinsic::FloatToU32 { val, .. } => format!("((_ fp.to_ubv 32) RTZ {})", fmt(*val)),
         Intrinsic::FloatToI32 { val, .. } => format!("((_ fp.to_sbv 32) RTZ {})", fmt(*val)),
         Intrinsic::FloatToU64 { val, .. } => format!("((_ fp.to_ubv 64) RTZ {})", fmt(*val)),
@@ -479,12 +470,7 @@ pub fn format_intrinsic(
         Intrinsic::FloatTrunc { val, .. } => format!("(fp.roundToIntegral RTZ {})", fmt(*val)),
         Intrinsic::FloatNearest { val, .. } => format!("(fp.roundToIntegral RNE {})", fmt(*val)),
         Intrinsic::FloatFqEq { lhs, rhs, .. } => format!("(fp.eq {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::FloatFromHexStr { val, .. } => format!("(fp.from_str {})", fmt(*val)), // Z3 extension
-
-        // --- Error & Generic Operations ---
-        // Error is represented as (Set Int) in Z3 — a native set of integer IDs.
-        // ErrFresh(n) is a singleton set containing only n.
-        // ErrMerge is a union of two error sets.
+        Intrinsic::FloatFromHexStr { val, .. } => format!("(fp.from_str {})", fmt(*val)),
         Intrinsic::ErrFresh(id) => format!("(set.singleton {})", id),
         Intrinsic::ErrMerge { lhs, rhs, .. } => format!("(set.union {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),

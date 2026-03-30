@@ -19,7 +19,7 @@ cargo run -p rusmart-lang -- toml lang/toml/input/example.toml
 The transpiler lives in `rusmart-smt-derive` and emits Z3-focused SMT-LIB.
 
 ```bash
-cargo run -p rusmart-smt-derive
+cargo run -p rusmart-smt-derive -- toml parse_toml
 ```
 
 ### Run the test suites
@@ -27,9 +27,3 @@ cargo run -p rusmart-smt-derive
 ```bash
 cargo test --workspace
 ```
-
-The `rusmart-programs` crate contains data-driven tests under `programs/tests/`:
-
-- `tests/stdlib`: IR-only “does it model?” coverage for stdlib intrinsics
-- `tests/translation`: end-to-end translation coverage (Rust → SMT-LIB → Z3)
-

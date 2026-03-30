@@ -104,7 +104,6 @@ rusmart/
 │   ├── remark/       # Annotation system marking functions and types
 │   └── derive/       # Parser + IR + SMT-LIB code generator
 ├── lang/             # Language interpreters (TOML, WASM, Rego, etc.)
-├── programs/         # Example programs for testing
 ```
 
 ## Current Implementation

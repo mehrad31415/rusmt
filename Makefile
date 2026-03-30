@@ -18,7 +18,6 @@ cloc:
 	@cloc \
 		--include-lang=Rust \
 		smt \
-		programs \
 		lang
 
 docs:

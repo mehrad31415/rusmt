@@ -13,7 +13,7 @@ cargo build --workspace
 The root `Makefile` provides a few convenience targets:
 
 - `make lint`: `cargo fmt` + `cargo clippy`
-- `make cloc`: count Rust LOC under `smt/`, `programs/`, `lang/`
+- `make cloc`: count Rust LOC under `smt/`, `lang/`
 - `make docs`: build and serve the mdBook under `book/`
 
 ### License
@@ -77,7 +77,6 @@ The current workspace members are:
 - `smt/remark` and `smt/remark/remark_derive`
 - `smt/derive`
 - `lang`
-- `programs`
 
 Z3 is invoked as a system binary (`z3` on `$PATH`) rather than as a Rust crate dependency.
 

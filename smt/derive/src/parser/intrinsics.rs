@@ -2200,7 +2200,6 @@ impl Intrinsic {
 impl Display for Intrinsic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            // --- Boolean ---
             Self::BoolVal(v) => write!(f, "{v}"),
             Self::BoolNot { val } => write!(f, "!{val}"),
             Self::BoolAnd { lhs, rhs } => write!(f, "({lhs} && {rhs})"),
@@ -2212,8 +2211,6 @@ impl Display for Intrinsic {
             Self::BoolImplies { lhs, rhs } => write!(f, "({lhs} => {rhs})"),
             Self::BoolIff { lhs, rhs } => write!(f, "({lhs} <=> {rhs})"),
             Self::BoolIte { cond, then, else_ } => write!(f, "ite({cond}, {then}, {else_})"),
-
-            // --- Integer ---
             Self::IntVal(v) => write!(f, "{v}"),
             Self::IntNeg { val } => write!(f, "-{val}"),
             Self::IntAdd { lhs, rhs } => write!(f, "({lhs} + {rhs})"),
@@ -2248,8 +2245,6 @@ impl Display for Intrinsic {
             Self::IntIsGtI32Max { val } => write!(f, "is_gt_i32_max({val})"),
             Self::IntIsLtU32Min { val } => write!(f, "is_lt_u32_min({val})"),
             Self::IntIsGtU32Max { val } => write!(f, "is_gt_u32_max({val})"),
-
-            // --- Real ---
             Self::RealVal(v) => write!(f, "{v}"),
             Self::RealNeg { val } => write!(f, "-{val}"),
             Self::RealAdd { lhs, rhs } => write!(f, "({lhs} + {rhs})"),
@@ -2269,8 +2264,6 @@ impl Display for Intrinsic {
             Self::RealToInt { val } => write!(f, "Real::to_int({val})"),
             Self::RealToF32 { val } => write!(f, "Real::to_f32({val})"),
             Self::RealToF64 { val } => write!(f, "Real::to_f64({val})"),
-
-            // --- String ---
             Self::StrVal(v) => write!(f, "\"{v}\""),
             Self::StrNew => write!(f, "String::new()"),
             Self::StrLen { seq } => write!(f, "len({seq})"),
@@ -2294,12 +2287,8 @@ impl Display for Intrinsic {
             Self::StrFromInt { val } => write!(f, "Str::from_int({val})"),
             Self::StrFromCode { val } => write!(f, "Str::from_code({val})"),
             Self::StrToCode { val } => write!(f, "Str::to_code({val})"),
-
-            // --- Cloak ---
             Self::BoxShield { val, .. } => write!(f, "shield({val})"),
             Self::BoxReveal { val, .. } => write!(f, "reveal({val})"),
-
-            // --- Sequence ---
             Self::SeqEmpty { .. } => write!(f, "Seq::empty"),
             Self::SeqUnit { val, .. } => write!(f, "Seq::unit({val})"),
             Self::SeqLen { seq, .. } => write!(f, "len({seq})"),
@@ -2309,7 +2298,7 @@ impl Display for Intrinsic {
             Self::SeqAtSeq { seq, idx, .. } => write!(f, "at_seq({seq}, {idx})"),
             Self::SeqExtract {
                 seq, offset, len, ..
-            } => write!(f, "{seq}[{offset}..{len}]"),
+            } => write!(f, "{seq}[{offset}..+{len}]"),
             Self::SeqIndexOf {
                 seq, sub, offset, ..
             } => write!(f, "index_of({seq}, {sub}, {offset})"),
@@ -2319,8 +2308,6 @@ impl Display for Intrinsic {
             Self::SeqSuffixOf { lhs, rhs, .. } => write!(f, "suffix_of({lhs}, {rhs})"),
             Self::SeqReplace { seq, src, dst, .. } => write!(f, "replace({seq}, {src}, {dst})"),
             Self::SeqIsEmpty { seq, .. } => write!(f, "is_empty({seq})"),
-
-            // --- Set ---
             Self::SetEmpty { .. } => write!(f, "Set::empty"),
             Self::SetLen { set, .. } => write!(f, "len({set})"),
             Self::SetInsert { set, item, .. } => write!(f, "insert({set}, {item})"),
@@ -2335,8 +2322,6 @@ impl Display for Intrinsic {
             Self::SetIsProperSubset { lhs, rhs, .. } => write!(f, "proper_subset({lhs}, {rhs})"),
             Self::SetIsDisjoint { lhs, rhs, .. } => write!(f, "disjoint({lhs}, {rhs})"),
             Self::SetHasSize { set, size, .. } => write!(f, "has_size({set}, {size})"),
-
-            // --- Array ---
             Self::ArrayEmpty { .. } => write!(f, "Array::empty"),
             Self::ArrayLen { arr, .. } => write!(f, "len({arr})"),
             Self::ArrayStore { arr, key, val, .. } => write!(f, "store({arr}, {key}, {val})"),
@@ -2344,8 +2329,6 @@ impl Display for Intrinsic {
             Self::ArrayRemove { arr, key, .. } => write!(f, "remove({arr}, {key})"),
             Self::ArrayContainsKey { arr, key, .. } => write!(f, "contains_key({arr}, {key})"),
             Self::ArrayIsEmpty { arr, .. } => write!(f, "is_empty({arr})"),
-
-            // --- Bitvector ---
             Self::BvVal { val, .. } => write!(f, "{val}"),
             Self::BvNot { val, .. } => write!(f, "!{val}"),
             Self::BvAnd { lhs, rhs, .. } => write!(f, "({lhs} & {rhs})"),
@@ -2373,8 +2356,6 @@ impl Display for Intrinsic {
             Self::BvGt { lhs, rhs, .. } => write!(f, "({lhs} > {rhs})"),
             Self::BvGe { lhs, rhs, .. } => write!(f, "({lhs} >= {rhs})"),
             Self::BvToInt { val, .. } => write!(f, "Bv::to_int({val})"),
-
-            // --- Float ---
             Self::FloatVal { val, .. } => write!(f, "{val}"),
             Self::FloatAdd { lhs, rhs, .. } => write!(f, "({lhs} + {rhs})"),
             Self::FloatSub { lhs, rhs, .. } => write!(f, "({lhs} - {rhs})"),
@@ -2414,8 +2395,6 @@ impl Display for Intrinsic {
             Self::FloatNearest { val, .. } => write!(f, "nearest({val})"),
             Self::FloatFqEq { lhs, rhs, .. } => write!(f, "({lhs} fq_eq {rhs})"),
             Self::FloatFromHexStr { val, .. } => write!(f, "Float::from_hex({val})"),
-
-            // --- Errors & SMT ---
             Self::ErrFresh => write!(f, "err_fresh"),
             Self::ErrMerge { lhs, rhs } => write!(f, "err_merge({lhs}, {rhs})"),
             Self::SmtEq { lhs, rhs, .. } => write!(f, "({lhs} == {rhs})"),

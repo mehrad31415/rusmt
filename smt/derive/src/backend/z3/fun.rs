@@ -29,8 +29,7 @@ pub fn collect_function_call_edges(fn_registry: &FunRegistry) -> Vec<(UsrFunId, 
     for (_, instantiations) in &fn_registry.lookup {
         for (_, fn_id) in instantiations {
             let def = fn_registry.retrieve_def(*fn_id);
-            let FunDef::Defined(exp_registry, exp_id) = def;
-            let called_fns = exp_registry.collect_called_functions(&exp_id);
+            let called_fns = def.body.collect_called_functions(&def.root_exp_id);
             for called_fn in called_fns {
                 edges.push((*fn_id, called_fn));
             }
@@ -89,7 +88,7 @@ pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
         Sort::U32 => "(_ BitVec 32)".to_string(),
         Sort::U64 => "(_ BitVec 64)".to_string(),
         Sort::Uninterpreted(x) => x.to_string(),
-        Sort::Error => "Error".to_string(), // Error type is defined as a datatype
+        Sort::Error => "(Set Int)".to_string(), // Error is a set of integer IDs
     }
 }
 
@@ -122,18 +121,13 @@ fn format_function_body(
     sig: &FunSig,
     scc_fids: &BTreeSet<UsrFunId>,
 ) -> String {
-    match def {
-        FunDef::Defined(exp_registry, root_exp_id) => {
-            // Build set of parameter names for variable resolution
-            let param_names: std::collections::HashSet<String> = sig
-                .params
-                .iter()
-                .map(|(name, _)| name.to_string())
-                .collect();
-
-            format_expression(exp_registry, *root_exp_id, ir, &param_names, scc_fids)
-        }
-    }
+    // Build set of parameter names for variable resolution
+    let param_names: std::collections::HashSet<String> = sig
+        .params
+        .iter()
+        .map(|(name, _)| name.to_string())
+        .collect();
+    format_expression(&def.body, def.root_exp_id, ir, &param_names, scc_fids)
 }
 
 /// Convert a non-recursive function definition to SMT-LIB string format.

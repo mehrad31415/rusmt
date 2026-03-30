@@ -1,3 +1,5 @@
+//! Intermediate representation (IR) types.
+
 use crate::ir::ctxt::IRBuilder;
 use crate::ir::index::UsrSortId;
 use crate::ir::name::{SmtSortName, UsrSortName};
@@ -62,9 +64,9 @@ impl Display for Sort {
             Self::U32 => write!(f, "U32"),
             Self::U64 => write!(f, "U64"),
             Self::String => write!(f, "String"),
-            Self::Seq(sub) => write!(f, "Vec<{sub}>"),
+            Self::Seq(sub) => write!(f, "Seq<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
-            Self::Array(key, val) => write!(f, "Array<{key},{val}>"),
+            Self::Array(key, val) => write!(f, "Array<{key}, {val}>"),
             Self::Error => write!(f, "Error"),
             Self::User(sid) => write!(f, "${sid}"),
             Self::Uninterpreted(name) => write!(f, "#{name}"),
@@ -75,18 +77,18 @@ impl Display for Sort {
 #[derive(Debug)]
 /// A helper enum representing a variant definition for algebraic data types (ADTs).
 pub enum Variant {
-    /// A unit variant like MyEnum::MyVariant   
+    /// A unit variant like MyVariant   
     Unit,
-    /// A tuple variant like MyEnum::MyVariant(1,2,3)
-    Tuple(Vec<Sort>),               
-    /// A record variant like MyEnum::MyVariant{x:1,y:2,z:3}
-    Record(BTreeMap<String, Sort>), 
+    /// A tuple variant like MyVariant(1,2,3)
+    Tuple(Vec<Sort>),
+    /// A record variant like MyVariant{x:1,y:2,z:3}
+    Record(BTreeMap<String, Sort>),
 }
 
 impl Display for Variant {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unit => write!(f, "()"),
+            Self::Unit => Ok(()),
             Self::Tuple(slots) => {
                 let content: Vec<_> = slots.iter().map(|e| e.to_string()).collect();
                 write!(f, "({})", content.join(","))
@@ -103,9 +105,9 @@ impl Display for Variant {
 /// Complete definition of a user-defined data type.
 /// It can be a tuple type, a record type, or an enum (ADT) with multiple variants.
 pub enum DataType {
-    /// A tuple type like (i32, i32, i32)
+    /// A tuple type like MyStruct(i32, i32, i32) or (i32, i32, i32) depending on whether the tuple has a name or not
     Tuple(Vec<Sort>),
-    /// A record type like {x: i32, y: i32, z: i32}
+    /// A record type like MyStruct{x: i32, y: i32, z: i32}
     Record(BTreeMap<String, Sort>),
     /// An enum type like MyEnum::MyVariant{x:1,y:2,z:3}
     Enum(BTreeMap<String, Variant>),
@@ -123,8 +125,14 @@ impl Display for DataType {
                 write!(f, "{{{}}}", content.join(","))
             }
             Self::Enum(variants) => {
-                let content: Vec<_> = variants.iter().map(|(k, v)| format!("{k}{v}")).collect();
-                write!(f, "[{}]", content.join(","))
+                let content: Vec<_> = variants
+                    .iter()
+                    .map(|(k, v)| match v {
+                        Variant::Unit => k.to_string(),
+                        _ => format!("{k}:{v}"),
+                    })
+                    .collect();
+                write!(f, "{{{}}}", content.join(" | "))
             }
         }
     }
@@ -139,6 +147,14 @@ impl Display for DataType {
 #[derive(Default, Debug)]
 pub struct TypeRegistry {
     /// a map from user-defined type and type parameters to sort id
+    //   idx_named = {
+    //       "Option" => {
+    //         [Sort::Uninterpreted("Option_T")] => UsrSortId(0),  // generic definition
+    //         [Sort::I32] => UsrSortId(3),                         // concrete instantiation
+    //         [Sort::Boolean] => UsrSortId(5),                     // another instantiation
+    //     }
+    // }
+    /// The outer map groups by type name, the inner map distinguishes instantiations.
     pub idx_named: BTreeMap<UsrSortName, BTreeMap<Vec<Sort>, UsrSortId>>,
     /// a map from unnamed type tuple (still user-defined) to sort id
     pub idx_tuple: BTreeMap<Vec<Sort>, UsrSortId>,
@@ -169,16 +185,14 @@ impl TypeRegistry {
     }
 
     /// Create a new type signature (i.e. register a type instance) in the registry.
-    /// If a type with the same name and instantiation is already registered, the function panics.
-    fn create(&mut self, name: Option<UsrSortName>, inst: Vec<Sort>) -> UsrSortId {
-        // random number depending on both tuple and named types (so if we had 15 registered types, the idx will be 15 (it starts from 0)).
-        // it is the sum of the length of the idx_tuple and the sum of the length of the values of idx_named
+    pub(crate) fn create(&mut self, name: Option<UsrSortName>, inst: Vec<Sort>) -> UsrSortId {
+        // This gives the number of registered types so far.
         let idx = UsrSortId {
             index: self.idx_tuple.len() + self.idx_named.values().map(|v| v.len()).sum::<usize>(),
         };
         // existing is the UsrSortId that is already registered
         let existing = match name {
-            None => self.idx_tuple.insert(inst, idx), //? Doesnt this give an error for tuples with the same elements?
+            None => self.idx_tuple.insert(inst, idx),
             Some(n) => self.idx_named.entry(n).or_default().insert(inst, idx),
         };
         if existing.is_some() {
@@ -188,7 +202,7 @@ impl TypeRegistry {
     }
 
     /// Register a definition to the registry
-    fn register_def(&mut self, idx: UsrSortId, def: DataType) {
+    pub(crate) fn register_def(&mut self, idx: UsrSortId, def: DataType) {
         let existing = self.defs.insert(idx, def);
         if existing.is_some() {
             panic!("type definition already registered");
@@ -230,7 +244,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// registers any user-defined types with the type registry if needed.
     pub fn resolve_type(&mut self, ty: &TypeRef) -> Sort {
         let sort = match ty {
-            TypeRef::Var(_) => panic!("incomplete type inference"), // you cannot have type variables in the IR so all types should be resolved at the parser level that is why the unification is done.
+            TypeRef::Var(_) => panic!("incomplete type inference in the IR builder"), // you cannot have type variables in the IR so all types should be resolved at the parser level that is why the unification is done.
             TypeRef::Boolean => Sort::Boolean,
             TypeRef::Integer => Sort::Integer,
             TypeRef::Real => Sort::Real,
@@ -291,7 +305,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     ) -> UsrSortId {
         // UsrSortName is the name of a user-defined type in the IR
         let name = ty_name.map(|n| n.into());
-        // Resolve type arguments: TypeRef::Parameter(T) -> Sort (using ty_inst)
+        // Resolve type arguments: TypeRef::Parameter(T) -> Sort::Uninterpreted(`typename`_T) (using ty_inst)
         // For type definitions, ty_inst should already have bindings created before calling this
         let ty_args = self.resolve_type_ref_vec(ty_args);
 
@@ -351,23 +365,5 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
         // return the sort
         idx
-    }
-
-    /// Lookup the user sort id given an optional sort name and instantiation
-    pub fn lookup_type(&self, name: Option<&UsrSortName>, inst: &[Sort]) -> UsrSortId {
-        match self.ir.ty_registry.get_index(name, inst) {
-            None => {
-                let inst_content = inst
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",");
-                match name {
-                    None => panic!("anonymous sort not registered ({inst_content})"),
-                    Some(n) => panic!("user-defined sort not registered {n}<{inst_content}>"),
-                }
-            }
-            Some(sid) => sid,
-        }
     }
 }

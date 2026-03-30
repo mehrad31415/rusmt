@@ -7,7 +7,7 @@ mod translation;
 
 use anyhow::anyhow;
 use datatest_stable::harness;
-use rusmart_smt_derive::{derive, model};
+use rusmart_smt_derive::{model, solve};
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::{env, fs};
@@ -161,7 +161,8 @@ fn test_translation(path: &Path) -> datatest_stable::Result<()> {
 
     if update {
         // Regenerate baselines in-place.
-        derive(path, &expected_dir)?;
+        let models = model(path)?;
+        solve(&models, None, &expected_dir)?;
         return Ok(());
     }
 
@@ -179,7 +180,8 @@ fn test_translation(path: &Path) -> datatest_stable::Result<()> {
     // Run derive() into a temporary output directory.
     let tmp = tempfile::tempdir()?;
     let out_dir = tmp.path().join(base.strip_suffix(".rs").unwrap_or(base));
-    let derive_result = derive(path, &out_dir);
+    let models = model(path)?;
+    let derive_result = solve(&models, None, &out_dir);
 
     match derive_result {
         Ok(_) => {

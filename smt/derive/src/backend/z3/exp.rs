@@ -3,7 +3,7 @@
 
 use crate::backend::z3::fun::{format_sort_for_fn, resolve_function_name};
 use crate::backend::z3::intrinsics::format_intrinsic;
-use crate::backend::z3::ty::resolve_type_name;
+use crate::backend::z3::sort::resolve_type_name;
 use crate::ir::exp::{EnumSelector, Expression, VarKind, VariantCtor};
 use crate::ir::index::{UsrFunId, UsrSortId};
 use crate::ir::sort::{DataType, Sort};

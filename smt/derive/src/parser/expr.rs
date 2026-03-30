@@ -579,13 +579,17 @@ impl Display for Op {
             }
             Self::Intrinsic(intrinsic) => intrinsic.fmt(f),
             Self::Procedure { name, inst, args } => {
-                write!(
-                    f,
-                    "{}<{}>({})",
-                    name,
-                    inst.iter().format(","),
-                    args.iter().format(",")
-                )
+                if inst.is_empty() {
+                    write!(f, "{}({})", name, args.iter().format(","))
+                } else {
+                    write!(
+                        f,
+                        "{}<{}>({})",
+                        name,
+                        inst.iter().format(","),
+                        args.iter().format(",")
+                    )
+                }
             }
         }
     }

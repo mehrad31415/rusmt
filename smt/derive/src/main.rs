@@ -1,11 +1,11 @@
 //! This is the main entry point for the derive crate.
-//! usage: cargo run -- <parser_name>
-//! if no parser_name is provided, all parsers will be processed
+//! usage: cargo run -- <parser_name> <top_level_fn>
+//! Example: cargo run -- toml parse_toml
 
-use rusmart_smt_derive::derive;
+use rusmart_smt_derive::{model, solve};
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -22,50 +22,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     // Path to lang/synthesis which contains the synthesis outputs
     let synthesis_base = lang_src_dir.join("synthesis");
-    if !synthesis_base.exists() {
-        // create the directory
-        fs::create_dir_all(&synthesis_base)?;
-    }
 
-    // Check if we got a specific parser argument
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() > 1 {
-        // Test a specific parser
+    if args.len() >= 3 {
+        // cargo run -- <parser_name> <top_level_fn>
         let parser_name = &args[1];
+        let top_level_fn = &args[2];
         let parser_dir = lang_src_dir.join(parser_name);
-
         if !parser_dir.exists() {
             return Err(format!("Parser '{}' not found at {:?}", parser_name, parser_dir).into());
         }
-
         let output_dir = synthesis_base.join(parser_name);
-        test_parser(&parser_dir, &output_dir)?;
-    } else {
-        // Test all parsers
-        for entry in fs::read_dir(&lang_src_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            // Only process directories (each parser is in its own directory)
-            if path.is_dir() {
-                let parser_name = path.file_name().unwrap().to_str().unwrap();
-                let output_dir = synthesis_base.join(parser_name);
-                test_parser(&path, &output_dir)?;
-            }
+        if output_dir.exists() {
+            fs::remove_dir_all(&output_dir)?;
         }
+        fs::create_dir_all(&output_dir)?;
+        let models = model(&parser_dir)?;
+        solve(&models, Some(top_level_fn.as_str()), &output_dir)?;
+    } else {
+        return Err(
+            "Usage: cargo run -- <parser_name> <top_level_fn>\nExample: cargo run -- toml parse_toml".into()
+        );
     }
 
-    Ok(())
-}
-
-fn test_parser(parser_dir: &Path, output_dir: &Path) -> Result<(), Box<dyn Error>> {
-    // Clean up this parser's previous outputs (not the entire synthesis directory)
-    // E.g., deletes lang/synthesis/toml/ but not lang/synthesis/wasm/
-    if output_dir.exists() {
-        fs::remove_dir_all(&output_dir)?;
-    }
-    // Generate SMT from the parser implementation
-    derive(parser_dir, output_dir)?;
     Ok(())
 }

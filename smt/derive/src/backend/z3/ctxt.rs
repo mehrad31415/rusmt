@@ -5,18 +5,18 @@ use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
-use crate::backend::response::NUM_CPU_CORES;
+use crate::backend::response::num_cpu_cores;
 use crate::backend::response::Response;
 use crate::backend::z3::fun::collect_function_call_edges;
+use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
 use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str};
 use crate::backend::z3::intrinsics::array_null_const_name;
-use crate::backend::z3::ty::get_generic_param_count;
-use crate::backend::z3::ty::{collect_type_edges, resolve_type_name, scc_from_edges};
-use crate::backend::z3::ty::{
+use crate::backend::z3::sort::get_generic_param_count;
+use crate::backend::z3::sort::{collect_type_edges, resolve_type_name, scc_from_edges};
+use crate::backend::z3::sort::{
     mk_enum_str, mk_named_tuple_str, mk_record_str, mk_unnamed_tuple_str,
 };
-use crate::backend::z3::fun::format_sort_for_fn;
 use crate::ir::ctxt::IRContext;
 use crate::ir::exp::Expression;
 use crate::ir::fun::{FunDef, FunSig};
@@ -44,8 +44,8 @@ impl CodeGen for CodeGenZ3 {
     }
 
     /// Returns the name of the backend code generator, which is "z3_chc".
-    fn name(&self) -> String {
-        "z3_chc".to_string()
+    fn name(&self) -> &'static str {
+        "z3_chc"
     }
 
     /// Returns the file extension (or flavor) of the source code, which is "smt2" for Z3.
@@ -63,51 +63,145 @@ impl CodeGen for CodeGenZ3 {
             ty_registry,
             fn_registry,
             error_count: _,
+            error_targets: _,
         } = ir;
 
-        // disable success messages
+        // Z3 prints "success" after every command by default.
+        // 500 declarations = 500 "success" lines before the actual sat/unsat result.
+        // Turn it off so our response parser only sees the verdict.
         l!(x, "(set-option :print-success false)");
-        // enable model generation in case of satisfiability for debugging
+        // When Z3 returns "sat", we need the actual concrete values (e.g., input_0 = "hello"),
+        // not just the fact that a solution exists. Without this, (get-model) fails.
         l!(x, "(set-option :produce-models true)");
-        // disable proof generation to save resources
+        // Proof objects explain WHY something is unsatisfiable. Building them requires extra
+        // bookkeeping during search, slowing Z3 down. We only care whether sat/unsat, not why.
         l!(x, "(set-option :produce-proofs false)");
-        // disable unsat core generation to save resources
+        // Unsat cores identify WHICH of your assertions conflict (e.g., "assertions 3 and 7
+        // are contradictory"). Computing this requires tracking assertion contributions.
+        // We don't debug unsatisfiability — we just move to the next error target.
         l!(x, "(set-option :produce-unsat-cores false)");
-        // Reproducibility
+        // ── Reproducibility ──
+        // Z3 has two layers: an inner SAT solver (raw boolean variables) and an outer SMT solver
+        // (theories: integers, strings, sets). Both use randomization to decide things like
+        // "which variable to try next" or "which theory to check first."
+        //
+        // Without fixed seeds, the same input can produce different results across runs:
+        //   Monday: sat in 2 seconds (lucky variable ordering)
+        //   Tuesday: timeout at 60 seconds (unlucky ordering)
+        //
+        // Fixed seeds make the search deterministic: same input → same path → same result.
         l!(x, "(set-option :sat.random_seed 42)");
         l!(x, "(set-option :smt.random_seed 42)");
-        // Parallelism
+        // ── Parallelism ──
+        // Z3 can split its search across multiple threads, each exploring a different part
+        // of the search space. If any thread finds a solution, Z3 returns sat.
+        // N threads on N cores = each thread gets a dedicated core, no contention.
         l!(x, "(set-option :parallel.enable true)");
-        l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
+        l!(x, "(set-option :parallel.threads.max {})", num_cpu_cores());
+        // "Cube and conquer": the main thread works alone, then after `delay` milliseconds
+        // splits the problem into subproblems for worker threads.
+        //   delay=10: "try alone for 10ms, if still stuck, split across threads"
+        //   delay=5000: waits 5s before splitting — if the problem solves in 3s, threads sat idle
+        //   delay=0: splits immediately, but splitting has overhead (copying state, coordination)
+        // 10ms is a good default for hard problems — start parallelizing quickly.
         l!(x, "(set-option :parallel.conquer.delay 10)");
-        // SAT Solver Optimizations
+        // ── SAT Solver: Restarts ──
+        // A restart throws away the current guess and starts over, but keeps learned facts.
+        // Example: Z3 guesses x=50000. Doesn't work. Nearby values don't work either.
+        // Restart: forget the guess, remember "50000 area is bad", try a different region.
+        // Each restart is smarter because of accumulated knowledge from previous attempts.
+        //
+        // 100,000 restarts allowed. Each carries over learned facts, so later restarts are
+        // much more targeted than early ones. Too low = gives up before finding a good path.
+        // Restarts are sequential (one thread retrying). Conquer is parallel (multiple threads
+        // searching different regions). They work together: each thread can restart within
+        // its own subproblem.
         l!(x, "(set-option :sat.restart.max 100000)");
-        // SMT Solver Optimizations
+        // ── SMT Solver: Arithmetic ──
+        //
+        // Z3 has multiple arithmetic engines (values: 2, 3, 6).
+        //   2 = old Simplex. Linear only (x + y = 5).
+        //   3 = adds basic integer support.
+        //   6 = newest. Handles mod, div, nonlinear (x * y), mixed int/real.
+        // We use 6 because our interpreter uses mod (bitvector ops), integer division,
+        // and set membership checks.
         l!(x, "(set-option :smt.arith.solver 6)");
+        // ── SMT Solver: Case Splitting ──
+        //
+        // When Z3 encounters (or A B C), it must decide which branch to explore.
+        // Values: 0, 1, 2, 3, 5.
+        //   0 = try all branches blindly
+        //   3 = relevancy-based: only split on branches relevant to the current goal
+        //
+        // Example: (assert (or (= x 1) (= x 2) (= x 3))) with (assert (> x 100))
+        //   Mode 0: tries x=1, fails. Tries x=2, fails. Tries x=3, fails. Returns unsat.
+        //   Mode 3: sees (> x 100) immediately rules out all three. Returns unsat without trying.
+        //
+        // Mode 3 is critical for us: our interpreter has hundreds of ite branches (every
+        // if/match in Rust becomes an ite). Most are irrelevant to any given error target.
         l!(x, "(set-option :smt.case_split 3)");
+        // ── SMT Solver: Phase Selection ──
+        //
+        // When Z3 picks a boolean variable to branch on, should it try true or false first?
+        // Values: 0 (always true), 1 (always false), 3 (always false + caching), 4 (random).
+        //
+        // Example: (assert (=> p (= x 1))) (assert (=> (not p) (= x 2))) (assert (> x 1))
+        //   Mode 0 (true first): tries p=true → x=1 → fails (> x 1). Backtracks, tries p=false.
+        //   Mode 3 (false first): tries p=false → x=2 → sat immediately.
+        //
+        // Mode 3 tends to prune faster for verification problems because negative assignments
+        // eliminate more possibilities. In our ite chains, the "else" branch is usually the
+        // common/fast path, and the "then" branch is the error/special case.
         l!(x, "(set-option :smt.phase_selection 3)");
-        // Quantifier Handling
+        // ── Quantifier Handling ──
+        //
+        // Z3 can't check every integer for (forall ((k Int)) ...). These options control
+        // HOW Z3 picks which values to try.
+        //
+        // MBQI (Model-Based Quantifier Instantiation) — trial and error approach:
+        //   1. Z3 GUESSES a model (ignoring the forall)
+        //   2. CHECKS: does the forall hold in this model? Looks for a counterexample k.
+        //   3. If counterexample found, adds it as a constraint, goes back to step 1.
+        //   4. If no counterexample, the model is valid → sat.
+        //
+        // Example:
+        //   (forall ((k Int)) (>= (select arr k) 0))   ; all elements non-negative
+        //   (= (select arr 5) (- 3))                    ; but arr[5] = -3
+        //
+        //   Round 1: guess arr = all zeros. Forall holds. But arr[5]=0 conflicts with arr[5]=-3.
+        //   Round 2: fix arr[5]=-3. Check forall with k=5: -3 >= 0? No! Contradiction → unsat.
+        //
+        // Without MBQI, Z3 stares at the infinite forall and returns "unknown".
         l!(x, "(set-option :smt.mbqi true)");
-        l!(x, "(set-option :smt.qi.eager_threshold 10.0)");
-        l!(x, "(set-option :smt.qi.max_multi_patterns 1000)");
+        //
+        // E-matching — forward pattern matching approach (complementary to MBQI):
+        //   Z3 looks at terms it already knows (e.g., (select arr 7) from another assertion)
+        //   and matches them against quantifier patterns. If (select arr 7) matches the
+        //   forall's pattern (select arr k), Z3 instantiates k=7 and checks that case.
+        //
+        //   MBQI works BACKWARD from models. E-matching works FORWARD from known terms.
+        //   Both enabled = two independent strategies to attack quantifiers.
         l!(x, "(set-option :smt.ematching true)");
-        // Auto-configuration
+        //
+        // Eager threshold: how aggressively to instantiate quantifiers before they're needed.
+        //   Low (0.5) = only instantiate when stuck and need it (conservative)
+        //   High (10.0) = instantiate all matching terms immediately (aggressive)
+        // We use 10.0 because we have few quantifiers (ArrayIsEmpty) but they're critical.
+        // Instantiate eagerly → avoid backtracking later.
+        l!(x, "(set-option :smt.qi.eager_threshold 10.0)");
+        //
+        // Multi-patterns match multiple terms simultaneously in a forall.
+        // If Z3 knows 100 (select arr _) terms and 10 (> _ 0) terms, there are 1000 possible
+        // combinations. This cap controls how many combinations Z3 is allowed to try.
+        // 1000 is generous enough for our use case with few quantifiers.
+        l!(x, "(set-option :smt.qi.max_multi_patterns 1000)");
+        // ── Auto-configuration ──
+        //
+        // Z3 normally analyzes your input and auto-tunes its settings. This would override
+        // everything above. We disable it because we've tuned specifically for our problem
+        // structure: recursive ADTs, strings, sets, bitvectors, and few quantifiers.
         l!(x, "(set-option :smt.auto_config false)");
-        l!(x); // add new line
-
-        // Define the Error datatype
-        // Error is represented as a set of error IDs (integers)
-        // We model it as a recursive datatype that can be empty or contain error markers
-        l!(x, "; Define Error type (set of error markers)");
-        l!(x, "(declare-datatypes");
-        l!(x, "\t((Error 0))");
-        l!(x, "\t(");
-        l!(x, "\t\t((ErrEmpty)"); // No error
-        l!(x, "\t\t (ErrSingle (err_id Int))"); // Single error with ID
-        l!(x, "\t\t (ErrMerge (err_left Error) (err_right Error)))"); // Union of two errors
-        l!(x, "\t)");
-        l!(x, ")");
-        l!(x); // add new line
+        l!(x);
 
         // write the type parameters
         if !&undef_sorts.is_empty() {
@@ -296,7 +390,10 @@ impl CodeGen for CodeGenZ3 {
             for sid in ty_registry.data_types().keys() {
                 let (_, type_args) = ty_registry.reverse_lookup(*sid);
                 // Skip abstract instantiations (those with uninterpreted sort arguments)
-                if type_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))) {
+                if type_args
+                    .iter()
+                    .any(|s| matches!(s, Sort::Uninterpreted(_)))
+                {
                     continue;
                 }
                 let v_sort = Sort::User(*sid);
@@ -322,17 +419,32 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "; Integer string parsing helpers");
         // --- hex ---
         l!(x, "(define-fun rusmart_hex_char_to_int ((s String)) Int");
-        l!(x, "\t(ite (and (str.<= \"0\" s) (str.<= s \"9\")) (- (str.to_code s) 48)");
-        l!(x, "\t(ite (and (str.<= \"A\" s) (str.<= s \"F\")) (- (str.to_code s) 55)");
-        l!(x, "\t(ite (and (str.<= \"a\" s) (str.<= s \"f\")) (- (str.to_code s) 87)");
+        l!(
+            x,
+            "\t(ite (and (str.<= \"0\" s) (str.<= s \"9\")) (- (str.to_code s) 48)"
+        );
+        l!(
+            x,
+            "\t(ite (and (str.<= \"A\" s) (str.<= s \"F\")) (- (str.to_code s) 55)"
+        );
+        l!(
+            x,
+            "\t(ite (and (str.<= \"a\" s) (str.<= s \"f\")) (- (str.to_code s) 87)"
+        );
         l!(x, "\t0))))");
         l!(x);
-        l!(x, "(define-fun-rec rusmart_from_hex_str_impl ((s String) (acc Int)) Int");
+        l!(
+            x,
+            "(define-fun-rec rusmart_from_hex_str_impl ((s String) (acc Int)) Int"
+        );
         l!(x, "\t(ite (= (str.len s) 0)");
         l!(x, "\t\tacc");
         l!(x, "\t\t(rusmart_from_hex_str_impl");
         l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
-        l!(x, "\t\t\t(+ (* acc 16) (rusmart_hex_char_to_int (str.at s 0))))))");
+        l!(
+            x,
+            "\t\t\t(+ (* acc 16) (rusmart_hex_char_to_int (str.at s 0))))))"
+        );
         l!(x);
         l!(
             x,
@@ -341,14 +453,23 @@ impl CodeGen for CodeGenZ3 {
         l!(x);
         // --- octal ---
         l!(x, "(define-fun rusmart_oct_char_to_int ((s String)) Int");
-        l!(x, "\t(ite (and (str.<= \"0\" s) (str.<= s \"7\")) (- (str.to_code s) 48) 0))");
+        l!(
+            x,
+            "\t(ite (and (str.<= \"0\" s) (str.<= s \"7\")) (- (str.to_code s) 48) 0))"
+        );
         l!(x);
-        l!(x, "(define-fun-rec rusmart_from_oct_str_impl ((s String) (acc Int)) Int");
+        l!(
+            x,
+            "(define-fun-rec rusmart_from_oct_str_impl ((s String) (acc Int)) Int"
+        );
         l!(x, "\t(ite (= (str.len s) 0)");
         l!(x, "\t\tacc");
         l!(x, "\t\t(rusmart_from_oct_str_impl");
         l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
-        l!(x, "\t\t\t(+ (* acc 8) (rusmart_oct_char_to_int (str.at s 0))))))");
+        l!(
+            x,
+            "\t\t\t(+ (* acc 8) (rusmart_oct_char_to_int (str.at s 0))))))"
+        );
         l!(x);
         l!(
             x,
@@ -356,7 +477,10 @@ impl CodeGen for CodeGenZ3 {
         );
         l!(x);
         // --- binary ---
-        l!(x, "(define-fun-rec rusmart_from_bin_str_impl ((s String) (acc Int)) Int");
+        l!(
+            x,
+            "(define-fun-rec rusmart_from_bin_str_impl ((s String) (acc Int)) Int"
+        );
         l!(x, "\t(ite (= (str.len s) 0)");
         l!(x, "\t\tacc");
         l!(x, "\t\t(rusmart_from_bin_str_impl");
@@ -380,9 +504,8 @@ impl CodeGen for CodeGenZ3 {
             let mut choose_fids: BTreeSet<UsrFunId> = BTreeSet::new();
             for (_, instantiations) in &fn_registry.lookup {
                 for (_, &fid) in instantiations {
-                    let FunDef::Defined(exp_registry, root_exp_id) =
-                        fn_registry.retrieve_def(fid);
-                    let root_exp = exp_registry.lookup_exp(root_exp_id);
+                    let def = fn_registry.retrieve_def(fid);
+                    let root_exp = def.body.lookup_exp(&def.root_exp_id);
                     if matches!(root_exp, Expression::IterChoose { .. }) {
                         choose_fids.insert(fid);
                     }
@@ -392,7 +515,10 @@ impl CodeGen for CodeGenZ3 {
             // Emit choose functions as uninterpreted declare-fun BEFORE define-funs-rec
             // so they are available when called from within the recursive block.
             if !choose_fids.is_empty() {
-                l!(x, "; Uninterpreted functions (Hilbert choice / epsilon semantics)");
+                l!(
+                    x,
+                    "; Uninterpreted functions (Hilbert choice / epsilon semantics)"
+                );
                 let mut sorted_choose: Vec<UsrFunId> = choose_fids.iter().copied().collect();
                 sorted_choose.sort();
                 for fid in &sorted_choose {
@@ -492,27 +618,6 @@ impl CodeGen for CodeGenZ3 {
             l!(x); // Empty line after functions
         }
 
-        // Add helper functions for error handling
-        l!(x, "; Helper functions for error handling");
-        l!(x, "(define-fun err-fresh ((id Int)) Error");
-        l!(x, "\t(ErrSingle id))");
-        l!(x);
-        l!(x, "(define-fun err-merge ((e1 Error) (e2 Error)) Error");
-        l!(x, "\t(ErrMerge e1 e2))");
-        l!(x);
-        l!(x, "(define-fun err-is-empty ((e Error)) Bool");
-        l!(x, "\t(is-ErrEmpty e))");
-        l!(x);
-
-        // Recursive function to check if error contains a specific ID
-        l!(x, "(define-fun-rec err-contains ((e Error) (id Int)) Bool");
-        l!(x, "\t(or");
-        l!(x, "\t\t(and (is-ErrSingle e) (= (err_id e) id))");
-        l!(x, "\t\t(and (is-ErrMerge e)");
-        l!(x, "\t\t\t(or (err-contains (err_left e) id)");
-        l!(x, "\t\t\t    (err-contains (err_right e) id)))))");
-        l!(x);
-
         // Don't add check-sat or get-model here - they will be added by error discovery
         l!(x, "; Base SMT-LIB definitions complete");
         l!(x, "; Add error-specific assertions below");
@@ -523,7 +628,6 @@ impl CodeGen for CodeGenZ3 {
 
     /// Execute the backend solver on the generated SMTLIB2 file.
     fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response> {
-        // Pass Z3's own timeout flag so Z3 self-terminates even if the parent process dies.
         // Z3 -t:N sets the timeout in milliseconds; on expiry Z3 outputs "unknown" and exits 0.
         let timeout_ms = BACKEND_TIMEOUT.as_millis();
         let mut cmd = Command::new("z3");
@@ -533,6 +637,7 @@ impl CodeGen for CodeGenZ3 {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
+        // Command::new("z3") builds the command. group_spawn() launches Z3 as an OS process inside a process group. Z3's parallel solver can itself spawn worker sub-processes. A process group means child.kill() kills Z3 AND all its workers in one shot. If you used regular .spawn() + .kill(), you'd only kill the Z3 main process and leave orphaned workers running.
         let mut child = cmd.group_spawn().map_err(|e| {
             warn!("Failed to spawn z3 process: {}", e);
             BackendError
@@ -589,10 +694,6 @@ impl CodeGen for CodeGenZ3 {
             BackendError
         })?;
 
-        // Capture elapsed time here. `start` is Instant (Copy), so it was copied into the
-        // monitor_thread closure above; the original is still valid in this scope.
-        let elapsed = start.elapsed();
-
         // Get the outputs from the reader threads
         let output = stdout_thread.join().map_err(|_| {
             warn!("Stdout thread panicked");
@@ -618,48 +719,30 @@ impl CodeGen for CodeGenZ3 {
                 Response::Timeout
             }
             Some(exit_status) => {
-                // Z3 may print extra lines after the primary result (e.g. "(error "model is not
-                // available")" on stdout when (get-model) follows an "unknown" check-sat).
-                // Use the first line as the canonical result.
-                let first_line = output.lines().next().unwrap_or("").trim();
+                let verdict = output
+                    .lines()
+                    .map(|l| l.trim())
+                    .find(|&l| l == "sat" || l == "unsat" || l == "unknown");
 
-                // Interpret the primary result from the first output line.
-                // Always use output content over exit code: Z3 can exit non-zero for benign
-                // reasons (e.g., (get-model) after "unknown" gives exit 1; model generation
-                // segfaults give exit 139 after printing "sat").
-                if first_line == "unknown" {
-                    // Z3 times out (via -t:N) or genuinely can't decide.
-                    // Use elapsed time to distinguish a Z3 self-timeout from a genuine unknown.
-                    if elapsed >= BACKEND_TIMEOUT {
-                        Response::Timeout
-                    } else {
-                        Response::Unknown
+                match verdict {
+                    Some("unsat") => Response::Unsat,
+                    Some("unknown") => Response::Unknown,
+                    Some("sat") => {
+                        if !exit_status.success() {
+                            // Z3 found sat but crashed during model output (e.g. segfault in
+                            // get-model). The "sat" verdict is still valid; model may be partial.
+                            warn!(
+                                "Z3 exited with status {} after reporting sat (model may be incomplete)",
+                                exit_status
+                            );
+                        }
+                        Response::Sat(output)
                     }
-                } else if first_line == "unsat" {
-                    Response::Unsat
-                } else if first_line.starts_with("sat") {
-                    if !exit_status.success() {
-                        // Z3 found sat but crashed during model output (e.g. segfault in get-model).
-                        // The "sat" result is still valid; we just won't have a full model.
-                        warn!(
-                            "Z3 exited with status {} after reporting sat (model may be incomplete)",
-                            exit_status
-                        );
+                    Some(other) => unreachable!("unexpected verdict: {}", other),
+                    None => {
+                        warn!("Z3 produced no verdict. Output: {}", output.trim());   
+                        return Err(BackendError);
                     }
-                    Response::Sat(output)
-                } else if first_line.is_empty() {
-                    warn!("Z3 returned empty output (likely only declarations, no queries)");
-                    Response::Unknown
-                } else {
-                    // Completely unrecognized output — this is a real failure.
-                    warn!("Backend execution failed with status: {}", exit_status);
-                    if !output.is_empty() {
-                        warn!("Stdout: {}", output);
-                    }
-                    if !stderr_output.is_empty() {
-                        warn!("Stderr: {}", stderr_output);
-                    }
-                    return Err(BackendError);
                 }
             }
         };
@@ -671,81 +754,131 @@ impl CodeGen for CodeGenZ3 {
         &self,
         base_code: &str,
         ir: &IRContext,
-        error_id: usize,
-    ) -> Vec<(String, String)> {
-        let mut results = Vec::new();
+        top_level_fn: &str,
+        target_ids: &BTreeSet<usize>,
+    ) -> String {
+        // Look up the top-level function directly by name.
+        let instantiations = ir
+            .fn_registry
+            .lookup
+            .iter()
+            .find(|(name, _)| name.as_ref() == top_level_fn)
+            .unwrap_or_else(|| {
+                panic!("top-level function '{}' not found in function registry", top_level_fn)
+            })
+            .1;
 
-        for (fn_name, instantiations) in &ir.fn_registry.lookup {
-            for (ty_args, fn_id) in instantiations {
-                // Skip polymorphic abstract instantiations (those with uninterpreted sorts).
-                // Concrete functions (ty_args empty or all concrete sorts) are queryable.
-                if ty_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))) {
-                    continue;
-                }
+        // Top-level function must be monomorphic (exactly one instantiation).
+        assert_eq!(
+            instantiations.len(),
+            1,
+            "top-level function '{}' must be monomorphic, found {} instantiations",
+            top_level_fn,
+            instantiations.len()
+        );
+        let fn_id = instantiations.values().next().unwrap();
+        let sig = ir.fn_registry.retrieve_sig(fn_id.clone());
 
-                let FunDef::Defined(exp_registry, root_exp_id) =
-                    ir.fn_registry.retrieve_def(*fn_id);
-
-                // Only query functions that directly contain this error ID.
-                if !exp_registry.collect_error_ids(root_exp_id).contains(&error_id) {
-                    continue;
-                }
-
-                let sig = ir.fn_registry.retrieve_sig(*fn_id);
-                let smt_fn_name = fn_name.to_string();
-
-                // Declare fresh SMT constants for each function parameter.
-                let mut query = base_code.to_string();
-                let mut param_vars: Vec<String> = Vec::new();
-                for (i, (_, param_sort)) in sig.params.iter().enumerate() {
-                    let var_name = format!("input_{}_{}", fn_name, i);
-                    let sort_str = format_sort_for_fn(param_sort, ir);
-                    query.push_str(&format!("(declare-const {} {})\n", var_name, sort_str));
-                    param_vars.push(var_name);
-                }
-
-                // Build the call expression: either bare name or applied to inputs.
-                let call_expr = if param_vars.is_empty() {
-                    smt_fn_name.clone()
-                } else {
-                    format!("({} {})", smt_fn_name, param_vars.join(" "))
-                };
-
-                // Build an assertion that the call result contains error_id.
-                if let Some(assertion) =
-                    extract_error_assertion(&sig.ret_ty, &call_expr, error_id, ir)
-                {
-                    query.push_str(&format!(
-                        "; Query: find input triggering error ID {} in function {}\n",
-                        error_id, fn_name
-                    ));
-                    query.push_str(&format!("(assert {})\n", assertion));
-                    query.push_str("(check-sat)\n");
-                    query.push_str("(get-model)\n");
-                    results.push((fn_name.to_string(), query));
-                }
-            }
+        // Declare one fresh SMT constant per parameter of the top-level function.
+        let mut query = base_code.to_string();
+        let mut param_vars: Vec<String> = Vec::new();
+        for (i, (_, param_sort)) in sig.params.iter().enumerate() {
+            let var_name = format!("input_{}", i);
+            let sort_str = format_sort_for_fn(param_sort, ir);
+            query.push_str(&format!("\n(declare-const {} {})", var_name, sort_str));
+            param_vars.push(var_name);
         }
 
-        results
+        // Build the call expression: (top_level_fn input_0 input_1 ...) or just top_level_fn.
+        let call_expr = if param_vars.is_empty() {
+            top_level_fn.to_string()
+        } else {
+            format!("({} {})", top_level_fn, param_vars.join(" "))
+        };
+
+        // Build assertions: for each error ID in the target, assert set membership.
+        // Single target {n}:     (set.member n (accessor result))
+        // Merge target {a,b,c}:  (and (set.member a ...) (set.member b ...) (set.member c ...))
+        let member_assertions: Vec<String> = target_ids
+            .iter()
+            .map(|&error_id| extract_error_assertion(&sig.ret_ty, &call_expr, error_id, ir))
+            .collect();
+
+        let assertion = match member_assertions.len() {
+            1 => member_assertions.into_iter().next().unwrap(),
+            _ => format!("(and {})", member_assertions.join(" ")),
+        };
+
+        // Append the comment, assertion, check-sat, and get-model to the query.
+        let ids_str: Vec<String> = target_ids.iter().map(|id| id.to_string()).collect();
+        query.push_str(&format!(
+            "\n; Find input to {} that triggers error IDs {{{}}}\n",
+            top_level_fn,
+            ids_str.join(", ")
+        ));
+        query.push_str(&format!("(assert {})\n", assertion));
+        query.push_str("(check-sat)\n");
+        query.push_str("(get-model)\n");
+
+        query
     }
 }
 
-/// Given the return sort of a function and an SMT expression representing its result,
-/// build an SMT-LIB assertion that "the result contains `error_id`".
+/// Build an SMT-LIB assertion that checks whether `error_id` is reachable from
+/// the result of `call_expr`.
 ///
-/// Returns `None` if the sort does not (directly) contain an `Error` value.
+/// # Background
+///
+/// Error in RuSmart is `(Set Int)` in Z3. Each `ErrFresh(n)` in the interpreter
+/// becomes `(set.singleton n)`, and `ErrMerge` becomes `(set.union ...)`.
+/// To test whether a specific error site was reached, we check set membership:
+/// `(set.member error_id result)`.
+///
+/// # How it works
+///
+/// The top-level function (e.g. `parse_toml`) typically returns a user-defined
+/// enum like `ParseResult<T>` rather than a bare `Error`. This function inspects
+/// the return sort and generates the appropriate assertion:
+///
+/// - **`Sort::Error`** — the function returns `Error` directly.
+///   Emits: `(set.member error_id (fn input_0 ...))`.
+///
+/// - **`Sort::User` (enum)** — scans each variant for fields of type `Sort::Error`.
+///   For each such field, emits a guarded assertion:
+///   `(and (is-VariantName result) (set.member error_id (accessor result)))`.
+///   If multiple variants carry Error fields, the assertions are OR'd together.
+///
+/// # Limitations
+///
+/// - **Enums only**: only `DataType::Enum` is handled. Structs, tuples, and
+///   primitives will panic.
+/// - **One level deep**: only checks direct fields of the enum variants. If Error
+///   is nested inside a struct inside an enum variant, it will not be found.
+/// - **No recursion**: does not follow nested user-defined types to find deeply
+///   buried Error fields.
+///
+/// These limitations are acceptable because interpreter entry points return
+/// flat enums like `ParseResult<T>` where Error is a direct field.
+///
+/// # Panics
+///
+/// Panics if the return sort does not contain a reachable `Sort::Error` field.
+/// This indicates a bug: `error_targets` was populated but the top-level function
+/// does not surface errors in its return type.
 fn extract_error_assertion(
     ret_sort: &Sort,
     call_expr: &str,
     error_id: usize,
     ir: &IRContext,
-) -> Option<String> {
+) -> String {
     match ret_sort {
-        // Function directly returns Error — straightforward containment check.
-        Sort::Error => Some(format!("(err-contains {} {})", call_expr, error_id)),
-
-        // Function returns a user-defined type — search enum variants for an Error field.
+        // Function returns Error directly — just check membership.
+        // Example: (set.member 3 (parse_toml input_0))
+        Sort::Error => format!("(set.member {} {})", error_id, call_expr),
+        // Function returns a user-defined enum — find the variant(s) that carry an Error field.
+        // Example for ParseResult with Err(Error):
+        //   (and (is-Err (parse_toml input_0))
+        //        (set.member 3 (field_ParseResult_Err_1_ (parse_toml input_0))))
         Sort::User(sid) => {
             let dt = ir.ty_registry.retrieve(*sid);
             let type_name = resolve_type_name(ir, *sid);
@@ -761,8 +894,8 @@ fn extract_error_assertion(
                                         let accessor =
                                             format!("field_{}_{}_{}_", type_name, vname, i + 1);
                                         assertions.push(format!(
-                                            "(and ({} {}) (err-contains ({} {}) {}))",
-                                            tester, call_expr, accessor, call_expr, error_id
+                                            "(and ({} {}) (set.member {} ({} {})))",
+                                            tester, call_expr, error_id, accessor, call_expr
                                         ));
                                     }
                                 }
@@ -776,25 +909,35 @@ fn extract_error_assertion(
                                             type_name, vname, field_key
                                         );
                                         assertions.push(format!(
-                                            "(and ({} {}) (err-contains ({} {}) {}))",
-                                            tester, call_expr, accessor, call_expr, error_id
+                                            "(and ({} {}) (set.member {} ({} {})))",
+                                            tester, call_expr, error_id, accessor, call_expr
                                         ));
                                     }
                                 }
                             }
-                            Variant::Unit => {}
+                            Variant::Unit => {} // Unit variants carry no data.
                         }
                     }
-                    match assertions.len() {
-                        0 => None,
-                        1 => Some(assertions.remove(0)),
-                        _ => Some(format!("(or {})", assertions.join(" "))),
+                    assert!(
+                        !assertions.is_empty(),
+                        "return type '{}' has no Error fields in any variant",
+                        type_name
+                    );
+                    if assertions.len() == 1 {
+                        assertions.remove(0)
+                    } else {
+                        format!("(or {})", assertions.join(" "))
                     }
                 }
-                _ => None,
+                _ => panic!(
+                    "return type is not an enum — cannot extract error assertion from {:?}",
+                    ret_sort
+                ),
             }
         }
-
-        _ => None,
+        _ => panic!(
+            "return sort {:?} does not contain Error — cannot generate error query",
+            ret_sort
+        ),
     }
 }

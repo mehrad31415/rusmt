@@ -482,9 +482,11 @@ pub fn format_intrinsic(
         Intrinsic::FloatFromHexStr { val, .. } => format!("(fp.from_str {})", fmt(*val)), // Z3 extension
 
         // --- Error & Generic Operations ---
-        // ErrFresh(id) emits the ErrSingle constructor directly with its unique integer ID.
-        Intrinsic::ErrFresh(id) => format!("(ErrSingle {})", id),
-        Intrinsic::ErrMerge { lhs, rhs } => format!("(ErrMerge {} {})", fmt(*lhs), fmt(*rhs)),
+        // Error is represented as (Set Int) in Z3 — a native set of integer IDs.
+        // ErrFresh(n) is a singleton set containing only n.
+        // ErrMerge is a union of two error sets.
+        Intrinsic::ErrFresh(id) => format!("(set.singleton {})", id),
+        Intrinsic::ErrMerge { lhs, rhs, .. } => format!("(set.union {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),
     }

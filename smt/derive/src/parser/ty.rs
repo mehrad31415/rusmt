@@ -758,13 +758,15 @@ impl TypeEnum {
 
 impl Display for TypeEnum {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "[{}]",
-            self.variants
-                .iter()
-                .format_with("\n", |(n, t), p| p(&format_args!("{n}:{t}"))),
-        )
+        let content: Vec<_> = self
+            .variants
+            .iter()
+            .map(|(n, t)| match t {
+                EnumVariant::Unit => n.to_string(),
+                _ => format!("{n}: {t}"),
+            })
+            .collect();
+        write!(f, "{{{}}}", content.join(" | "))
     }
 }
 

@@ -1,3 +1,5 @@
+//! Intermediate representation (IR) names.
+
 /// Utility macro to define a name
 macro_rules! name {
     ($(#[$meta:meta])* $name:ident $(: $parent:ty)?) => {
@@ -37,8 +39,6 @@ macro_rules! name {
     };
 }
 
-// ONLY for type parameters, user types, user functions, and variables
-// equivalent to:
 // #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 // pub struct SmtSortName {
 //     ident: String,
@@ -49,6 +49,7 @@ macro_rules! name {
 name! {
     /// Name of a type parameter that implements the SMT trait
     SmtSortName
+        : crate::parser::name::TypeParamName
 }
 
 impl SmtSortName {

@@ -1,3 +1,5 @@
+//! Intermediate representation (IR) indices.
+
 /// Utility macro to define an index
 macro_rules! index {
     ($(#[$meta:meta])* $name:ident) => {

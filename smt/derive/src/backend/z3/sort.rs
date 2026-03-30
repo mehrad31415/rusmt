@@ -110,7 +110,7 @@ fn format_sort(
                 x.to_string()
             }
         }
-        Sort::Error => "Error".to_string(), // Error type is defined as a datatype
+        Sort::Error => "(Set Int)".to_string(), // Error is a set of integer IDs
     }
 }
 

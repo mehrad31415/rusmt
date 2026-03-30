@@ -2,8 +2,9 @@
 
 use crate::backend::error::BackendResult;
 use crate::backend::response::Response;
-use crate::backend::z3::common::CodeGenZ3;
+use crate::backend::z3::ctxt::CodeGenZ3;
 use crate::ir::ctxt::IRContext;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 /// A generic trait for backend code generators.
@@ -14,36 +15,40 @@ pub(crate) trait CodeGen {
         Self: Sized;
 
     /// Returns the name of this code generator.
-    fn name(&self) -> String;
+    fn name(&self) -> &'static str;
 
     /// Returns the file extension (or flavor) of the source code.
     fn flavor(&self) -> &'static str;
 
     /// Given an IRContext, generate the backend source code.
-    ///
-    /// Returns a `BackendResult<String>` containing either the full source code or a BackendError::NotSupported error.
+    /// Returns a `BackendResult<String>` containing either the full source code or a BackendError.
     fn process(&self, ir: &IRContext) -> BackendResult<String>;
 
-    /// Invokes the backend solver with the given source code file.
+    /// process generates SMT-LIB as a String → caller writes it to a file → invoke_backend takes that file path. The intermediate file step is intentional (keeps the generated code inspectable for debugging).
     fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response>;
 
-    /// For a given `error_id`, generate per-function SMT-LIB query strings.
+    /// For a given error target (set of error IDs), generate an SMT-LIB query that asks Z3
+    /// to find inputs to `top_level_fn` such that ALL IDs in the target are in the result's
+    /// error set. A single-element set queries one error site; a multi-element set queries
+    /// a merge point where all those sites were reached simultaneously.
     ///
-    /// Returns a list of `(function_name, query_code)` pairs.  Each pair targets
-    /// a function that **directly** contains `Error::fresh()` calls for `error_id`.
-    /// The `query_code` extends `base_code` with fresh input constants, an error
-    /// assertion, `(check-sat)`, and `(get-model)`.
+    /// # Panics
+    ///
+    /// - `top_level_fn` is not found in the function registry
+    /// - `top_level_fn` is polymorphic (more than one instantiation)
+    /// - The return type of `top_level_fn` does not contain a `Sort::Error` field
     fn process_error_queries(
         &self,
         base_code: &str,
         ir: &IRContext,
-        error_id: usize,
-    ) -> Vec<(String, String)>;
+        top_level_fn: &str,
+        target_ids: &BTreeSet<usize>,
+    ) -> String;
 }
 
 /// A utility for source code builder
 /// This struct collects lines of code in a buffer.
-pub struct ContentBuilder {
+pub(crate) struct ContentBuilder {
     /// Internal buffer holding all lines of code so far.
     buffer: String,
     /// Current indentation level (counted as number of tabs).
@@ -51,9 +56,7 @@ pub struct ContentBuilder {
 }
 
 impl ContentBuilder {
-    /// Creates a new, empty content builder.
-    ///
-    /// let mut builder = ContentBuilder::new();
+    /// Create a new, empty content builder.
     pub fn new() -> Self {
         Self {
             buffer: String::new(),

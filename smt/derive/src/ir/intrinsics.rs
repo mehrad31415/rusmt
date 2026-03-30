@@ -1,8 +1,10 @@
-use num_bigint::BigInt;
-use num_rational::BigRational;
+//! Intermediate representation (IR) intrinsics which are the equivalent of the parser intrinsic operations.
 
 use crate::ir::index::ExpId;
 use crate::ir::sort::Sort;
+use num_bigint::BigInt;
+use num_rational::BigRational;
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq)]
 /// Intrinsic procedure
@@ -10,61 +12,61 @@ pub enum Intrinsic {
     /// `Boolean::from`
     BoolVal(bool),
     /// `Boolean::not`
-    BoolNot { 
+    BoolNot {
         /// The value of the boolean not
         val: ExpId,
     },
     /// `Boolean::and`
-    BoolAnd { 
+    BoolAnd {
         /// The left operand of the boolean and
         lhs: ExpId,
         /// The right operand of the boolean and
         rhs: ExpId,
     },
     /// `Boolean::or`
-    BoolOr { 
+    BoolOr {
         /// The left operand of the boolean or
         lhs: ExpId,
         /// The right operand of the boolean or
         rhs: ExpId,
     },
     /// `Boolean::xor`
-    BoolXor { 
+    BoolXor {
         /// The left operand of the boolean xor
         lhs: ExpId,
         /// The right operand of the boolean xor
         rhs: ExpId,
     },
     /// `Boolean::nand`
-    BoolNand { 
+    BoolNand {
         /// The left operand of the boolean nand
         lhs: ExpId,
         /// The right operand of the boolean nand
         rhs: ExpId,
     },
     /// `Boolean::nor`
-    BoolNor { 
+    BoolNor {
         /// The left operand of the boolean nor
         lhs: ExpId,
         /// The right operand of the boolean nor
         rhs: ExpId,
     },
     /// `Boolean::xnor`
-    BoolXnor { 
+    BoolXnor {
         /// The left operand of the boolean xnor
         lhs: ExpId,
         /// The right operand of the boolean xnor
         rhs: ExpId,
     },
     /// `Boolean::implies`
-    BoolImplies { 
+    BoolImplies {
         /// The left operand of the boolean implies
         lhs: ExpId,
         /// The right operand of the boolean implies
         rhs: ExpId,
     },
     /// `Boolean::iff`
-    BoolIff { 
+    BoolIff {
         /// The left operand of the boolean iff
         lhs: ExpId,
         /// The right operand of the boolean iff
@@ -83,101 +85,101 @@ pub enum Intrinsic {
     /// `Integer::from`
     IntVal(BigInt),
     /// `Integer::neg`
-    IntNeg { 
+    IntNeg {
         /// The value of the integer neg
         val: ExpId,
     },
     /// `Integer::add`
-    IntAdd { 
+    IntAdd {
         /// The left operand of the integer add
         lhs: ExpId,
         /// The right operand of the integer add
         rhs: ExpId,
     },
     /// `Integer::sub`
-    IntSub { 
+    IntSub {
         /// The left operand of the integer sub
         lhs: ExpId,
         /// The right operand of the integer sub
         rhs: ExpId,
     },
     /// `Integer::mul`
-    IntMul { 
+    IntMul {
         /// The left operand of the integer mul
         lhs: ExpId,
         /// The right operand of the integer mul
         rhs: ExpId,
     },
     /// `Integer::div`
-    IntDiv { 
+    IntDiv {
         /// The left operand of the integer div
         lhs: ExpId,
         /// The right operand of the integer div
         rhs: ExpId,
     },
     /// `Integer::div_trunc`
-    IntDivTrunc { 
+    IntDivTrunc {
         /// The left operand of the integer div_trunc
         lhs: ExpId,
         /// The right operand of the integer div_trunc
         rhs: ExpId,
     },
     /// `Integer::modulo`
-    IntMod { 
+    IntMod {
         /// The left operand of the integer modulo
         lhs: ExpId,
         /// The right operand of the integer modulo
         rhs: ExpId,
     },
     /// `Integer::rem`
-    IntRem { 
+    IntRem {
         /// The left operand of the integer rem
         lhs: ExpId,
         /// The right operand of the integer rem
         rhs: ExpId,
     },
     /// `Integer::pow`
-    IntPow { 
+    IntPow {
         /// The base of the integer pow
         base: ExpId,
         /// The exponent of the integer pow
         exp: ExpId,
     },
     /// `Integer::abs`
-    IntAbs { 
+    IntAbs {
         /// The value of the integer abs
         val: ExpId,
     },
     /// `Integer::divides`
-    IntDivides { 
+    IntDivides {
         /// The left operand of the integer divides
         lhs: ExpId,
         /// The right operand of the integer divides
         rhs: ExpId,
     },
     /// `Integer::lt`
-    IntLt { 
+    IntLt {
         /// The left operand of the integer lt
         lhs: ExpId,
         /// The right operand of the integer lt
         rhs: ExpId,
     },
     /// `Integer::le`
-    IntLe { 
+    IntLe {
         /// The left operand of the integer le
         lhs: ExpId,
         /// The right operand of the integer le
         rhs: ExpId,
     },
     /// `Integer::gt`
-    IntGt { 
+    IntGt {
         /// The left operand of the integer gt
         lhs: ExpId,
         /// The right operand of the integer gt
         rhs: ExpId,
     },
     /// `Integer::ge`
-    IntGe { 
+    IntGe {
         /// The left operand of the integer ge
         lhs: ExpId,
         /// The right operand of the integer ge
@@ -186,96 +188,96 @@ pub enum Intrinsic {
 
     // Integer Conversions
     /// `Integer::to_real`
-    IntToReal { 
+    IntToReal {
         /// The value of the integer to real
         val: ExpId,
     },
     /// `Integer::to_i32`
-    IntToI32 { 
+    IntToI32 {
         /// The value of the integer to i32
         val: ExpId,
     },
     /// `Integer::to_i64`
-    IntToI64 { 
+    IntToI64 {
         /// The value of the integer to i64
         val: ExpId,
     },
     /// `Integer::to_u32`
-    IntToU32 { 
+    IntToU32 {
         /// The value of the integer to u32
         val: ExpId,
     },
     /// `Integer::to_u64`
-    IntToU64 { 
+    IntToU64 {
         /// The value of the integer to u64
         val: ExpId,
     },
     /// `Integer::to_f32`
-    IntToF32 { 
+    IntToF32 {
         /// The value of the integer to f32
         val: ExpId,
     },
     /// `Integer::to_f64`
-    IntToF64 { 
+    IntToF64 {
         /// The value of the integer to f64
         val: ExpId,
     },
 
     // Integer Parsing
     /// `Integer::from_hex_str`
-    IntFromHex { 
+    IntFromHex {
         /// The value of the integer from hex str
         val: ExpId,
     },
     /// `Integer::from_oct_str`
-    IntFromOct { 
+    IntFromOct {
         /// The value of the integer from oct str
         val: ExpId,
     },
     /// `Integer::from_bin_str`
-    IntFromBin { 
+    IntFromBin {
         /// The value of the integer from bin str
         val: ExpId,
     },
 
     // Integer Range Checks
     /// `Integer::is_gt_i64_max`
-    IntIsGtI64Max { 
+    IntIsGtI64Max {
         /// The value of the integer is gt i64 max
         val: ExpId,
     },
     /// `Integer::is_lt_i64_min`
-    IntIsLtI64Min { 
+    IntIsLtI64Min {
         /// The value of the integer is lt i64 min
         val: ExpId,
     },
     /// `Integer::is_gt_u64_max`
-    IntIsGtU64Max { 
+    IntIsGtU64Max {
         /// The value of the integer is gt u64 max
         val: ExpId,
     },
     /// `Integer::is_lt_u64_min`
-    IntIsLtU64Min { 
+    IntIsLtU64Min {
         /// The value of the integer is lt u64 min
         val: ExpId,
     },
     /// `Integer::is_lt_i32_min`
-    IntIsLtI32Min { 
+    IntIsLtI32Min {
         /// The value of the integer is lt i32 min
         val: ExpId,
     },
     /// `Integer::is_gt_i32_max`
-    IntIsGtI32Max { 
+    IntIsGtI32Max {
         /// The value of the integer is gt i32 max
         val: ExpId,
     },
     /// `Integer::is_lt_u32_min`
-    IntIsLtU32Min { 
+    IntIsLtU32Min {
         /// The value of the integer is lt u32 min
         val: ExpId,
     },
     /// `Integer::is_gt_u32_max`
-    IntIsGtU32Max { 
+    IntIsGtU32Max {
         /// The value of the integer is gt u32 max
         val: ExpId,
     },
@@ -283,110 +285,110 @@ pub enum Intrinsic {
     /// `Real::from`
     RealVal(BigRational),
     /// `Real::neg`
-    RealNeg { 
+    RealNeg {
         /// The value of the real neg
         val: ExpId,
     },
     /// `Real::add`
-    RealAdd { 
+    RealAdd {
         /// The left operand of the real add
         lhs: ExpId,
         /// The right operand of the real add
         rhs: ExpId,
     },
     /// `Real::sub`
-    RealSub { 
+    RealSub {
         /// The left operand of the real sub
         lhs: ExpId,
         /// The right operand of the real sub
         rhs: ExpId,
     },
     /// `Real::mul`
-    RealMul { 
+    RealMul {
         /// The left operand of the real mul
         lhs: ExpId,
         /// The right operand of the real mul
         rhs: ExpId,
     },
     /// `Real::div`
-    RealDiv { 
+    RealDiv {
         /// The left operand of the real div
         lhs: ExpId,
         /// The right operand of the real div
         rhs: ExpId,
     },
     /// `Real::pow`
-    RealPow { 
+    RealPow {
         /// The base operand of the real pow
         base: ExpId,
         /// The exponent operand of the real pow
         exp: ExpId,
     },
     /// `Real::abs`
-    RealAbs { 
+    RealAbs {
         /// The value of the real abs
         val: ExpId,
     },
     /// `Real::round`
-    RealRound { 
+    RealRound {
         /// The value of the real round
         val: ExpId,
     },
     /// `Real::floor`
-    RealFloor { 
+    RealFloor {
         /// The value of the real floor
         val: ExpId,
     },
     /// `Real::ceil`
-    RealCeil { 
+    RealCeil {
         /// The value of the real ceil
         val: ExpId,
     },
     /// `Real::is_integer`
-    RealIsInt { 
+    RealIsInt {
         /// The value of the real is integer
         val: ExpId,
     },
     /// `Real::lt`
-    RealLt { 
+    RealLt {
         /// The left operand of the real lt
         lhs: ExpId,
         /// The right operand of the real lt
         rhs: ExpId,
     },
     /// `Real::le`
-    RealLe { 
+    RealLe {
         /// The left operand of the real le
         lhs: ExpId,
         /// The right operand of the real le
         rhs: ExpId,
     },
     /// `Real::gt`
-    RealGt { 
+    RealGt {
         /// The left operand of the real gt
         lhs: ExpId,
         /// The right operand of the real gt
         rhs: ExpId,
     },
     /// `Real::ge`
-    RealGe { 
+    RealGe {
         /// The left operand of the real ge
         lhs: ExpId,
         /// The right operand of the real ge
         rhs: ExpId,
     },
     /// `Real::to_int`
-    RealToInt { 
+    RealToInt {
         /// The value of the real to int
         val: ExpId,
     },
     /// `Real::to_f32`
-    RealToF32 { 
+    RealToF32 {
         /// The value of the real to f32
         val: ExpId,
     },
     /// `Real::to_f64`
-    RealToF64 { 
+    RealToF64 {
         /// The value of the real to f64
         val: ExpId,
     },
@@ -396,26 +398,26 @@ pub enum Intrinsic {
     /// `String::new`
     StrNew,
     /// `String::length`
-    StrLen { 
+    StrLen {
         /// The sequence of the string length
         seq: ExpId,
     },
     /// `String::concat`
-    StrConcat { 
+    StrConcat {
         /// The left operand of the string concat
         lhs: ExpId,
         /// The right operand of the string concat
         rhs: ExpId,
     },
     /// `String::at`
-    StrAt { 
+    StrAt {
         /// The sequence of the string at
         seq: ExpId,
         /// The index of the string at
         idx: ExpId,
     },
     /// `String::index_of`
-    StrIndexOf {    
+    StrIndexOf {
         /// The sequence of the string index of
         seq: ExpId,
         /// The substring of the string index of
@@ -424,7 +426,7 @@ pub enum Intrinsic {
         offset: ExpId,
     },
     /// `String::index_of_default`
-    StrIndexOfDefault { 
+    StrIndexOfDefault {
         /// The sequence of the string index of default
         seq: ExpId,
         /// The substring of the string index of default
@@ -440,66 +442,66 @@ pub enum Intrinsic {
         len: ExpId,
     },
     /// `String::is_empty`
-    StrIsEmpty { 
+    StrIsEmpty {
         /// The sequence of the string is empty
         seq: ExpId,
     },
     /// `String::contains`
-    StrContains { 
+    StrContains {
         /// The sequence of the string contains
         seq: ExpId,
         /// The item of the string contains
         item: ExpId,
     },
     /// `String::starts_with`
-    StrStartsWith { 
+    StrStartsWith {
         /// The sequence of the string starts with
         seq: ExpId,
         /// The item of the string starts with
         item: ExpId,
     },
     /// `String::ends_with`
-    StrEndsWith { 
+    StrEndsWith {
         /// The sequence of the string ends with
         seq: ExpId,
         /// The item of the string ends with
         item: ExpId,
     },
     /// `String::is_digit`
-    StrIsDigit { 
+    StrIsDigit {
         /// The sequence of the string is digit
         seq: ExpId,
     },
     /// `String::le`
-    StrLe { 
+    StrLe {
         /// The left operand of the string le
         lhs: ExpId,
         /// The right operand of the string le
         rhs: ExpId,
     },
     /// `String::lt`
-    StrLt { 
+    StrLt {
         /// The left operand of the string lt
         lhs: ExpId,
         /// The right operand of the string lt
         rhs: ExpId,
     },
     /// `String::ge`
-    StrGe { 
+    StrGe {
         /// The left operand of the string ge
         lhs: ExpId,
         /// The right operand of the string ge
         rhs: ExpId,
     },
     /// `String::gt`
-    StrGt { 
+    StrGt {
         /// The left operand of the string gt
         lhs: ExpId,
         /// The right operand of the string gt
         rhs: ExpId,
     },
     /// `String::replace`
-    StrReplace { 
+    StrReplace {
         /// The sequence of the string replace
         seq: ExpId,
         /// The source of the string replace
@@ -508,7 +510,7 @@ pub enum Intrinsic {
         dst: ExpId,
     },
     /// `String::replace_all`
-    StrReplaceAll { 
+    StrReplaceAll {
         /// The sequence of the string replace all
         seq: ExpId,
         /// The source of the string replace all
@@ -517,35 +519,35 @@ pub enum Intrinsic {
         dst: ExpId,
     },
     /// `String::to_int`
-    StrToInt { 
+    StrToInt {
         /// The value of the string to int
         val: ExpId,
     },
     /// `String::from_int`
-    StrFromInt { 
+    StrFromInt {
         /// The value of the string from int
         val: ExpId,
     },
     /// `String::from_code`
-    StrFromCode { 
+    StrFromCode {
         /// The value of the string from code
         val: ExpId,
     },
     /// `String::to_code`
-    StrToCode { 
+    StrToCode {
         /// The value of the string to code
         val: ExpId,
     },
 
     /// `Cloak::shield`
-    BoxShield { 
+    BoxShield {
         /// The type of the box shield
         t: Sort,
         /// The value of the box shield
         val: ExpId,
     },
     /// `Cloak::reveal`
-    BoxReveal { 
+    BoxReveal {
         /// The type of the box reveal
         t: Sort,
         /// The value of the box reveal
@@ -553,26 +555,26 @@ pub enum Intrinsic {
     },
 
     /// `Seq::new` (Empty)
-    SeqEmpty { 
+    SeqEmpty {
         /// The type of the sequence empty
         t: Sort,
     },
     /// `Seq::unit`
-    SeqUnit { 
+    SeqUnit {
         /// The type of the sequence unit
         t: Sort,
         /// The value of the sequence unit
         val: ExpId,
     },
     /// `Seq::length`
-    SeqLen { 
+    SeqLen {
         /// The type of the sequence length
         t: Sort,
         /// The sequence of the sequence length
         seq: ExpId,
     },
     /// `Seq::append`
-    SeqPush { 
+    SeqPush {
         /// The type of the sequence push
         t: Sort,
         /// The sequence of the sequence push
@@ -581,7 +583,7 @@ pub enum Intrinsic {
         item: ExpId,
     },
     /// `Seq::concat`
-    SeqConcat { 
+    SeqConcat {
         /// The type of the sequence concat
         t: Sort,
         /// The left operand of the sequence concat
@@ -590,7 +592,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Seq::at` (nth)
-    SeqNth { 
+    SeqNth {
         /// The type of the sequence nth
         t: Sort,
         /// The sequence of the sequence nth
@@ -599,7 +601,7 @@ pub enum Intrinsic {
         idx: ExpId,
     },
     /// `Seq::at_seq`
-    SeqAtSeq { 
+    SeqAtSeq {
         /// The type of the sequence at seq
         t: Sort,
         /// The sequence of the sequence at seq
@@ -630,7 +632,7 @@ pub enum Intrinsic {
         offset: ExpId,
     },
     /// `Seq::index_of_default`
-    SeqIndexOfDefault { 
+    SeqIndexOfDefault {
         /// The type of the sequence index of default
         t: Sort,
         /// The sequence of the sequence index of default
@@ -639,7 +641,7 @@ pub enum Intrinsic {
         sub: ExpId,
     },
     /// `Seq::contains`
-    SeqContains { 
+    SeqContains {
         /// The type of the sequence contains
         t: Sort,
         /// The sequence of the sequence contains
@@ -648,7 +650,7 @@ pub enum Intrinsic {
         item: ExpId,
     },
     /// `Seq::prefix_of`
-    SeqPrefixOf { 
+    SeqPrefixOf {
         /// The type of the sequence prefix of
         t: Sort,
         /// The left operand of the sequence prefix of
@@ -657,7 +659,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Seq::suffix_of`
-    SeqSuffixOf { 
+    SeqSuffixOf {
         /// The type of the sequence suffix of
         t: Sort,
         /// The left operand of the sequence suffix of
@@ -685,19 +687,19 @@ pub enum Intrinsic {
     },
 
     /// `Set::new`
-    SetEmpty { 
+    SetEmpty {
         /// The type of the set is empty
         t: Sort,
     },
     /// `Set::length`
-    SetLen { 
+    SetLen {
         /// The type of the set length
         t: Sort,
         /// The set of the set length
         set: ExpId,
     },
     /// `Set::insert`
-    SetInsert { 
+    SetInsert {
         /// The type of the set insert
         t: Sort,
         /// The set of the set insert
@@ -706,7 +708,7 @@ pub enum Intrinsic {
         item: ExpId,
     },
     /// `Set::remove`
-    SetRemove { 
+    SetRemove {
         /// The type of the set remove
         t: Sort,
         /// The set of the set remove
@@ -715,7 +717,7 @@ pub enum Intrinsic {
         item: ExpId,
     },
     /// `Set::contains`
-    SetContains { 
+    SetContains {
         /// The type of the set contains
         t: Sort,
         /// The set of the set contains
@@ -724,14 +726,14 @@ pub enum Intrinsic {
         item: ExpId,
     },
     /// `Set::is_empty`
-    SetIsEmpty { 
+    SetIsEmpty {
         /// The type of the set is empty
         t: Sort,
         /// The set of the set is empty
         set: ExpId,
     },
     /// `Set::intersection`
-    SetIntersect { 
+    SetIntersect {
         /// The type of the set intersect
         t: Sort,
         /// The left operand of the set intersect
@@ -740,7 +742,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Set::union`
-    SetUnion { 
+    SetUnion {
         /// The type of the set union
         t: Sort,
         /// The left operand of the set union
@@ -749,7 +751,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Set::difference`
-    SetDiff { 
+    SetDiff {
         /// The type of the set difference
         t: Sort,
         /// The left operand of the set difference
@@ -758,7 +760,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Set::symmetric_difference`
-    SetSymDiff { 
+    SetSymDiff {
         /// The type of the set symmetric difference
         t: Sort,
         /// The left operand of the set symmetric difference
@@ -767,7 +769,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Set::is_subset`
-    SetIsSubset { 
+    SetIsSubset {
         /// The type of the set is subset
         t: Sort,
         /// The left operand of the set is subset
@@ -776,7 +778,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Set::is_proper_subset`
-    SetIsProperSubset { 
+    SetIsProperSubset {
         /// The type of the set is proper subset
         t: Sort,
         /// The left operand of the set is proper subset
@@ -785,7 +787,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Set::is_disjoint`
-    SetIsDisjoint { 
+    SetIsDisjoint {
         /// The type of the set is disjoint
         t: Sort,
         /// The left operand of the set is disjoint
@@ -794,7 +796,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `Set::has_size`
-    SetHasSize { 
+    SetHasSize {
         /// The type of the set has size
         t: Sort,
         /// The set of the set has size
@@ -804,14 +806,14 @@ pub enum Intrinsic {
     },
 
     /// `Array::new`
-    ArrayEmpty { 
+    ArrayEmpty {
         /// The type of the array empty
         k: Sort,
         /// The value type of the array empty
         v: Sort,
     },
     /// `Array::length`
-    ArrayLen { 
+    ArrayLen {
         /// The type of the array length
         k: Sort,
         /// The value type of the array length
@@ -866,7 +868,7 @@ pub enum Intrinsic {
         key: ExpId,
     },
     /// `Array::is_empty`
-    ArrayIsEmpty { 
+    ArrayIsEmpty {
         /// The type of the array is empty
         k: Sort,
         /// The value type of the array is empty
@@ -876,21 +878,21 @@ pub enum Intrinsic {
     },
 
     /// `bv_val`
-    BvVal { 
+    BvVal {
         /// The type of the bv val
         t: Sort,
         /// The value of the bv val
         val: BigInt,
     },
     /// `bv_not`
-    BvNot { 
+    BvNot {
         /// The type of the bv not
         t: Sort,
         /// The value of the bv not
         val: ExpId,
     },
     /// `bv_and`
-    BvAnd { 
+    BvAnd {
         /// The type of the bv and
         t: Sort,
         /// The left operand of the bv and
@@ -899,7 +901,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_or`
-    BvOr { 
+    BvOr {
         /// The type of the bv or
         t: Sort,
         /// The left operand of the bv or
@@ -908,7 +910,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_xor`
-    BvXor { 
+    BvXor {
         /// The type of the bv xor
         t: Sort,
         /// The left operand of the bv xor
@@ -917,7 +919,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_nand`
-    BvNand { 
+    BvNand {
         /// The type of the bv nand
         t: Sort,
         /// The left operand of the bv nand
@@ -926,7 +928,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_nor`
-    BvNor { 
+    BvNor {
         /// The type of the bv nor
         t: Sort,
         /// The left operand of the bv nor
@@ -935,7 +937,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_xnor`
-    BvXnor { 
+    BvXnor {
         /// The type of the bv xnor
         t: Sort,
         /// The left operand of the bv xnor
@@ -944,28 +946,28 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_redand`
-    BvRedAnd { 
+    BvRedAnd {
         /// The type of the bv redand
         t: Sort,
         /// The value of the bv redand
         val: ExpId,
     },
     /// `bv_redor`
-    BvRedOr { 
+    BvRedOr {
         /// The type of the bv redor
         t: Sort,
         /// The value of the bv redor
         val: ExpId,
     },
     /// `bv_neg`
-    BvNeg { 
+    BvNeg {
         /// The type of the bv neg
         t: Sort,
         /// The value of the bv neg
         val: ExpId,
     },
     /// `bv_add`
-    BvAdd { 
+    BvAdd {
         /// The type of the bv add
         t: Sort,
         /// The left operand of the bv add
@@ -974,7 +976,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_sub`
-    BvSub { 
+    BvSub {
         /// The type of the bv sub
         t: Sort,
         /// The left operand of the bv sub
@@ -983,7 +985,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_mul`
-    BvMul { 
+    BvMul {
         /// The type of the bv mul
         t: Sort,
         /// The left operand of the bv mul
@@ -992,7 +994,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_div`
-    BvDiv { 
+    BvDiv {
         /// The type of the bv div
         t: Sort,
         /// The left operand of the bv div
@@ -1001,7 +1003,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_rem`
-    BvRem { 
+    BvRem {
         /// The type of the bv rem
         t: Sort,
         /// The left operand of the bv rem
@@ -1010,7 +1012,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_mod`
-    BvMod { 
+    BvMod {
         /// The type of the bv mod
         t: Sort,
         /// The left operand of the bv mod
@@ -1019,7 +1021,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_shl`
-    BvShl { 
+    BvShl {
         /// The type of the bv shl
         t: Sort,
         /// The left operand of the bv shl
@@ -1028,7 +1030,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_lshr`
-    BvLshr { 
+    BvLshr {
         /// The type of the bv lshr
         t: Sort,
         /// The left operand of the bv lshr
@@ -1037,7 +1039,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_ashr`
-    BvAshr { 
+    BvAshr {
         /// The type of the bv ashr
         t: Sort,
         /// The left operand of the bv ashr
@@ -1046,7 +1048,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_rotate_left`
-    BvRotLeft { 
+    BvRotLeft {
         /// The type of the bv rotate left
         t: Sort,
         /// The left operand of the bv rotate left
@@ -1055,7 +1057,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_rotate_right`
-    BvRotRight { 
+    BvRotRight {
         /// The type of the bv rotate right
         t: Sort,
         /// The left operand of the bv rotate right
@@ -1064,7 +1066,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_lt`
-    BvLt { 
+    BvLt {
         /// The type of the bv lt
         t: Sort,
         /// The left operand of the bv lt
@@ -1073,7 +1075,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_le`
-    BvLe { 
+    BvLe {
         /// The type of the bv le
         t: Sort,
         /// The left operand of the bv le
@@ -1082,7 +1084,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_gt`
-    BvGt { 
+    BvGt {
         /// The type of the bv gt
         t: Sort,
         /// The left operand of the bv gt
@@ -1091,7 +1093,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_ge`
-    BvGe { 
+    BvGe {
         /// The type of the bv ge
         t: Sort,
         /// The left operand of the bv ge
@@ -1100,7 +1102,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `bv_to_int`
-    BvToInt { 
+    BvToInt {
         /// The type of the bv to int
         t: Sort,
         /// The value of the bv to int
@@ -1108,14 +1110,14 @@ pub enum Intrinsic {
     },
 
     /// `Float::val`
-    FloatVal { 
+    FloatVal {
         /// The type of the float val
         t: Sort,
         /// The value of the float val
         val: BigRational,
     },
     /// `FloatOps::add`
-    FloatAdd { 
+    FloatAdd {
         /// The type of the float add
         t: Sort,
         /// The left operand of the float add
@@ -1124,7 +1126,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::sub`
-    FloatSub { 
+    FloatSub {
         /// The type of the float sub
         t: Sort,
         /// The left operand of the float sub
@@ -1133,7 +1135,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::mul`
-    FloatMul { 
+    FloatMul {
         /// The type of the float mul
         t: Sort,
         /// The left operand of the float mul
@@ -1141,8 +1143,8 @@ pub enum Intrinsic {
         /// The right operand of the float mul
         rhs: ExpId,
     },
-    /// `FloatOps::div` 
-    FloatDiv { 
+    /// `FloatOps::div`
+    FloatDiv {
         /// The type of the float div
         t: Sort,
         /// The left operand of the float div
@@ -1151,21 +1153,21 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::neg`
-    FloatNeg { 
+    FloatNeg {
         /// The type of the float neg
         t: Sort,
         /// The value of the float neg
         val: ExpId,
     },
     /// `FloatOps::abs`
-    FloatAbs { 
+    FloatAbs {
         /// The type of the float abs
         t: Sort,
         /// The value of the float abs
         val: ExpId,
     },
     /// `FloatOps::rem`
-    FloatRem { 
+    FloatRem {
         /// The type of the float rem
         t: Sort,
         /// The left operand of the float rem
@@ -1174,14 +1176,14 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::sqrt`
-    FloatSqrt { 
+    FloatSqrt {
         /// The type of the float sqrt
         t: Sort,
         /// The value of the float sqrt
         val: ExpId,
     },
     /// `FloatOps::min`
-    FloatMin { 
+    FloatMin {
         /// The type of the float min
         t: Sort,
         /// The left operand of the float min
@@ -1190,7 +1192,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::max`
-    FloatMax { 
+    FloatMax {
         /// The type of the float max
         t: Sort,
         /// The left operand of the float max
@@ -1199,56 +1201,56 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::is_nan`
-    FloatIsNaN { 
+    FloatIsNaN {
         /// The type of the float is nan
         t: Sort,
         /// The value of the float is nan
         val: ExpId,
     },
     /// `FloatOps::is_infinite`
-    FloatIsInf { 
+    FloatIsInf {
         /// The type of the float is infinite
         t: Sort,
         /// The value of the float is infinite
         val: ExpId,
     },
-    /// `FloatOps::is_zero` 
-    FloatIsZero { 
+    /// `FloatOps::is_zero`
+    FloatIsZero {
         /// The type of the float is zero
         t: Sort,
         /// The value of the float is zero
         val: ExpId,
     },
     /// `FloatOps::is_normal`
-    FloatIsNormal { 
+    FloatIsNormal {
         /// The type of the float is normal
         t: Sort,
         /// The value of the float is normal
         val: ExpId,
     },
     /// `FloatOps::is_subnormal`
-    FloatIsSubnormal { 
+    FloatIsSubnormal {
         /// The type of the float is subnormal
         t: Sort,
         /// The value of the float is subnormal
         val: ExpId,
     },
     /// `FloatOps::is_negative`
-    FloatIsNeg { 
+    FloatIsNeg {
         /// The type of the float is negative
         t: Sort,
         /// The value of the float is negative
         val: ExpId,
     },
     /// `FloatOps::is_positive`
-    FloatIsPos { 
+    FloatIsPos {
         /// The type of the float is positive
         t: Sort,
         /// The value of the float is positive
         val: ExpId,
     },
     /// `FloatOps::lt`
-    FloatLt { 
+    FloatLt {
         /// The type of the float lt
         t: Sort,
         /// The left operand of the float lt
@@ -1257,7 +1259,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::le`
-    FloatLe { 
+    FloatLe {
         /// The type of the float le
         t: Sort,
         /// The left operand of the float le
@@ -1266,7 +1268,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::gt`
-    FloatGt { 
+    FloatGt {
         /// The type of the float gt
         t: Sort,
         /// The left operand of the float gt
@@ -1275,7 +1277,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::ge`
-    FloatGe { 
+    FloatGe {
         /// The type of the float ge
         t: Sort,
         /// The left operand of the float ge
@@ -1284,102 +1286,102 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::nan`
-    FloatNaN { 
+    FloatNaN {
         /// The type of the float nan
         t: Sort,
     },
     /// `FloatOps::infinity`
-    FloatPosInf { 
+    FloatPosInf {
         /// The type of the float pos infinity
         t: Sort,
     },
     /// `FloatOps::neg_infinity`
-    FloatNegInf { 
+    FloatNegInf {
         /// The type of the float neg infinity
         t: Sort,
     },
     /// `FloatOps::pos_zero`
-    FloatPosZero { 
+    FloatPosZero {
         /// The type of the float pos zero
         t: Sort,
     },
     /// `FloatOps::neg_zero`
-    FloatNegZero { 
+    FloatNegZero {
         /// The type of the float neg zero
         t: Sort,
     },
     /// `FloatOps::to_integer`
-    FloatToInt { 
+    FloatToInt {
         /// The type of the float to integer
         t: Sort,
         /// The value of the float to integer
         val: ExpId,
     },
     /// `FloatOps::to_real`
-    FloatToReal { 
+    FloatToReal {
         /// The type of the float to real
         t: Sort,
         /// The value of the float to real
         val: ExpId,
     },
     /// `FloatOps::to_u32`
-    FloatToU32 { 
+    FloatToU32 {
         /// The type of the float to u32
         t: Sort,
         /// The value of the float to u32
         val: ExpId,
     },
     /// `FloatOps::to_i32`
-    FloatToI32 { 
+    FloatToI32 {
         /// The type of the float to i32
         t: Sort,
         /// The value of the float to i32
         val: ExpId,
     },
     /// `FloatOps::to_u64`
-    FloatToU64 { 
+    FloatToU64 {
         /// The type of the float to u64
         t: Sort,
         /// The value of the float to u64
         val: ExpId,
     },
     /// `FloatOps::to_i64`
-    FloatToI64 { 
+    FloatToI64 {
         /// The type of the float to i64
         t: Sort,
         /// The value of the float to i64
         val: ExpId,
     },
     /// `FloatOps::ceil`
-    FloatCeil { 
+    FloatCeil {
         /// The type of the float ceil
         t: Sort,
         /// The value of the float ceil
         val: ExpId,
     },
     /// `FloatOps::floor`
-    FloatFloor { 
+    FloatFloor {
         /// The type of the float floor
         t: Sort,
         /// The value of the float floor
         val: ExpId,
     },
     /// `FloatOps::trunc`
-    FloatTrunc { 
+    FloatTrunc {
         /// The type of the float trunc
         t: Sort,
         /// The value of the float trunc
         val: ExpId,
     },
     /// `FloatOps::nearest`
-    FloatNearest { 
+    FloatNearest {
         /// The type of the float nearest
         t: Sort,
         /// The value of the float nearest
         val: ExpId,
     },
     /// `FloatOps::fq_eq`
-    FloatFqEq { 
+    FloatFqEq {
         /// The type of the float fq eq
         t: Sort,
         /// The left operand
@@ -1388,7 +1390,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `FloatOps::from_hex_str`
-    FloatFromHexStr { 
+    FloatFromHexStr {
         /// The type of the float from hex str
         t: Sort,
         /// The value of the float from hex str
@@ -1397,14 +1399,16 @@ pub enum Intrinsic {
     /// `Error::fresh` - carries the globally unique error ID assigned at IR-build time
     ErrFresh(usize),
     /// `Error::merge`
-    ErrMerge { 
+    ErrMerge {
         /// The left operand
         lhs: ExpId,
         /// The right operand
         rhs: ExpId,
+        /// All ErrFresh IDs reachable through the merge tree
+        ids: BTreeSet<usize>,
     },
     /// `<any-smt-type>::eq`
-    SmtEq { 
+    SmtEq {
         /// The type of the smt eq
         t: Sort,
         /// The left operand
@@ -1413,7 +1417,7 @@ pub enum Intrinsic {
         rhs: ExpId,
     },
     /// `<any-smt-type>::ne`
-    SmtNe { 
+    SmtNe {
         /// The type of the smt ne
         t: Sort,
         /// The left operand

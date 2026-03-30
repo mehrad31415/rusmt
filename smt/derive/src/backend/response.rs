@@ -1,13 +1,12 @@
 //! Module containing the response enum, the execution timeout, and the number of CPU cores.
 
-use lazy_static::lazy_static;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 /// Execution timeout for the backend in seconds: by default 10 minutes (600 seconds).
-pub const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+pub(crate) const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// The response returned by the backend solver.
 pub(crate) enum Response {
     /// Satisfiable model found
@@ -20,19 +19,18 @@ pub(crate) enum Response {
     Timeout,
 }
 
-impl Display for Response {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let text = match self {
-            Self::Timeout => "timeout",
-            Self::Unknown => "unknown",
-            Self::Sat(model) => &format!("sat: model found\n {}", model),
-            Self::Unsat => "unsat",
-        };
-        f.write_str(text)
-    }
-}
+impl Display for Response {                                                                                                                                                    
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {                                                                                                               
+        match self {                                                                                                                                                           
+            Self::Timeout => f.write_str("timeout"),
+            Self::Unknown => f.write_str("unknown"),                                                                                                                           
+            Self::Sat(model) => f.write_str(model),                                                                                                                          
+            Self::Unsat => f.write_str("unsat"),                                                                                                                               
+        }
+    }                                                                                                                                                                          
+}   
 
-lazy_static! {
-    /// Number of CPU cores available on this machine.
-    pub static ref NUM_CPU_CORES: usize = num_cpus::get();
-}
+static NUM_CPU_CORES: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+pub(crate) fn num_cpu_cores() -> usize {                                                                                                                                              
+    *NUM_CPU_CORES.get_or_init(num_cpus::get)                                                                                                                                  
+}     

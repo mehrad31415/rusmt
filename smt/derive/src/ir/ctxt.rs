@@ -1,3 +1,5 @@
+//! Intermediate representation (IR) context.
+
 use crate::ir::fun::FunRegistry;
 use crate::ir::name::SmtSortName;
 use crate::ir::sort::{Sort, TypeRegistry};
@@ -7,7 +9,7 @@ use crate::parser::infer::TypeRef;
 use crate::parser::name::TypeParamName;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// A context for intermediate representation.
+/// A context for the intermediate representation (IR).
 #[derive(Debug)]
 pub struct IRContext {
     /// A type parameter is converted to a smt sort name in the ir (intermediate representation).
@@ -18,9 +20,13 @@ pub struct IRContext {
     /// function registry (lookup, signature, definition). The lookup is a map from user-defined functions to a map from list of parameter types to function id.
     /// The signature is a map from function id to function signature. The definition is a map from function id to function body.
     pub fn_registry: FunRegistry,
-    /// Total number of unique Error IDs generated via `Error::fresh()` across all functions.
-    /// Each call to `Error::fresh()` is assigned the next available integer (starting from 0).
-    pub error_count: usize,
+    /// Counter for assigning unique IDs to `ErrFresh` during IR building. Not used after build.
+    pub(crate) error_count: usize,
+    /// Error targets for synthesis queries. Each target is a set of error IDs to assert
+    /// simultaneously. Example: `[{0}, {1}, {0,1}, {2}]` means 3 fresh sites and 1 merge.
+    /// - `ErrFresh(n)` adds `{n}` — "find input reaching error site n"
+    /// - `ErrMerge` adds the full merged ID set — "find input reaching all these sites together"
+    pub error_targets: Vec<BTreeSet<usize>>,
 }
 
 impl IRContext {
@@ -32,6 +38,7 @@ impl IRContext {
             ty_registry: TypeRegistry::new(),
             fn_registry: FunRegistry::new(),
             error_count: 0,
+            error_targets: Vec::new(),
         }
     }
 }
@@ -47,7 +54,7 @@ pub struct IRBuilder<'a, 'ctx: 'a> {
 }
 
 impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
-    /// Create a new IRBuilder with a specific type instantiation context.
+    /// Create a new IRBuilder.
     fn new(
         ctxt: &'ctx ContextWithFunc,
         ty_inst: BTreeMap<TypeParamName, Sort>,
@@ -87,9 +94,6 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         let mut ir = IRContext::new();
 
         // For each user-defined type (struct/enum), register it
-        //
-        // Z3 SMT-LIB requires all datatypes (including tuples) to be explicitly declared using `(declare-datatypes ...)`.
-        // So anonymous tuples like `(Int, Bool)` must be registered and given a name like `Tuple_Int_Bool` in the SMT-LIB output.
         for (type_name, type_def) in &ctxt.types {
             // Unlike functions, type parameters in types don't go in undef_sorts because
             // SMT-LIB supports polymorphic types via (declare-datatypes ((MyType 1)) ...)

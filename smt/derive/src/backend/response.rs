@@ -4,11 +4,11 @@ use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 /// Execution timeout for the backend in seconds: by default 10 minutes (600 seconds).
-pub(crate) const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+pub const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// The response returned by the backend solver.
-pub(crate) enum Response {
+pub enum Response {
     /// Satisfiable model found
     Sat(String),
     /// Unsatisfiable

@@ -23,3 +23,5 @@ quote = { workspace = true }
 syn = { workspace = true }
 walkdir = { workspace = true }
 num_cpus = { workspace = true }
+z3 = { workspace = true }
+z3-sys = { workspace = true }

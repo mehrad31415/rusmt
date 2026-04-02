@@ -6,3 +6,6 @@
 
 # visual studio code
 *.sln
+
+# tmp files
+tmp/

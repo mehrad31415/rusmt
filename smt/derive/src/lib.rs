@@ -94,3 +94,33 @@ pub fn solve<P: AsRef<Path>>(
     }
     Ok(())
 }
+
+/// Solve using the Z3 API backend (in-process, no subprocess).
+/// Results are written to `output/z3_api/target_N/response.txt` incrementally.
+pub fn solve_z3_api<P: AsRef<Path>>(
+    models: &IRContext,
+    top_level_fn: Option<&str>,
+    output: P,
+) -> Result<()> {
+    let path_solver = output.as_ref().join("z3_api");
+    fs::create_dir_all(&path_solver).expect("workspace freshly created");
+
+    // Write results incrementally as each target completes
+    let write_result = |result: &backend::z3_api::solver::SolveResult| {
+        let target_label = format!("target_{}", result.target_idx);
+        let path_error_dir = path_solver.join(&target_label);
+        fs::create_dir_all(&path_error_dir).expect("error directory created");
+
+        let resp_file = path_error_dir.join("response.txt");
+        fs::write(&resp_file, result.response.to_string())
+            .expect("failed to write query response");
+
+        let timing_file = path_error_dir.join("timing.txt");
+        fs::write(&timing_file, format!("{}ms", result.elapsed_ms))
+            .expect("failed to write timing file");
+    };
+
+    backend::z3_api::solver::solve_with_api(models, top_level_fn, &write_result);
+
+    Ok(())
+}

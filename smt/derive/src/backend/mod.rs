@@ -3,8 +3,10 @@
 /// Module for the common backend code generator
 pub mod codegen;
 /// Module for the error types
-mod error;
+pub(crate) mod error;
 /// Module for the response enum
-mod response;
+pub(crate) mod response;
 /// Module for the Z3 theorem prover backend
-pub mod z3;
+pub(crate) mod z3;
+/// Module for the Z3 API (in-process) backend
+pub(crate) mod z3_api;

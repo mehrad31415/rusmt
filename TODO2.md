@@ -19,3 +19,5 @@ fix the z3 smtlib generation so that it doesnt crash or we have performance good
 
 
 not prioprity: update the unit tests for full coverage
+
+update all of the docs once it is finished!

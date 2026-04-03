@@ -39,10 +39,17 @@ fn parse_toml(input: Seq<String>) -> Result<TomlValue, Error> {
 ### 2. Transpile to SMT-LIB
 
 ```bash
+# Text backend (generates SMT-LIB2 files, spawns Z3 as subprocess)
 cargo run -p rusmart-smt-derive -- toml parse_toml
+
+# API backend (uses Z3 in-process via z3-sys bindings)
+cargo run -p rusmart-smt-derive -- toml parse_toml api
+
+# Run both backends for comparison
+cargo run -p rusmart-smt-derive -- toml parse_toml both
 ```
 
-This generates SMT-LIB formulas to `lang/src/synthesis/toml/`.
+This generates SMT-LIB formulas and solver results to `lang/src/synthesis/toml/`.
 
 ### 3. Synthesize Test Programs
 
@@ -79,11 +86,13 @@ Feed synthesized programs to the implementation under test:
    Concrete Exec      SMT Transpiler
    (cargo run)      (rusmart-smt-derive)
          │                 │
-         │                 ▼
-         │         SMT-LIB Formula
-         │                 │
-         │                 ▼
-         │         Z3 SMT Solver
+         │          ┌──────┴──────┐
+         │          │             │
+         │      Text Backend  API Backend
+         │     (SMT-LIB2 +   (in-process
+         │      Z3 subprocess) z3-sys)
+         │          │             │
+         │          └──────┬──────┘
          │                 │
          │                 ▼
          │        Synthesized Programs
@@ -102,8 +111,17 @@ rusmart/
 ├── smt/
 │   ├── stdlib/       # SMT-backed Rust types (Integer, String, Seq, etc.)
 │   ├── remark/       # Annotation system marking functions and types
-│   └── derive/       # Parser + IR + SMT-LIB code generator
+│   └── derive/       # Parser + IR + SMT-LIB code generator + Z3 backends
+│       └── src/
+│           ├── parser/    # DSL parsing, intrinsic recognition
+│           ├── ir/        # Intermediate representation, sort checking
+│           └── backend/
+│               ├── z3/      # Text backend: generates SMT-LIB2, spawns Z3
+│               └── z3_api/  # API backend: in-process Z3 via z3-sys
 ├── lang/             # Language interpreters (TOML, WASM, Rego, etc.)
+│   └── src/
+│       ├── toml/          # TOML v1.1.0 parser
+│       └── synthesis/     # Synthesis output directory
 ```
 
 ## Current Implementation
@@ -117,10 +135,10 @@ The first language implementation is a complete TOML parser demonstrating the fu
 cargo run -p rusmart-lang toml lang/toml/input/example.toml
 ```
 
-**Transpile to SMT:**
+**Transpile to SMT and synthesize:**
 ```bash
-cargo run -p rusmart-smt-derive
-# Outputs SMT-LIB formulas to smt/derive/z3_synthesis/
+cargo run -p rusmart-smt-derive -- toml parse_toml
+# Outputs SMT-LIB formulas and solver results to lang/src/synthesis/toml/
 ```
 
 **Future:** Planned Languages:
@@ -155,7 +173,8 @@ To ensure transpilability, the DSL enforces:
 
 ### Prerequisites
 - Rust (edition 2024)
-- Z3 binary on your `$PATH` (e.g. `brew install z3` on macOS, `apt install z3` on Ubuntu)
+- CMake and a C++ compiler (included with Xcode on macOS, `build-essential` + `cmake` on Ubuntu)
+- The Z3 dependency is vendored (compiled from source automatically on first build, ~5 minutes). No system Z3 installation is required.
 
 ### Build
 ```bash
@@ -167,9 +186,16 @@ cargo build --workspace
 cargo run -p rusmart-lang toml lang/toml/input/example.toml
 ```
 
-### Generate SMT Formulas
+### Generate SMT Formulas and Synthesize
 ```bash
+# Text backend (default)
 cargo run -p rusmart-smt-derive -- toml parse_toml
+
+# API backend (in-process Z3)
+cargo run -p rusmart-smt-derive -- toml parse_toml api
+
+# Both backends (for comparison)
+cargo run -p rusmart-smt-derive -- toml parse_toml both
 ```
 
 ### Documentation
@@ -193,11 +219,12 @@ Traditional approaches to language testing require:
 ## Development Status
 
 Rusmart is under active development. The core infrastructure is in place:
-- ✅ SMT standard library
+- ✅ SMT standard library with soundness-audited intrinsics
 - ✅ Parser and IR
-- ✅ SMT-LIB code generator
+- ✅ Two Z3 backends: text-based (SMT-LIB2 + subprocess) and API-based (in-process z3-sys)
 - ✅ TOML parser implementation
 - ✅ Z3 query interface for program synthesis
+- ✅ Vendored Z3 build (no system installation required)
 - ✅ Automated conformance testing framework
 
 Expect API changes and refactorings as the design evolves.

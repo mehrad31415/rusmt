@@ -1,22 +1,58 @@
 ## Crate: `rusmart-smt-derive`
 
-`rusmart-smt-derive` is the **Rust→IR→SMT-LIB** compiler for the Rusmart DSL.
+`rusmart-smt-derive` is the **Rust→IR→SMT-LIB** compiler and synthesis engine for the Rusmart DSL.
 
 ### Key entry points
 
-The crate exposes two key entry points:
+The crate exposes three key entry points (defined in `src/lib.rs`):
 
-- **`model`**: parse and lower a Rusmart program into the internal IR (no solver required)
-- **`derive`**: end-to-end compilation that emits SMT-LIB (Z3-oriented) and collects solver responses
+- **`model(path)`**: Parse and lower a Rusmart program into the internal IR (`IRContext`). No solver required.
+- **`solve(models, top_level_fn, output)`**: Run the **text backend** -- generate SMT-LIB2 text, write to disk, spawn the solver as a subprocess for each error target.
+- **`solve_z3_api(models, top_level_fn, output)`**: Run the **API backend** -- solve each error target in-process using `z3-sys` bindings and `Z3_eval_smtlib2_string`.
 
- The _model_ function receives a path to a file and constructs a vector of __Intermediate Representation (IR)__ objects. The _derive_ function receives a path to the input file (the one given to the _model_ function) and a path to the output file. The _derive_ function internally calls the _model_ function to get the IR objects and then calls the _backend_ module to generate the SMT model and solve it. 
+The `model` function receives a path to a directory of Rusmart source files and constructs an `IRContext` containing type/function registries and error targets. The `solve` and `solve_z3_api` functions take this IR context, a top-level function name, and an output directory, then iterate over error targets and invoke Z3 (or other solvers if available) to find satisfying inputs.
 
 ### Internal structure
 
 - `src/parser/*`: DSL parsing, intrinsic recognition, overload resolution
 - `src/ir/*`: expression lowering and SMT sort checking
 - `src/backend/*`:
-  - `backend/z3/*`: SMT-LIB emission for Z3 and response handling
+  - `backend/z3/*`: **Text backend** -- SMT-LIB2 emission for Z3 and response handling
+    - `ctxt.rs`: `CodeGenZ3` implementing the `CodeGen` trait, Z3 subprocess invocation, error query generation
+    - `exp.rs`: IR expression to SMT-LIB2 text translation
+    - `fun.rs`: Function declaration/definition generation (define-fun, define-funs-rec)
+    - `intrinsics.rs`: Maps ~180 IR intrinsic operations to SMT-LIB2 formulas
+    - `sort.rs`: IR sorts to SMT-LIB2 datatype declarations
+  - `backend/z3_api/*`: **API backend** -- in-process Z3 via `z3-sys` C bindings
+    - `mod.rs`: Core types (`Z3Ast` RAII wrapper with ref counting, `Z3Context`)
+    - `context.rs`: Builds Z3 datatypes, functions, and string-parsing helpers in memory
+    - `solver.rs`: Per-target solving pipeline with timeout control
+    - `translate.rs`: IR expression to Z3 AST object translation
+    - `intrinsics.rs`: Maps IR intrinsic operations to Z3 C API calls
+
+### Error representation
+
+Errors are represented as `(Array Int Bool)` rather than `(Set Int)`. Each `ErrFresh(id)` becomes `(store ((as const (Array Int Bool)) false) id true)`, and `ErrMerge` uses `((_ map or) lhs rhs)`. Membership checking uses `(select expr error_id)`.
+
+### Set operations (user-level Sets)
+
+User-level `Set<T>` operations use alternative SMT-LIB2 encodings:
+- `SetContains`: `(set.subset (set.insert x (as set.empty (Set T))) s)` instead of `set.member`
+- `SetRemove`: `(set.setminus s (set.insert x (as set.empty (Set T))))` instead of `set.singleton`
+
+### CLI usage
+
+```bash
+cargo run -p rusmart-smt-derive -- <parser_name> <top_level_fn> [text|api|both]
+```
+
+- `text` (default): text backend only
+- `api`: API backend only
+- `both`: run both backends for comparison
+
+### Build dependencies
+
+Z3 is included as a vendored dependency (`z3 = { version = "0.20.0", features = ["vendored"] }`) along with `z3-sys = "0.11.0"`. This requires CMake and a C++ compiler. The first build compiles Z3 from source (~5 minutes); subsequent builds use the cached result. No system Z3 installation or environment variables are needed.
 
 ### Derive
 

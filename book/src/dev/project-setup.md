@@ -2,6 +2,15 @@
 
 This page focuses on what you need to build/test the *current* repository state.
 
+### Prerequisites
+
+- **Rust** (edition 2024) with the stable toolchain
+- **CMake** and a **C++ compiler** -- required to build the vendored Z3 dependency
+  - macOS: included with Xcode Command Line Tools (`xcode-select --install`)
+  - Ubuntu/Debian: `sudo apt install build-essential cmake`
+
+The first `cargo build` compiles Z3 from source (~5 minutes). Subsequent builds use the cached result. No system Z3 binary is required.
+
 ### Workspace build
 
 ```bash
@@ -78,7 +87,7 @@ The current workspace members are:
 - `smt/derive`
 - `lang`
 
-Z3 is invoked as a system binary (`z3` on `$PATH`) rather than as a Rust crate dependency.
+Z3 is included as a vendored Rust crate dependency (`z3 = { version = "0.20.0", features = ["vendored"] }` and `z3-sys = "0.11.0"`). The vendored build compiles Z3 from source on first build (~5 minutes) and requires CMake and a C++ compiler (included with Xcode on macOS, `build-essential` + `cmake` on Ubuntu). Subsequent builds use the cached result. No system Z3 installation or `$PATH` configuration is required.
 
 ### Cargo.lock
 

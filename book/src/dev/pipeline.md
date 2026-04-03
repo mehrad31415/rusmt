@@ -47,8 +47,18 @@ Source: `smt/derive/src/ir/*`
 
 This phase assigns SMT sorts to expressions and creates the intermediate respresentation context.
 
-### Step 3: Emit SMT-LIB (and optionally run Z3)
+### Step 3: Emit SMT-LIB and solve with Z3
 
-Source: `smt/derive/src/backend/*` (including `backend/z3/*`)
+Source: `smt/derive/src/backend/*`
 
-The Z3 backend renders IR intrinsics into SMT-LIB 2 and can run Z3 to collect responses used by the translation tests.
+Two Z3 backends are available:
+
+**Text backend** (`backend/z3/*`): Renders IR intrinsics into SMT-LIB2 text. For each error target, it writes a `.smt2` file containing the base declarations plus an error-specific assertion, then spawns a Z3 subprocess to solve it. The text backend is selected by default or with the `text` CLI argument.
+
+**API backend** (`backend/z3_api/*`): Uses Z3 in-process via the `z3-sys` crate. It loads type and function definitions via `Z3_eval_smtlib2_string`, then solves each error target using the Z3 API directly. The API backend is selected with the `api` CLI argument. Using `both` runs both backends sequentially for comparison.
+
+Both backends:
+- Iterate over error targets extracted from the IR
+- For each target, assert that the top-level function's result contains the target error ID
+- Collect the solver's response (sat, unsat, unknown, or timeout)
+- Write results to the output directory under `z3_chc/` or `z3_api/` respectively

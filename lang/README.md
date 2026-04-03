@@ -48,8 +48,30 @@ This crate is organized by language, with each language implemented in its own m
 
 > src/ebnf/: (Future Work) An interpreter for defining and parsing grammars in EBNF notation.
 
+### Synthesis
+
+The `src/synthesis/` directory contains the outputs from running the derive crate's Z3 backends on the language interpreters. For the TOML parser, synthesis results are written to `src/synthesis/toml/` and organized by backend:
+
+- `z3_chc/` -- results from the text backend (SMT-LIB2 + Z3 subprocess)
+- `z3_api/` -- results from the API backend (in-process Z3 via z3-sys)
+
+Each backend directory contains per-target subdirectories (`target_N/`) with:
+- `main.smt2` -- the SMT-LIB2 query file (text backend only)
+- `response.txt` -- the solver's response (sat/unsat/unknown/timeout)
+- `timing.txt` -- elapsed time in milliseconds.
+
 ### Usage
-This crate is primarily a library. Its main executable (src/main.rs) can be used to feed concrete programs into the interpreters for execution.
+This crate is primarily a library. Its main executable (`src/main.rs`) can be used to feed concrete programs into the interpreters for execution.
+
+**Concrete execution:**
+```bash
+cargo run -p rusmart-lang -- toml lang/toml/input/example.toml
+```
+
+**Synthesis (via the derive crate):**
+```bash
+cargo run -p rusmart-smt-derive -- toml parse_toml [text|api|both]
+```
 
 ### License
 The Rusmart project, a symbolic execution engine, is licensed under the _GPL-3.0-or-later_ license.

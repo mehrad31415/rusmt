@@ -20,10 +20,13 @@ This library provides the following concrete types:
 > Sets
 > Arrays
 
-The library also provides utility types like _Error_ for tracking symbolic failure states, _Cloak<T>_ for defining recursive data types.
+The library also provides utility types like _Error_ for tracking symbolic failure states (represented as `(Array Int Bool)` in Z3), _Cloak<T>_ for defining recursive data types, and _Box<T>_ for indirection.
 
 ### Expressions
 The library supports a variety of expressions that can be used to build logical statements, including: _forall, exists, and choice_.
+
+### Soundness
+Every stdlib function `f` and concrete input `x` satisfies: `rust_impl(f, x) == z3_eval(z3_formula(f), x)`. The stdlib represents Z3's theories, not Rust's native semantics. The concrete Rust implementations have been audited and aligned with Z3's behavior (e.g., `Real::to_int` uses `floor()` to match Z3's `to_int`, `Float::rem` uses `libm::remainder` to match Z3's `fp.rem`).
 
 ### Usage Example
 The following example demonstrates how to use the DSL to perform some basic operations. The code is fully executable in Rust, and each method call also has a clear mapping to an SMT-LIB function for the transpiler.

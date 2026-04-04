@@ -5,6 +5,7 @@ use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 use proc_macro2::Span;
 use syn::Result;
 
@@ -72,12 +73,18 @@ pub fn solve<P: AsRef<Path>>(
             fs::write(&query_path, &query_code).expect("failed to write query file");
 
             let resp_file = path_error_dir.join("response.txt");
+            let timing_file = path_error_dir.join("timing.txt");
+            let start = Instant::now();
             match solver.invoke_backend(&query_path) {
                 Ok(resp) => {
+                    let elapsed_ms = start.elapsed().as_millis();
                     fs::write(&resp_file, resp.to_string())
                         .expect("failed to write query response");
+                    fs::write(&timing_file, format!("{}ms", elapsed_ms))
+                        .expect("failed to write timing file");
                 }
                 Err(x) => {
+                    let elapsed_ms = start.elapsed().as_millis();
                     fs::write(
                         &resp_file,
                         format!(
@@ -86,6 +93,8 @@ pub fn solve<P: AsRef<Path>>(
                         ),
                     )
                     .expect("failed to write error response");
+                    fs::write(&timing_file, format!("{}ms", elapsed_ms))
+                        .expect("failed to write timing file");
                 }
             }
         }

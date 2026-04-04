@@ -8,5 +8,5 @@ pub(crate) mod error;
 pub(crate) mod response;
 /// Module for the Z3 theorem prover backend
 pub(crate) mod z3;
-/// Module for the Z3 API (in-process) backend
+/// Module for the Z3 API backend
 pub(crate) mod z3_api;

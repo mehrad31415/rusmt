@@ -25,3 +25,4 @@ walkdir = { workspace = true }
 num_cpus = { workspace = true }
 z3 = { workspace = true }
 z3-sys = { workspace = true }
+lazy_static = { workspace = true }

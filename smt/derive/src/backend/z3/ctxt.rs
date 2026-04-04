@@ -6,6 +6,7 @@ use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
 use crate::backend::response::Response;
+use crate::backend::response::NUM_CPU_CORES;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
@@ -76,9 +77,10 @@ impl CodeGen for CodeGenZ3 {
         // Reproducibility - fixed seed = deterministic search order = same runtime every time.
         l!(x, "(set-option :sat.random_seed 42)"); // It decides the order to assign the variables
         l!(x, "(set-option :smt.random_seed 42)"); // like which theory to check first, which equality to propagate first.
-        // Parallelism — disabled: Z3's parallel solver causes bus errors (crashes)
-        // on macOS with large recursive SMT files.
-        l!(x, "(set-option :parallel.enable false)");
+        // Parallelism
+        l!(x, "(set-option :parallel.enable true)");
+        l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
+        l!(x, "(set-option :parallel.conquer.delay 60)");
         // SAT Solver Optimizations - restart is sequential (one thread retrying with better knowledge).
         l!(x, "(set-option :sat.restart.max 100000)");
         // SMT Solver Optimizations
@@ -549,14 +551,18 @@ impl CodeGen for CodeGenZ3 {
         // Read stdout in a separate thread to avoid blocking
         let stdout_thread = thread::spawn(move || {
             let mut output = String::new();
-            stdout.read_to_string(&mut output).ok();
+            if let Err(e) = stdout.read_to_string(&mut output) {
+                warn!("failed to read Z3 stdout: {}", e);
+            }
             output
         });
 
         // Read stderr in a separate thread
         let stderr_thread = thread::spawn(move || {
             let mut message = String::new();
-            stderr.read_to_string(&mut message).ok();
+            if let Err(e) = stderr.read_to_string(&mut message) {
+                warn!("failed to read Z3 stderr: {}", e);
+            }
             message
         });
 
@@ -585,7 +591,7 @@ impl CodeGen for CodeGenZ3 {
             BackendError
         })?;
 
-        // Get the outputs from the reader threads
+        // Wait for the stdout and stderr threads to finish
         let output = stdout_thread.join().map_err(|_| {
             warn!("Stdout thread panicked");
             BackendError
@@ -610,6 +616,14 @@ impl CodeGen for CodeGenZ3 {
                 Response::Timeout
             }
             Some(exit_status) => {
+                if !exit_status.success() {
+                    // Z3 crashed during model output (e.g. segfault in get-model).
+                    warn!(
+                        "Z3 exited with status {} (model may be incomplete)",
+                        exit_status
+                    );
+                }
+
                 let verdict = output
                     .lines()
                     .map(|l| l.trim())
@@ -618,20 +632,10 @@ impl CodeGen for CodeGenZ3 {
                 match verdict {
                     Some("unsat") => Response::Unsat,
                     Some("unknown") => Response::Unknown,
-                    Some("sat") => {
-                        if !exit_status.success() {
-                            // Z3 found sat but crashed during model output (e.g. segfault in
-                            // get-model). The "sat" verdict is still valid; model may be partial.
-                            warn!(
-                                "Z3 exited with status {} after reporting sat (model may be incomplete)",
-                                exit_status
-                            );
-                        }
-                        Response::Sat(output)
-                    }
-                    Some(other) => unreachable!("unexpected verdict: {}", other),
+                    Some("sat") => Response::Sat(output),
+                    Some(_) => unreachable!("unexpected verdict"),
                     None => {
-                        warn!("Z3 produced no verdict. Output: {}", output.trim());   
+                        warn!("Z3 produced no verdict. Output: {}", output.trim());
                         return Err(BackendError);
                     }
                 }
@@ -655,7 +659,10 @@ impl CodeGen for CodeGenZ3 {
             .iter()
             .find(|(name, _)| name.as_ref() == top_level_fn)
             .unwrap_or_else(|| {
-                panic!("top-level function '{}' not found in function registry", top_level_fn)
+                panic!(
+                    "top-level function '{}' not found in function registry",
+                    top_level_fn
+                )
             })
             .1;
 
@@ -700,13 +707,7 @@ impl CodeGen for CodeGenZ3 {
             _ => format!("(and {})", member_assertions.join(" ")),
         };
 
-        // Append the comment, assertion, check-sat, and get-model to the query.
-        let ids_str: Vec<String> = target_ids.iter().map(|id| id.to_string()).collect();
-        query.push_str(&format!(
-            "\n; Find input to {} that triggers error IDs {{{}}}\n",
-            top_level_fn,
-            ids_str.join(", ")
-        ));
+        // Append the assertion, check-sat, and get-model to the query.
         query.push_str(&format!("(assert {})\n", assertion));
         query.push_str("(check-sat)\n");
         query.push_str("(get-model)\n");

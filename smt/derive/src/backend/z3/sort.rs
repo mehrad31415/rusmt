@@ -370,7 +370,7 @@ fn visit_sort(sort: &Sort, src: UsrSortId, edges: &mut Vec<(UsrSortId, UsrSortId
     }
 }
 
-/// Computes strongly connected components from the type edges to get mutually recursive types.
+/// Kosaraju's algorithm for finding strongly connected components in a directed graph.
 pub fn scc_from_edges(edges: &[(UsrSortId, UsrSortId)]) -> Vec<BTreeSet<UsrSortId>> {
     let mut adj: HashMap<UsrSortId, Vec<UsrSortId>> = HashMap::new(); // outgoing edges
     let mut radj: HashMap<UsrSortId, Vec<UsrSortId>> = HashMap::new(); // incoming edges

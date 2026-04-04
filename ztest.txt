@@ -1,0 +1,19 @@
+edges:
+    Tree -> Tree
+    Expr -> Expr 
+    Expr -> Binding
+    Binding -> Expr
+
+adj: Tree -> [Tree], Expr -> [Expr, Binding], Binding -> [Expr]
+radj: Tree -> [Tree], Expr -> [Expr, Binding], Binding-> [Expr]
+
+
+seen = {tree, expr, binding}
+order = {tree, binding, expr}
+
+
+seen = {expr, Binding}
+acc = {expr, Binding}, {tree}
+
+
+

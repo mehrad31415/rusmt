@@ -12,9 +12,6 @@ use std::collections::{BTreeMap, BTreeSet};
 /// A context for the intermediate representation (IR).
 #[derive(Debug)]
 pub struct IRContext {
-    /// A type parameter is converted to a smt sort name in the ir (intermediate representation).
-    /// This set contains all the type parameters of the functions only (not the types) because z3 smtlib support polymophic types but not polymophic functions.
-    pub undef_sorts: BTreeSet<SmtSortName>,
     /// type registry (idx_named, idx_tuple, defs). The named types are user-defined types. The tuple types are stored as types that are not named. The defs are the definitions of the types.
     pub ty_registry: TypeRegistry,
     /// function registry (lookup, signature, definition). The lookup is a map from user-defined functions to a map from list of parameter types to function id.
@@ -34,7 +31,6 @@ impl IRContext {
     /// The only place this is called is in the first line of the `IRBuilder::build` function
     fn new() -> Self {
         Self {
-            undef_sorts: BTreeSet::new(),
             ty_registry: TypeRegistry::new(),
             fn_registry: FunRegistry::new(),
             error_count: 0,
@@ -95,8 +91,8 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
         // For each user-defined type (struct/enum), register it
         for (type_name, type_def) in &ctxt.types {
-            // Unlike functions, type parameters in types don't go in undef_sorts because
-            // SMT-LIB supports polymorphic types via (declare-datatypes ((MyType 1)) ...)
+            // Type parameters are mapped to Uninterpreted sorts for the generic template.
+            // These are used during IR building for sort-checking but not emitted to SMT-LIB.
             let mut ty_inst = BTreeMap::new();
 
             for ty_param in &type_def.head.params {
@@ -138,7 +134,6 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             for ty_param in generics {
                 // Create unique SMT sort name: "foo_T" (function_name + type_param)
                 let smt_name = SmtSortName::new_func_param(func_name, ty_param);
-                ir.undef_sorts.insert(smt_name.clone());
 
                 // Map: T -> Sort::Uninterpreted("foo_T")
                 let smt_sort = Sort::Uninterpreted(smt_name);

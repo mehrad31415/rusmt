@@ -5,8 +5,8 @@ use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
-use crate::backend::response::Response;
 use crate::backend::response::NUM_CPU_CORES;
+use crate::backend::response::Response;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
@@ -59,7 +59,6 @@ impl CodeGen for CodeGenZ3 {
         let mut x = ContentBuilder::new();
         // destructure the IRContext
         let IRContext {
-            undef_sorts,
             ty_registry,
             fn_registry,
             error_count: _,
@@ -96,31 +95,26 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "(set-option :smt.auto_config false)");
         l!(x); // add new line
 
-        // write the type parameters
-        if !undef_sorts.is_empty() {
-            l!(x, "; Define Type Parameters of Function Signatures:");
-            for sort in undef_sorts {
-                l!(x, "(declare-sort {} 0)", sort);
-            }
-            l!(x); // add new line
-        }
-
         // write the user-defined types
         if !ty_registry.data_types().is_empty() {
             l!(x, "; Define user-defined types");
             let edges = collect_type_edges(ty_registry.data_types());
-            let mut sccs = scc_from_edges(&edges);
+            // Recursive/mutually recursive types — must use declare-datatypes
+            let mut recursive_sccs = scc_from_edges(&edges);
 
-            // include truly isolated types
             let all_ids: BTreeSet<_> = ty_registry.data_types().keys().copied().collect();
-            let covered: BTreeSet<_> = sccs.iter().flat_map(|s| s.iter().copied()).collect();
-            for sid in all_ids.difference(&covered) {
-                sccs.push(BTreeSet::from([*sid]));
-            }
+            let covered: BTreeSet<_> = recursive_sccs
+                .iter()
+                .flat_map(|s| s.iter().copied())
+                .collect();
+            // Isolated types that are not part of any SCC. These types do not refer to any other user-defined type.
+            let isolated: Vec<UsrSortId> = all_ids.difference(&covered).copied().collect();
 
-            // Deduplicate SCCs by type names to avoid declaring the same type multiple times
-            // This happens with mutually recursive generic types that create multiple instantiations
-            // We group by type name and prefer instances where type parameters match the type name
+            // Deduplicate SCCs by type names to avoid declaring the same type multiple times.
+            // This happens with generic types that have multiple instantiations in the IR
+            // (e.g., ParseResult<String> and ParseResult<Value> both map to one ParseResult in Z3).
+            // We group by type name and prefer the instance whose type parameters are
+            // uninterpreted sorts (the "generic" version) as the representative.
             let mut seen_type_names: HashSet<String> = HashSet::new();
             let mut name_to_best_sid: HashMap<String, UsrSortId> = HashMap::new();
 

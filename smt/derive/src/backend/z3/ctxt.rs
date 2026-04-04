@@ -430,11 +430,17 @@ impl CodeGen for CodeGenZ3 {
 
             let edges = collect_function_call_edges(fn_registry);
 
-            // Get all function IDs, excluding choose functions (already declared above)
+            // Get all function IDs, excluding:
+            // - choose functions (already declared above)
+            // - generic template functions (type args contain Sort::Uninterpreted)
+            //   These are dead code — only monomorphized versions are called.
+            //   See book/src/dev/smt/generics.md for the full design rationale.
             let all_ids: BTreeSet<_> = fn_registry
                 .lookup
                 .values()
-                .flat_map(|insts| insts.iter().map(|(_, fn_id)| *fn_id))
+                .flat_map(|insts| insts.iter())
+                .filter(|(ty_args, _)| !ty_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))))
+                .map(|(_, fn_id)| *fn_id)
                 .filter(|fid| !choose_fids.contains(fid))
                 .collect();
 

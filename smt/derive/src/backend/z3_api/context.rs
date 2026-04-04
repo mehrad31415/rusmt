@@ -603,71 +603,192 @@ impl<'ctx> Z3ApiContext<'ctx> {
     }
 
     fn build_string_parsing_helpers(&mut self) {
-        // Use Z3_eval_smtlib2_string to define the helpers via SMT-LIB2 text.
-        // This is the most reliable approach since these definitions involve string
-        // comparison functions (str.<=) which may not be available in z3-sys 0.8.
-        let smtlib = r#"
-(define-fun rusmart_hex_char_to_int ((s String)) Int
-  (ite (and (str.<= "0" s) (str.<= s "9")) (- (str.to_code s) 48)
-  (ite (and (str.<= "A" s) (str.<= s "F")) (- (str.to_code s) 55)
-  (ite (and (str.<= "a" s) (str.<= s "f")) (- (str.to_code s) 87)
-  0))))
-
-(define-fun-rec rusmart_from_hex_str_impl ((s String) (acc Int)) Int
-  (ite (= (str.len s) 0)
-    acc
-    (rusmart_from_hex_str_impl
-      (str.substr s 1 (- (str.len s) 1))
-      (+ (* acc 16) (rusmart_hex_char_to_int (str.at s 0))))))
-
-(define-fun rusmart_from_hex_str ((s String)) Int (rusmart_from_hex_str_impl s 0))
-
-(define-fun rusmart_oct_char_to_int ((s String)) Int
-  (ite (and (str.<= "0" s) (str.<= s "7")) (- (str.to_code s) 48) 0))
-
-(define-fun-rec rusmart_from_oct_str_impl ((s String) (acc Int)) Int
-  (ite (= (str.len s) 0)
-    acc
-    (rusmart_from_oct_str_impl
-      (str.substr s 1 (- (str.len s) 1))
-      (+ (* acc 8) (rusmart_oct_char_to_int (str.at s 0))))))
-
-(define-fun rusmart_from_oct_str ((s String)) Int (rusmart_from_oct_str_impl s 0))
-
-(define-fun-rec rusmart_from_bin_str_impl ((s String) (acc Int)) Int
-  (ite (= (str.len s) 0)
-    acc
-    (rusmart_from_bin_str_impl
-      (str.substr s 1 (- (str.len s) 1))
-      (+ (* acc 2) (ite (= (str.at s 0) "1") 1 0)))))
-
-(define-fun rusmart_from_bin_str ((s String)) Int (rusmart_from_bin_str_impl s 0))
-"#;
-
+        let ctx = self.ctx;
         unsafe {
-            let ctx = self.ctx;
-            let c_str = std::ffi::CString::new(smtlib).unwrap();
-            let _result = z3_sys::Z3_eval_smtlib2_string(ctx, c_str.as_ptr());
-        }
+            let str_sort = z3_sys::Z3_mk_string_sort(ctx).expect("str_sort");
+            let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("int_sort");
 
-        // After eval, the functions are now defined in the Z3 context.
-        // For the intrinsics that call these helpers, we look them up by name
-        // using Z3_mk_func_decl (which finds existing declarations by name).
-        // We store placeholder entries so get_helper_func_decl works.
-        // Since we use Z3_eval_smtlib2_string, we don't need the actual func_decl pointers
-        // for add_rec_def. We only need them for Z3_mk_app calls in intrinsics.
-        // We'll look them up on demand via the parse_smtlib2 approach.
+            let mk_int_numeral = |n: i64| -> z3_sys::Z3_ast {
+                let s = std::ffi::CString::new(n.to_string()).unwrap();
+                z3_sys::Z3_mk_numeral(ctx, s.as_ptr(), int_sort).expect("mk_numeral")
+            };
+            let mk_str_lit = |s: &str| -> z3_sys::Z3_ast {
+                let c = std::ffi::CString::new(s).unwrap();
+                z3_sys::Z3_mk_string(ctx, c.as_ptr()).expect("mk_string")
+            };
+
+            // === hex_char_to_int(s: String) -> Int ===
+            let hex_char_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_hex_char_to_int"),
+                1, [str_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, hex_char_decl).expect("f2a"));
+
+            let s_var = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let s_code = crate::backend::z3_api::Z3_mk_string_to_code(ctx, s_var);
+
+            let cond_09 = z3_sys::Z3_mk_and(ctx, 2, [
+                crate::backend::z3_api::Z3_mk_str_le(ctx, mk_str_lit("0"), s_var),
+                crate::backend::z3_api::Z3_mk_str_le(ctx, s_var, mk_str_lit("9")),
+            ].as_ptr()).expect("mk_and");
+            let cond_af_upper = z3_sys::Z3_mk_and(ctx, 2, [
+                crate::backend::z3_api::Z3_mk_str_le(ctx, mk_str_lit("A"), s_var),
+                crate::backend::z3_api::Z3_mk_str_le(ctx, s_var, mk_str_lit("F")),
+            ].as_ptr()).expect("mk_and");
+            let cond_af_lower = z3_sys::Z3_mk_and(ctx, 2, [
+                crate::backend::z3_api::Z3_mk_str_le(ctx, mk_str_lit("a"), s_var),
+                crate::backend::z3_api::Z3_mk_str_le(ctx, s_var, mk_str_lit("f")),
+            ].as_ptr()).expect("mk_and");
+
+            let sub_48 = z3_sys::Z3_mk_sub(ctx, 2, [s_code, mk_int_numeral(48)].as_ptr()).expect("mk_sub");
+            let sub_55 = z3_sys::Z3_mk_sub(ctx, 2, [s_code, mk_int_numeral(55)].as_ptr()).expect("mk_sub");
+            let sub_87 = z3_sys::Z3_mk_sub(ctx, 2, [s_code, mk_int_numeral(87)].as_ptr()).expect("mk_sub");
+            let zero = mk_int_numeral(0);
+
+            let inner2 = z3_sys::Z3_mk_ite(ctx, cond_af_lower, sub_87, zero).expect("mk_ite");
+            let inner1 = z3_sys::Z3_mk_ite(ctx, cond_af_upper, sub_55, inner2).expect("mk_ite");
+            let hex_body = z3_sys::Z3_mk_ite(ctx, cond_09, sub_48, inner1).expect("mk_ite");
+
+            z3_sys::Z3_add_rec_def(ctx, hex_char_decl, 1, [s_var].as_mut_ptr(), hex_body);
+            self.helper_func_decls.insert("rusmart_hex_char_to_int".to_string(), hex_char_decl);
+
+            // === from_hex_str_impl(s: String, acc: Int) -> Int (recursive) ===
+            let hex_impl_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_from_hex_str_impl"),
+                2, [str_sort, int_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, hex_impl_decl).expect("f2a"));
+
+            let s2 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let acc = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "acc"), int_sort).expect("mk_const");
+            let s_len = z3_sys::Z3_mk_seq_length(ctx, s2).expect("mk_seq_length");
+            let zero_i = mk_int_numeral(0);
+            let one_i = mk_int_numeral(1);
+            let cond_empty = z3_sys::Z3_mk_eq(ctx, s_len, zero_i).expect("mk_eq");
+            let tail = z3_sys::Z3_mk_seq_extract(ctx, s2, one_i,
+                z3_sys::Z3_mk_sub(ctx, 2, [s_len, one_i].as_ptr()).expect("mk_sub"),
+            ).expect("mk_seq_extract");
+            let head = z3_sys::Z3_mk_seq_at(ctx, s2, zero_i).expect("mk_seq_at");
+            let char_val = z3_sys::Z3_mk_app(ctx, hex_char_decl, 1, [head].as_ptr()).expect("mk_app");
+            let new_acc = z3_sys::Z3_mk_add(ctx, 2, [
+                z3_sys::Z3_mk_mul(ctx, 2, [acc, mk_int_numeral(16)].as_ptr()).expect("mk_mul"),
+                char_val,
+            ].as_ptr()).expect("mk_add");
+            let rec_call = z3_sys::Z3_mk_app(ctx, hex_impl_decl, 2, [tail, new_acc].as_ptr()).expect("mk_app");
+            let hex_impl_body = z3_sys::Z3_mk_ite(ctx, cond_empty, acc, rec_call).expect("mk_ite");
+
+            z3_sys::Z3_add_rec_def(ctx, hex_impl_decl, 2, [s2, acc].as_mut_ptr(), hex_impl_body);
+            self.helper_func_decls.insert("rusmart_from_hex_str_impl".to_string(), hex_impl_decl);
+
+            // === from_hex_str(s: String) -> Int ===
+            let hex_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_from_hex_str"),
+                1, [str_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, hex_decl).expect("f2a"));
+            let s3 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let hex_wrap_body = z3_sys::Z3_mk_app(ctx, hex_impl_decl, 2, [s3, mk_int_numeral(0)].as_ptr()).expect("mk_app");
+            z3_sys::Z3_add_rec_def(ctx, hex_decl, 1, [s3].as_mut_ptr(), hex_wrap_body);
+            self.helper_func_decls.insert("rusmart_from_hex_str".to_string(), hex_decl);
+
+            // === oct_char_to_int(s: String) -> Int ===
+            let oct_char_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_oct_char_to_int"),
+                1, [str_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, oct_char_decl).expect("f2a"));
+            let s4 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let s4_code = crate::backend::z3_api::Z3_mk_string_to_code(ctx, s4);
+            let cond_07 = z3_sys::Z3_mk_and(ctx, 2, [
+                crate::backend::z3_api::Z3_mk_str_le(ctx, mk_str_lit("0"), s4),
+                crate::backend::z3_api::Z3_mk_str_le(ctx, s4, mk_str_lit("7")),
+            ].as_ptr()).expect("mk_and");
+            let oct_body = z3_sys::Z3_mk_ite(ctx, cond_07,
+                z3_sys::Z3_mk_sub(ctx, 2, [s4_code, mk_int_numeral(48)].as_ptr()).expect("mk_sub"),
+                mk_int_numeral(0),
+            ).expect("mk_ite");
+            z3_sys::Z3_add_rec_def(ctx, oct_char_decl, 1, [s4].as_mut_ptr(), oct_body);
+            self.helper_func_decls.insert("rusmart_oct_char_to_int".to_string(), oct_char_decl);
+
+            // === from_oct_str_impl(s: String, acc: Int) -> Int (recursive) ===
+            let oct_impl_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_from_oct_str_impl"),
+                2, [str_sort, int_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, oct_impl_decl).expect("f2a"));
+            let s5 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let acc5 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "acc"), int_sort).expect("mk_const");
+            let s5_len = z3_sys::Z3_mk_seq_length(ctx, s5).expect("mk_seq_length");
+            let cond5 = z3_sys::Z3_mk_eq(ctx, s5_len, mk_int_numeral(0)).expect("mk_eq");
+            let tail5 = z3_sys::Z3_mk_seq_extract(ctx, s5, mk_int_numeral(1),
+                z3_sys::Z3_mk_sub(ctx, 2, [s5_len, mk_int_numeral(1)].as_ptr()).expect("mk_sub"),
+            ).expect("mk_seq_extract");
+            let head5 = z3_sys::Z3_mk_seq_at(ctx, s5, mk_int_numeral(0)).expect("mk_seq_at");
+            let char_val5 = z3_sys::Z3_mk_app(ctx, oct_char_decl, 1, [head5].as_ptr()).expect("mk_app");
+            let new_acc5 = z3_sys::Z3_mk_add(ctx, 2, [
+                z3_sys::Z3_mk_mul(ctx, 2, [acc5, mk_int_numeral(8)].as_ptr()).expect("mk_mul"),
+                char_val5,
+            ].as_ptr()).expect("mk_add");
+            let rec5 = z3_sys::Z3_mk_app(ctx, oct_impl_decl, 2, [tail5, new_acc5].as_ptr()).expect("mk_app");
+            let oct_impl_body = z3_sys::Z3_mk_ite(ctx, cond5, acc5, rec5).expect("mk_ite");
+            z3_sys::Z3_add_rec_def(ctx, oct_impl_decl, 2, [s5, acc5].as_mut_ptr(), oct_impl_body);
+            self.helper_func_decls.insert("rusmart_from_oct_str_impl".to_string(), oct_impl_decl);
+
+            // === from_oct_str(s: String) -> Int ===
+            let oct_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_from_oct_str"),
+                1, [str_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, oct_decl).expect("f2a"));
+            let s6 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let oct_wrap_body = z3_sys::Z3_mk_app(ctx, oct_impl_decl, 2, [s6, mk_int_numeral(0)].as_ptr()).expect("mk_app");
+            z3_sys::Z3_add_rec_def(ctx, oct_decl, 1, [s6].as_mut_ptr(), oct_wrap_body);
+            self.helper_func_decls.insert("rusmart_from_oct_str".to_string(), oct_decl);
+
+            // === from_bin_str_impl(s: String, acc: Int) -> Int (recursive) ===
+            let bin_impl_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_from_bin_str_impl"),
+                2, [str_sort, int_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, bin_impl_decl).expect("f2a"));
+            let s7 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let acc7 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "acc"), int_sort).expect("mk_const");
+            let s7_len = z3_sys::Z3_mk_seq_length(ctx, s7).expect("mk_seq_length");
+            let cond7 = z3_sys::Z3_mk_eq(ctx, s7_len, mk_int_numeral(0)).expect("mk_eq");
+            let tail7 = z3_sys::Z3_mk_seq_extract(ctx, s7, mk_int_numeral(1),
+                z3_sys::Z3_mk_sub(ctx, 2, [s7_len, mk_int_numeral(1)].as_ptr()).expect("mk_sub"),
+            ).expect("mk_seq_extract");
+            let head7 = z3_sys::Z3_mk_seq_at(ctx, s7, mk_int_numeral(0)).expect("mk_seq_at");
+            let is_one = z3_sys::Z3_mk_eq(ctx, head7, mk_str_lit("1")).expect("mk_eq");
+            let bit_val = z3_sys::Z3_mk_ite(ctx, is_one, mk_int_numeral(1), mk_int_numeral(0)).expect("mk_ite");
+            let new_acc7 = z3_sys::Z3_mk_add(ctx, 2, [
+                z3_sys::Z3_mk_mul(ctx, 2, [acc7, mk_int_numeral(2)].as_ptr()).expect("mk_mul"),
+                bit_val,
+            ].as_ptr()).expect("mk_add");
+            let rec7 = z3_sys::Z3_mk_app(ctx, bin_impl_decl, 2, [tail7, new_acc7].as_ptr()).expect("mk_app");
+            let bin_impl_body = z3_sys::Z3_mk_ite(ctx, cond7, acc7, rec7).expect("mk_ite");
+            z3_sys::Z3_add_rec_def(ctx, bin_impl_decl, 2, [s7, acc7].as_mut_ptr(), bin_impl_body);
+            self.helper_func_decls.insert("rusmart_from_bin_str_impl".to_string(), bin_impl_decl);
+
+            // === from_bin_str(s: String) -> Int ===
+            let bin_decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, mk_string_symbol(ctx, "rusmart_from_bin_str"),
+                1, [str_sort].as_ptr(), int_sort,
+            ).expect("mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, bin_decl).expect("f2a"));
+            let s8 = z3_sys::Z3_mk_const(ctx, mk_string_symbol(ctx, "s"), str_sort).expect("mk_const");
+            let bin_wrap_body = z3_sys::Z3_mk_app(ctx, bin_impl_decl, 2, [s8, mk_int_numeral(0)].as_ptr()).expect("mk_app");
+            z3_sys::Z3_add_rec_def(ctx, bin_decl, 1, [s8].as_mut_ptr(), bin_wrap_body);
+            self.helper_func_decls.insert("rusmart_from_bin_str".to_string(), bin_decl);
+        }
     }
 
-    /// Build all user-defined functions by generating SMT-LIB2 text (via the text backend)
-    /// and loading it into the Z3 context via Z3_eval_smtlib2_string.
+    /// Build all user-defined functions using the Z3 API directly.
     ///
-    /// This avoids the Z3_add_rec_def hang where Z3 eagerly validates each recursive
-    /// definition. The text backend's define-funs-rec syntax is processed atomically by Z3.
+    /// IterChoose functions → uninterpreted (Z3_mk_func_decl, no body).
+    /// All other functions → Z3_mk_rec_func_decl + Z3_add_rec_def,
+    /// with interdependent functions declared together before bodies are added.
     fn build_functions(&mut self) {
-        use crate::backend::codegen::CodeGen;
-        use crate::backend::z3::ctxt::CodeGenZ3;
-
         let ir = self.ir;
         let ctx = self.ctx;
 
@@ -675,68 +796,142 @@ impl<'ctx> Z3ApiContext<'ctx> {
             return;
         }
 
-        // Use the text backend to generate the function definitions as SMT-LIB2.
-        // The text backend's `process()` generates the COMPLETE SMT-LIB2 including
-        // type declarations, null constants, helpers, AND function definitions.
-        // Since we already loaded types/nulls/helpers via the API, we only need
-        // the function portion. We'll extract it by generating the full text
-        // and feeding it all to Z3 (Z3 will recognize already-declared types).
-        //
-        // Actually, the simplest approach: generate ONLY the function portion.
-        // The text backend's ctxt.rs has the function generation code that produces
-        // declare-fun (for choose fns) and define-funs-rec blocks.
-        // Rather than duplicate that logic, use the full process() output and
-        // strip the type/config portions, keeping only function definitions.
-        //
-        // Even simpler: just feed the entire text backend output through
-        // Z3_eval_smtlib2_string. Z3 is resilient to re-declaring sorts
-        // (it will just use the already-declared ones).
-
-        let text_backend = CodeGenZ3::new();
-        let base_code = match text_backend.process(ir) {
-            Ok(code) => code,
-            Err(_) => {
-                eprintln!("[z3_api] ERROR: Failed to generate function SMT-LIB2");
-                return;
-            }
-        };
-
-        eprintln!("[z3_api] Loading function definitions via SMT-LIB2 ({} bytes)...", base_code.len());
-
-        unsafe {
-            let c_str = std::ffi::CString::new(base_code).unwrap();
-            let _result = z3_sys::Z3_eval_smtlib2_string(ctx, c_str.as_ptr());
-        }
-
-        eprintln!("[z3_api] Function definitions loaded.");
-
-        // Store func_decls for error target solving.
-        // We need the func_decl handle for the top-level function.
-        // Since the functions were defined via SMT-LIB2, we create
-        // matching func_decl handles via Z3_mk_func_decl (by name).
+        // Detect IterChoose functions (Hilbert choice → uninterpreted).
+        let mut choose_fids: BTreeSet<UsrFunId> = BTreeSet::new();
         for (_, instantiations) in &ir.fn_registry.lookup {
             for (_, &fid) in instantiations {
-                let (function_name, type_params) = resolve_function_name(ir, fid);
-                let sig = ir.fn_registry.retrieve_sig(fid);
-                let instance_name = make_instance_name(&function_name.to_string(), &type_params, ir);
-
-                let param_sorts: Vec<z3_sys::Z3_sort> =
-                    sig.params.iter().map(|(_, s)| self.translate_sort(s)).collect();
-                let ret_sort = self.translate_sort(&sig.ret_ty);
-
-                unsafe {
-                    let sym = mk_string_symbol(ctx, &instance_name);
-                    let decl = z3_sys::Z3_mk_func_decl(
-                        ctx,
-                        sym,
-                        param_sorts.len() as u32,
-                        param_sorts.as_ptr(),
-                        ret_sort,
-                    ).expect("Z3_mk_func_decl");
-                    z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, decl).expect("Z3_func_decl_to_ast"));
-                    self.func_decls.insert(fid, decl);
+                let def = ir.fn_registry.retrieve_def(fid);
+                let root_exp = def.body.lookup_exp(&def.root_exp_id);
+                if matches!(root_exp, Expression::IterChoose { .. }) {
+                    choose_fids.insert(fid);
                 }
             }
+        }
+
+        // Declare choose functions as uninterpreted (no body).
+        for &fid in &choose_fids {
+            let (function_name, type_params) = resolve_function_name(ir, fid);
+            let sig = ir.fn_registry.retrieve_sig(fid);
+            let instance_name = make_instance_name(&function_name.to_string(), &type_params, ir);
+
+            let param_sorts: Vec<z3_sys::Z3_sort> =
+                sig.params.iter().map(|(_, s)| self.translate_sort(s)).collect();
+            let ret_sort = self.translate_sort(&sig.ret_ty);
+
+            unsafe {
+                let sym = mk_string_symbol(ctx, &instance_name);
+                let decl = z3_sys::Z3_mk_func_decl(
+                    ctx, sym,
+                    param_sorts.len() as u32, param_sorts.as_ptr(), ret_sort,
+                ).expect("Z3_mk_func_decl");
+                z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, decl).expect("f2a"));
+                self.func_decls.insert(fid, decl);
+            }
+        }
+
+        // Collect all non-choose function IDs.
+        let all_ids: BTreeSet<UsrFunId> = ir.fn_registry.lookup
+            .values()
+            .flat_map(|insts| insts.values().copied())
+            .filter(|fid| !choose_fids.contains(fid))
+            .collect();
+
+        if all_ids.is_empty() {
+            return;
+        }
+
+        // Build dependency graph to identify interdependent vs isolated functions.
+        let edges = collect_function_call_edges(&ir.fn_registry);
+        let all_fids_set: HashSet<UsrFunId> = all_ids.iter().copied().collect();
+        let mut has_dependencies: HashSet<UsrFunId> = HashSet::new();
+        for &(from, to) in &edges {
+            if all_fids_set.contains(&from) && all_fids_set.contains(&to) {
+                has_dependencies.insert(from);
+                has_dependencies.insert(to);
+            }
+        }
+
+        let has_dep_set: BTreeSet<UsrFunId> = has_dependencies.iter().copied().collect();
+        let mut interdependent_fids: Vec<UsrFunId> = has_dependencies.iter().copied().collect();
+        let mut isolated_fids: Vec<UsrFunId> = all_ids.difference(&has_dep_set).copied().collect();
+        interdependent_fids.sort();
+        isolated_fids.sort();
+
+        // Phase 1: Declare ALL interdependent functions with Z3_mk_rec_func_decl.
+        // This must happen before any body is added so mutual references resolve.
+        let interdependent_set: BTreeSet<UsrFunId> = interdependent_fids.iter().copied().collect();
+        for &fid in &interdependent_fids {
+            self.declare_rec_func(fid);
+        }
+
+        // Phase 2: Add bodies for all interdependent functions.
+        for &fid in &interdependent_fids {
+            self.add_func_body(fid, &interdependent_set);
+        }
+
+        // Phase 3: Declare and define isolated functions one at a time.
+        for &fid in &isolated_fids {
+            self.declare_rec_func(fid);
+            let scc_set = BTreeSet::from([fid]);
+            self.add_func_body(fid, &scc_set);
+        }
+    }
+
+    /// Declare a function using Z3_mk_rec_func_decl and store its func_decl.
+    fn declare_rec_func(&mut self, fid: UsrFunId) {
+        let ir = self.ir;
+        let ctx = self.ctx;
+        let (function_name, type_params) = resolve_function_name(ir, fid);
+        let sig = ir.fn_registry.retrieve_sig(fid);
+        let instance_name = make_instance_name(&function_name.to_string(), &type_params, ir);
+
+        let param_sorts: Vec<z3_sys::Z3_sort> =
+            sig.params.iter().map(|(_, s)| self.translate_sort(s)).collect();
+        let ret_sort = self.translate_sort(&sig.ret_ty);
+
+        unsafe {
+            let sym = mk_string_symbol(ctx, &instance_name);
+            let decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx, sym,
+                param_sorts.len() as u32, param_sorts.as_ptr(), ret_sort,
+            ).expect("Z3_mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, decl).expect("f2a"));
+            self.func_decls.insert(fid, decl);
+        }
+    }
+
+    /// Add the body for a previously declared recursive function.
+    fn add_func_body(&mut self, fid: UsrFunId, scc_fids: &BTreeSet<UsrFunId>) {
+        use crate::backend::z3_api::translate::translate_expression;
+
+        let ir = self.ir;
+        let ctx = self.ctx;
+        let sig = ir.fn_registry.retrieve_sig(fid);
+        let def = ir.fn_registry.retrieve_def(fid);
+        let decl = self.get_func_decl(fid);
+
+        // Create parameter constants and build var_map.
+        let mut param_asts: Vec<z3_sys::Z3_ast> = Vec::new();
+        let mut var_map: HashMap<String, z3_sys::Z3_ast> = HashMap::new();
+        for (param_name, param_sort) in &sig.params {
+            let z3_sort = self.translate_sort(param_sort);
+            unsafe {
+                let sym = mk_string_symbol(ctx, &param_name.to_string());
+                let c = z3_sys::Z3_mk_const(ctx, sym, z3_sort).expect("mk_const");
+                z3_sys::Z3_inc_ref(ctx, c);
+                param_asts.push(c);
+                var_map.insert(param_name.to_string(), c);
+            }
+        }
+
+        // Translate the body expression.
+        let body_ast = translate_expression(self, &def.body, def.root_exp_id, &var_map, scc_fids);
+
+        unsafe {
+            z3_sys::Z3_add_rec_def(
+                ctx, decl,
+                param_asts.len() as u32, param_asts.as_mut_ptr(), body_ast.raw(),
+            );
         }
     }
 }

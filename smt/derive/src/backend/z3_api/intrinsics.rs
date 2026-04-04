@@ -205,15 +205,8 @@ pub fn translate_intrinsic<'ctx>(
                     Intrinsic::IntFromBin { .. } => "rusmart_from_bin_str",
                     _ => unreachable!(),
                 };
-                // Look up the function defined via Z3_eval_smtlib2_string by
-                // creating a temporary variable, building the call as SMT-LIB2 text,
-                // and parsing it. This is needed because we can't get the func_decl
-                // handle for functions defined via eval_smtlib2_string.
-                let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("Z3_mk_int_sort");
-                let str_sort = z3_sys::Z3_mk_string_sort(ctx).expect("Z3_mk_string_sort");
-                // Declare a function with same name - Z3 will unify with existing one
-                let sym = mk_string_symbol(ctx, func_name);
-                let decl = z3_sys::Z3_mk_func_decl(ctx, sym, 1, [str_sort].as_ptr(), int_sort).expect("Z3_mk_func_decl");
+                // Look up the helper function declared by build_string_parsing_helpers.
+                let decl = api_ctx.get_helper_func_decl(func_name);
                 Z3Ast::new(ctx, z3_sys::Z3_mk_app(ctx, decl, 1, [v.raw()].as_ptr()).expect("Z3_mk_app"))
             }
 

@@ -1,15 +1,15 @@
 //! Solver pipeline: uses in-process Z3 via z3-sys to solve error targets.
 //!
-//! Strategy: load base definitions via Z3_eval_smtlib2_string (which handles
-//! declare-datatypes, define-funs-rec, etc.), then load assertions via
-//! Z3_parse_smtlib2_string and solve with Z3_solver_check (which respects timeout).
+//! All Z3 interaction is through the C API — no SMT-LIB2 text generation.
 
-use crate::backend::codegen::CodeGen;
 use crate::backend::response::{BACKEND_TIMEOUT, Response};
-use crate::backend::z3::ctxt::CodeGenZ3;
+use crate::backend::z3::sort::resolve_type_name;
 pub use crate::backend::z3_api::SolveResult;
-use crate::backend::z3_api::Z3Context;
+use crate::backend::z3_api::context::Z3ApiContext;
+use crate::backend::z3_api::{mk_string_symbol, model_to_string, Z3Context};
 use crate::ir::ctxt::IRContext;
+use crate::ir::index::UsrFunId;
+use crate::ir::sort::{DataType, Sort, Variant};
 use std::collections::BTreeSet;
 use std::ffi::CStr;
 use std::time::{Duration, Instant};
@@ -33,15 +33,6 @@ fn set_global_params() {
 pub fn solve_with_api(model: &IRContext, top_level_fn: &str, on_result: &dyn Fn(&SolveResult)) {
     set_global_params();
 
-    let text_backend = CodeGenZ3::new();
-    let base_code = match text_backend.process(model) {
-        Ok(code) => code,
-        Err(_) => {
-            eprintln!("[z3_api] ERROR: Failed to generate base SMT-LIB2 code");
-            return;
-        }
-    };
-
     let api_timeout_ms = std::env::var("Z3_API_TIMEOUT_MS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -53,6 +44,9 @@ pub fn solve_with_api(model: &IRContext, top_level_fn: &str, on_result: &dyn Fn(
         api_timeout_ms
     );
 
+    // Find the top-level function ID.
+    let top_fn_id = find_top_level_fn(model, top_level_fn);
+
     for (target_idx, target_ids) in model.error_targets.iter().enumerate() {
         eprintln!(
             "[z3_api] Target {}/{}: solving...",
@@ -61,14 +55,8 @@ pub fn solve_with_api(model: &IRContext, top_level_fn: &str, on_result: &dyn Fn(
         );
         let start = Instant::now();
 
-        let response = solve_single_target(
-            &text_backend,
-            &base_code,
-            model,
-            top_level_fn,
-            target_ids,
-            api_timeout_ms,
-        );
+        let response =
+            solve_single_target(model, top_fn_id, target_ids, api_timeout_ms);
 
         let elapsed_ms = start.elapsed().as_millis();
         let status = match &response {
@@ -90,114 +78,249 @@ pub fn solve_with_api(model: &IRContext, top_level_fn: &str, on_result: &dyn Fn(
     }
 }
 
-/// Solve a single error target.
-///
-/// Approach:
-/// 1. Create a fresh Z3 context
-/// 2. Load base definitions (types + functions) via Z3_eval_smtlib2_string
-/// 3. Generate the error-specific query (declare-const + assert)
-/// 4. Parse the assertions via Z3_parse_smtlib2_string
-/// 5. Add assertions to a solver with timeout
-/// 6. Call Z3_solver_check (which respects the timeout)
-/// 7. Extract model if sat
+/// Find the monomorphic top-level function by name.
+fn find_top_level_fn(ir: &IRContext, name: &str) -> UsrFunId {
+    let instantiations = ir
+        .fn_registry
+        .lookup
+        .iter()
+        .find(|(n, _)| n.as_ref() == name)
+        .unwrap_or_else(|| {
+            panic!("top-level function '{}' not found in function registry", name)
+        })
+        .1;
+    assert_eq!(
+        instantiations.len(), 1,
+        "top-level function '{}' must be monomorphic, found {} instantiations",
+        name, instantiations.len()
+    );
+    *instantiations.values().next().unwrap()
+}
+
+/// Solve a single error target using a fresh Z3 context.
 fn solve_single_target(
-    text_backend: &CodeGenZ3,
-    base_code: &str,
     ir: &IRContext,
-    top_level_fn: &str,
+    top_fn_id: UsrFunId,
     target_ids: &BTreeSet<usize>,
     timeout_ms: u64,
 ) -> Response {
+    // Create fresh Z3 context and build everything from IR.
     let z3_ctx = Z3Context::new();
     let ctx = z3_ctx.ctx;
+    let mut api_ctx = Z3ApiContext::new(ctx, ir);
 
     unsafe {
-        // Step 1: Load base definitions
-        let base_c = std::ffi::CString::new(base_code).unwrap();
-        let eval_result = z3_sys::Z3_eval_smtlib2_string(ctx, base_c.as_ptr());
-        let eval_str = if eval_result.is_null() {
-            eprintln!("[z3_api] Z3_eval_smtlib2_string returned NULL");
-            String::new()
-        } else {
-            let s = CStr::from_ptr(eval_result).to_string_lossy().into_owned();
-            if !s.is_empty() {
-                // Print first 500 chars to see what Z3 responded
-                let preview: String = s.chars().take(500).collect();
-                eprintln!("[z3_api] Z3_eval output (first 500 chars): {}", preview);
-            } else {
-                eprintln!("[z3_api] Z3_eval output: (empty string)");
-            }
-            s
-        };
-        // Check for errors
-        let err = z3_sys::Z3_get_error_code(ctx);
-        if err != z3_sys::ErrorCode::Ok {
-            let err_msg = z3_sys::Z3_get_error_msg(ctx, err);
-            let msg = CStr::from_ptr(err_msg).to_string_lossy();
-            eprintln!(
-                "[z3_api] ERROR after loading base definitions: {} (code {:?})",
-                msg, err
-            );
-            return Response::Unknown;
-        }
-        // Check if eval output contains errors
-        if eval_str.contains("(error") {
-            eprintln!("[z3_api] Z3 reported errors in base definitions!");
-            eprintln!("[z3_api] {}", eval_str);
-            return Response::Unknown;
-        }
+        // Create solver.
+        let solver = z3_sys::Z3_mk_solver(ctx).expect("mk_solver");
+        z3_sys::Z3_solver_inc_ref(ctx, solver);
 
-        // Step 2: Generate the full query (base + declarations + assert + check-sat + get-model)
-        let full_query =
-            text_backend.process_error_queries(base_code, ir, top_level_fn, target_ids);
+        // Set timeout via solver params.
+        let params = z3_sys::Z3_mk_params(ctx).expect("mk_params");
+        z3_sys::Z3_params_inc_ref(ctx, params);
+        let timeout_sym = mk_string_symbol(ctx, "timeout");
+        z3_sys::Z3_params_set_uint(ctx, params, timeout_sym, timeout_ms as u32);
+        z3_sys::Z3_solver_set_params(ctx, solver, params);
+        z3_sys::Z3_params_dec_ref(ctx, params);
 
-        // Extract ONLY the error-specific part (after the base code)
-        let error_part = &full_query[base_code.len()..];
+        // Build and assert error reachability assertion.
+        let assertion = build_error_assertion(&mut api_ctx, ir, top_fn_id, target_ids);
+        z3_sys::Z3_solver_assert(ctx, solver, assertion);
 
-        // Feed the error-specific part (declare-const, assert, check-sat, get-model)
-        // via Z3_eval_smtlib2_string — it runs in the same context where base defs are loaded
-        let error_c = std::ffi::CString::new(error_part).unwrap();
-
+        // Backup timeout: interrupt Z3 from a separate thread.
+        // Z3_context is NonNull<_> (not Send). Smuggle as usize.
+        let ctx_addr = ctx.as_ptr() as usize;
+        let timeout_dur = Duration::from_millis(timeout_ms);
         let start = Instant::now();
-        let result_ptr = z3_sys::Z3_eval_smtlib2_string(ctx, error_c.as_ptr());
-
-        let output = if result_ptr.is_null() {
-            String::new()
-        } else {
-            CStr::from_ptr(result_ptr).to_string_lossy().into_owned()
-        };
-
-        // Parse the output — Z3_eval_smtlib2_string returns the combined output
-        // of all commands (check-sat prints "sat"/"unsat", get-model prints the model)
-        let verdict = output
-            .lines()
-            .map(|l| l.trim())
-            .find(|&l| l == "sat" || l == "unsat" || l == "unknown");
-
-        let response = match verdict {
-            Some("sat") => Response::Sat(output),
-            Some("unsat") => Response::Unsat,
-            Some("unknown") => {
-                if start.elapsed() >= Duration::from_millis(timeout_ms) {
-                    Response::Timeout
-                } else {
-                    Response::Unknown
+        let interrupt_handle = std::thread::spawn(move || {
+            std::thread::sleep(timeout_dur);
+            unsafe {
+                if let Some(ctx_nn) = std::ptr::NonNull::new(ctx_addr as *mut _) {
+                    z3_sys::Z3_interrupt(ctx_nn);
                 }
             }
+        });
+
+        // Solve.
+        let check_result = z3_sys::Z3_solver_check(ctx, solver);
+
+        let response = match check_result {
+            z3_sys::Z3_L_TRUE => {
+                match z3_sys::Z3_solver_get_model(ctx, solver) {
+                    Some(model) => {
+                        z3_sys::Z3_model_inc_ref(ctx, model);
+                        let model_str = model_to_string(ctx, model);
+                        z3_sys::Z3_model_dec_ref(ctx, model);
+                        Response::Sat(format!("sat\n{}", model_str))
+                    }
+                    None => {
+                        eprintln!("[z3_api] sat but model is null");
+                        Response::Sat("sat\n(model unavailable)".to_string())
+                    }
+                }
+            }
+            z3_sys::Z3_L_FALSE => Response::Unsat,
             _ => {
-                // No verdict — could be timeout or error
-                if start.elapsed() >= Duration::from_millis(timeout_ms) {
+                // Z3_L_UNDEF — could be timeout or unknown.
+                if start.elapsed() >= timeout_dur {
                     Response::Timeout
                 } else {
-                    eprintln!(
-                        "[z3_api] No verdict in output: {}",
-                        &output[..output.len().min(200)]
-                    );
-                    Response::Unknown
+                    // Check reason string.
+                    let reason_ptr = z3_sys::Z3_solver_get_reason_unknown(ctx, solver);
+                    let reason = if reason_ptr.is_null() {
+                        "unknown".to_string()
+                    } else {
+                        CStr::from_ptr(reason_ptr).to_string_lossy().into_owned()
+                    };
+                    if reason.contains("timeout") || reason.contains("canceled") || reason.contains("interrupted") {
+                        Response::Timeout
+                    } else {
+                        eprintln!("[z3_api] unknown reason: {}", reason);
+                        Response::Unknown
+                    }
                 }
             }
         };
+
+        z3_sys::Z3_solver_dec_ref(ctx, solver);
+
+        // Cancel the interrupt thread (it will fire harmlessly if already past).
+        drop(interrupt_handle);
 
         response
+    }
+}
+
+/// Build the error reachability assertion for the given target error IDs.
+///
+/// This is the API equivalent of `extract_error_assertion` in the text backend.
+/// For a top-level function returning `ParseResult<T>` (an enum with an `Err(Error)` variant):
+///   assert (and (is-Err (parse_toml input_0)) (select (accessor (parse_toml input_0)) error_id))
+unsafe fn build_error_assertion(
+    api_ctx: &mut Z3ApiContext,
+    ir: &IRContext,
+    top_fn_id: UsrFunId,
+    target_ids: &BTreeSet<usize>,
+) -> z3_sys::Z3_ast {
+    let ctx = api_ctx.ctx;
+    let sig = ir.fn_registry.retrieve_sig(top_fn_id);
+    let func_decl = api_ctx.get_func_decl(top_fn_id);
+
+    // Create input constants (one per parameter).
+    let mut input_asts: Vec<z3_sys::Z3_ast> = Vec::new();
+    for (i, (_, param_sort)) in sig.params.iter().enumerate() {
+        let z3_sort = api_ctx.translate_sort(param_sort);
+        let name = format!("input_{}", i);
+        let sym = mk_string_symbol(ctx, &name);
+        let c = z3_sys::Z3_mk_const(ctx, sym, z3_sort).expect("mk_const");
+        z3_sys::Z3_inc_ref(ctx, c);
+        input_asts.push(c);
+    }
+
+    // Build function application: (top_fn input_0 input_1 ...)
+    let call_result = z3_sys::Z3_mk_app(
+        ctx, func_decl,
+        input_asts.len() as u32, input_asts.as_ptr(),
+    ).expect("mk_app");
+    z3_sys::Z3_inc_ref(ctx, call_result);
+
+    // Build membership assertions for each error_id in the target.
+    let member_assertions: Vec<z3_sys::Z3_ast> = target_ids
+        .iter()
+        .map(|&error_id| build_single_error_assertion(api_ctx, ir, &sig.ret_ty, call_result, error_id))
+        .collect();
+
+    // Combine: single → use directly; multiple → AND them.
+    let assertion = if member_assertions.len() == 1 {
+        member_assertions[0]
+    } else {
+        z3_sys::Z3_mk_and(ctx, member_assertions.len() as u32, member_assertions.as_ptr()).expect("mk_and")
+    };
+
+    assertion
+}
+
+/// Build a single error membership assertion for one error_id.
+///
+/// Handles two cases:
+/// - Sort::Error → (select call_result error_id)
+/// - Sort::User (enum) → scan variants for Error fields, build (and (is-Variant call) (select (accessor call) error_id))
+unsafe fn build_single_error_assertion(
+    api_ctx: &mut Z3ApiContext,
+    ir: &IRContext,
+    ret_sort: &Sort,
+    call_result: z3_sys::Z3_ast,
+    error_id: usize,
+) -> z3_sys::Z3_ast {
+    let ctx = api_ctx.ctx;
+    let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("int_sort");
+    let idx_str = std::ffi::CString::new(error_id.to_string()).unwrap();
+    let idx_ast = z3_sys::Z3_mk_numeral(ctx, idx_str.as_ptr(), int_sort).expect("mk_numeral");
+
+    match ret_sort {
+        Sort::Error => {
+            // Direct: (select call_result error_id)
+            z3_sys::Z3_mk_select(ctx, call_result, idx_ast).expect("mk_select")
+        }
+        Sort::User(sid) => {
+            let dt = ir.ty_registry.retrieve(*sid);
+            let type_name = resolve_type_name(ir, *sid);
+            match dt {
+                DataType::Enum(variants) => {
+                    let mut variant_assertions: Vec<z3_sys::Z3_ast> = Vec::new();
+
+                    for (vname, vdef) in variants {
+                        match vdef {
+                            Variant::Tuple(slots) => {
+                                for (i, slot_sort) in slots.iter().enumerate() {
+                                    if *slot_sort == Sort::Error {
+                                        let tester = api_ctx.get_tester(*sid, vname);
+                                        let accessor = api_ctx.get_accessor(*sid, vname, i);
+                                        let is_variant = z3_sys::Z3_mk_app(ctx, tester, 1, [call_result].as_ptr()).expect("mk_app");
+                                        let field_val = z3_sys::Z3_mk_app(ctx, accessor, 1, [call_result].as_ptr()).expect("mk_app");
+                                        let selected = z3_sys::Z3_mk_select(ctx, field_val, idx_ast).expect("mk_select");
+                                        let conj = z3_sys::Z3_mk_and(ctx, 2, [is_variant, selected].as_ptr()).expect("mk_and");
+                                        variant_assertions.push(conj);
+                                    }
+                                }
+                            }
+                            Variant::Record(fields) => {
+                                for (fi, (_, field_sort)) in fields.iter().enumerate() {
+                                    if *field_sort == Sort::Error {
+                                        let tester = api_ctx.get_tester(*sid, vname);
+                                        let accessor = api_ctx.get_accessor(*sid, vname, fi);
+                                        let is_variant = z3_sys::Z3_mk_app(ctx, tester, 1, [call_result].as_ptr()).expect("mk_app");
+                                        let field_val = z3_sys::Z3_mk_app(ctx, accessor, 1, [call_result].as_ptr()).expect("mk_app");
+                                        let selected = z3_sys::Z3_mk_select(ctx, field_val, idx_ast).expect("mk_select");
+                                        let conj = z3_sys::Z3_mk_and(ctx, 2, [is_variant, selected].as_ptr()).expect("mk_and");
+                                        variant_assertions.push(conj);
+                                    }
+                                }
+                            }
+                            Variant::Unit => {}
+                        }
+                    }
+
+                    assert!(
+                        !variant_assertions.is_empty(),
+                        "return type '{}' has no Error fields in any variant",
+                        type_name
+                    );
+
+                    if variant_assertions.len() == 1 {
+                        variant_assertions[0]
+                    } else {
+                        z3_sys::Z3_mk_or(ctx, variant_assertions.len() as u32, variant_assertions.as_ptr()).expect("mk_or")
+                    }
+                }
+                _ => panic!(
+                    "return type is not an enum — cannot extract error assertion from {:?}",
+                    ret_sort
+                ),
+            }
+        }
+        _ => panic!(
+            "return sort {:?} does not contain Error — cannot generate error query",
+            ret_sort
+        ),
     }
 }

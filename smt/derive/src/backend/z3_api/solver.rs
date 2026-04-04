@@ -5,10 +5,10 @@
 //! Z3_parse_smtlib2_string and solve with Z3_solver_check (which respects timeout).
 
 use crate::backend::codegen::CodeGen;
-use crate::backend::response::{Response, BACKEND_TIMEOUT};
+use crate::backend::response::{BACKEND_TIMEOUT, Response};
 use crate::backend::z3::ctxt::CodeGenZ3;
 pub use crate::backend::z3_api::SolveResult;
-use crate::backend::z3_api::{mk_string_symbol, model_to_string, Z3Context};
+use crate::backend::z3_api::Z3Context;
 use crate::ir::ctxt::IRContext;
 use std::collections::BTreeSet;
 use std::ffi::CStr;
@@ -29,28 +29,18 @@ fn set_global_params() {
     z3::set_global_param("smt.auto_config", "false");
 }
 
-/// Run the Z3 API solver on the given IR.
-pub fn solve_with_api(
-    ir: &IRContext,
-    top_level_fn: Option<&str>,
-    on_result: &dyn Fn(&SolveResult),
-) {
-    let Some(top_level_fn) = top_level_fn else {
-        return;
-    };
-
-    eprintln!("[z3_api] Setting global Z3 params...");
+/// Run the Z3 API solver on the given model.
+pub fn solve_with_api(model: &IRContext, top_level_fn: &str, on_result: &dyn Fn(&SolveResult)) {
     set_global_params();
 
     let text_backend = CodeGenZ3::new();
-    let base_code = match text_backend.process(ir) {
+    let base_code = match text_backend.process(model) {
         Ok(code) => code,
         Err(_) => {
             eprintln!("[z3_api] ERROR: Failed to generate base SMT-LIB2 code");
             return;
         }
     };
-    eprintln!("[z3_api] Base SMT-LIB2 generated ({} bytes)", base_code.len());
 
     let api_timeout_ms = std::env::var("Z3_API_TIMEOUT_MS")
         .ok()
@@ -59,22 +49,22 @@ pub fn solve_with_api(
 
     eprintln!(
         "[z3_api] Processing {} error targets (timeout={}ms)...",
-        ir.error_targets.len(),
+        model.error_targets.len(),
         api_timeout_ms
     );
 
-    for (target_idx, target_ids) in ir.error_targets.iter().enumerate() {
+    for (target_idx, target_ids) in model.error_targets.iter().enumerate() {
         eprintln!(
             "[z3_api] Target {}/{}: solving...",
             target_idx,
-            ir.error_targets.len()
+            model.error_targets.len()
         );
         let start = Instant::now();
 
         let response = solve_single_target(
             &text_backend,
             &base_code,
-            ir,
+            model,
             top_level_fn,
             target_ids,
             api_timeout_ms,
@@ -87,7 +77,10 @@ pub fn solve_with_api(
             Response::Unknown => "unknown",
             Response::Timeout => "timeout",
         };
-        eprintln!("[z3_api] Target {}: {} in {}ms", target_idx, status, elapsed_ms);
+        eprintln!(
+            "[z3_api] Target {}: {} in {}ms",
+            target_idx, status, elapsed_ms
+        );
 
         on_result(&SolveResult {
             target_idx,
@@ -141,7 +134,10 @@ fn solve_single_target(
         if err != z3_sys::ErrorCode::Ok {
             let err_msg = z3_sys::Z3_get_error_msg(ctx, err);
             let msg = CStr::from_ptr(err_msg).to_string_lossy();
-            eprintln!("[z3_api] ERROR after loading base definitions: {} (code {:?})", msg, err);
+            eprintln!(
+                "[z3_api] ERROR after loading base definitions: {} (code {:?})",
+                msg, err
+            );
             return Response::Unknown;
         }
         // Check if eval output contains errors
@@ -152,7 +148,8 @@ fn solve_single_target(
         }
 
         // Step 2: Generate the full query (base + declarations + assert + check-sat + get-model)
-        let full_query = text_backend.process_error_queries(base_code, ir, top_level_fn, target_ids);
+        let full_query =
+            text_backend.process_error_queries(base_code, ir, top_level_fn, target_ids);
 
         // Extract ONLY the error-specific part (after the base code)
         let error_part = &full_query[base_code.len()..];
@@ -192,7 +189,10 @@ fn solve_single_target(
                 if start.elapsed() >= Duration::from_millis(timeout_ms) {
                     Response::Timeout
                 } else {
-                    eprintln!("[z3_api] No verdict in output: {}", &output[..output.len().min(200)]);
+                    eprintln!(
+                        "[z3_api] No verdict in output: {}",
+                        &output[..output.len().min(200)]
+                    );
                     Response::Unknown
                 }
             }

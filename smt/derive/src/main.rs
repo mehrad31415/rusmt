@@ -1,6 +1,5 @@
 //! This is the main entry point for the derive crate.
-//! usage: cargo run -- <parser_name> <top_level_fn>
-//! Example: cargo run -- toml parse_toml
+//! usage: cargo run -- <parser_name> <top_level_fn> [text|api|both]
 
 use rusmart_smt_derive::{model, solve, solve_z3_api};
 use std::error::Error;
@@ -36,39 +35,29 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Determine which backend to use
         let backend = args.get(3).map(|s| s.as_str()).unwrap_or("text");
 
+        if output_dir.exists() {
+            fs::remove_dir_all(&output_dir)?;
+        }
+        fs::create_dir_all(&output_dir)?;
+
+        let model = model(&parser_dir)?;
+
         match backend {
             "api" => {
                 // Z3 API backend only
-                eprintln!("[z3_api] Creating output directory...");
-                fs::create_dir_all(&output_dir)?;
-                eprintln!("[z3_api] Building IR model from parser...");
-                let models = model(&parser_dir)?;
-                eprintln!("[z3_api] IR model built. {} error targets found.", models.error_targets.len());
-                eprintln!("[z3_api] Starting Z3 API synthesis...");
-                solve_z3_api(&models, Some(top_level_fn.as_str()), &output_dir)?;
-                eprintln!("[z3_api] Synthesis complete.");
+                solve_z3_api(&model, Some(top_level_fn.as_str()), &output_dir)?;
+            }
+            "text" => {
+                // Run the text backend only
+                solve(&model, Some(top_level_fn.as_str()), &output_dir)?;
             }
             "both" => {
                 // Run both backends for comparison
-                if output_dir.exists() {
-                    fs::remove_dir_all(&output_dir)?;
-                }
-                fs::create_dir_all(&output_dir)?;
-                let models = model(&parser_dir)?;
-                println!("Running text backend (z3_chc)...");
-                solve(&models, Some(top_level_fn.as_str()), &output_dir)?;
-                println!("Running Z3 API backend (z3_api)...");
-                solve_z3_api(&models, Some(top_level_fn.as_str()), &output_dir)?;
-                println!("Both backends complete. Results in {:?}", output_dir);
+                solve(&model, Some(top_level_fn.as_str()), &output_dir)?;
+                solve_z3_api(&model, Some(top_level_fn.as_str()), &output_dir)?;
             }
             _ => {
-                // Default: text backend only (original behavior)
-                if output_dir.exists() {
-                    fs::remove_dir_all(&output_dir)?;
-                }
-                fs::create_dir_all(&output_dir)?;
-                let models = model(&parser_dir)?;
-                solve(&models, Some(top_level_fn.as_str()), &output_dir)?;
+                return Err(format!("Invalid backend: {}", backend).into());
             }
         }
     } else {

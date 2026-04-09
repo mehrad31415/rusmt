@@ -217,10 +217,8 @@ impl Integer {
     // ; Wrapper to start recursion
     // (define-fun from_hex_str ((s String)) Int (from_hex_str_impl s 0))
     pub fn from_hex_str(s: String) -> Self {
-        let clean_s = s.inner.trim_start_matches("0x").replace("_", ""); // Remove underscores
-
         Self {
-            inner: Intern::new(BigInt::from_str_radix(&clean_s, 16).unwrap()),
+            inner: Intern::new(BigInt::from_str_radix(s.inner.as_ref(), 16).unwrap()),
         }
     }
 
@@ -245,10 +243,8 @@ impl Integer {
     // ; Wrapper
     // (define-fun from_oct_str ((s String)) Int (from_oct_str_impl s 0))
     pub fn from_oct_str(s: String) -> Self {
-        let clean_s = s.inner.trim_start_matches("0o").replace("_", ""); // Remove underscores
-
         Self {
-            inner: Intern::new(BigInt::from_str_radix(&clean_s, 8).unwrap()),
+            inner: Intern::new(BigInt::from_str_radix(s.inner.as_ref(), 8).unwrap()),
         }
     }
 
@@ -267,10 +263,8 @@ impl Integer {
     // )
     // (define-fun from_bin_str ((s String)) Int (from_bin_str_impl s 0))
     pub fn from_bin_str(s: String) -> Self {
-        let clean_s = s.inner.trim_start_matches("0b").replace("_", ""); // Remove underscores
-
         Self {
-            inner: Intern::new(BigInt::from_str_radix(&clean_s, 2).unwrap()),
+            inner: Intern::new(BigInt::from_str_radix(s.inner.as_ref(), 2).unwrap()),
         }
     }
 

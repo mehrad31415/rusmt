@@ -12,10 +12,9 @@ use std::fmt::{Display, Formatter};
 /// A unique and complete reference to an SMT sort
 /// In the IR, types have been fully resolved (e.g. type variables should have been unified and substituted with its representation).
 /// This is basically the IR representation of a typetag in the parser
-/// The cloak is unwrapped and the type is resolved to a sort that is why Sort does not have a Cloak variant
-/// Also tuple types have been treated as user-defined types with no name so they fall under the Sort::User variant (so there is no Pack variant)
+/// Tuple types have been treated as user-defined types with no name so they fall under the Sort::User variant (so there is no Pack variant)
 /// The TypeRef::Parameter variant is converted to Sort::Uninterpreted
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
 pub enum Sort {
     /// boolean
     Boolean,
@@ -43,6 +42,11 @@ pub enum Sort {
     Set(Box<Sort>),
     /// SMT-array
     Array(Box<Sort>, Box<Sort>),
+    /// Cloak<T> — indirection wrapper for recursive types.
+    /// In Z3, declared as a parametric datatype with a null base case:
+    ///   (declare-datatype Cloak (par (T) ((mk-Cloak (uncloak T)) (Cloak-null))))
+    /// This provides the well-foundedness base case that Z3 requires for recursive types.
+    Cloak(Box<Sort>),
     /// dynamic error type
     Error,
     /// user-defined type (including pack-defined type tuple)
@@ -67,9 +71,10 @@ impl Display for Sort {
             Self::Seq(sub) => write!(f, "Seq<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
             Self::Array(key, val) => write!(f, "Array<{key}, {val}>"),
+            Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
             Self::Error => write!(f, "Error"),
             Self::User(sid) => write!(f, "${sid}"),
-            Self::Uninterpreted(name) => write!(f, "#{name}"),
+            Self::Uninterpreted(name) => write!(f, "uninterpreted_{name}"),
         }
     }
 }
@@ -256,8 +261,8 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             TypeRef::U64 => Sort::U64,
             TypeRef::String => Sort::String,
             TypeRef::Cloak(sub) => {
-                // unwrap the cloak
-                self.resolve_type(sub.as_ref())
+                // keep the cloak — Z3 needs it for well-foundedness of recursive types
+                Sort::Cloak(Box::new(self.resolve_type(sub.as_ref())))
             }
             TypeRef::Seq(sub) => Sort::Seq(self.resolve_type(sub.as_ref()).into()),
             TypeRef::Set(sub) => Sort::Set(self.resolve_type(sub.as_ref()).into()),

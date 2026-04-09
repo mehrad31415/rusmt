@@ -39,7 +39,7 @@ pub struct FunDef {
 #[derive(Default, Debug)]
 pub struct FunRegistry {
     /// a map from user-defined functions and instantiations to function id
-    pub lookup: BTreeMap<UsrFunName, BTreeMap<Vec<Sort>, UsrFunId>>,
+    lookup: BTreeMap<UsrFunName, BTreeMap<Vec<Sort>, UsrFunId>>,
     /// a map for function signatures
     sigs: BTreeMap<UsrFunId, FunSig>,
     /// a map for function definitions
@@ -59,6 +59,23 @@ impl FunRegistry {
     /// Returns the unique function ID associated with a given function name and list of parameter types.
     fn get_index(&self, name: &UsrFunName, inst: &[Sort]) -> Option<UsrFunId> {
         self.lookup.get(name)?.get(inst).copied() // return a copy of the value UsrFunId
+    }
+
+    /// Returns all the lookup entries.
+    pub fn lookup(&self) -> &BTreeMap<UsrFunName, BTreeMap<Vec<Sort>, UsrFunId>> {
+        &self.lookup
+    }
+
+    /// Returns the function name associated with a given function ID.
+    pub fn get_name(&self, idx: UsrFunId) -> UsrFunName {
+        for (name, instantiations) in &self.lookup {
+            for (_, fn_id) in instantiations {
+                if *fn_id == idx {
+                    return name.clone();
+                }
+            }
+        }
+        panic!("no such function id in get_name");
     }
 
     /// Creates a new function instance entry in the registry.
@@ -156,10 +173,10 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
         builder.ir.fn_registry.register_sig(idx, sig.clone());
 
         // materialize the entire function
-        // the builder is passed on for three things: 
-            // 1) type resolution (self.parent.resolve_type(...) to convert TypeRef → Sort using ty_inst)
-            // 2) type registration (self.parent.register_type(...) when encountering new type instantiations like Option<i32> in an expression)
-            // 3) function registration (self.parent.register_func(...) when a function call like foo::<i32>(x) is encountered, which may trigger registering a new monomorphized instance)
+        // the builder is passed on for three things:
+        // 1) type resolution (self.parent.resolve_type(...) to convert TypeRef → Sort using ty_inst)
+        // 2) type registration (self.parent.register_type(...) when encountering new type instantiations like Option<i32> in an expression)
+        // 3) function registration (self.parent.register_func(...) when a function call like foo::<i32>(x) is encountered, which may trigger registering a new monomorphized instance)
         let (exp_reg, exp_id) = ExpBuilder::materialize(builder, &sig, body);
         let def = FunDef {
             body: exp_reg,

@@ -7,11 +7,13 @@ use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
 use crate::backend::response::NUM_CPU_CORES;
 use crate::backend::response::Response;
+use crate::backend::z3::exp::format_expression;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
 use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str};
-use crate::backend::z3::intrinsics::array_null_const_name;
+use crate::backend::z3::intrinsics::array_null_value;
+use crate::backend::z3::sort::format_sort;
 use crate::backend::z3::sort::get_generic_param_count;
 use crate::backend::z3::sort::{collect_type_edges, resolve_type_name, scc_from_edges};
 use crate::backend::z3::sort::{
@@ -19,7 +21,6 @@ use crate::backend::z3::sort::{
 };
 use crate::ir::ctxt::IRContext;
 use crate::ir::exp::Expression;
-use crate::ir::fun::{FunDef, FunSig};
 use crate::ir::index::{UsrFunId, UsrSortId};
 use crate::ir::sort::{DataType, Sort, Variant};
 use command_group::CommandGroup;
@@ -95,80 +96,118 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "(set-option :smt.auto_config false)");
         l!(x); // add new line
 
+        // Declare the Cloak datatype — used for recursive type indirection.
+        // Cloak<T> wraps a value of type T, with a Cloak-null base case that provides
+        // the well-foundedness guarantee Z3 requires for recursive datatypes.
+        l!(
+            x,
+            "(declare-datatype Cloak (par (T) ((mk-Cloak (uncloak T)) (Cloak-null))))"
+        );
+        l!(x);
+
         // write the user-defined types
         if !ty_registry.data_types().is_empty() {
             l!(x, "; Define user-defined types");
             let edges = collect_type_edges(ty_registry.data_types());
             // Recursive/mutually recursive types — must use declare-datatypes
-            let mut recursive_sccs = scc_from_edges(&edges);
+            // reverse the order so that types that are referenced by other types are declared first
+            let recursive_sccs: Vec<BTreeSet<UsrSortId>> =
+                scc_from_edges(&edges).into_iter().rev().collect();
 
             let all_ids: BTreeSet<_> = ty_registry.data_types().keys().copied().collect();
             let covered: BTreeSet<_> = recursive_sccs
                 .iter()
                 .flat_map(|s| s.iter().copied())
                 .collect();
-            // Isolated types that are not part of any SCC. These types do not refer to any other user-defined type.
+            // Isolated types are types that are not referenced by any other type or do not reference any other type.
             let isolated: Vec<UsrSortId> = all_ids.difference(&covered).copied().collect();
 
             // Deduplicate SCCs by type names to avoid declaring the same type multiple times.
             // This happens with generic types that have multiple instantiations in the IR
             // (e.g., ParseResult<String> and ParseResult<Value> both map to one ParseResult in Z3).
-            // We group by type name and prefer the instance whose type parameters are
+            // We group by type name and choose the instance whose type parameters are
             // uninterpreted sorts (the "generic" version) as the representative.
             let mut seen_type_names: HashSet<String> = HashSet::new();
             let mut name_to_best_sid: HashMap<String, UsrSortId> = HashMap::new();
 
             // find the best representative for each type name
-            for scc in sccs.iter() {
-                for &sid in scc {
-                    let type_name = resolve_type_name(ir, sid);
-                    let (_, type_params) = ir.ty_registry.reverse_lookup(sid);
+            for &sid in recursive_sccs.iter().flatten().chain(isolated.iter()) {
+                let type_name_z3 = resolve_type_name(ir, sid);
+                let (ty_name, type_params) = ir.ty_registry.reverse_lookup(sid);
 
-                    // Check if this instance has "matching" type parameters
-                    // (i.e., type parameters that start with the type name prefix)
-                    let has_matching_params = type_params.iter().any(|sort| {
+                if ty_name.is_none() {
+                    // Unnamed tuple — always unique, no dedup needed
+                    seen_type_names.insert(type_name_z3.clone());
+                    name_to_best_sid.insert(type_name_z3, sid);
+                    continue;
+                }
+
+                // Skip monomorphized entries — only keep the generic template or where there are no type parameters
+                let is_generic_template = type_params.is_empty()
+                    || type_params.iter().all(|sort| {
                         if let Sort::Uninterpreted(smt_name) = sort {
-                            let name_str = smt_name.as_ref();
-                            let prefix = format!("{}_", type_name);
-                            name_str.starts_with(&prefix)
+                            smt_name
+                                .as_ref()
+                                .starts_with(&format!("{}_", ty_name.unwrap()))
                         } else {
                             false
                         }
                     });
 
-                    // If we haven't seen this type name, or this instance has matching params,
-                    // update the best representative
-                    if !seen_type_names.contains(&type_name) || has_matching_params {
-                        seen_type_names.insert(type_name.clone());
-                        name_to_best_sid.insert(type_name, sid);
-                    }
+                if !is_generic_template {
+                    continue; // monomorphized entry, skip
+                }
+
+                if !seen_type_names.contains(&type_name_z3) {
+                    seen_type_names.insert(type_name_z3.clone());
+                    name_to_best_sid.insert(type_name_z3, sid);
                 }
             }
 
-            // Second pass: build deduplicated SCCs using the best representatives
-            let mut seen_scc_signatures: HashSet<Vec<String>> = HashSet::new();
+            // Second pass: build deduplicated SCCs using the best representatives.
+            // Each SCC's monomorphized sids are replaced with their generic template sid.
+            // SCCs that share any sid after canonicalization are merged together.
+            //
+            // Example: if SCC-A = {Config, ParseResult<String>} and SCC-B = {ParseResult<T>},
+            // after canonicalization both contain sid for ParseResult<T>. They must be merged
+            // into one declare-datatypes block: {Config, ParseResult<T>}.
             let mut deduplicated_sccs: Vec<BTreeSet<UsrSortId>> = Vec::new();
 
-            for scc in sccs.iter().rev() {
+            for scc in recursive_sccs.iter() {
                 // Map each sid to its best representative's sid
                 let canonical_scc: BTreeSet<UsrSortId> = scc
                     .iter()
-                    .map(|&sid| {
+                    .filter_map(|&sid| {
                         let type_name = resolve_type_name(ir, sid);
-                        *name_to_best_sid.get(&type_name).unwrap_or(&sid)
+                        name_to_best_sid.get(&type_name).copied()
                     })
                     .collect();
 
-                // Create a signature for this SCC based on type names (sorted)
-                let mut type_names: Vec<String> = canonical_scc
-                    .iter()
-                    .map(|&sid| resolve_type_name(ir, sid))
-                    .collect();
-                type_names.sort();
+                // Find existing SCCs that share any sid with this canonical SCC and merge
+                let mut merged = canonical_scc;
+                let mut i = 0;
+                while i < deduplicated_sccs.len() {
+                    if deduplicated_sccs[i].intersection(&merged).next().is_some() {
+                        // Overlap found — absorb the existing SCC into merged
+                        let existing = deduplicated_sccs.remove(i);
+                        merged.extend(existing);
+                    } else {
+                        i += 1;
+                    }
+                }
+                deduplicated_sccs.push(merged);
+            }
 
-                // If we haven't seen this signature before, keep this SCC
-                if seen_scc_signatures.insert(type_names) {
-                    deduplicated_sccs.push(canonical_scc);
+            // Also add isolated types that weren't covered by any recursive SCC
+            for &sid in &isolated {
+                let type_name = resolve_type_name(ir, sid);
+                if let Some(&best_sid) = name_to_best_sid.get(&type_name) {
+                    // Check if this type is already in a deduplicated SCC
+                    let already_covered =
+                        deduplicated_sccs.iter().any(|scc| scc.contains(&best_sid));
+                    if !already_covered {
+                        deduplicated_sccs.push(BTreeSet::from([best_sid]));
+                    }
                 }
             }
 
@@ -176,135 +215,84 @@ impl CodeGen for CodeGenZ3 {
                 let mut decl_headers = Vec::new();
                 let mut decl_bodies = Vec::new();
 
-                // Convert SCC to BTreeSet for efficient lookup
-                let scc_set: BTreeSet<_> = scc.iter().copied().collect();
-
                 for sid in scc {
                     let dt = ir.ty_registry.retrieve(*sid);
                     let type_name_str = resolve_type_name(ir, *sid);
-                    let generic_param_count = get_generic_param_count(ir, *sid);
-
-                    // Get the type parameters for this type
-                    let (_, type_params) = ir.ty_registry.reverse_lookup(*sid);
-
-                    // Extract type parameter names from the uninterpreted sorts
-                    // For type parameters created with SmtSortName::new_type_param,
-                    // the format is "{type_name}_{param_name}"
-                    let type_param_names: Vec<String> = type_params
-                        .iter()
-                        .filter_map(|sort| {
-                            if let Sort::Uninterpreted(smt_name) = sort {
-                                let name_str = smt_name.as_ref();
-                                let prefix = format!("{}_", type_name_str);
-                                if name_str.starts_with(&prefix) {
-                                    Some(name_str[prefix.len()..].to_string())
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
+                    let (generic_param_count, type_params) = get_generic_param_count(ir, *sid);
 
                     decl_headers.push(format!("({} {})", type_name_str, generic_param_count));
+
+                    // generate the body of the declare-datatype(s) command
                     let body_str = match dt {
                         DataType::Tuple(elems)
                             if ir.ty_registry.reverse_lookup(*sid).0.is_none() =>
                         {
-                            mk_unnamed_tuple_str(
-                                type_name_str,
-                                elems,
-                                ir,
-                                type_params,
-                                &type_param_names,
-                                &scc_set,
-                            )
+                            mk_unnamed_tuple_str(type_name_str, elems, ir)
                         }
-                        DataType::Tuple(elems) => mk_named_tuple_str(
-                            type_name_str,
-                            elems,
-                            ir,
-                            type_params,
-                            &type_param_names,
-                            &scc_set,
-                        ),
-                        DataType::Record(fields) => mk_record_str(
-                            type_name_str,
-                            fields,
-                            ir,
-                            type_params,
-                            &type_param_names,
-                            &scc_set,
-                        ),
-                        DataType::Enum(variants) => mk_enum_str(
-                            type_name_str,
-                            variants,
-                            ir,
-                            type_params,
-                            &type_param_names,
-                            &scc_set,
-                        ),
+                        DataType::Tuple(elems) => {
+                            mk_named_tuple_str(type_name_str, elems, ir, &type_params)
+                        }
+                        DataType::Record(fields) => {
+                            mk_record_str(type_name_str, fields, ir, &type_params)
+                        }
+                        DataType::Enum(variants) => {
+                            mk_enum_str(type_name_str, variants, ir, &type_params)
+                        }
                     };
                     decl_bodies.push(body_str);
                 }
 
-                // Output the combined command
-                l!(
-                    x,
-                    "(declare-datatypes\n
-                    \t({})\n
-                    \t(\n
-                    \t\t{}\n
-                    \t)\n
-                    )",
-                    decl_headers.join(" "),
-                    decl_bodies.join(" ")
-                );
+                if scc.len() == 1 {
+                    let sid = *scc.iter().next().unwrap();
+                    let type_name_str = resolve_type_name(ir, sid);
+                    l!(
+                        x,
+                        "(declare-datatype {}\n\t{}\n)",
+                        type_name_str,
+                        decl_bodies[0]
+                    );
+                } else {
+                    // Mutually recursive types: use declare-datatypes
+                    l!(
+                        x,
+                        "(declare-datatypes\n\t({})\n\t(\n\t\t{}\n\t)\n)",
+                        decl_headers.join(" "),
+                        decl_bodies.join("\n\t\t")
+                    );
+                }
             }
 
             l!(x); // Empty line after types
         }
 
-        // Declare null sentinel constants for every concrete user-defined sort.
-        // Z3's @default is an output-only symbol (not valid input) for user-defined datatypes,
-        // so ArrayEmpty / ArrayRemove / ArrayContainsKey use these symbolic constants instead.
-        // Must appear BEFORE function definitions since function bodies may reference them.
-        // Skip abstract/polymorphic sorts (those whose SMT names include uninterpreted sorts).
+        // Null sentinel constants for array default values.
         {
-            let mut declared_null_names: HashSet<String> = HashSet::new();
-            let mut null_decls: Vec<(String, String)> = Vec::new();
+            let mut declared_null_names: HashSet<Sort> = HashSet::new();
+            l!(x, "; Null sentinel constants for array default values");
+
+            // User-defined sorts
             for sid in ty_registry.data_types().keys() {
                 let (_, type_args) = ty_registry.reverse_lookup(*sid);
-                // Skip abstract instantiations (those with uninterpreted sort arguments)
                 if type_args
                     .iter()
                     .any(|s| matches!(s, Sort::Uninterpreted(_)))
                 {
                     continue;
                 }
+
                 let v_sort = Sort::User(*sid);
-                let const_name = array_null_const_name(&v_sort, ir);
-                if declared_null_names.insert(const_name.clone()) {
-                    let sort_str = format_sort_for_fn(&v_sort, ir);
-                    null_decls.push((const_name, sort_str));
-                }
-            }
-            if !null_decls.is_empty() {
-                l!(x, "; Null sentinel constants for array default values");
-                for (const_name, sort_str) in null_decls {
+                if declared_null_names.insert(v_sort.clone()) {
+                    let const_name = array_null_value(&v_sort, ir);
+                    let sort_str = format_sort(&v_sort, ir);
                     l!(x, "(declare-const {} {})", const_name, sort_str);
                 }
-                l!(x);
             }
+
+            l!(x);
         }
 
         // Integer string parsing helpers (hex / octal / binary).
-        // Z3's built-in str.to_int only handles decimal; these define-fun-rec helpers
-        // implement the correct base conversions.  They must be emitted BEFORE any
-        // user-defined function that calls rusmart_from_hex/oct/bin_str.
         l!(x, "; Integer string parsing helpers");
-        // --- hex ---
         l!(x, "(define-fun rusmart_hex_char_to_int ((s String)) Int");
         l!(
             x,
@@ -338,7 +326,6 @@ impl CodeGen for CodeGenZ3 {
             "(define-fun rusmart_from_hex_str ((s String)) Int (rusmart_from_hex_str_impl s 0))"
         );
         l!(x);
-        // --- octal ---
         l!(x, "(define-fun rusmart_oct_char_to_int ((s String)) Int");
         l!(
             x,
@@ -363,7 +350,6 @@ impl CodeGen for CodeGenZ3 {
             "(define-fun rusmart_from_oct_str ((s String)) Int (rusmart_from_oct_str_impl s 0))"
         );
         l!(x);
-        // --- binary ---
         l!(
             x,
             "(define-fun-rec rusmart_from_bin_str_impl ((s String) (acc Int)) Int"
@@ -381,36 +367,54 @@ impl CodeGen for CodeGenZ3 {
         l!(x);
 
         // Function registry
-        if !fn_registry.lookup.is_empty() {
+        if !fn_registry.lookup().is_empty() {
             l!(x, "; Define user-defined functions");
+
+            // Collect only monomorphized function IDs.
+            // See book/src/dev/smt/generics.md for the full design rationale.
+            let mono_fids: BTreeSet<UsrFunId> = fn_registry
+                .lookup()
+                .values()
+                .flat_map(|insts| insts.iter())
+                .filter(|(ty_args, _)| !ty_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))))
+                .map(|(_, fn_id)| *fn_id)
+                .collect();
 
             // Detect IterChoose functions (those whose root body is IterChoose).
             // These use Hilbert choice semantics which can't be expressed as a define-fun
-            // body in standard SMT-LIB2. Instead we generate them as uninterpreted
-            // declare-fun declarations so callers can reference them with the right types.
+            // body in standard SMT-LIB2. Instead we emit them as uninterpreted declare-fun
+            // so callers can reference them with the right types.
+            // Note: choose! must be the sole expression in a function body (enforced by parser).
             let mut choose_fids: BTreeSet<UsrFunId> = BTreeSet::new();
-            for (_, instantiations) in &fn_registry.lookup {
-                for (_, &fid) in instantiations {
-                    let def = fn_registry.retrieve_def(fid);
-                    let root_exp = def.body.lookup_exp(&def.root_exp_id);
-                    if matches!(root_exp, Expression::IterChoose { .. }) {
-                        choose_fids.insert(fid);
-                    }
+            for &fid in &mono_fids {
+                let def = fn_registry.retrieve_def(fid);
+                let root_exp = def.body.lookup_exp(&def.root_exp_id);
+                if matches!(root_exp, Expression::IterChoose { .. }) {
+                    choose_fids.insert(fid);
                 }
             }
 
-            // Emit choose functions as uninterpreted declare-fun BEFORE define-funs-rec
-            // so they are available when called from within the recursive block.
+            // Emit choose functions as declare-fun + axiom BEFORE define-fun/define-funs-rec.
+            //
+            // choose!(v in collection => predicate(v)) translates to:
+            //   (declare-fun fn_name ((param sorts)) ret_sort)
+            //   (assert (forall ((p1 S1) ...)
+            //       (let ((v (fn_name p1 ...)))
+            //           predicate)))
+            //
+            // The declare-fun says the function exists. The axiom constrains it:
+            // for all inputs, the return value must satisfy the predicate.
             if !choose_fids.is_empty() {
                 l!(
                     x,
                     "; Uninterpreted functions (Hilbert choice / epsilon semantics)"
                 );
-                let mut sorted_choose: Vec<UsrFunId> = choose_fids.iter().copied().collect();
-                sorted_choose.sort();
-                for fid in &sorted_choose {
-                    let (function_name, _type_params) = resolve_function_name(ir, *fid);
-                    let sig = fn_registry.retrieve_sig(*fid);
+                for &fid in &choose_fids {
+                    let function_name = resolve_function_name(ir, fid);
+                    let sig = fn_registry.retrieve_sig(fid);
+                    let def = fn_registry.retrieve_def(fid);
+
+                    // declare-fun
                     let param_list: Vec<String> = sig
                         .params
                         .iter()
@@ -424,88 +428,138 @@ impl CodeGen for CodeGenZ3 {
                         param_list.join(" "),
                         ret_sort
                     );
+
+                    // assert
+                    let root_exp = def.body.lookup_exp(&def.root_exp_id);
+                    if let Expression::IterChoose { vars, body, rets } = root_exp {
+                        // Build forall parameter declarations
+                        let param_decls: Vec<String> = sig
+                            .params
+                            .iter()
+                            .map(|(name, sort)| {
+                                format!("({} {})", name, format_sort_for_fn(sort, ir))
+                            })
+                            .collect();
+
+                        // Build the call expression: (fn_name p1 p2 ...)
+                        let param_names_list: Vec<String> = sig
+                            .params
+                            .iter()
+                            .map(|(name, _)| name.to_string())
+                            .collect();
+
+                        let call_expr = if param_names_list.is_empty() {
+                            function_name.clone()
+                        } else {
+                            format!("({} {})", function_name, param_names_list.join(" "))
+                        };
+
+                        // Build let-bindings: each choose variable is bound to the function result.
+                        let mut let_bindings = Vec::new();
+                        if rets.len() == 1 {
+                            let var = def.body.lookup_var(&rets[0]);
+                            let_bindings.push(format!("({} {})", var.name, call_expr));
+                        } else {
+                            // Multi-return: result is a tuple, project each field
+                            for (i, vid) in rets.iter().enumerate() {
+                                let var = def.body.lookup_var(vid);
+                                let tuple_sort = format_sort_for_fn(&sig.ret_ty, ir);
+                                let accessor = format!("field_{}_{}_", tuple_sort, i + 1);
+                                let_bindings
+                                    .push(format!("({} ({} {}))", var.name, accessor, call_expr));
+                            }
+                        }
+                        let body_str = format_expression(&def.body, *body, ir);
+
+                        // Build membership constraints from vars.
+                        // Each choose variable must be a member of its collection.
+                        // choose!(s in array => ...) means s must be a key in array.
+                        let mut membership_constraints = Vec::new();
+                        for (vid, coll_eid) in vars {
+                            let var = def.body.lookup_var(vid);
+                            let coll_exp = def.body.lookup_exp(coll_eid);
+                            let coll_sort = match coll_exp {
+                                // without losing expressiveness we can assume that the collection is a variable
+                                Expression::Var(coll_vid) => {
+                                    def.body.lookup_var(coll_vid).sort.clone()
+                                }
+                                _ => panic!("choose! collection must be a variable"),
+                            };
+                            let coll_str = format_expression(&def.body, *coll_eid, ir);
+
+                            let membership = match &coll_sort {
+                                Sort::Array(_key_sort, val_sort) => {
+                                    let null_name = array_null_value(val_sort, ir);
+                                    format!(
+                                        "(not (= (select {} {}) {}))",
+                                        coll_str, var.name, null_name
+                                    )
+                                }
+                                Sort::Set(_) => {
+                                    // Sets are (Array T Bool), membership is (select set elem)
+                                    format!("(select {} {})", coll_str, var.name)
+                                }
+                                Sort::Seq(_) => {
+                                    format!(
+                                        "(and (>= {} 0) (< {} (seq.len {})))",
+                                        var.name, var.name, coll_str
+                                    )
+                                }
+                                _ => panic!(
+                                    "choose! collection must be Array or Set, got {:?}",
+                                    coll_sort
+                                ),
+                            };
+                            membership_constraints.push(membership);
+                        }
+
+                        // Combine: (and membership1 ... body_condition)
+                        let full_condition = if membership_constraints.is_empty() {
+                            body_str
+                        } else {
+                            membership_constraints.push(body_str);
+                            format!("(and {})", membership_constraints.join(" "))
+                        };
+
+                        l!(
+                            x,
+                            "(assert (forall ({}) (let ({}) {})))",
+                            param_decls.join(" "),
+                            let_bindings.join(" "),
+                            full_condition
+                        );
+                    }
                 }
                 l!(x);
             }
 
-            let edges = collect_function_call_edges(fn_registry);
+            // Remaining functions: all monomorphized, non-choose functions
+            let all_ids: BTreeSet<_> = mono_fids.difference(&choose_fids).copied().collect();
+            // collect function call edges from the source function to the called functions inside the body
+            let edges = collect_function_call_edges(&all_ids, &fn_registry);
 
-            // Get all function IDs, excluding:
-            // - choose functions (already declared above)
-            // - generic template functions (type args contain Sort::Uninterpreted)
-            //   These are dead code — only monomorphized versions are called.
-            //   See book/src/dev/smt/generics.md for the full design rationale.
-            let all_ids: BTreeSet<_> = fn_registry
-                .lookup
-                .values()
-                .flat_map(|insts| insts.iter())
-                .filter(|(ty_args, _)| !ty_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))))
-                .map(|(_, fn_id)| *fn_id)
-                .filter(|fid| !choose_fids.contains(fid))
+            let recursive_sccs: Vec<BTreeSet<UsrFunId>> =
+                scc_from_edges(&edges).into_iter().rev().collect();
+            let covered: BTreeSet<_> = recursive_sccs
+                .iter()
+                .flat_map(|s| s.iter().copied())
                 .collect();
-
-            // Group functions that have dependencies on each other
-            // We'll use define-funs-rec for any group of interdependent functions
-            // and define-fun only for truly isolated functions with no dependencies
-
-            // Build a dependency graph: which functions have edges to/from other functions
-            let mut has_dependencies: HashSet<UsrFunId> = HashSet::new();
-            let all_fids: HashSet<UsrFunId> = all_ids.iter().copied().collect();
-
-            for &(from, to) in &edges {
-                if all_fids.contains(&from) && all_fids.contains(&to) {
-                    has_dependencies.insert(from);
-                    has_dependencies.insert(to);
-                }
-            }
-
-            // Separate functions into two groups:
-            // 1. Interdependent functions (use define-funs-rec for all)
-            // 2. Truly isolated functions (use define-fun)
-            let has_dependencies_set: BTreeSet<UsrFunId> =
-                has_dependencies.iter().copied().collect();
-            let mut interdependent_fids: Vec<UsrFunId> = has_dependencies.iter().copied().collect();
-            let mut isolated_fids: Vec<UsrFunId> =
-                all_ids.difference(&has_dependencies_set).copied().collect();
-
-            // Sort for deterministic output
-            interdependent_fids.sort();
-            isolated_fids.sort();
-
-            // Generate interdependent functions using define-funs-rec
-            if !interdependent_fids.is_empty() {
-                let mut function_data: Vec<(UsrFunId, String, Vec<Sort>, &FunSig, &FunDef)> =
-                    Vec::new();
-                let interdependent_set: BTreeSet<_> = interdependent_fids.iter().copied().collect();
-
-                for fid in &interdependent_fids {
-                    let (function_name, type_params) = resolve_function_name(ir, *fid);
-                    let sig = ir.fn_registry.retrieve_sig(*fid);
-                    let def = ir.fn_registry.retrieve_def(*fid);
-                    function_data.push((*fid, function_name.to_string(), type_params, sig, def));
-                }
-
-                let functions: Vec<_> = function_data
-                    .iter()
-                    .map(|(fid, name, type_params, sig, def)| {
-                        (*fid, name.as_str(), type_params.as_slice(), *sig, *def)
-                    })
-                    .collect();
-
-                let functions_str = mk_functions_rec_str(&functions, ir, &interdependent_set);
-                l!(x, "{}", functions_str);
-            }
+            // Isolated functions are functions that are not referenced by any other function or do not reference any other function.
+            let isolated: Vec<UsrFunId> = all_ids.difference(&covered).copied().collect();
 
             // Generate isolated functions using define-fun
-            for fid in isolated_fids {
-                let (function_name, type_params) = resolve_function_name(ir, fid);
+            for fid in isolated {
+                let function_name = resolve_function_name(ir, fid);
                 let sig = ir.fn_registry.retrieve_sig(fid);
                 let def = ir.fn_registry.retrieve_def(fid);
-                let scc_set = BTreeSet::from([fid]);
 
-                let function_str =
-                    mk_function_str(function_name.as_ref(), &type_params, sig, def, ir, &scc_set);
+                let function_str = mk_function_str(function_name, sig, def, ir);
                 l!(x, "{}", function_str);
+            }
+
+            for scc in recursive_sccs {
+                let functions_str = mk_functions_rec_str(&scc, ir);
+                l!(x, "{}", functions_str);
             }
 
             l!(x); // Empty line after functions
@@ -655,7 +709,7 @@ impl CodeGen for CodeGenZ3 {
         // Look up the top-level function directly by name.
         let instantiations = ir
             .fn_registry
-            .lookup
+            .lookup()
             .iter()
             .find(|(name, _)| name.as_ref() == top_level_fn)
             .unwrap_or_else(|| {
@@ -782,7 +836,7 @@ fn extract_error_assertion(
                             Variant::Tuple(slots) => {
                                 for (i, slot_sort) in slots.iter().enumerate() {
                                     if *slot_sort == Sort::Error {
-                                        let tester = format!("is-{}", vname);
+                                        let tester = format!("is-{}_{}", type_name, vname);
                                         let accessor =
                                             format!("field_{}_{}_{}_", type_name, vname, i + 1);
                                         assertions.push(format!(
@@ -795,7 +849,7 @@ fn extract_error_assertion(
                             Variant::Record(fields) => {
                                 for (field_key, field_sort) in fields {
                                     if *field_sort == Sort::Error {
-                                        let tester = format!("is-{}", vname);
+                                        let tester = format!("is-{}_{}", type_name, vname);
                                         let accessor = format!(
                                             "record_{}_{}_{}_",
                                             type_name, vname, field_key

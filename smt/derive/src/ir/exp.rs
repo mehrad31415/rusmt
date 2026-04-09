@@ -1,6 +1,6 @@
 //! Intermediate representation (IR) expressions.
 
-use crate::ir::ctxt::IRBuilder;
+use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::ir::fun::FunSig;
 use crate::ir::index::{ExpId, UsrFunId, UsrSortId, VarId};
 use crate::ir::intrinsics::Intrinsic;
@@ -351,109 +351,6 @@ impl ExpRegistry {
         self.exps.get(idx).expect("no such exp id")
     }
 
-    /// Collect all called functions from an expression
-    pub fn collect_called_functions(&self, exp_id: &ExpId) -> Vec<UsrFunId> {
-        let mut called_fns = vec![];
-        let exp = self.lookup_exp(exp_id);
-        // recursively traverse the expression to find called functions
-        match exp {
-            Expression::Var(var_id) => {
-                // Follow bound variables to find function calls hidden behind let-bindings.
-                // format_expression also follows bound vars, so we must too for consistency.
-                let var = self.lookup_var(var_id);
-                if let VarKind::Bound { bind } = &var.kind {
-                    called_fns.append(&mut self.collect_called_functions(bind));
-                }
-            }
-            Expression::Pack { sort: _, elems } => {
-                for e in elems {
-                    called_fns.append(&mut self.collect_called_functions(e));
-                }
-            }
-            Expression::Tuple { sort: _, slots } => {
-                for s in slots {
-                    called_fns.append(&mut self.collect_called_functions(s));
-                }
-            }
-            Expression::Record { sort: _, fields } => {
-                for (_, f) in fields {
-                    called_fns.append(&mut self.collect_called_functions(f));
-                }
-            }
-            Expression::Enum {
-                sort: _,
-                branch: _,
-                variant,
-            } => match variant {
-                VariantCtor::Unit => (),
-                VariantCtor::Tuple(elems) => {
-                    for e in elems {
-                        called_fns.append(&mut self.collect_called_functions(e));
-                    }
-                }
-                VariantCtor::Record(fields) => {
-                    for (_, f) in fields {
-                        called_fns.append(&mut self.collect_called_functions(f));
-                    }
-                }
-            },
-            Expression::AccessSlot { base, slot: _ } => {
-                called_fns.append(&mut self.collect_called_functions(base));
-            }
-            Expression::AccessField { base, field: _ } => {
-                called_fns.append(&mut self.collect_called_functions(base));
-            }
-            Expression::Match { cases } => {
-                for case in cases {
-                    for atom in &case.atoms {
-                        called_fns.append(&mut self.collect_called_functions(&atom.head));
-                    }
-                    called_fns.append(&mut self.collect_called_functions(&case.body));
-                }
-            }
-            Expression::Phi { cases, default } => {
-                for case in cases {
-                    called_fns.append(&mut self.collect_called_functions(&case.cond));
-                    called_fns.append(&mut self.collect_called_functions(&case.body));
-                }
-                called_fns.append(&mut self.collect_called_functions(default));
-            }
-            Expression::IterForall { vars, body } => {
-                for (_, e) in vars {
-                    called_fns.append(&mut self.collect_called_functions(e));
-                }
-                called_fns.append(&mut self.collect_called_functions(body));
-            }
-            Expression::IterExists { vars, body } => {
-                for (_, e) in vars {
-                    called_fns.append(&mut self.collect_called_functions(e));
-                }
-                called_fns.append(&mut self.collect_called_functions(body));
-            }
-            Expression::IterChoose {
-                vars,
-                body,
-                rets: _,
-            } => {
-                for (_, e) in vars {
-                    called_fns.append(&mut self.collect_called_functions(e));
-                }
-                called_fns.append(&mut self.collect_called_functions(body));
-            }
-            Expression::Procedure { callee, args } => {
-                called_fns.push(*callee);
-                for a in args {
-                    called_fns.append(&mut self.collect_called_functions(a));
-                }
-            }
-            Expression::Intrinsic(intrinsic) => {
-                // collect from intrinsic
-                called_fns.append(&mut self.collect_fn_from_intrinsic(intrinsic));
-            }
-        }
-        called_fns
-    }
-
     /// Collect all error IDs (from `ErrFresh(id)` intrinsics) that appear directly in the
     /// expression tree rooted at `exp_id`. Does NOT follow calls into other functions.
     pub fn collect_error_ids(&self, exp_id: &ExpId) -> Vec<usize> {
@@ -540,302 +437,343 @@ impl ExpRegistry {
         ids
     }
 
-    fn collect_fn_from_intrinsic(&self, intrinsic: &Intrinsic) -> Vec<UsrFunId> {
-        let mut called_fns = vec![];
+    /// Derive type of an expression
+    pub fn derive_type(&self, eid: ExpId, ir: &IRContext) -> Sort {
+        let sort = match self.lookup_exp(&eid) {
+            Expression::Var(vid) => self.lookup_var(vid).sort.clone(),
+            Expression::Pack { sort, elems: _ }
+            | Expression::Tuple { sort, slots: _ }
+            | Expression::Record { sort, fields: _ }
+            | Expression::Enum {
+                sort,
+                branch: _,
+                variant: _,
+            } => Sort::User(*sort),
+            Expression::AccessSlot { base, slot } => {
+                let base_sort = self.derive_type(*base, ir);
+                let base_tuple =
+                    self.expect_type_tuple_named(Self::expect_sort_user(&base_sort), ir);
+                base_tuple
+                    .into_iter()
+                    .nth(*slot)
+                    .unwrap_or_else(|| panic!("type mismatch: no slot {slot} in tuple {base_sort}"))
+            }
+            Expression::AccessField { base, field } => {
+                let base_sort = self.derive_type(*base, ir);
+                let mut base_record =
+                    self.expect_type_record(Self::expect_sort_user(&base_sort), ir);
+                base_record
+                    .remove(field)
+                    .unwrap_or_else(|| {
+                        panic!("type mismatch: no field {field} in record {base_sort}")
+                    })
+                    .clone()
+            }
+            Expression::Match { cases } => {
+                // all the match cases bodies must have the same sort
+                let mut case_sort = None;
+                for case in cases {
+                    let sort = self.derive_type(case.body, ir);
+                    match &case_sort {
+                        None => {
+                            case_sort = Some(sort);
+                        }
+                        Some(s) => Self::check_sort(s, &sort),
+                    }
+                }
+                match case_sort {
+                    None => panic!("expect at least one match arm"),
+                    Some(sort) => sort,
+                }
+            }
+            Expression::Phi { cases, default } => {
+                if cases.is_empty() {
+                    panic!("expect at least one phi case");
+                }
+                let case_sort = self.derive_type(*default, ir);
+                for case in cases {
+                    let sort = self.derive_type(case.body, ir);
+                    Self::check_sort(&case_sort, &sort);
+                }
+                case_sort
+            }
+            Expression::IterForall { .. } | Expression::IterExists { .. } => Sort::Boolean,
+            Expression::IterChoose { vars, body, rets } => {
+                let body_sort = self.derive_type(*body, ir);
+                if body_sort != Sort::Boolean {
+                    panic!("body of choose must be a boolean");
+                }
+                let mut inst = vec![];
+                for vid in rets {
+                    match vars.get(vid) {
+                        None => panic!("invalid iterator variable to return"),
+                        Some(eid) => {
+                            let vty = match self.derive_type(*eid, ir) {
+                                Sort::Seq(_) => Sort::Integer,
+                                Sort::Set(e) => *e,
+                                Sort::Array(k, _) => *k,
+                                _ => panic!("not a collection sort"),
+                            };
+                            inst.push(vty);
+                        }
+                    }
+                }
+                // unwrap the single-element tuple for choose
+                if inst.len() == 1 {
+                    inst.into_iter().next().unwrap()
+                } else {
+                    Sort::User(
+                        ir.ty_registry
+                            .get_index(None, &inst)
+                            .expect("no such sort id"),
+                    )
+                }
+            }
+            Expression::Intrinsic(intrinsic) => match intrinsic.as_ref() {
+                Intrinsic::BoolVal(_)
+                | Intrinsic::BoolNot { .. }
+                | Intrinsic::BoolAnd { .. }
+                | Intrinsic::BoolOr { .. }
+                | Intrinsic::BoolXor { .. }
+                | Intrinsic::BoolImplies { .. }
+                | Intrinsic::BoolIff { .. }
+                | Intrinsic::BoolNand { .. }
+                | Intrinsic::BoolNor { .. }
+                | Intrinsic::BoolXnor { .. } => Sort::Boolean,
+                Intrinsic::BoolIte { then, else_, cond } => {
+                    let cond_sort = self.derive_type(*cond, ir);
+                    if cond_sort != Sort::Boolean {
+                        panic!("condition of boolean ite must be a boolean");
+                    }
+                    let then_sort = self.derive_type(*then, ir);
+                    let else_sort = self.derive_type(*else_, ir);
+                    Self::check_sort(&then_sort, &else_sort);
+                    then_sort
+                }
+                Intrinsic::IntVal(_)
+                | Intrinsic::IntNeg { .. }
+                | Intrinsic::IntAdd { .. }
+                | Intrinsic::IntSub { .. }
+                | Intrinsic::IntMul { .. }
+                | Intrinsic::IntDiv { .. }
+                | Intrinsic::IntDivTrunc { .. }
+                | Intrinsic::IntMod { .. }
+                | Intrinsic::IntRem { .. }
+                | Intrinsic::IntPow { .. }
+                | Intrinsic::IntAbs { .. } => Sort::Integer,
+                Intrinsic::IntLt { .. }
+                | Intrinsic::IntLe { .. }
+                | Intrinsic::IntGe { .. }
+                | Intrinsic::IntGt { .. }
+                | Intrinsic::IntDivides { .. } => Sort::Boolean,
+                Intrinsic::IntToReal { .. } => Sort::Real,
+                Intrinsic::IntToI32 { .. } => Sort::I32,
+                Intrinsic::IntToI64 { .. } => Sort::I64,
+                Intrinsic::IntToU32 { .. } => Sort::U32,
+                Intrinsic::IntToU64 { .. } => Sort::U64,
+                Intrinsic::IntToF32 { .. } => Sort::F32,
+                Intrinsic::IntToF64 { .. } => Sort::F64,
+                Intrinsic::IntFromHex { .. }
+                | Intrinsic::IntFromOct { .. }
+                | Intrinsic::IntFromBin { .. } => Sort::Integer,
+                Intrinsic::IntIsGtI64Max { .. }
+                | Intrinsic::IntIsLtI64Min { .. }
+                | Intrinsic::IntIsGtU64Max { .. }
+                | Intrinsic::IntIsLtU64Min { .. }
+                | Intrinsic::IntIsLtI32Min { .. }
+                | Intrinsic::IntIsGtI32Max { .. }
+                | Intrinsic::IntIsLtU32Min { .. }
+                | Intrinsic::IntIsGtU32Max { .. } => Sort::Boolean,
+                Intrinsic::RealVal(_)
+                | Intrinsic::RealNeg { .. }
+                | Intrinsic::RealAdd { .. }
+                | Intrinsic::RealSub { .. }
+                | Intrinsic::RealMul { .. }
+                | Intrinsic::RealDiv { .. }
+                | Intrinsic::RealPow { .. }
+                | Intrinsic::RealAbs { .. } => Sort::Real,
+                Intrinsic::RealRound { .. }
+                | Intrinsic::RealFloor { .. }
+                | Intrinsic::RealCeil { .. }
+                | Intrinsic::RealToInt { .. } => Sort::Integer,
+                Intrinsic::RealLt { .. }
+                | Intrinsic::RealLe { .. }
+                | Intrinsic::RealGe { .. }
+                | Intrinsic::RealGt { .. }
+                | Intrinsic::RealIsInt { .. } => Sort::Boolean,
+                Intrinsic::RealToF32 { .. } => Sort::F32,
+                Intrinsic::RealToF64 { .. } => Sort::F64,
+                Intrinsic::StrVal(_)
+                | Intrinsic::StrNew
+                | Intrinsic::StrConcat { .. }
+                | Intrinsic::StrAt { .. }
+                | Intrinsic::StrSubstr { .. }
+                | Intrinsic::StrReplace { .. }
+                | Intrinsic::StrReplaceAll { .. }
+                | Intrinsic::StrFromInt { .. }
+                | Intrinsic::StrFromCode { .. } => Sort::String,
+                Intrinsic::StrLen { .. }
+                | Intrinsic::StrIndexOf { .. }
+                | Intrinsic::StrIndexOfDefault { .. }
+                | Intrinsic::StrToInt { .. } => Sort::Integer,
+                Intrinsic::StrToCode { .. } => Sort::U32,
+                Intrinsic::StrLt { .. }
+                | Intrinsic::StrLe { .. }
+                | Intrinsic::StrGt { .. }
+                | Intrinsic::StrGe { .. }
+                | Intrinsic::StrIsEmpty { .. }
+                | Intrinsic::StrContains { .. }
+                | Intrinsic::StrStartsWith { .. }
+                | Intrinsic::StrEndsWith { .. }
+                | Intrinsic::StrIsDigit { .. } => Sort::Boolean,
+                Intrinsic::BoxShield { t, .. } => Sort::Cloak(Box::new(t.clone())),
+                Intrinsic::BoxReveal { t, .. } => t.clone(),
+                Intrinsic::SeqEmpty { t }
+                | Intrinsic::SeqUnit { t, .. }
+                | Intrinsic::SeqPush { t, .. }
+                | Intrinsic::SeqExtract { t, .. }
+                | Intrinsic::SeqConcat { t, .. }
+                | Intrinsic::SeqAtSeq { t, .. }
+                | Intrinsic::SeqReplace { t, .. } => Sort::Seq(Box::new(t.clone())),
+                Intrinsic::SeqNth { t, .. } => t.clone(),
+                Intrinsic::SeqLen { .. }
+                | Intrinsic::SeqIndexOf { .. }
+                | Intrinsic::SeqIndexOfDefault { .. } => Sort::Integer,
+                Intrinsic::SeqContains { .. }
+                | Intrinsic::SeqPrefixOf { .. }
+                | Intrinsic::SeqSuffixOf { .. }
+                | Intrinsic::SeqIsEmpty { .. } => Sort::Boolean,
+                Intrinsic::SetEmpty { t }
+                | Intrinsic::SetInsert { t, .. }
+                | Intrinsic::SetRemove { t, .. }
+                | Intrinsic::SetIntersect { t, .. }
+                | Intrinsic::SetUnion { t, .. }
+                | Intrinsic::SetDiff { t, .. }
+                | Intrinsic::SetSymDiff { t, .. } => Sort::Set(Box::new(t.clone())),
+                Intrinsic::SetLen { .. } => Sort::Integer,
+                Intrinsic::SetContains { .. }
+                | Intrinsic::SetIsEmpty { .. }
+                | Intrinsic::SetIsSubset { .. }
+                | Intrinsic::SetIsProperSubset { .. }
+                | Intrinsic::SetIsDisjoint { .. }
+                | Intrinsic::SetHasSize { .. } => Sort::Boolean,
+                Intrinsic::ArrayEmpty { k, v }
+                | Intrinsic::ArrayStore { k, v, .. }
+                | Intrinsic::ArrayRemove { k, v, .. } => {
+                    Sort::Array(Box::new(k.clone()), Box::new(v.clone()))
+                }
+                Intrinsic::ArraySelect { v, .. } => v.clone(),
+                Intrinsic::ArrayLen { .. } => Sort::Integer,
+                Intrinsic::ArrayContainsKey { .. } | Intrinsic::ArrayIsEmpty { .. } => {
+                    Sort::Boolean
+                }
+                Intrinsic::BvVal { t, .. }
+                | Intrinsic::BvNot { t, .. }
+                | Intrinsic::BvNeg { t, .. }
+                | Intrinsic::BvAnd { t, .. }
+                | Intrinsic::BvOr { t, .. }
+                | Intrinsic::BvXor { t, .. }
+                | Intrinsic::BvNand { t, .. }
+                | Intrinsic::BvNor { t, .. }
+                | Intrinsic::BvXnor { t, .. }
+                | Intrinsic::BvAdd { t, .. }
+                | Intrinsic::BvSub { t, .. }
+                | Intrinsic::BvMul { t, .. }
+                | Intrinsic::BvDiv { t, .. }
+                | Intrinsic::BvRem { t, .. }
+                | Intrinsic::BvMod { t, .. }
+                | Intrinsic::BvShl { t, .. }
+                | Intrinsic::BvLshr { t, .. }
+                | Intrinsic::BvAshr { t, .. }
+                | Intrinsic::BvRotLeft { t, .. }
+                | Intrinsic::BvRotRight { t, .. } => t.clone(),
+                Intrinsic::BvLt { .. }
+                | Intrinsic::BvLe { .. }
+                | Intrinsic::BvGt { .. }
+                | Intrinsic::BvGe { .. }
+                | Intrinsic::BvRedAnd { .. }
+                | Intrinsic::BvRedOr { .. } => Sort::Boolean,
+                Intrinsic::BvToInt { .. } => Sort::Integer,
+                Intrinsic::FloatVal { t, .. }
+                | Intrinsic::FloatNaN { t }
+                | Intrinsic::FloatPosInf { t }
+                | Intrinsic::FloatNegInf { t }
+                | Intrinsic::FloatPosZero { t }
+                | Intrinsic::FloatNegZero { t }
+                | Intrinsic::FloatNeg { t, .. }
+                | Intrinsic::FloatAbs { t, .. }
+                | Intrinsic::FloatSqrt { t, .. }
+                | Intrinsic::FloatAdd { t, .. }
+                | Intrinsic::FloatSub { t, .. }
+                | Intrinsic::FloatMul { t, .. }
+                | Intrinsic::FloatDiv { t, .. }
+                | Intrinsic::FloatRem { t, .. }
+                | Intrinsic::FloatMin { t, .. }
+                | Intrinsic::FloatMax { t, .. } => t.clone(),
+                Intrinsic::FloatIsNaN { .. }
+                | Intrinsic::FloatIsInf { .. }
+                | Intrinsic::FloatIsZero { .. }
+                | Intrinsic::FloatIsNormal { .. }
+                | Intrinsic::FloatIsSubnormal { .. }
+                | Intrinsic::FloatIsNeg { .. }
+                | Intrinsic::FloatIsPos { .. }
+                | Intrinsic::FloatLt { .. }
+                | Intrinsic::FloatLe { .. }
+                | Intrinsic::FloatGt { .. }
+                | Intrinsic::FloatGe { .. }
+                | Intrinsic::FloatFqEq { .. } => Sort::Boolean,
+                Intrinsic::FloatToInt { .. } => Sort::Integer,
+                Intrinsic::FloatToReal { .. } => Sort::Real,
+                Intrinsic::FloatToU32 { .. } => Sort::U32,
+                Intrinsic::FloatToI32 { .. } => Sort::I32,
+                Intrinsic::FloatToU64 { .. } => Sort::U64,
+                Intrinsic::FloatToI64 { .. } => Sort::I64,
+                Intrinsic::FloatCeil { .. }
+                | Intrinsic::FloatFloor { .. }
+                | Intrinsic::FloatTrunc { .. }
+                | Intrinsic::FloatNearest { .. } => Sort::Integer,
+                Intrinsic::FloatFromHexStr { t, .. } => t.clone(),
+                Intrinsic::ErrFresh(_) | Intrinsic::ErrMerge { .. } => Sort::Error,
+                Intrinsic::SmtEq { .. } | Intrinsic::SmtNe { .. } => Sort::Boolean,
+            },
+            Expression::Procedure { callee, args: _ } => {
+                ir.fn_registry.retrieve_sig(*callee).ret_ty.clone()
+            }
+        };
+        sort
+    }
 
-        match intrinsic {
-            // --- 0 ExpId Arguments (Constants / Literals / Nullary) ---
-            Intrinsic::BoolVal(_)
-            | Intrinsic::IntVal(_)
-            | Intrinsic::RealVal(_)
-            | Intrinsic::StrVal(_)
-            | Intrinsic::StrNew
-            | Intrinsic::SeqEmpty { .. }
-            | Intrinsic::SetEmpty { .. }
-            | Intrinsic::ArrayEmpty { .. }
-            | Intrinsic::BvVal { .. }
-            | Intrinsic::FloatVal { .. }
-            | Intrinsic::FloatNaN { .. }
-            | Intrinsic::FloatPosInf { .. }
-            | Intrinsic::FloatNegInf { .. }
-            | Intrinsic::FloatPosZero { .. }
-            | Intrinsic::FloatNegZero { .. }
-            | Intrinsic::ErrFresh(_) => {}
-
-            // --- 1 ExpId Argument (Unary Ops / Conversions) ---
-            Intrinsic::BoolNot { val }
-            | Intrinsic::IntNeg { val }
-            | Intrinsic::IntAbs { val }
-            | Intrinsic::IntToReal { val }
-            | Intrinsic::IntToI32 { val }
-            | Intrinsic::IntToI64 { val }
-            | Intrinsic::IntToU32 { val }
-            | Intrinsic::IntToU64 { val }
-            | Intrinsic::IntToF32 { val }
-            | Intrinsic::IntToF64 { val }
-            | Intrinsic::IntFromHex { val }
-            | Intrinsic::IntFromOct { val }
-            | Intrinsic::IntFromBin { val }
-            | Intrinsic::IntIsGtI64Max { val }
-            | Intrinsic::IntIsLtI64Min { val }
-            | Intrinsic::IntIsGtU64Max { val }
-            | Intrinsic::IntIsLtU64Min { val }
-            | Intrinsic::IntIsLtI32Min { val }
-            | Intrinsic::IntIsGtI32Max { val }
-            | Intrinsic::IntIsLtU32Min { val }
-            | Intrinsic::IntIsGtU32Max { val }
-            | Intrinsic::RealNeg { val }
-            | Intrinsic::RealAbs { val }
-            | Intrinsic::RealRound { val }
-            | Intrinsic::RealFloor { val }
-            | Intrinsic::RealCeil { val }
-            | Intrinsic::RealIsInt { val }
-            | Intrinsic::RealToInt { val }
-            | Intrinsic::RealToF32 { val }
-            | Intrinsic::RealToF64 { val }
-            | Intrinsic::StrLen { seq: val }
-            | Intrinsic::StrIsEmpty { seq: val }
-            | Intrinsic::StrIsDigit { seq: val }
-            | Intrinsic::StrToInt { val }
-            | Intrinsic::StrFromInt { val }
-            | Intrinsic::StrFromCode { val }
-            | Intrinsic::StrToCode { val }
-            | Intrinsic::BoxShield { val, .. }
-            | Intrinsic::BoxReveal { val, .. }
-            | Intrinsic::SeqUnit { val, .. }
-            | Intrinsic::SeqLen { seq: val, .. }
-            | Intrinsic::SeqIsEmpty { seq: val, .. }
-            | Intrinsic::SetLen { set: val, .. }
-            | Intrinsic::SetIsEmpty { set: val, .. }
-            | Intrinsic::ArrayLen { arr: val, .. }
-            | Intrinsic::ArrayIsEmpty { arr: val, .. }
-            | Intrinsic::BvNot { val, .. }
-            | Intrinsic::BvNeg { val, .. }
-            | Intrinsic::BvRedAnd { val, .. }
-            | Intrinsic::BvRedOr { val, .. }
-            | Intrinsic::BvToInt { val, .. }
-            | Intrinsic::FloatNeg { val, .. }
-            | Intrinsic::FloatAbs { val, .. }
-            | Intrinsic::FloatSqrt { val, .. }
-            | Intrinsic::FloatIsNaN { val, .. }
-            | Intrinsic::FloatIsInf { val, .. }
-            | Intrinsic::FloatIsZero { val, .. }
-            | Intrinsic::FloatIsNormal { val, .. }
-            | Intrinsic::FloatIsSubnormal { val, .. }
-            | Intrinsic::FloatIsNeg { val, .. }
-            | Intrinsic::FloatIsPos { val, .. }
-            | Intrinsic::FloatToInt { val, .. }
-            | Intrinsic::FloatToReal { val, .. }
-            | Intrinsic::FloatToU32 { val, .. }
-            | Intrinsic::FloatToI32 { val, .. }
-            | Intrinsic::FloatToU64 { val, .. }
-            | Intrinsic::FloatToI64 { val, .. }
-            | Intrinsic::FloatCeil { val, .. }
-            | Intrinsic::FloatFloor { val, .. }
-            | Intrinsic::FloatTrunc { val, .. }
-            | Intrinsic::FloatNearest { val, .. }
-            | Intrinsic::FloatFromHexStr { val, .. } => {
-                called_fns.append(&mut self.collect_called_functions(val));
+    /// Utility: retrieve a struct type (tuple with a name) data type from a sort id
+    fn expect_type_tuple_named(&self, sort_id: UsrSortId, ir: &IRContext) -> Vec<Sort> {
+        match ir.ty_registry.retrieve(sort_id) {
+            DataType::Tuple(tuple) if ir.ty_registry.reverse_lookup(sort_id).0.is_some() => {
+                tuple.clone()
             }
-
-            // --- 2 ExpId Arguments (Binary Ops / Predicates) ---
-            Intrinsic::BoolAnd { lhs, rhs }
-            | Intrinsic::BoolOr { lhs, rhs }
-            | Intrinsic::BoolXor { lhs, rhs }
-            | Intrinsic::BoolNand { lhs, rhs }
-            | Intrinsic::BoolNor { lhs, rhs }
-            | Intrinsic::BoolXnor { lhs, rhs }
-            | Intrinsic::BoolImplies { lhs, rhs }
-            | Intrinsic::BoolIff { lhs, rhs }
-            | Intrinsic::IntAdd { lhs, rhs }
-            | Intrinsic::IntSub { lhs, rhs }
-            | Intrinsic::IntMul { lhs, rhs }
-            | Intrinsic::IntDiv { lhs, rhs }
-            | Intrinsic::IntDivTrunc { lhs, rhs }
-            | Intrinsic::IntMod { lhs, rhs }
-            | Intrinsic::IntRem { lhs, rhs }
-            | Intrinsic::IntPow {
-                base: lhs,
-                exp: rhs,
-            }
-            | Intrinsic::IntDivides { lhs, rhs }
-            | Intrinsic::IntLt { lhs, rhs }
-            | Intrinsic::IntLe { lhs, rhs }
-            | Intrinsic::IntGt { lhs, rhs }
-            | Intrinsic::IntGe { lhs, rhs }
-            | Intrinsic::RealAdd { lhs, rhs }
-            | Intrinsic::RealSub { lhs, rhs }
-            | Intrinsic::RealMul { lhs, rhs }
-            | Intrinsic::RealDiv { lhs, rhs }
-            | Intrinsic::RealPow {
-                base: lhs,
-                exp: rhs,
-            }
-            | Intrinsic::RealLt { lhs, rhs }
-            | Intrinsic::RealLe { lhs, rhs }
-            | Intrinsic::RealGt { lhs, rhs }
-            | Intrinsic::RealGe { lhs, rhs }
-            | Intrinsic::StrConcat { lhs, rhs }
-            | Intrinsic::StrAt { seq: lhs, idx: rhs }
-            | Intrinsic::StrIndexOfDefault { seq: lhs, sub: rhs }
-            | Intrinsic::StrContains {
-                seq: lhs,
-                item: rhs,
-            }
-            | Intrinsic::StrStartsWith {
-                seq: lhs,
-                item: rhs,
-            }
-            | Intrinsic::StrEndsWith {
-                seq: lhs,
-                item: rhs,
-            }
-            | Intrinsic::StrLt { lhs, rhs }
-            | Intrinsic::StrLe { lhs, rhs }
-            | Intrinsic::StrGt { lhs, rhs }
-            | Intrinsic::StrGe { lhs, rhs }
-            | Intrinsic::SeqPush {
-                seq: lhs,
-                item: rhs,
-                ..
-            }
-            | Intrinsic::SeqConcat { lhs, rhs, .. }
-            | Intrinsic::SeqNth {
-                seq: lhs, idx: rhs, ..
-            }
-            | Intrinsic::SeqAtSeq {
-                seq: lhs, idx: rhs, ..
-            }
-            | Intrinsic::SeqIndexOfDefault {
-                seq: lhs, sub: rhs, ..
-            }
-            | Intrinsic::SeqContains {
-                seq: lhs,
-                item: rhs,
-                ..
-            }
-            | Intrinsic::SeqPrefixOf { lhs, rhs, .. }
-            | Intrinsic::SeqSuffixOf { lhs, rhs, .. }
-            | Intrinsic::SetInsert {
-                set: lhs,
-                item: rhs,
-                ..
-            }
-            | Intrinsic::SetRemove {
-                set: lhs,
-                item: rhs,
-                ..
-            }
-            | Intrinsic::SetContains {
-                set: lhs,
-                item: rhs,
-                ..
-            }
-            | Intrinsic::SetIntersect { lhs, rhs, .. }
-            | Intrinsic::SetUnion { lhs, rhs, .. }
-            | Intrinsic::SetDiff { lhs, rhs, .. }
-            | Intrinsic::SetSymDiff { lhs, rhs, .. }
-            | Intrinsic::SetIsSubset { lhs, rhs, .. }
-            | Intrinsic::SetIsProperSubset { lhs, rhs, .. }
-            | Intrinsic::SetIsDisjoint { lhs, rhs, .. }
-            | Intrinsic::SetHasSize {
-                set: lhs,
-                size: rhs,
-                ..
-            }
-            | Intrinsic::ArraySelect {
-                arr: lhs, key: rhs, ..
-            }
-            | Intrinsic::ArrayRemove {
-                arr: lhs, key: rhs, ..
-            }
-            | Intrinsic::ArrayContainsKey {
-                arr: lhs, key: rhs, ..
-            }
-            | Intrinsic::BvAnd { lhs, rhs, .. }
-            | Intrinsic::BvOr { lhs, rhs, .. }
-            | Intrinsic::BvXor { lhs, rhs, .. }
-            | Intrinsic::BvNand { lhs, rhs, .. }
-            | Intrinsic::BvNor { lhs, rhs, .. }
-            | Intrinsic::BvXnor { lhs, rhs, .. }
-            | Intrinsic::BvAdd { lhs, rhs, .. }
-            | Intrinsic::BvSub { lhs, rhs, .. }
-            | Intrinsic::BvMul { lhs, rhs, .. }
-            | Intrinsic::BvDiv { lhs, rhs, .. }
-            | Intrinsic::BvRem { lhs, rhs, .. }
-            | Intrinsic::BvMod { lhs, rhs, .. }
-            | Intrinsic::BvShl { lhs, rhs, .. }
-            | Intrinsic::BvLshr { lhs, rhs, .. }
-            | Intrinsic::BvAshr { lhs, rhs, .. }
-            | Intrinsic::BvRotLeft { lhs, rhs, .. }
-            | Intrinsic::BvRotRight { lhs, rhs, .. }
-            | Intrinsic::BvLt { lhs, rhs, .. }
-            | Intrinsic::BvLe { lhs, rhs, .. }
-            | Intrinsic::BvGt { lhs, rhs, .. }
-            | Intrinsic::BvGe { lhs, rhs, .. }
-            | Intrinsic::FloatAdd { lhs, rhs, .. }
-            | Intrinsic::FloatSub { lhs, rhs, .. }
-            | Intrinsic::FloatMul { lhs, rhs, .. }
-            | Intrinsic::FloatDiv { lhs, rhs, .. }
-            | Intrinsic::FloatRem { lhs, rhs, .. }
-            | Intrinsic::FloatMin { lhs, rhs, .. }
-            | Intrinsic::FloatMax { lhs, rhs, .. }
-            | Intrinsic::FloatLt { lhs, rhs, .. }
-            | Intrinsic::FloatLe { lhs, rhs, .. }
-            | Intrinsic::FloatGt { lhs, rhs, .. }
-            | Intrinsic::FloatGe { lhs, rhs, .. }
-            | Intrinsic::FloatFqEq { lhs, rhs, .. }
-            | Intrinsic::ErrMerge { lhs, rhs, .. }
-            | Intrinsic::SmtEq { lhs, rhs, .. }
-            | Intrinsic::SmtNe { lhs, rhs, .. } => {
-                called_fns.append(&mut self.collect_called_functions(&lhs));
-                called_fns.append(&mut self.collect_called_functions(&rhs));
-            }
-
-            // --- 3 ExpId Arguments (Ternary / Complex Ops) ---
-            Intrinsic::BoolIte { cond, then, else_ } => {
-                called_fns.append(&mut self.collect_called_functions(cond));
-                called_fns.append(&mut self.collect_called_functions(then));
-                called_fns.append(&mut self.collect_called_functions(else_));
-            }
-            Intrinsic::StrIndexOf { seq, sub, offset } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(sub));
-                called_fns.append(&mut self.collect_called_functions(offset));
-            }
-            Intrinsic::StrSubstr { seq, start, len } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(start));
-                called_fns.append(&mut self.collect_called_functions(len));
-            }
-            Intrinsic::StrReplace { seq, src, dst }
-            | Intrinsic::StrReplaceAll { seq, src, dst }
-            | Intrinsic::SeqReplace { seq, src, dst, .. } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(src));
-                called_fns.append(&mut self.collect_called_functions(dst));
-            }
-            Intrinsic::SeqExtract {
-                seq, offset, len, ..
-            } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(offset));
-                called_fns.append(&mut self.collect_called_functions(len));
-            }
-            Intrinsic::SeqIndexOf {
-                seq, sub, offset, ..
-            } => {
-                called_fns.append(&mut self.collect_called_functions(seq));
-                called_fns.append(&mut self.collect_called_functions(sub));
-                called_fns.append(&mut self.collect_called_functions(offset));
-            }
-            Intrinsic::ArrayStore { arr, key, val, .. } => {
-                called_fns.append(&mut self.collect_called_functions(arr));
-                called_fns.append(&mut self.collect_called_functions(key));
-                called_fns.append(&mut self.collect_called_functions(val));
-            }
+            dt => panic!("type mismatch: expect <tuple> | actual {dt}"),
         }
-        called_fns
+    }
+
+    /// Utility: retrieve a record data type from a sort id (must be a named record struct, not an enum)
+    fn expect_type_record(&self, sort_id: UsrSortId, ir: &IRContext) -> BTreeMap<String, Sort> {
+        match ir.ty_registry.retrieve(sort_id) {
+            DataType::Record(record) => record.clone(),
+            dt => panic!("type mismatch: expect <record> | actual {dt}"),
+        }
+    }
+
+    /// Utility: resolve user sort id from the sort
+    pub fn expect_sort_user(sort: &Sort) -> UsrSortId {
+        match sort {
+            Sort::User(sid) => *sid,
+            _ => panic!("type mismatch: expect $? | actual {sort}"),
+        }
+    }
+
+    /// Utility: expect type match
+    fn check_sort(expect: &Sort, actual: &Sort) {
+        if expect != actual {
+            panic!("type mismatch: expect {expect} | actual {actual}");
+        }
     }
 }
 
@@ -871,21 +809,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         }
     }
 
-    /// Utility: expect type match
-    fn check_sort(expect: &Sort, actual: &Sort) {
-        if expect != actual {
-            panic!("type mismatch: expect {expect} | actual {actual}");
-        }
-    }
-
-    /// Utility: resolve user sort id from the sort
-    fn expect_sort_user(sort: &Sort) -> UsrSortId {
-        match sort {
-            Sort::User(sid) => *sid,
-            _ => panic!("type mismatch: expect $? | actual {sort}"),
-        }
-    }
-
     /// Utility: retrieve a tuple data type from a sort id
     fn expect_type_tuple(&self, sort_id: UsrSortId) -> Vec<Sort> {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
@@ -902,32 +825,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 tuple.clone()
             }
             dt => panic!("type mismatch: expect <tuple> | actual {dt}"),
-        }
-    }
-
-    /// Utility: retrieve a struct type (tuple with a name) data type from a sort id
-    fn expect_type_tuple_named(&self, sort_id: UsrSortId) -> Vec<Sort> {
-        match self.parent.ir.ty_registry.retrieve(sort_id) {
-            DataType::Tuple(tuple)
-                if self
-                    .parent
-                    .ir
-                    .ty_registry
-                    .reverse_lookup(sort_id)
-                    .0
-                    .is_some() =>
-            {
-                tuple.clone()
-            }
-            dt => panic!("type mismatch: expect <tuple> | actual {dt}"),
-        }
-    }
-
-    /// Utility: retrieve a record data type from a sort id (must be a named record struct, not an enum)
-    fn expect_type_record(&self, sort_id: UsrSortId) -> BTreeMap<String, Sort> {
-        match self.parent.ir.ty_registry.retrieve(sort_id) {
-            DataType::Record(record) => record.clone(),
-            dt => panic!("type mismatch: expect <record> | actual {dt}"),
         }
     }
 
@@ -1021,8 +918,8 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     fn bind_decl(&mut self, decl: &VarDecl, ety: Sort, exp: ExpId) {
         match decl {
             VarDecl::One(name, _ty) => {
-                let bind_ty = self.derive_type(exp);
-                Self::check_sort(&ety, &bind_ty);
+                let bind_ty = self.registry.derive_type(exp, self.parent.ir);
+                ExpRegistry::check_sort(&ety, &bind_ty);
 
                 let sym = Symbol::from(name);
                 let vid = self.registry.add_bound(sym.clone(), bind_ty, exp);
@@ -1032,7 +929,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                 }
             }
             VarDecl::Pack(elems) => {
-                let sort_id = Self::expect_sort_user(&ety);
+                let sort_id = ExpRegistry::expect_sort_user(&ety);
                 let tuple = self.expect_type_tuple(sort_id);
                 if elems.len() != tuple.len() {
                     panic!(
@@ -1088,7 +985,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     /// Add a quantified variable (i.e., free variable) induced by iteration
     fn iter_quant_var(&mut self, name: &VarName, expr: ExpId) -> VarId {
         let sym = Symbol::from(name);
-        let sort = match self.derive_type(expr) {
+        let sort = match self.registry.derive_type(expr, self.parent.ir) {
             Sort::Seq(_) => Sort::Integer,
             Sort::Set(sub) => *sub,
             Sort::Array(key, _) => *key,
@@ -1105,7 +1002,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     /// Add an axiomatized variable induced by iteration
     fn iter_axiom_var(&mut self, name: &VarName, expr: ExpId) -> VarId {
         let sym = Symbol::from(name);
-        let sort = match self.derive_type(expr) {
+        let sort = match self.registry.derive_type(expr, self.parent.ir) {
             Sort::Seq(_) => Sort::Integer,
             Sort::Set(sub) => *sub,
             Sort::Array(key, _) => *key,
@@ -1141,7 +1038,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         let sort = self.parent.resolve_type(&inst.ty);
         match exp_ty {
             None => (),
-            Some(ety) => Self::check_sort(ety, &sort),
+            Some(ety) => ExpRegistry::check_sort(ety, &sort),
         }
 
         // parse the expression
@@ -1155,7 +1052,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             }
             Op::Pack { elems } => {
                 // we don't need to register a new type in the type registry for pack expressions because they are already registered in the type registry when the type is defined
-                let sort_id = Self::expect_sort_user(&sort);
+                let sort_id = ExpRegistry::expect_sort_user(&sort);
                 let tuple = self.expect_type_tuple(sort_id);
                 let resolved = self.resolve_expr_tuple(&tuple, elems);
                 Expression::Pack {
@@ -1166,7 +1063,9 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             Op::Tuple { name, inst, slots } => {
                 // for every instantiation of the tuple type, register a new type in the type registry
                 let sort_id = self.parent.register_type(Some(name), inst);
-                let tuple = self.expect_type_tuple_named(sort_id);
+                let tuple = self
+                    .registry
+                    .expect_type_tuple_named(sort_id, self.parent.ir);
                 let resolved = self.resolve_expr_tuple(&tuple, slots);
                 Expression::Tuple {
                     sort: sort_id,
@@ -1176,7 +1075,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             Op::Record { name, inst, fields } => {
                 // for every instantiation of the record type, register a new type in the type registry
                 let sort_id = self.parent.register_type(Some(name), inst);
-                let record = self.expect_type_record(sort_id);
+                let record = self.registry.expect_type_record(sort_id, self.parent.ir);
                 let resolved = self.resolve_expr_record(&record, fields);
                 Expression::Record {
                     sort: sort_id,
@@ -1228,9 +1127,11 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             }
             Op::AccessSlot { base, slot } => {
                 let resolved = self.resolve(base, None);
-                let base_sort = self.derive_type(resolved);
-                let sort_id = Self::expect_sort_user(&base_sort);
-                let tuple = self.expect_type_tuple_named(sort_id);
+                let base_sort = self.registry.derive_type(resolved, self.parent.ir);
+                let sort_id = ExpRegistry::expect_sort_user(&base_sort);
+                let tuple = self
+                    .registry
+                    .expect_type_tuple_named(sort_id, self.parent.ir);
                 if *slot >= tuple.len() {
                     panic!("no such slot {slot} in {base_sort}");
                 }
@@ -1241,9 +1142,9 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
             }
             Op::AccessField { base, field } => {
                 let resolved = self.resolve(base, None);
-                let base_sort = self.derive_type(resolved);
-                let sort_id = Self::expect_sort_user(&base_sort);
-                let record = self.expect_type_record(sort_id);
+                let base_sort = self.registry.derive_type(resolved, self.parent.ir);
+                let sort_id = ExpRegistry::expect_sort_user(&base_sort);
+                let record = self.registry.expect_type_record(sort_id, self.parent.ir);
                 if !record.contains_key(field) {
                     panic!("no such field {field} in {base_sort}");
                 }
@@ -1274,8 +1175,8 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     // process atoms
                     let mut atoms = vec![];
                     for (variant, &head) in arm.variants.iter().zip(resolved_heads.iter()) {
-                        let head_type = self.derive_type(head);
-                        let head_sid = Self::expect_sort_user(&head_type);
+                        let head_type = self.registry.derive_type(head, self.parent.ir);
+                        let head_sid = ExpRegistry::expect_sort_user(&head_type);
                         let branch = variant.branch.variant.clone();
                         let dtor = match &variant.unpack {
                             Unpack::Unit => {
@@ -1729,6 +1630,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     },
                     Native::BoxShield { t, val } => {
                         let sort = self.parent.resolve_type(t);
+                        // shield takes T, returns Cloak<T>
                         Intrinsic::BoxShield {
                             t: sort.clone(),
                             val: self.resolve(val, Some(&sort)),
@@ -1736,9 +1638,11 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     }
                     Native::BoxReveal { t, val } => {
                         let sort = self.parent.resolve_type(t);
+                        // reveal takes Cloak<T>, returns T
+                        let cloak_sort = Sort::Cloak(Box::new(sort.clone()));
                         Intrinsic::BoxReveal {
                             t: sort.clone(),
-                            val: self.resolve(val, Some(&sort)),
+                            val: self.resolve(val, Some(&cloak_sort)),
                         }
                     }
                     Native::SeqEmpty { t } => Intrinsic::SeqEmpty {
@@ -1930,7 +1834,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                             lhs: self.resolve(lhs, Some(&Sort::Set(sort.clone().into()))),
                             rhs: self.resolve(rhs, Some(&Sort::Set(sort.clone().into()))),
                         }
-                    },
+                    }
                     Native::SetSymDiff { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
                         Intrinsic::SetSymDiff {
@@ -1981,9 +1885,12 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         Intrinsic::ArrayLen {
                             k: k_sort.clone(),
                             v: v_sort.clone(),
-                            arr: self.resolve(arr, Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into()))),
+                            arr: self.resolve(
+                                arr,
+                                Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into())),
+                            ),
                         }
-                    },
+                    }
                     Native::ArrayStore {
                         k,
                         v,
@@ -1996,7 +1903,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         Intrinsic::ArrayStore {
                             k: k_sort.clone(),
                             v: v_sort.clone(),
-                            arr: self.resolve(arr, Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into()))),
+                            arr: self.resolve(
+                                arr,
+                                Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into())),
+                            ),
                             key: self.resolve(key, Some(&k_sort)),
                             val: self.resolve(val, Some(&v_sort)),
                         }
@@ -2007,7 +1917,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         Intrinsic::ArraySelect {
                             k: k_sort.clone(),
                             v: v_sort.clone(),
-                            arr: self.resolve(arr, Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into()))),
+                            arr: self.resolve(
+                                arr,
+                                Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into())),
+                            ),
                             key: self.resolve(key, Some(&k_sort)),
                         }
                     }
@@ -2017,7 +1930,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         Intrinsic::ArrayRemove {
                             k: k_sort.clone(),
                             v: v_sort.clone(),
-                            arr: self.resolve(arr, Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into()))),
+                            arr: self.resolve(
+                                arr,
+                                Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into())),
+                            ),
                             key: self.resolve(key, Some(&k_sort)),
                         }
                     }
@@ -2027,7 +1943,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         Intrinsic::ArrayContainsKey {
                             k: k_sort.clone(),
                             v: v_sort.clone(),
-                            arr: self.resolve(arr, Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into()))),
+                            arr: self.resolve(
+                                arr,
+                                Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into())),
+                            ),
                             key: self.resolve(key, Some(&k_sort)),
                         }
                     }
@@ -2037,9 +1956,12 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         Intrinsic::ArrayIsEmpty {
                             k: k_sort.clone(),
                             v: v_sort.clone(),
-                            arr: self.resolve(arr, Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into()))),
+                            arr: self.resolve(
+                                arr,
+                                Some(&Sort::Array(k_sort.clone().into(), v_sort.clone().into())),
+                            ),
                         }
-                    },
+                    }
                     Native::BvVal { t, val } => Intrinsic::BvVal {
                         t: self.parent.resolve_type(t),
                         val: val.clone(),
@@ -2523,8 +2445,12 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         for eid in [&lhs_id, &rhs_id] {
                             match self.registry.lookup_exp(eid) {
                                 Expression::Intrinsic(i) => match i.as_ref() {
-                                    Intrinsic::ErrFresh(id) => { ids.insert(*id); }
-                                    Intrinsic::ErrMerge { ids: existing, .. } => { ids.extend(existing.iter().copied()); }
+                                    Intrinsic::ErrFresh(id) => {
+                                        ids.insert(*id);
+                                    }
+                                    Intrinsic::ErrMerge { ids: existing, .. } => {
+                                        ids.extend(existing.iter().copied());
+                                    }
                                     _ => panic!("ErrMerge operand is not an error expression"),
                                 },
                                 _ => panic!("ErrMerge operand is not an intrinsic"),
@@ -2532,7 +2458,11 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         }
                         // Register a multi-ID target: "find input reaching all these sites together"
                         self.parent.ir.error_targets.push(ids.clone());
-                        Intrinsic::ErrMerge { lhs: lhs_id, rhs: rhs_id, ids }
+                        Intrinsic::ErrMerge {
+                            lhs: lhs_id,
+                            rhs: rhs_id,
+                            ids,
+                        }
                     }
                     Native::SmtEq { t, lhs, rhs } => {
                         let sort = self.parent.resolve_type(t);
@@ -2587,324 +2517,14 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         let eid = self.registry.register(expression);
 
         // cross-check type consistency again (this is a paranoid check)
-        let derived_type = self.derive_type(eid);
-        Self::check_sort(&derived_type, &sort);
+        let derived_type = self.registry.derive_type(eid, self.parent.ir);
+        ExpRegistry::check_sort(&derived_type, &sort);
 
         // restore the namespace
         self.namespace = old_namespace;
 
         // done
         eid
-    }
-
-    /// Derive type of an expression
-    fn derive_type(&self, eid: ExpId) -> Sort {
-        let sort = match self.registry.lookup_exp(&eid) {
-            Expression::Var(vid) => self.registry.lookup_var(vid).sort.clone(),
-            Expression::Pack { sort, elems: _ }
-            | Expression::Tuple { sort, slots: _ }
-            | Expression::Record { sort, fields: _ }
-            | Expression::Enum {
-                sort,
-                branch: _,
-                variant: _,
-            } => Sort::User(*sort),
-            Expression::AccessSlot { base, slot } => {
-                let base_sort = self.derive_type(*base);
-                let base_tuple = self.expect_type_tuple_named(Self::expect_sort_user(&base_sort));
-                base_tuple
-                    .into_iter()
-                    .nth(*slot)
-                    .unwrap_or_else(|| panic!("type mismatch: no slot {slot} in tuple {base_sort}"))
-            }
-            Expression::AccessField { base, field } => {
-                let base_sort = self.derive_type(*base);
-                let mut base_record = self.expect_type_record(Self::expect_sort_user(&base_sort));
-                base_record
-                    .remove(field)
-                    .unwrap_or_else(|| {
-                        panic!("type mismatch: no field {field} in record {base_sort}")
-                    })
-                    .clone()
-            }
-            Expression::Match { cases } => {
-                // all the match cases bodies must have the same sort
-                let mut case_sort = None;
-                for case in cases {
-                    let sort = self.derive_type(case.body);
-                    match &case_sort {
-                        None => {
-                            case_sort = Some(sort);
-                        }
-                        Some(s) => Self::check_sort(s, &sort),
-                    }
-                }
-                match case_sort {
-                    None => panic!("expect at least one match arm"),
-                    Some(sort) => sort,
-                }
-            }
-            Expression::Phi { cases, default } => {
-                if cases.is_empty() {
-                    panic!("expect at least one phi case");
-                }
-                let case_sort = self.derive_type(*default);
-                for case in cases {
-                    let sort = self.derive_type(case.body);
-                    Self::check_sort(&case_sort, &sort);
-                }
-                case_sort
-            }
-            Expression::IterForall { .. } | Expression::IterExists { .. } => Sort::Boolean,
-            Expression::IterChoose { vars, body, rets } => {
-                let body_sort = self.derive_type(*body);
-                if body_sort != Sort::Boolean {
-                    panic!("body of choose must be a boolean");
-                }
-                let mut inst = vec![];
-                for vid in rets {
-                    match vars.get(vid) {
-                        None => panic!("invalid iterator variable to return"),
-                        Some(eid) => {
-                            let vty = match self.derive_type(*eid) {
-                                Sort::Seq(_) => Sort::Integer,
-                                Sort::Set(e) => *e,
-                                Sort::Array(k, _) => *k,
-                                _ => panic!("not a collection sort"),
-                            };
-                            inst.push(vty);
-                        }
-                    }
-                }
-                // unwrap the single-element tuple for choose
-                if inst.len() == 1 {
-                    inst.into_iter().next().unwrap()
-                } else {
-                    Sort::User(
-                        self.parent
-                            .ir
-                            .ty_registry
-                            .get_index(None, &inst)
-                            .expect("no such sort id"),
-                    )
-                }
-            }
-            Expression::Intrinsic(intrinsic) => match intrinsic.as_ref() {
-                Intrinsic::BoolVal(_)
-                | Intrinsic::BoolNot { .. }
-                | Intrinsic::BoolAnd { .. }
-                | Intrinsic::BoolOr { .. }
-                | Intrinsic::BoolXor { .. }
-                | Intrinsic::BoolImplies { .. }
-                | Intrinsic::BoolIff { .. }
-                | Intrinsic::BoolNand { .. }
-                | Intrinsic::BoolNor { .. }
-                | Intrinsic::BoolXnor { .. } => Sort::Boolean,
-                Intrinsic::BoolIte { then, else_, cond } => {
-                    let cond_sort = self.derive_type(*cond);
-                    if cond_sort != Sort::Boolean {
-                        panic!("condition of boolean ite must be a boolean");
-                    }
-                    let then_sort = self.derive_type(*then);
-                    let else_sort = self.derive_type(*else_);
-                    Self::check_sort(&then_sort, &else_sort);
-                    then_sort
-                }
-                Intrinsic::IntVal(_)
-                | Intrinsic::IntNeg { .. }
-                | Intrinsic::IntAdd { .. }
-                | Intrinsic::IntSub { .. }
-                | Intrinsic::IntMul { .. }
-                | Intrinsic::IntDiv { .. }
-                | Intrinsic::IntDivTrunc { .. }
-                | Intrinsic::IntMod { .. }
-                | Intrinsic::IntRem { .. }
-                | Intrinsic::IntPow { .. }
-                | Intrinsic::IntAbs { .. } => Sort::Integer,
-                Intrinsic::IntLt { .. }
-                | Intrinsic::IntLe { .. }
-                | Intrinsic::IntGe { .. }
-                | Intrinsic::IntGt { .. }
-                | Intrinsic::IntDivides { .. } => Sort::Boolean,
-                Intrinsic::IntToReal { .. } => Sort::Real,
-                Intrinsic::IntToI32 { .. } => Sort::I32,
-                Intrinsic::IntToI64 { .. } => Sort::I64,
-                Intrinsic::IntToU32 { .. } => Sort::U32,
-                Intrinsic::IntToU64 { .. } => Sort::U64,
-                Intrinsic::IntToF32 { .. } => Sort::F32,
-                Intrinsic::IntToF64 { .. } => Sort::F64,
-                Intrinsic::IntFromHex { .. }
-                | Intrinsic::IntFromOct { .. }
-                | Intrinsic::IntFromBin { .. } => Sort::Integer,
-                Intrinsic::IntIsGtI64Max { .. }
-                | Intrinsic::IntIsLtI64Min { .. }
-                | Intrinsic::IntIsGtU64Max { .. }
-                | Intrinsic::IntIsLtU64Min { .. }
-                | Intrinsic::IntIsLtI32Min { .. }
-                | Intrinsic::IntIsGtI32Max { .. }
-                | Intrinsic::IntIsLtU32Min { .. }
-                | Intrinsic::IntIsGtU32Max { .. } => Sort::Boolean,
-                Intrinsic::RealVal(_)
-                | Intrinsic::RealNeg { .. }
-                | Intrinsic::RealAdd { .. }
-                | Intrinsic::RealSub { .. }
-                | Intrinsic::RealMul { .. }
-                | Intrinsic::RealDiv { .. }
-                | Intrinsic::RealPow { .. }
-                | Intrinsic::RealAbs { .. } => Sort::Real,
-                Intrinsic::RealRound { .. }
-                | Intrinsic::RealFloor { .. }
-                | Intrinsic::RealCeil { .. }
-                | Intrinsic::RealToInt { .. } => Sort::Integer,
-                Intrinsic::RealLt { .. }
-                | Intrinsic::RealLe { .. }
-                | Intrinsic::RealGe { .. }
-                | Intrinsic::RealGt { .. }
-                | Intrinsic::RealIsInt { .. } => Sort::Boolean,
-                Intrinsic::RealToF32 { .. } => Sort::F32,
-                Intrinsic::RealToF64 { .. } => Sort::F64,
-                Intrinsic::StrVal(_)
-                | Intrinsic::StrNew
-                | Intrinsic::StrConcat { .. }
-                | Intrinsic::StrAt { .. }
-                | Intrinsic::StrSubstr { .. }
-                | Intrinsic::StrReplace { .. }
-                | Intrinsic::StrReplaceAll { .. }
-                | Intrinsic::StrFromInt { .. }
-                | Intrinsic::StrFromCode { .. } => Sort::String,
-                Intrinsic::StrLen { .. }
-                | Intrinsic::StrIndexOf { .. }
-                | Intrinsic::StrIndexOfDefault { .. }
-                | Intrinsic::StrToInt { .. } => Sort::Integer,
-                Intrinsic::StrToCode { .. } => Sort::U32,
-                Intrinsic::StrLt { .. }
-                | Intrinsic::StrLe { .. }
-                | Intrinsic::StrGt { .. }
-                | Intrinsic::StrGe { .. }
-                | Intrinsic::StrIsEmpty { .. }
-                | Intrinsic::StrContains { .. }
-                | Intrinsic::StrStartsWith { .. }
-                | Intrinsic::StrEndsWith { .. }
-                | Intrinsic::StrIsDigit { .. } => Sort::Boolean,
-                Intrinsic::BoxShield { t, .. } => t.clone(),
-                Intrinsic::BoxReveal { t, .. } => t.clone(),
-                Intrinsic::SeqEmpty { t }
-                | Intrinsic::SeqUnit { t, .. }
-                | Intrinsic::SeqPush { t, .. }
-                | Intrinsic::SeqExtract { t, .. }
-                | Intrinsic::SeqConcat { t, .. }
-                | Intrinsic::SeqAtSeq { t, .. }
-                | Intrinsic::SeqReplace { t, .. } => Sort::Seq(Box::new(t.clone())),
-                Intrinsic::SeqNth { t, .. } => t.clone(),
-                Intrinsic::SeqLen { .. }
-                | Intrinsic::SeqIndexOf { .. }
-                | Intrinsic::SeqIndexOfDefault { .. } => Sort::Integer,
-                Intrinsic::SeqContains { .. }
-                | Intrinsic::SeqPrefixOf { .. }
-                | Intrinsic::SeqSuffixOf { .. }
-                | Intrinsic::SeqIsEmpty { .. } => Sort::Boolean,
-                Intrinsic::SetEmpty { t }
-                | Intrinsic::SetInsert { t, .. }
-                | Intrinsic::SetRemove { t, .. }
-                | Intrinsic::SetIntersect { t, .. }
-                | Intrinsic::SetUnion { t, .. }
-                | Intrinsic::SetDiff { t, .. }
-                | Intrinsic::SetSymDiff { t, .. } => Sort::Set(Box::new(t.clone())),
-                Intrinsic::SetLen { .. } => Sort::Integer,
-                Intrinsic::SetContains { .. }
-                | Intrinsic::SetIsEmpty { .. }
-                | Intrinsic::SetIsSubset { .. }
-                | Intrinsic::SetIsProperSubset { .. }
-                | Intrinsic::SetIsDisjoint { .. }
-                | Intrinsic::SetHasSize { .. } => Sort::Boolean,
-                Intrinsic::ArrayEmpty { k, v }
-                | Intrinsic::ArrayStore { k, v, .. }
-                | Intrinsic::ArrayRemove { k, v, .. } => {
-                    Sort::Array(Box::new(k.clone()), Box::new(v.clone()))
-                }
-                Intrinsic::ArraySelect { v, .. } => v.clone(),
-                Intrinsic::ArrayLen { .. } => Sort::Integer,
-                Intrinsic::ArrayContainsKey { .. } | Intrinsic::ArrayIsEmpty { .. } => {
-                    Sort::Boolean
-                }
-                Intrinsic::BvVal { t, .. }
-                | Intrinsic::BvNot { t, .. }
-                | Intrinsic::BvNeg { t, .. }
-                | Intrinsic::BvAnd { t, .. }
-                | Intrinsic::BvOr { t, .. }
-                | Intrinsic::BvXor { t, .. }
-                | Intrinsic::BvNand { t, .. }
-                | Intrinsic::BvNor { t, .. }
-                | Intrinsic::BvXnor { t, .. }
-                | Intrinsic::BvAdd { t, .. }
-                | Intrinsic::BvSub { t, .. }
-                | Intrinsic::BvMul { t, .. }
-                | Intrinsic::BvDiv { t, .. }
-                | Intrinsic::BvRem { t, .. }
-                | Intrinsic::BvMod { t, .. }
-                | Intrinsic::BvShl { t, .. }
-                | Intrinsic::BvLshr { t, .. }
-                | Intrinsic::BvAshr { t, .. }
-                | Intrinsic::BvRotLeft { t, .. }
-                | Intrinsic::BvRotRight { t, .. } => t.clone(),
-                Intrinsic::BvLt { .. }
-                | Intrinsic::BvLe { .. }
-                | Intrinsic::BvGt { .. }
-                | Intrinsic::BvGe { .. }
-                | Intrinsic::BvRedAnd { .. }
-                | Intrinsic::BvRedOr { .. } => Sort::Boolean,
-                Intrinsic::BvToInt { .. } => Sort::Integer,
-                Intrinsic::FloatVal { t, .. }
-                | Intrinsic::FloatNaN { t }
-                | Intrinsic::FloatPosInf { t }
-                | Intrinsic::FloatNegInf { t }
-                | Intrinsic::FloatPosZero { t }
-                | Intrinsic::FloatNegZero { t }
-                | Intrinsic::FloatNeg { t, .. }
-                | Intrinsic::FloatAbs { t, .. }
-                | Intrinsic::FloatSqrt { t, .. }
-                | Intrinsic::FloatAdd { t, .. }
-                | Intrinsic::FloatSub { t, .. }
-                | Intrinsic::FloatMul { t, .. }
-                | Intrinsic::FloatDiv { t, .. }
-                | Intrinsic::FloatRem { t, .. }
-                | Intrinsic::FloatMin { t, .. }
-                | Intrinsic::FloatMax { t, .. } => t.clone(),
-                Intrinsic::FloatIsNaN { .. }
-                | Intrinsic::FloatIsInf { .. }
-                | Intrinsic::FloatIsZero { .. }
-                | Intrinsic::FloatIsNormal { .. }
-                | Intrinsic::FloatIsSubnormal { .. }
-                | Intrinsic::FloatIsNeg { .. }
-                | Intrinsic::FloatIsPos { .. }
-                | Intrinsic::FloatLt { .. }
-                | Intrinsic::FloatLe { .. }
-                | Intrinsic::FloatGt { .. }
-                | Intrinsic::FloatGe { .. }
-                | Intrinsic::FloatFqEq { .. } => Sort::Boolean,
-                Intrinsic::FloatToInt { .. } => Sort::Integer,
-                Intrinsic::FloatToReal { .. } => Sort::Real,
-                Intrinsic::FloatToU32 { .. } => Sort::U32,
-                Intrinsic::FloatToI32 { .. } => Sort::I32,
-                Intrinsic::FloatToU64 { .. } => Sort::U64,
-                Intrinsic::FloatToI64 { .. } => Sort::I64,
-                Intrinsic::FloatCeil { .. }
-                | Intrinsic::FloatFloor { .. }
-                | Intrinsic::FloatTrunc { .. }
-                | Intrinsic::FloatNearest { .. } => Sort::Integer,
-                Intrinsic::FloatFromHexStr { t, .. } => t.clone(),
-                Intrinsic::ErrFresh(_) | Intrinsic::ErrMerge { .. } => Sort::Error,
-                Intrinsic::SmtEq { .. } | Intrinsic::SmtNe { .. } => Sort::Boolean,
-            },
-            Expression::Procedure { callee, args: _ } => self
-                .parent
-                .ir
-                .fn_registry
-                .retrieve_sig(*callee)
-                .ret_ty
-                .clone(),
-        };
-        sort
     }
 
     /// Materialize the function body into an expression and return the expression id and the expression registry

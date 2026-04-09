@@ -6,91 +6,72 @@ use crate::ir::{
     sort::{DataType, Sort, Variant},
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::Hash;
 
 /// Helper to resolve the SMT name of a Sort ID
 pub fn resolve_type_name(ir: &IRContext, sid: UsrSortId) -> String {
     let dt = ir.ty_registry.retrieve(sid);
+    let (ty_name, type_params) = ir.ty_registry.reverse_lookup(sid);
     match dt {
-        DataType::Tuple(_) if ir.ty_registry.reverse_lookup(sid).0.is_none() => {
+        // z3 accepts <, >, $ in the type names (other theorem provers might not)
+        DataType::Tuple(_) if ty_name.is_none() => {
             // Unnamed tuple naming logic
             format!(
                 "Tuple_{}",
-                ir.ty_registry
-                    .reverse_lookup(sid)
-                    .1
+                type_params
                     .iter()
                     .map(|t| t.to_string())
                     .collect::<Vec<_>>()
                     .join("_")
             )
         }
-        _ => {
-            let (ty_name, _) = ir.ty_registry.reverse_lookup(sid);
-            ty_name.as_ref().expect("type name").to_string()
-        }
+        _ => ty_name.expect("type name").to_string(),
     }
 }
 
 /// get the number of generic parameters for a type
-pub fn get_generic_param_count(ir: &IRContext, sid: UsrSortId) -> usize {
+pub fn get_generic_param_count(ir: &IRContext, sid: UsrSortId) -> (usize, Vec<Sort>) {
     // if unnamed tuple, no generics
     let dt = ir.ty_registry.retrieve(sid);
     match dt {
-        DataType::Tuple(_) if ir.ty_registry.reverse_lookup(sid).0.is_none() => 0,
+        DataType::Tuple(_) if ir.ty_registry.reverse_lookup(sid).0.is_none() => (0, vec![]),
         _ => {
             let (_, generics) = ir.ty_registry.reverse_lookup(sid);
-            generics.len()
+            (generics.len(), generics.to_vec())
         }
     }
 }
 
 /// Helper to format a Sort into its SMT string representation.
-///
-/// When formatting inside a polymorphic datatype declaration with `par` syntax:
-/// - `type_params` contains the type parameters (Sort::Uninterpreted)
-/// - `type_param_names` contains the corresponding parameter names (e.g., ["T", "E"])
-/// - `scc_sids` contains the set of sort IDs being declared together in the same SCC
-///   (for mutually recursive types, we need to reference types by name directly)
-/// - Any uninterpreted sorts that match the type parameters will be formatted using their actual names
-fn format_sort(
-    sort: &Sort,
-    ir: &IRContext,
-    type_params: &[Sort],
-    type_param_names: &[String],
-    scc_sids: &BTreeSet<UsrSortId>,
-) -> String {
+pub(crate) fn format_sort(sort: &Sort, ir: &IRContext) -> String {
     match sort {
         Sort::User(sid) => {
+            let (ty_name_opt, user_type_params) = ir.ty_registry.reverse_lookup(*sid);
             let type_name = resolve_type_name(ir, *sid);
-            let (_, user_type_params) = ir.ty_registry.reverse_lookup(*sid);
 
-            // If this type has type parameters, we need to format them
-            if !user_type_params.is_empty() {
-                let formatted_params: Vec<String> = user_type_params
-                    .iter()
-                    .map(|param| format_sort(param, ir, type_params, type_param_names, scc_sids))
-                    .collect();
-                format!("({} {})", type_name, formatted_params.join(" "))
-            } else {
-                type_name
+            match ty_name_opt {
+                None => type_name, // unnamed tuple — name encodes the params
+                Some(_) if user_type_params.is_empty() => type_name, // named type without generics
+                Some(_) => {
+                    let formatted_params: Vec<String> = user_type_params
+                        .iter()
+                        .map(|param| format_sort(param, ir))
+                        .collect();
+                    format!("({} {})", type_name, formatted_params.join(" "))
+                }
             }
         }
+        Sort::Cloak(inner) => format!("(Cloak {})", format_sort(inner, ir)),
         Sort::Boolean => "Bool".to_string(),
         Sort::Integer => "Int".to_string(),
         Sort::Real => "Real".to_string(),
         Sort::String => "String".to_string(),
-        Sort::Seq(inner) => format!(
-            "(Seq {})",
-            format_sort(inner, ir, type_params, type_param_names, scc_sids)
-        ),
-        Sort::Set(inner) => format!(
-            "(Set {})",
-            format_sort(inner, ir, type_params, type_param_names, scc_sids)
-        ),
+        Sort::Seq(inner) => format!("(Seq {})", format_sort(inner, ir)),
+        Sort::Set(inner) => format!("(Set {})", format_sort(inner, ir)),
         Sort::Array(key, value) => format!(
             "(Array {} {})",
-            format_sort(key, ir, type_params, type_param_names, scc_sids),
-            format_sort(value, ir, type_params, type_param_names, scc_sids)
+            format_sort(key, ir),
+            format_sort(value, ir)
         ),
         Sort::F32 => "(_ FloatingPoint 8 24)".to_string(),
         Sort::F64 => "(_ FloatingPoint 11 53)".to_string(),
@@ -98,33 +79,14 @@ fn format_sort(
         Sort::I64 => "(_ BitVec 64)".to_string(),
         Sort::U32 => "(_ BitVec 32)".to_string(),
         Sort::U64 => "(_ BitVec 64)".to_string(),
-        Sort::Uninterpreted(x) => {
-            // Check if this uninterpreted sort is a type parameter of the current type being declared
-            // If so, use its actual parameter name (from type_param_names)
-            if let Some(index) = type_params.iter().position(|p| p == sort) {
-                type_param_names
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_else(|| format!("Type_{}", index))
-            } else {
-                x.to_string()
-            }
-        }
+        Sort::Uninterpreted(x) => x.to_string(),
         Sort::Error => "(Array Int Bool)".to_string(), // Error is a set of integer IDs
     }
 }
 
 /// Converts an unnamed tuple to SMT-LIB string body.
-/// Output format: ((mk-Name (field_1 Type) (field_2 Type)))
-/// For polymorphic types, uses `par` syntax: (par (T E) ((mk-Name ...)))
-pub fn mk_unnamed_tuple_str(
-    type_name: String,
-    elems: &[Sort],
-    ir: &IRContext,
-    type_params: &[Sort],
-    type_param_names: &[String],
-    scc_sids: &BTreeSet<UsrSortId>,
-) -> String {
+/// Output format: for `(Integer, String)` it returns `((mk-Tuple-Integer-String (field_Tuple-Integer-String_1 Integer) (field_Tuple-Integer-String_2 String)))`
+pub fn mk_unnamed_tuple_str(type_name: String, elems: &[Sort], ir: &IRContext) -> String {
     let constructor_name = format!("mk-{type_name}");
 
     let fields: Vec<String> = elems
@@ -132,33 +94,21 @@ pub fn mk_unnamed_tuple_str(
         .enumerate()
         .map(|(i, sort)| {
             let field_name = format!("field_{}_{}_", type_name, i + 1);
-            format!(
-                "({} {})",
-                field_name,
-                format_sort(sort, ir, type_params, type_param_names, scc_sids)
-            )
+            format!("({} {})", field_name, format_sort(sort, ir))
         })
         .collect();
 
-    let body = format!("(({} {}))", constructor_name, fields.join(" "));
-
-    // Wrap in `par` if polymorphic
-    if !type_params.is_empty() {
-        format!("(par ({}) {})", type_param_names.join(" "), body)
-    } else {
-        body
-    }
+    format!("(({} {}))", constructor_name, fields.join(" "))
 }
 
 /// Converts a named tuple to SMT-LIB string body.
 /// For polymorphic types, uses `par` syntax: (par (T E) ((mk-Name ...)))
+/// For `MyStruct(Integer, String)` it returns `((mk-MyStruct (field_MyStruct_1 Int) (field_MyStruct_2 String)))`
 pub fn mk_named_tuple_str(
     type_name: String,
     elems: &[Sort],
     ir: &IRContext,
     type_params: &[Sort],
-    type_param_names: &[String],
-    scc_sids: &BTreeSet<UsrSortId>,
 ) -> String {
     let constructor_name = format!("mk-{type_name}");
 
@@ -167,11 +117,7 @@ pub fn mk_named_tuple_str(
         .enumerate()
         .map(|(i, sort)| {
             let field_name = format!("field_{}_{}_", type_name, i + 1);
-            format!(
-                "({} {})",
-                field_name,
-                format_sort(sort, ir, type_params, type_param_names, scc_sids)
-            )
+            format!("({} {})", field_name, format_sort(sort, ir))
         })
         .collect();
 
@@ -179,7 +125,16 @@ pub fn mk_named_tuple_str(
 
     // Wrap in `par` if polymorphic
     if !type_params.is_empty() {
-        format!("(par ({}) {})", type_param_names.join(" "), body)
+        // for `MyStruct(T, Integer)` it returns `(par (T) ((mk-MyStruct (field_MyStruct_1 T) (field_MyStruct_2 Int))))`
+        format!(
+            "(par ({}) {})",
+            type_params
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+            body
+        )
     } else {
         body
     }
@@ -187,83 +142,56 @@ pub fn mk_named_tuple_str(
 
 /// Converts a record to SMT-LIB string body.
 /// For polymorphic types, uses `par` syntax: (par (T E) ((mk-Name ...)))
-///
-/// **Well-foundedness fix**: When we have mutually recursive types (scc_sids.len() > 1),
-/// we need to ensure there's a base case. If ANY field in this record references another
-/// type in the same SCC (creating a cycle), we convert the entire record to an enum with
-/// a unit variant to provide a base case that breaks the cycle.
+/// For `MyRecord{x:Integer,y:String}` it returns `((mk-MyRecord (record_MyRecord_x_ Int) (record_MyRecord_y_ String)))`
 pub fn mk_record_str(
     type_name: String,
     fields: &BTreeMap<String, Sort>,
     ir: &IRContext,
     type_params: &[Sort],
-    type_param_names: &[String],
-    scc_sids: &BTreeSet<UsrSortId>,
 ) -> String {
     let constructor_name = format!("mk-{type_name}");
-
-    // Check if we have multiple types in the SCC (mutually recursive)
-    let is_mutually_recursive = scc_sids.len() > 1;
-
-    // Check if ANY field references another type in the same SCC (creates a cycle)
-    // Even if there are other fields that don't reference the SCC, the cycle still exists
-    let has_scc_cycle = is_mutually_recursive
-        && fields.values().any(|sort| {
-            if let Sort::User(target_sid) = sort {
-                scc_sids.contains(target_sid)
-            } else {
-                false
-            }
-        });
 
     let field_strs: Vec<String> = fields
         .iter()
         .map(|(field_name, sort)| {
             let smt_field_name = format!("record_{type_name}_{field_name}_");
-            format!(
-                "({} {})",
-                smt_field_name,
-                format_sort(sort, ir, type_params, type_param_names, scc_sids)
-            )
+            format!("({} {})", smt_field_name, format_sort(sort, ir))
         })
         .collect();
 
-    // If there's a cycle through SCC types, convert to enum with unit variant as base case
-    let body = if has_scc_cycle {
-        // Convert record to enum with unit variant + record variant
-        // This breaks the cycle by providing a base case (None) that doesn't require other types
-        let unit_variant = format!("({}_None)", type_name);
-        let record_variant = format!("({}_Some {})", constructor_name, field_strs.join(" "));
-        format!("({} {})", unit_variant, record_variant)
-    } else {
-        format!("(({} {}))", constructor_name, field_strs.join(" "))
-    };
+    let body = format!("(({} {}))", constructor_name, field_strs.join(" "));
 
     // Wrap in `par` if polymorphic
     if !type_params.is_empty() {
-        format!("(par ({}) {})", type_param_names.join(" "), body)
+        format!(
+            "(par ({}) {})",
+            type_params
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+            body
+        )
     } else {
         body
     }
 }
 
 /// Converts an enum to SMT-LIB string body.
-/// Output format: ((Unit) (TupleVariant (f1 Int)) (RecordVariant (f1 Int)))
+/// Output format for `MyEnum { A, B(Integer, String), C{x:Integer,y:String} }` it returns `((MyEnum_A) (MyEnum_B (field_MyEnum_B_1 Int) (field_MyEnum_B_2 String)) (MyEnum_C (record_MyEnum_C_x_ Int) (record_MyEnum_C_y_ String)))`
 /// For polymorphic types, uses `par` syntax: (par (T E) (...))
 pub fn mk_enum_str(
     type_name: String,
     variants: &BTreeMap<String, Variant>,
     ir: &IRContext,
     type_params: &[Sort],
-    type_param_names: &[String],
-    scc_sids: &BTreeSet<UsrSortId>,
 ) -> String {
     let mut variant_strs = Vec::new();
 
     for (vname, vdef) in variants {
         match vdef {
             Variant::Unit => {
-                variant_strs.push(format!("({})", vname));
+                variant_strs.push(format!("({}_{})", type_name, vname));
             }
             Variant::Tuple(slots) => {
                 let fields: Vec<String> = slots
@@ -276,15 +204,11 @@ pub fn mk_enum_str(
                             vname = vname,
                             idx = i + 1
                         );
-                        format!(
-                            "({} {})",
-                            field_name,
-                            format_sort(sort, ir, type_params, type_param_names, scc_sids)
-                        )
+                        format!("({} {})", field_name, format_sort(sort, ir))
                     })
                     .collect();
 
-                variant_strs.push(format!("({} {})", vname, fields.join(" ")));
+                variant_strs.push(format!("({}_{} {})", type_name, vname, fields.join(" ")));
             }
             Variant::Record(rec) => {
                 let fields: Vec<String> = rec
@@ -296,15 +220,11 @@ pub fn mk_enum_str(
                             vname = vname,
                             field = field_key
                         );
-                        format!(
-                            "({} {})",
-                            field_name,
-                            format_sort(sort, ir, type_params, type_param_names, scc_sids)
-                        )
+                        format!("({} {})", field_name, format_sort(sort, ir))
                     })
                     .collect();
 
-                variant_strs.push(format!("({} {})", vname, fields.join(" ")));
+                variant_strs.push(format!("({}_{} {})", type_name, vname, fields.join(" ")));
             }
         }
     }
@@ -313,7 +233,15 @@ pub fn mk_enum_str(
 
     // Wrap in `par` if polymorphic
     if !type_params.is_empty() {
-        format!("(par ({}) {})", type_param_names.join(" "), body)
+        format!(
+            "(par ({}) {})",
+            type_params
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+            body
+        )
     } else {
         body
     }
@@ -371,9 +299,9 @@ fn visit_sort(sort: &Sort, src: UsrSortId, edges: &mut Vec<(UsrSortId, UsrSortId
 }
 
 /// Kosaraju's algorithm for finding strongly connected components in a directed graph.
-pub fn scc_from_edges(edges: &[(UsrSortId, UsrSortId)]) -> Vec<BTreeSet<UsrSortId>> {
-    let mut adj: HashMap<UsrSortId, Vec<UsrSortId>> = HashMap::new(); // outgoing edges
-    let mut radj: HashMap<UsrSortId, Vec<UsrSortId>> = HashMap::new(); // incoming edges
+pub fn scc_from_edges<T: Copy + Eq + Hash + Ord>(edges: &[(T, T)]) -> Vec<BTreeSet<T>> {
+    let mut adj: HashMap<T, Vec<T>> = HashMap::new(); // outgoing edges
+    let mut radj: HashMap<T, Vec<T>> = HashMap::new(); // incoming edges
 
     for &(u, v) in edges {
         adj.entry(u).or_default().push(v);
@@ -403,11 +331,11 @@ pub fn scc_from_edges(edges: &[(UsrSortId, UsrSortId)]) -> Vec<BTreeSet<UsrSortI
 }
 
 /// DFS
-fn dfs(
-    u: UsrSortId,
-    g: &HashMap<UsrSortId, Vec<UsrSortId>>,
-    seen: &mut HashSet<UsrSortId>,
-    order: &mut Vec<UsrSortId>,
+fn dfs<T: Copy + Eq + Hash + Ord>(
+    u: T,
+    g: &HashMap<T, Vec<T>>,
+    seen: &mut HashSet<T>,
+    order: &mut Vec<T>,
 ) {
     seen.insert(u);
     for &v in &g[&u] {
@@ -419,11 +347,11 @@ fn dfs(
 }
 
 /// DFS reverse
-fn dfs_rev(
-    u: UsrSortId,
-    g: &HashMap<UsrSortId, Vec<UsrSortId>>,
-    seen: &mut HashSet<UsrSortId>,
-    acc: &mut BTreeSet<UsrSortId>,
+fn dfs_rev<T: Copy + Eq + Hash + Ord>(
+    u: T,
+    g: &HashMap<T, Vec<T>>,
+    seen: &mut HashSet<T>,
+    acc: &mut BTreeSet<T>,
 ) {
     seen.insert(u);
     acc.insert(u);

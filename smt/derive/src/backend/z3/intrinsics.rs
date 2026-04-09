@@ -1,27 +1,337 @@
 //! This module contains the conversion of Rusmart intrinsics to SMT-LIB format.
 
 use crate::backend::z3::exp::format_expression;
-use crate::backend::z3::fun::format_sort_for_fn;
+use crate::backend::z3::fun::{collect_called_functions, format_sort_for_fn};
+use crate::backend::z3::sort::format_sort;
 use crate::ir::ctxt::IRContext;
 use crate::ir::exp::ExpRegistry;
 use crate::ir::index::UsrFunId;
 use crate::ir::intrinsics::Intrinsic;
 use crate::ir::sort::Sort;
 use num_bigint::BigInt;
-use std::collections::BTreeSet;
 
-/// Generate an SMT-LIB constant name for the "null" (absent) sentinel of an array value sort.
-/// This constant is declared in the base SMT-LIB file with `(declare-const ...)` so that
-/// Z3 can reason about it symbolically without needing a concrete default value.
-pub fn array_null_const_name(v: &Sort, ir: &IRContext) -> String {
-    let vs = format_sort_for_fn(v, ir);
-    // Sanitize the sort string to be a valid SMT-LIB identifier
-    let safe = vs
-        .replace(' ', "_")
-        .replace('(', "")
-        .replace(')', "")
-        .replace('_', "_");
-    format!("array_null_{}", safe)
+/// Generate an SMT-LIB value for the "null" (absent) sentinel of an array value sort.
+pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
+    match sort {
+        Sort::Boolean => "false".to_string(),
+        Sort::Integer => "0".to_string(),
+        Sort::Real => "0.0".to_string(),
+        Sort::String => "\"\"".to_string(),
+        Sort::I32 | Sort::U32 => "(_ bv0 32)".to_string(),
+        Sort::I64 | Sort::U64 => "(_ bv0 64)".to_string(),
+        Sort::F32 => "((_ to_fp 8 24) RNE 0.0)".to_string(),
+        Sort::F64 => "((_ to_fp 11 53) RNE 0.0)".to_string(),
+        Sort::Seq(_) => format!("(as seq.empty ({}))", format_sort(sort, ir)),
+        Sort::Set(_) => format!("((as const ({})) false)", format_sort(sort, ir)),
+        Sort::Error => "((as const (Array Int Bool)) false)".to_string(),
+        Sort::Cloak(inner) => format!("(as Cloak-null (Cloak {}))", format_sort(inner, ir)),
+        Sort::Array(_, v) => format!(
+            "((as const ({})) {})",
+            format_sort(sort, ir),
+            array_null_value(v, ir)
+        ),
+        Sort::User(_) => {
+            let vs = format_sort(sort, ir);
+            let safe = vs.replace(' ', "_").replace('(', "").replace(')', "");
+            format!("null_{}", safe)
+        }
+        Sort::Uninterpreted(_) => panic!("no null value for uninterpreted sort"),
+    }
+}
+
+/// Collect all called functions inside an intrinsic
+pub(crate) fn collect_fn_from_intrinsic(
+    exp_registry: &ExpRegistry,
+    intrinsic: &Intrinsic,
+) -> Vec<UsrFunId> {
+    let mut called_fns = vec![];
+
+    match intrinsic {
+        Intrinsic::BoolVal(_)
+        | Intrinsic::IntVal(_)
+        | Intrinsic::RealVal(_)
+        | Intrinsic::StrVal(_)
+        | Intrinsic::StrNew
+        | Intrinsic::SeqEmpty { .. }
+        | Intrinsic::SetEmpty { .. }
+        | Intrinsic::ArrayEmpty { .. }
+        | Intrinsic::BvVal { .. }
+        | Intrinsic::FloatVal { .. }
+        | Intrinsic::FloatNaN { .. }
+        | Intrinsic::FloatPosInf { .. }
+        | Intrinsic::FloatNegInf { .. }
+        | Intrinsic::FloatPosZero { .. }
+        | Intrinsic::FloatNegZero { .. }
+        | Intrinsic::ErrFresh(_) => {}
+        Intrinsic::BoolNot { val }
+        | Intrinsic::IntNeg { val }
+        | Intrinsic::IntAbs { val }
+        | Intrinsic::IntToReal { val }
+        | Intrinsic::IntToI32 { val }
+        | Intrinsic::IntToI64 { val }
+        | Intrinsic::IntToU32 { val }
+        | Intrinsic::IntToU64 { val }
+        | Intrinsic::IntToF32 { val }
+        | Intrinsic::IntToF64 { val }
+        | Intrinsic::IntFromHex { val }
+        | Intrinsic::IntFromOct { val }
+        | Intrinsic::IntFromBin { val }
+        | Intrinsic::IntIsGtI64Max { val }
+        | Intrinsic::IntIsLtI64Min { val }
+        | Intrinsic::IntIsGtU64Max { val }
+        | Intrinsic::IntIsLtU64Min { val }
+        | Intrinsic::IntIsLtI32Min { val }
+        | Intrinsic::IntIsGtI32Max { val }
+        | Intrinsic::IntIsLtU32Min { val }
+        | Intrinsic::IntIsGtU32Max { val }
+        | Intrinsic::RealNeg { val }
+        | Intrinsic::RealAbs { val }
+        | Intrinsic::RealRound { val }
+        | Intrinsic::RealFloor { val }
+        | Intrinsic::RealCeil { val }
+        | Intrinsic::RealIsInt { val }
+        | Intrinsic::RealToInt { val }
+        | Intrinsic::RealToF32 { val }
+        | Intrinsic::RealToF64 { val }
+        | Intrinsic::StrLen { seq: val }
+        | Intrinsic::StrIsEmpty { seq: val }
+        | Intrinsic::StrIsDigit { seq: val }
+        | Intrinsic::StrToInt { val }
+        | Intrinsic::StrFromInt { val }
+        | Intrinsic::StrFromCode { val }
+        | Intrinsic::StrToCode { val }
+        | Intrinsic::BoxShield { val, .. }
+        | Intrinsic::BoxReveal { val, .. }
+        | Intrinsic::SeqUnit { val, .. }
+        | Intrinsic::SeqLen { seq: val, .. }
+        | Intrinsic::SeqIsEmpty { seq: val, .. }
+        | Intrinsic::SetLen { set: val, .. }
+        | Intrinsic::SetIsEmpty { set: val, .. }
+        | Intrinsic::ArrayLen { arr: val, .. }
+        | Intrinsic::ArrayIsEmpty { arr: val, .. }
+        | Intrinsic::BvNot { val, .. }
+        | Intrinsic::BvNeg { val, .. }
+        | Intrinsic::BvRedAnd { val, .. }
+        | Intrinsic::BvRedOr { val, .. }
+        | Intrinsic::BvToInt { val, .. }
+        | Intrinsic::FloatNeg { val, .. }
+        | Intrinsic::FloatAbs { val, .. }
+        | Intrinsic::FloatSqrt { val, .. }
+        | Intrinsic::FloatIsNaN { val, .. }
+        | Intrinsic::FloatIsInf { val, .. }
+        | Intrinsic::FloatIsZero { val, .. }
+        | Intrinsic::FloatIsNormal { val, .. }
+        | Intrinsic::FloatIsSubnormal { val, .. }
+        | Intrinsic::FloatIsNeg { val, .. }
+        | Intrinsic::FloatIsPos { val, .. }
+        | Intrinsic::FloatToInt { val, .. }
+        | Intrinsic::FloatToReal { val, .. }
+        | Intrinsic::FloatToU32 { val, .. }
+        | Intrinsic::FloatToI32 { val, .. }
+        | Intrinsic::FloatToU64 { val, .. }
+        | Intrinsic::FloatToI64 { val, .. }
+        | Intrinsic::FloatCeil { val, .. }
+        | Intrinsic::FloatFloor { val, .. }
+        | Intrinsic::FloatTrunc { val, .. }
+        | Intrinsic::FloatNearest { val, .. }
+        | Intrinsic::FloatFromHexStr { val, .. } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, val));
+        }
+        Intrinsic::BoolAnd { lhs, rhs }
+        | Intrinsic::BoolOr { lhs, rhs }
+        | Intrinsic::BoolXor { lhs, rhs }
+        | Intrinsic::BoolNand { lhs, rhs }
+        | Intrinsic::BoolNor { lhs, rhs }
+        | Intrinsic::BoolXnor { lhs, rhs }
+        | Intrinsic::BoolImplies { lhs, rhs }
+        | Intrinsic::BoolIff { lhs, rhs }
+        | Intrinsic::IntAdd { lhs, rhs }
+        | Intrinsic::IntSub { lhs, rhs }
+        | Intrinsic::IntMul { lhs, rhs }
+        | Intrinsic::IntDiv { lhs, rhs }
+        | Intrinsic::IntDivTrunc { lhs, rhs }
+        | Intrinsic::IntMod { lhs, rhs }
+        | Intrinsic::IntRem { lhs, rhs }
+        | Intrinsic::IntPow {
+            base: lhs,
+            exp: rhs,
+        }
+        | Intrinsic::IntDivides { lhs, rhs }
+        | Intrinsic::IntLt { lhs, rhs }
+        | Intrinsic::IntLe { lhs, rhs }
+        | Intrinsic::IntGt { lhs, rhs }
+        | Intrinsic::IntGe { lhs, rhs }
+        | Intrinsic::RealAdd { lhs, rhs }
+        | Intrinsic::RealSub { lhs, rhs }
+        | Intrinsic::RealMul { lhs, rhs }
+        | Intrinsic::RealDiv { lhs, rhs }
+        | Intrinsic::RealPow {
+            base: lhs,
+            exp: rhs,
+        }
+        | Intrinsic::RealLt { lhs, rhs }
+        | Intrinsic::RealLe { lhs, rhs }
+        | Intrinsic::RealGt { lhs, rhs }
+        | Intrinsic::RealGe { lhs, rhs }
+        | Intrinsic::StrConcat { lhs, rhs }
+        | Intrinsic::StrAt { seq: lhs, idx: rhs }
+        | Intrinsic::StrIndexOfDefault { seq: lhs, sub: rhs }
+        | Intrinsic::StrContains {
+            seq: lhs,
+            item: rhs,
+        }
+        | Intrinsic::StrStartsWith {
+            seq: lhs,
+            item: rhs,
+        }
+        | Intrinsic::StrEndsWith {
+            seq: lhs,
+            item: rhs,
+        }
+        | Intrinsic::StrLt { lhs, rhs }
+        | Intrinsic::StrLe { lhs, rhs }
+        | Intrinsic::StrGt { lhs, rhs }
+        | Intrinsic::StrGe { lhs, rhs }
+        | Intrinsic::SeqPush {
+            seq: lhs,
+            item: rhs,
+            ..
+        }
+        | Intrinsic::SeqConcat { lhs, rhs, .. }
+        | Intrinsic::SeqNth {
+            seq: lhs, idx: rhs, ..
+        }
+        | Intrinsic::SeqAtSeq {
+            seq: lhs, idx: rhs, ..
+        }
+        | Intrinsic::SeqIndexOfDefault {
+            seq: lhs, sub: rhs, ..
+        }
+        | Intrinsic::SeqContains {
+            seq: lhs,
+            item: rhs,
+            ..
+        }
+        | Intrinsic::SeqPrefixOf { lhs, rhs, .. }
+        | Intrinsic::SeqSuffixOf { lhs, rhs, .. }
+        | Intrinsic::SetInsert {
+            set: lhs,
+            item: rhs,
+            ..
+        }
+        | Intrinsic::SetRemove {
+            set: lhs,
+            item: rhs,
+            ..
+        }
+        | Intrinsic::SetContains {
+            set: lhs,
+            item: rhs,
+            ..
+        }
+        | Intrinsic::SetIntersect { lhs, rhs, .. }
+        | Intrinsic::SetUnion { lhs, rhs, .. }
+        | Intrinsic::SetDiff { lhs, rhs, .. }
+        | Intrinsic::SetSymDiff { lhs, rhs, .. }
+        | Intrinsic::SetIsSubset { lhs, rhs, .. }
+        | Intrinsic::SetIsProperSubset { lhs, rhs, .. }
+        | Intrinsic::SetIsDisjoint { lhs, rhs, .. }
+        | Intrinsic::SetHasSize {
+            set: lhs,
+            size: rhs,
+            ..
+        }
+        | Intrinsic::ArraySelect {
+            arr: lhs, key: rhs, ..
+        }
+        | Intrinsic::ArrayRemove {
+            arr: lhs, key: rhs, ..
+        }
+        | Intrinsic::ArrayContainsKey {
+            arr: lhs, key: rhs, ..
+        }
+        | Intrinsic::BvAnd { lhs, rhs, .. }
+        | Intrinsic::BvOr { lhs, rhs, .. }
+        | Intrinsic::BvXor { lhs, rhs, .. }
+        | Intrinsic::BvNand { lhs, rhs, .. }
+        | Intrinsic::BvNor { lhs, rhs, .. }
+        | Intrinsic::BvXnor { lhs, rhs, .. }
+        | Intrinsic::BvAdd { lhs, rhs, .. }
+        | Intrinsic::BvSub { lhs, rhs, .. }
+        | Intrinsic::BvMul { lhs, rhs, .. }
+        | Intrinsic::BvDiv { lhs, rhs, .. }
+        | Intrinsic::BvRem { lhs, rhs, .. }
+        | Intrinsic::BvMod { lhs, rhs, .. }
+        | Intrinsic::BvShl { lhs, rhs, .. }
+        | Intrinsic::BvLshr { lhs, rhs, .. }
+        | Intrinsic::BvAshr { lhs, rhs, .. }
+        | Intrinsic::BvRotLeft { lhs, rhs, .. }
+        | Intrinsic::BvRotRight { lhs, rhs, .. }
+        | Intrinsic::BvLt { lhs, rhs, .. }
+        | Intrinsic::BvLe { lhs, rhs, .. }
+        | Intrinsic::BvGt { lhs, rhs, .. }
+        | Intrinsic::BvGe { lhs, rhs, .. }
+        | Intrinsic::FloatAdd { lhs, rhs, .. }
+        | Intrinsic::FloatSub { lhs, rhs, .. }
+        | Intrinsic::FloatMul { lhs, rhs, .. }
+        | Intrinsic::FloatDiv { lhs, rhs, .. }
+        | Intrinsic::FloatRem { lhs, rhs, .. }
+        | Intrinsic::FloatMin { lhs, rhs, .. }
+        | Intrinsic::FloatMax { lhs, rhs, .. }
+        | Intrinsic::FloatLt { lhs, rhs, .. }
+        | Intrinsic::FloatLe { lhs, rhs, .. }
+        | Intrinsic::FloatGt { lhs, rhs, .. }
+        | Intrinsic::FloatGe { lhs, rhs, .. }
+        | Intrinsic::FloatFqEq { lhs, rhs, .. }
+        | Intrinsic::ErrMerge { lhs, rhs, .. }
+        | Intrinsic::SmtEq { lhs, rhs, .. }
+        | Intrinsic::SmtNe { lhs, rhs, .. } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, &lhs));
+            called_fns.append(&mut collect_called_functions(exp_registry, &rhs));
+        }
+        Intrinsic::BoolIte { cond, then, else_ } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, cond));
+            called_fns.append(&mut collect_called_functions(exp_registry, then));
+            called_fns.append(&mut collect_called_functions(exp_registry, else_));
+        }
+        Intrinsic::StrIndexOf { seq, sub, offset } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, seq));
+            called_fns.append(&mut collect_called_functions(exp_registry, sub));
+            called_fns.append(&mut collect_called_functions(exp_registry, offset));
+        }
+        Intrinsic::StrSubstr { seq, start, len } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, seq));
+            called_fns.append(&mut collect_called_functions(exp_registry, start));
+            called_fns.append(&mut collect_called_functions(exp_registry, len));
+        }
+        Intrinsic::StrReplace { seq, src, dst }
+        | Intrinsic::StrReplaceAll { seq, src, dst }
+        | Intrinsic::SeqReplace { seq, src, dst, .. } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, seq));
+            called_fns.append(&mut collect_called_functions(exp_registry, src));
+            called_fns.append(&mut collect_called_functions(exp_registry, dst));
+        }
+        Intrinsic::SeqExtract {
+            seq, offset, len, ..
+        } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, seq));
+            called_fns.append(&mut collect_called_functions(exp_registry, offset));
+            called_fns.append(&mut collect_called_functions(exp_registry, len));
+        }
+        Intrinsic::SeqIndexOf {
+            seq, sub, offset, ..
+        } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, seq));
+            called_fns.append(&mut collect_called_functions(exp_registry, sub));
+            called_fns.append(&mut collect_called_functions(exp_registry, offset));
+        }
+        Intrinsic::ArrayStore { arr, key, val, .. } => {
+            called_fns.append(&mut collect_called_functions(exp_registry, arr));
+            called_fns.append(&mut collect_called_functions(exp_registry, key));
+            called_fns.append(&mut collect_called_functions(exp_registry, val));
+        }
+    }
+    called_fns
 }
 
 /// Convert an intrinsic operation to SMT-LIB string format.
@@ -29,11 +339,9 @@ pub fn format_intrinsic(
     intrinsic: &Intrinsic,
     exp_registry: &ExpRegistry,
     ir: &IRContext,
-    param_names: &std::collections::HashSet<String>,
-    scc_fids: &BTreeSet<UsrFunId>,
 ) -> String {
     // Helper to format sub-expressions
-    let fmt = |id| format_expression(exp_registry, id, ir, param_names, scc_fids);
+    let fmt = |id| format_expression(exp_registry, id, ir);
 
     match intrinsic {
         // --- Boolean Operations ---
@@ -180,7 +488,10 @@ pub fn format_intrinsic(
         Intrinsic::StrToCode { val } => format!("((_ int2bv 32) (str.to_code {}))", fmt(*val)),
 
         // --- Cloak Operations ---
-        Intrinsic::BoxShield { val, .. } | Intrinsic::BoxReveal { val, .. } => fmt(*val),
+        // shield wraps a value: T -> Cloak<T>, using the mk-Cloak constructor
+        Intrinsic::BoxShield { val, .. } => format!("(mk-Cloak {})", fmt(*val)),
+        // reveal unwraps a value: Cloak<T> -> T, using the uncloak accessor
+        Intrinsic::BoxReveal { val, .. } => format!("(uncloak {})", fmt(*val)),
 
         // --- Sequence Operations ---
         Intrinsic::SeqEmpty { t } => format!("(as seq.empty (Seq {}))", format_sort_for_fn(t, ir)),
@@ -217,7 +528,9 @@ pub fn format_intrinsic(
         Intrinsic::SeqReplace { seq, src, dst, .. } => {
             format!(
                 "(seq.replace {} (seq.unit {}) (seq.unit {}))",
-                fmt(*seq), fmt(*src), fmt(*dst)
+                fmt(*seq),
+                fmt(*src),
+                fmt(*dst)
             )
         }
         Intrinsic::SeqIsEmpty { seq, .. } => format!("(= (seq.len {}) 0)", fmt(*seq)),
@@ -269,7 +582,9 @@ pub fn format_intrinsic(
             let ts = format_sort_for_fn(t, ir);
             format!(
                 "(= (set.inter {} {}) (as set.empty (Set {})))",
-                fmt(*lhs), fmt(*rhs), ts
+                fmt(*lhs),
+                fmt(*rhs),
+                ts
             )
         }
         Intrinsic::SetHasSize { set, size, .. } => {
@@ -282,14 +597,14 @@ pub fn format_intrinsic(
         // "key absent" vs "key present" without requiring a concrete default value.
         Intrinsic::ArrayEmpty { k, v } => {
             let (ks, vs) = (format_sort_for_fn(k, ir), format_sort_for_fn(v, ir));
-            let null = array_null_const_name(v, ir);
+            let null = array_null_value(v, ir);
             format!("((as const (Array {ks} {vs})) {null})")
         }
         // array.size is not standard SMT-LIB2 and not supported in Z3's -smt2 mode.
         // Encode ArrayLen as an uninterpreted expression (just returns 0 as placeholder,
         // since ArrayLen is not currently used in the TOML parser synthesis).
         Intrinsic::ArrayLen { arr, v, .. } => {
-            let null = array_null_const_name(v, ir);
+            let null = array_null_value(v, ir);
             // Count non-null entries: use a placeholder 0 since SMT-LIB2 has no array size.
             // TODO: declare array_len as an uninterpreted function if needed.
             format!(
@@ -303,16 +618,16 @@ pub fn format_intrinsic(
         }
         Intrinsic::ArraySelect { arr, key, .. } => format!("(select {} {})", fmt(*arr), fmt(*key)),
         Intrinsic::ArrayRemove { arr, key, v, .. } => {
-            let null = array_null_const_name(v, ir);
+            let null = array_null_value(v, ir);
             format!("(store {} {} {})", fmt(*arr), fmt(*key), null)
         }
         Intrinsic::ArrayContainsKey { arr, key, v, .. } => {
-            let null = array_null_const_name(v, ir);
+            let null = array_null_value(v, ir);
             format!("(not (= (select {} {}) {}))", fmt(*arr), fmt(*key), null)
         }
         // array.size is not standard SMT-LIB2. Encode isEmpty as: ∀k. select(arr,k) = null
         Intrinsic::ArrayIsEmpty { arr, k, v } => {
-            let null = array_null_const_name(v, ir);
+            let null = array_null_value(v, ir);
             let k_sort = format_sort_for_fn(k, ir);
             format!(
                 "(forall ((_ak_ {})) (= (select {} _ak_) {}))",
@@ -392,11 +707,15 @@ pub fn format_intrinsic(
         Intrinsic::BvToInt { t, val } => match t {
             Sort::I32 => format!(
                 "(ite (bvslt {} (_ bv0 32)) (- (bv2int {}) 4294967296) (bv2int {}))",
-                fmt(*val), fmt(*val), fmt(*val)
+                fmt(*val),
+                fmt(*val),
+                fmt(*val)
             ),
             Sort::I64 => format!(
                 "(ite (bvslt {} (_ bv0 64)) (- (bv2int {}) 18446744073709551616) (bv2int {}))",
-                fmt(*val), fmt(*val), fmt(*val)
+                fmt(*val),
+                fmt(*val),
+                fmt(*val)
             ),
             _ => format!("(bv2int {})", fmt(*val)),
         },
@@ -481,7 +800,9 @@ pub fn format_intrinsic(
         Intrinsic::FloatNearest { val, .. } => format!("(fp.roundToIntegral RNE {})", fmt(*val)),
         Intrinsic::FloatFqEq { lhs, rhs, .. } => format!("(fp.eq {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::FloatFromHexStr { val, .. } => format!("(fp.from_str {})", fmt(*val)),
-        Intrinsic::ErrFresh(id) => format!("(store ((as const (Array Int Bool)) false) {} true)", id),
+        Intrinsic::ErrFresh(id) => {
+            format!("(store ((as const (Array Int Bool)) false) {} true)", id)
+        }
         Intrinsic::ErrMerge { lhs, rhs, .. } => format!("((_ map or) {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),

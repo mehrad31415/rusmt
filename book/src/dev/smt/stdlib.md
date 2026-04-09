@@ -97,6 +97,31 @@ fn lang_sat_add(a: I32, b: I32) -> I32 {
 
 The guards encode the diverging cases as Z3-checkable conditions. Z3 will find models for each branch independently. For each model, the concrete Rust execution follows the same branch as Z3 predicted — so soundness is preserved in every branch.
 
+### Input validation contract
+
+Some stdlib functions have preconditions on their inputs. For example, `Integer::from_hex_str`
+expects a string of pure hex digits — no `0x` prefix, no underscores. On invalid input:
+
+- **Rust** panics (`unwrap()` on a failed parse).
+- **Z3** silently returns a wrong value (e.g., 0 for an unrecognized character).
+
+These behaviors diverge, but this does NOT break soundness because:
+
+> **The interpreter must validate inputs before calling stdlib functions.**
+
+The TOML parser, for example, checks each character with `is_hex_digit` and strips
+prefixes/underscores before the string ever reaches `from_hex_str`. Invalid inputs are
+caught by the parser and produce `Error::fresh()` — they never reach the stdlib.
+
+Since the parser validates identically in both Rust and Z3, the invalid-input path is
+unreachable in both worlds. The divergence exists on a path that no execution can take.
+
+**Rule for interpreter authors:** if a stdlib function can panic on certain inputs, your
+interpreter must guard against those inputs explicitly. Do not rely on the stdlib to handle
+invalid inputs gracefully — it is not designed to. The stdlib assumes its inputs satisfy
+the documented preconditions. If you violate them, Rust panics and Z3 gives garbage, and
+any models Z3 finds on that path are unsound.
+
 ---
 
 Rusmart standard library (_stdlib_) contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT. The _rusmart-smt-stdlib_ package consists of one _library crate_. The crate contains two modules: `dt` and `exp`. The `dt` module contains data types part of the type system in Rusmart, while the `exp` module contains expressions. Both modules are re-exported in the root of the crate to allow users to use data types and expressions directly.

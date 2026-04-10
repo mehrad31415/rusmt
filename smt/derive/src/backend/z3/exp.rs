@@ -195,6 +195,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                 let var = exp_registry.lookup_var(var_id);
                 let coll_exp = exp_registry.lookup_exp(coll_eid);
                 let coll_sort = match coll_exp {
+                    // without losing expressiveness we can assume that the collection is a variable
                     Expression::Var(coll_vid) => exp_registry.lookup_var(coll_vid).sort.clone(),
                     _ => panic!("forall! collection must be a variable"),
                 };

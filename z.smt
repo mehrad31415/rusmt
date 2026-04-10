@@ -1,9 +1,9 @@
-(define-fun my_const () Int 42)                                                                                                                                                
-  (define-fun my_func ((x Int)) Int (+ x 1))                                                                                                                                     
-                                              
-  (declare-const a Int)                                                                                                                                                          
-  (declare-const b Int)                                                                                                                                                          
-  (assert (= a my_const))                                                                                                                                                      
-  (assert (= b (my_func 5)))                                                                                                                                                     
-  (check-sat)                                                                                                                                                                    
-  (get-value (a b))
+ (declare-datatype Value                                                                                                                                                      
+      ((Value_String (field_Value_String_1_ String))                                                                                                                           
+       (Value_Integer (field_Value_Integer_1_ Int))                                                                                                                            
+       (Value_Boolean (field_Value_Boolean_1_ Bool))))                                                                                                                         
+                                                                                                                                                                               
+  (declare-const v Value)
+  (assert (= v (Value_String "hi")))                                                                                                                                           
+  (assert (is-Value_String v))                
+  (check-sat)       

@@ -13,7 +13,7 @@ impl From<f32> for F32 {
     /// Corresponds to Z3: ((_ to_fp 8 24) RNE f)
     fn from(f: f32) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f)),
+            inner: OrderedFloat(f),
         }
     }
 }
@@ -23,7 +23,7 @@ impl From<f64> for F64 {
     /// Corresponds to Z3: ((_ to_fp 11 53) RNE f)
     fn from(f: f64) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f)),
+            inner: OrderedFloat(f),
         }
     }
 }
@@ -188,67 +188,67 @@ pub trait FloatOps: Sized + SMT {
 impl FloatOps for F32 {
     fn nan() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f32::NAN)),
+            inner: OrderedFloat(f32::NAN),
         }
     }
 
     fn infinity() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f32::INFINITY)),
+            inner: OrderedFloat(f32::INFINITY),
         }
     }
 
     fn neg_infinity() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f32::NEG_INFINITY)),
+            inner: OrderedFloat(f32::NEG_INFINITY),
         }
     }
 
     fn pos_zero() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(0.0f32)),
+            inner: OrderedFloat(0.0f32),
         }
     }
 
     fn neg_zero() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(-0.0f32)),
+            inner: OrderedFloat(-0.0f32),
         }
     }
 
     fn add(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 + rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 + rhs.inner.0),
         }
     }
 
     fn sub(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 - rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 - rhs.inner.0),
         }
     }
 
     fn mul(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 * rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 * rhs.inner.0),
         }
     }
 
     fn div(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 / rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 / rhs.inner.0),
         }
     }
 
     fn neg(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(-self.inner.0)),
+            inner: OrderedFloat(-self.inner.0),
         }
     }
 
     fn abs(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.abs())),
+            inner: OrderedFloat(self.inner.0.abs()),
         }
     }
 
@@ -257,25 +257,25 @@ impl FloatOps for F32 {
         // NOT Rust's % which is fmod (truncation remainder).
         // Use libm::remainderf which computes IEEE 754 remainder.
         Self {
-            inner: Intern::new(OrderedFloat(libm::remainderf(self.inner.0, rhs.inner.0))),
+            inner: OrderedFloat(libm::remainderf(self.inner.0, rhs.inner.0)),
         }
     }
 
     fn sqrt(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.sqrt())),
+            inner: OrderedFloat(self.inner.0.sqrt()),
         }
     }
 
     fn min(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.min(rhs.inner.0))),
+            inner: OrderedFloat(self.inner.0.min(rhs.inner.0)),
         }
     }
 
     fn max(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.max(rhs.inner.0))),
+            inner: OrderedFloat(self.inner.0.max(rhs.inner.0)),
         }
     }
 
@@ -379,25 +379,25 @@ impl FloatOps for F32 {
         // Rust .parse() does not support hex floats.
         let val = hexf_parse::parse_hexf32(&s.inner, false).expect("Invalid Hex Float");
         Self {
-            inner: Intern::new(OrderedFloat(val)),
+            inner: OrderedFloat(val),
         }
     }
 
     fn ceil(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.ceil())),
+            inner: OrderedFloat(self.inner.0.ceil()),
         }
     }
 
     fn floor(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.floor())),
+            inner: OrderedFloat(self.inner.0.floor()),
         }
     }
 
     fn trunc(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.trunc().into())),
+            inner: OrderedFloat(self.inner.0.trunc().into()),
         }
     }
 
@@ -410,82 +410,82 @@ impl FloatOps for F32 {
             r
         };
         Self {
-            inner: Intern::new(OrderedFloat(res)),
+            inner: OrderedFloat(res),
         }
     }
 
-    fn fp_eq(self, rhs: Self) -> Boolean {                                                                                                                                         
-        let a: f32 = self.inner.0.into();                                                                                                                                          
+    fn fp_eq(self, rhs: Self) -> Boolean {
+        let a: f32 = self.inner.0.into();
         let b: f32 = rhs.inner.0.into();
-        (a == b).into()                                                                                                                                                            
-    }   
+        (a == b).into()
+    }
 }
 
 /// Operations for F64.
 impl FloatOps for F64 {
     fn nan() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f64::NAN)),
+            inner: OrderedFloat(f64::NAN),
         }
     }
 
     fn infinity() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f64::INFINITY)),
+            inner: OrderedFloat(f64::INFINITY),
         }
     }
 
     fn neg_infinity() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(f64::NEG_INFINITY)),
+            inner: OrderedFloat(f64::NEG_INFINITY),
         }
     }
 
     fn pos_zero() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(0.0f64)),
+            inner: OrderedFloat(0.0f64),
         }
     }
 
     fn neg_zero() -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(-0.0f64)),
+            inner: OrderedFloat(-0.0f64),
         }
     }
 
     fn add(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 + rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 + rhs.inner.0),
         }
     }
 
     fn sub(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 - rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 - rhs.inner.0),
         }
     }
 
     fn mul(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 * rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 * rhs.inner.0),
         }
     }
 
     fn div(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0 / rhs.inner.0)),
+            inner: OrderedFloat(self.inner.0 / rhs.inner.0),
         }
     }
 
     fn neg(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(-self.inner.0)),
+            inner: OrderedFloat(-self.inner.0),
         }
     }
 
     fn abs(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.abs())),
+            inner: OrderedFloat(self.inner.0.abs()),
         }
     }
 
@@ -494,25 +494,25 @@ impl FloatOps for F64 {
         // NOT Rust's % which is fmod (truncation remainder).
         // Use libm::remainder which computes IEEE 754 remainder.
         Self {
-            inner: Intern::new(OrderedFloat(libm::remainder(self.inner.0, rhs.inner.0))),
+            inner: OrderedFloat(libm::remainder(self.inner.0, rhs.inner.0)),
         }
     }
 
     fn sqrt(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.sqrt())),
+            inner: OrderedFloat(self.inner.0.sqrt()),
         }
     }
 
     fn min(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.min(rhs.inner.0))),
+            inner: OrderedFloat(self.inner.0.min(rhs.inner.0)),
         }
     }
 
     fn max(self, rhs: Self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.max(rhs.inner.0))),
+            inner: OrderedFloat(self.inner.0.max(rhs.inner.0)),
         }
     }
 
@@ -611,25 +611,25 @@ impl FloatOps for F64 {
     fn from_hex_str(s: String) -> Self {
         let val = hexf_parse::parse_hexf64(&s.inner, false).expect("Invalid Hex Float");
         Self {
-            inner: Intern::new(OrderedFloat(val)),
+            inner: OrderedFloat(val),
         }
     }
 
     fn ceil(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.ceil())),
+            inner: OrderedFloat(self.inner.0.ceil()),
         }
     }
 
     fn floor(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.floor())),
+            inner: OrderedFloat(self.inner.0.floor()),
         }
     }
 
     fn trunc(self) -> Self {
         Self {
-            inner: Intern::new(OrderedFloat(self.inner.0.trunc())),
+            inner: OrderedFloat(self.inner.0.trunc()),
         }
     }
 
@@ -642,7 +642,7 @@ impl FloatOps for F64 {
             r
         };
         Self {
-            inner: Intern::new(OrderedFloat(res)),
+            inner: OrderedFloat(res),
         }
     }
 
@@ -650,5 +650,378 @@ impl FloatOps for F64 {
         let a: f64 = self.inner.0.into();
         let b: f64 = rhs.inner.0.into();
         (a == b).into()
+    }
+}
+
+mod tests {
+    #[test]
+    fn test_float_val() {
+        use crate::{F32, F64, float::FloatOps};
+
+        assert!(*F32::from(3.5).fp_eq(F32::from(3.5)));
+        assert!(*F32::from(0.0).fp_eq(F32::from(0.0)));
+        assert!(*F32::from(1.0).fp_eq(F32::from(1.0)));
+        assert!(*F64::from(3.5).fp_eq(F64::from(3.5)));
+        assert!(*F64::from(0.0).fp_eq(F64::from(0.0)));
+    }
+
+    #[test]
+    fn test_float_arithmetic() {
+        use crate::{F64, float::FloatOps};
+
+        // add
+        assert!(*F64::from(3.0).add(F64::from(4.0)).fp_eq(F64::from(7.0)));
+        // addition by infinity
+        assert!(*F64::from(3.0).add(F64::infinity()).fp_eq(F64::infinity()));
+        // addition by negative infinity
+        assert!(
+            *F64::from(3.0)
+                .add(F64::neg_infinity())
+                .fp_eq(F64::neg_infinity())
+        );
+        // addition by NaN
+        assert!(*F64::from(3.0).add(F64::nan()).is_nan());
+        // Nan != Nan
+        assert!(*F64::nan().fp_eq(F64::nan()).not());
+        assert!(*F64::from(10.0).sub(F64::from(3.0)).fp_eq(F64::from(7.0)));
+        // subtraction by infinity
+        assert!(
+            *F64::from(3.0)
+                .sub(F64::infinity())
+                .fp_eq(F64::neg_infinity())
+        );
+        // subtraction by negative infinity
+        assert!(
+            *F64::from(3.0)
+                .sub(F64::neg_infinity())
+                .fp_eq(F64::infinity())
+        );
+        // subtraction by NaN
+        assert!(*F64::from(3.0).sub(F64::nan()).is_nan());
+        assert!(*F64::from(3.0).mul(F64::from(4.0)).fp_eq(F64::from(12.0)));
+        // multiplication by infinity
+        assert!(*F64::from(3.0).mul(F64::infinity()).fp_eq(F64::infinity()));
+        // multiplication by negative infinity
+        assert!(
+            *F64::from(3.0)
+                .mul(F64::neg_infinity())
+                .fp_eq(F64::neg_infinity())
+        );
+        // multiplication by NaN
+        assert!(*F64::from(3.0).mul(F64::nan()).is_nan());
+        // multiplication by zero
+        assert!(*F64::from(3.0).mul(F64::from(0.0)).fp_eq(F64::from(0.0)));
+        assert!(*F64::from(7.0).div(F64::from(2.0)).fp_eq(F64::from(3.5)));
+
+        // Div by zero → Infinity
+        assert!(*F64::from(1.0).div(F64::from(0.0)).fp_eq(F64::infinity()));
+        assert!(
+            *F64::from(-1.0)
+                .div(F64::from(0.0))
+                .fp_eq(F64::neg_infinity())
+        );
+        // 0/0 → NaN
+        assert!(*F64::from(0.0).div(F64::from(0.0)).is_nan());
+        // inf / inf → NaN
+        assert!(*F64::infinity().div(F64::infinity()).is_nan());
+        // Inf - Inf → NaN
+        assert!(*F64::infinity().sub(F64::infinity()).is_nan());
+        // Inf + Inf → Inf
+        assert!(*F64::infinity().add(F64::infinity()).fp_eq(F64::infinity()));
+        // Inf * Inf → Inf
+        assert!(*F64::infinity().mul(F64::infinity()).fp_eq(F64::infinity()));
+        // NaN propagates
+        assert!(*F64::nan().add(F64::from(1.0)).is_nan());
+        assert!(*F64::from(1.0).mul(F64::nan()).is_nan());
+        // Negative * negative = positive
+        assert!(*F64::from(-3.0).mul(F64::from(-4.0)).fp_eq(F64::from(12.0)));
+        // Negative / negative = positive
+        assert!(*F64::from(-6.0).div(F64::from(-2.0)).fp_eq(F64::from(3.0)));
+        assert!(
+            *F64::from(-7.0)
+                .div(F64::from(-3.0))
+                .fp_eq(F64::from(2.3333333333333335))
+        );
+    }
+
+    #[test]
+    fn test_float_neg_abs() {
+        use crate::{F64, float::FloatOps};
+
+        assert!(*F64::from(3.0).neg().fp_eq(F64::from(-3.0)));
+        assert!(*F64::from(-3.0).neg().fp_eq(F64::from(3.0)));
+        assert!(*F64::from(0.0).neg().is_zero());
+        assert!(*F64::from(0.0).neg().is_negative());
+        assert!(*F64::neg_zero().neg().is_positive());
+        assert!(*F64::infinity().neg().fp_eq(F64::neg_infinity()));
+        assert!(*F64::nan().neg().is_nan());
+
+        assert!(*F64::from(-3.0).abs().fp_eq(F64::from(3.0)));
+        assert!(*F64::from(3.0).abs().fp_eq(F64::from(3.0)));
+        assert!(*F64::neg_infinity().abs().fp_eq(F64::infinity()));
+        assert!(*F64::neg_zero().abs().is_zero());
+        assert!(*F64::neg_zero().abs().is_positive());
+        assert!(*F64::nan().abs().is_nan());
+    }
+
+    #[test]
+    fn test_float_rem_sqrt() {
+        use crate::{F64, float::FloatOps};
+
+        // rem: IEEE 754 remainder
+        assert!(*F64::from(7.0).rem(F64::from(3.0)).fp_eq(F64::from(1.0)));
+        assert!(*F64::from(7.0).rem(F64::from(4.0)).fp_eq(F64::from(-1.0))); // rounds to nearest                                                                                  
+        assert!(*F64::from(-7.0).rem(F64::from(3.0)).fp_eq(F64::from(-1.0)));
+        assert!(*F64::from(7.0).rem(F64::from(-3.0)).fp_eq(F64::from(1.0)));
+        assert!(*F64::from(-7.0).rem(F64::from(-3.0)).fp_eq(F64::from(-1.0)));
+        assert!(*F64::from(0.0).rem(F64::from(3.0)).fp_eq(F64::from(0.0)));
+        assert!(*F64::from(1.0).rem(F64::from(0.0)).is_nan());
+        assert!(*F64::infinity().rem(F64::from(3.0)).is_nan());
+        assert!(*F64::from(3.0).rem(F64::infinity()).fp_eq(F64::from(3.0)));
+        assert!(
+            *F64::from(3.0)
+                .rem(F64::neg_infinity())
+                .fp_eq(F64::from(3.0))
+        );
+        assert!(*F64::from(3.0).rem(F64::nan()).is_nan());
+        assert!(*F64::nan().rem(F64::from(3.0)).is_nan());
+
+        // sqrt
+        assert!(*F64::from(4.0).sqrt().fp_eq(F64::from(2.0)));
+        assert!(*F64::from(9.0).sqrt().fp_eq(F64::from(3.0)));
+        assert!(*F64::from(0.0).sqrt().fp_eq(F64::from(0.0)));
+        assert!(*F64::from(-1.0).sqrt().is_nan());
+        assert!(*F64::infinity().sqrt().fp_eq(F64::infinity()));
+        assert!(*F64::neg_infinity().sqrt().is_nan());
+        assert!(*F64::nan().sqrt().is_nan());
+    }
+
+    #[test]
+    fn test_float_min_max() {
+        use crate::{F64, float::FloatOps};
+
+        assert!(*F64::from(3.0).min(F64::from(5.0)).fp_eq(F64::from(3.0)));
+        assert!(*F64::from(5.0).min(F64::from(3.0)).fp_eq(F64::from(3.0)));
+        assert!(*F64::from(-1.0).min(F64::from(1.0)).fp_eq(F64::from(-1.0)));
+        assert!(*F64::infinity().min(F64::from(3.0)).fp_eq(F64::from(3.0)));
+        assert!(
+            *F64::neg_infinity()
+                .min(F64::from(3.0))
+                .fp_eq(F64::neg_infinity())
+        );
+
+        assert!(*F64::from(3.0).max(F64::from(5.0)).fp_eq(F64::from(5.0)));
+        assert!(*F64::from(5.0).max(F64::from(3.0)).fp_eq(F64::from(5.0)));
+        assert!(*F64::from(-1.0).max(F64::from(1.0)).fp_eq(F64::from(1.0)));
+        assert!(
+            *F64::neg_infinity()
+                .max(F64::from(3.0))
+                .fp_eq(F64::from(3.0))
+        );
+        assert!(*F64::infinity().max(F64::from(3.0)).fp_eq(F64::infinity()));
+        assert!(*F64::nan().min(F64::from(3.0)).fp_eq(F64::from(3.0)));
+        assert!(*F64::nan().max(F64::from(3.0)).fp_eq(F64::from(3.0)));
+    }
+
+    #[test]
+    fn test_float_comparisons() {
+        use crate::{F64, float::FloatOps};
+
+        assert!(*F64::from(3.0).lt(F64::from(5.0)));
+        assert!(*F64::from(3.0).le(F64::from(3.0)));
+        assert!(*F64::from(5.0).gt(F64::from(3.0)));
+        assert!(*F64::from(5.0).ge(F64::from(5.0)));
+        assert!(*F64::neg_infinity().lt(F64::from(0.0)));
+        assert!(*F64::from(0.0).lt(F64::infinity()));
+        assert!(*F64::neg_zero().fp_eq(F64::pos_zero())); // so positive and negative zero are equal
+
+        // NaN comparisons — all false
+        assert!(*F64::nan().lt(F64::from(3.0)).not());
+        assert!(*F64::nan().le(F64::from(3.0)).not());
+        assert!(*F64::nan().gt(F64::from(3.0)).not());
+        assert!(*F64::nan().ge(F64::from(3.0)).not());
+        assert!(*F64::nan().lt(F64::nan()).not());
+        assert!(*F64::nan().ge(F64::nan()).not());
+        assert!(*F64::nan().le(F64::infinity()).not());
+        assert!(*F64::nan().ge(F64::neg_infinity()).not());
+    }
+
+    #[test]
+    fn test_float_predicates() {
+        use crate::{F64, float::FloatOps};
+
+        // isNaN
+        assert!(*F64::nan().is_nan());
+        assert!(*F64::from(3.0).is_nan().not());
+        assert!(*F64::infinity().is_nan().not());
+
+        // isInfinite
+        assert!(*F64::infinity().is_infinite());
+        assert!(*F64::neg_infinity().is_infinite());
+        assert!(*F64::from(3.0).is_infinite().not());
+        assert!(*F64::nan().is_infinite().not());
+
+        // isZero
+        assert!(*F64::pos_zero().is_zero());
+        assert!(*F64::neg_zero().is_zero());
+        assert!(*F64::from(3.0).is_zero().not());
+        assert!(*F64::nan().is_zero().not());
+
+        // isNegative
+        assert!(*F64::from(-3.0).is_negative());
+        assert!(*F64::neg_zero().is_negative());
+        assert!(*F64::neg_infinity().is_negative());
+        assert!(*F64::from(3.0).is_negative().not());
+        assert!(*F64::nan().is_negative().not());
+
+        // isPositive
+        assert!(*F64::from(3.0).is_positive());
+        assert!(*F64::pos_zero().is_positive());
+        assert!(*F64::infinity().is_positive());
+        assert!(*F64::from(-3.0).is_positive().not());
+        assert!(*F64::nan().is_positive().not());
+
+        // isNormal
+        assert!(*F64::from(3.0).is_normal());
+        assert!(*F64::from(-3.0).is_normal());
+        assert!(*F64::pos_zero().is_normal().not());
+        assert!(*F64::infinity().is_normal().not());
+        assert!(*F64::nan().is_normal().not());
+
+        // isSubnormal
+        assert!(*F64::from(5e-324).is_subnormal());
+        assert!(*F64::from(3.0).is_subnormal().not());
+        assert!(*F64::pos_zero().is_subnormal().not());
+        assert!(*F64::nan().is_subnormal().not());
+    }
+
+    #[test]
+    fn test_float_rounding_eq() {
+        use crate::{F64, float::FloatOps};
+
+        // ceil
+        assert!(*F64::from(2.3).ceil().fp_eq(F64::from(3.0)));
+        assert!(*F64::from(-2.3).ceil().fp_eq(F64::from(-2.0)));
+        assert!(*F64::from(2.0).ceil().fp_eq(F64::from(2.0)));
+        assert!(*F64::nan().ceil().is_nan());
+        assert!(*F64::infinity().ceil().fp_eq(F64::infinity()));
+        assert!(*F64::neg_infinity().ceil().fp_eq(F64::neg_infinity()));
+
+        // floor
+        assert!(*F64::from(2.7).floor().fp_eq(F64::from(2.0)));
+        assert!(*F64::from(-2.3).floor().fp_eq(F64::from(-3.0)));
+        assert!(*F64::from(2.0).floor().fp_eq(F64::from(2.0)));
+        assert!(*F64::nan().floor().is_nan());
+        assert!(*F64::infinity().floor().fp_eq(F64::infinity()));
+        assert!(*F64::neg_infinity().floor().fp_eq(F64::neg_infinity()));
+
+        // trunc
+        assert!(*F64::from(2.7).trunc().fp_eq(F64::from(2.0)));
+        assert!(*F64::from(-2.7).trunc().fp_eq(F64::from(-2.0)));
+        assert!(*F64::nan().trunc().is_nan());
+        assert!(*F64::infinity().trunc().fp_eq(F64::infinity()));
+        assert!(*F64::neg_infinity().trunc().fp_eq(F64::neg_infinity()));
+
+        // nearest (ties to even)
+        assert!(*F64::from(2.5).nearest().fp_eq(F64::from(2.0))); // tie → even (2)
+        assert!(*F64::from(3.5).nearest().fp_eq(F64::from(4.0))); // tie → even (4)                                                                                              
+        assert!(*F64::from(2.3).nearest().fp_eq(F64::from(2.0)));
+        assert!(*F64::from(2.7).nearest().fp_eq(F64::from(3.0)));
+        assert!(*F64::from(-2.5).nearest().fp_eq(F64::from(-2.0))); // tie → even (-2)                                                                                             
+        assert!(*F64::from(-3.5).nearest().fp_eq(F64::from(-4.0))); // tie → even (-4)                                                                                             
+        assert!(*F64::nan().nearest().is_nan());
+        assert!(*F64::infinity().nearest().fp_eq(F64::infinity()));
+        assert!(*F64::neg_infinity().nearest().fp_eq(F64::neg_infinity()));
+
+        // fp_eq
+        assert!(*F64::from(3.0).fp_eq(F64::from(3.0)));
+        assert!(*F64::from(3.0).fp_eq(F64::from(4.0)).not());
+        assert!(*F64::neg_zero().fp_eq(F64::pos_zero())); // -0.0 == 0.0                                                                                                       
+        assert!(*F64::nan().fp_eq(F64::nan()).not()); // NaN != NaN      
+        assert!(*F64::nan().fp_eq(F64::from(3.0)).not()); // NaN != 3.0
+        assert!(*F64::infinity().fp_eq(F64::infinity()));
+        assert!(*F64::neg_infinity().fp_eq(F64::neg_infinity()));
+    }
+
+    #[test]
+    fn test_float_conversions() {
+        use crate::{F64, I32, I64, Integer, Real, U32, U64, float::FloatOps, smt::SMT};
+
+        // to_integer (floor)
+        assert!(*F64::from(3.7).to_integer().eq(Integer::from(3)));
+        assert!(*F64::from(-3.7).to_integer().eq(Integer::from(-4)));
+        assert!(*F64::from(0.0).to_integer().eq(Integer::from(0)));
+
+        // to_real
+        assert!(*F64::from(3.5).to_real().eq(Real::from(3.5)));
+
+        // to_i32
+        assert!(*F64::from(42.9).to_i32().eq(I32::from(42)));
+        assert!(*F64::from(-42.9).to_i32().eq(I32::from(-42)));
+
+        // to_i64
+        assert!(*F64::from(42.9).to_i64().eq(I64::from(42)));
+
+        // to_u32
+        assert!(*F64::from(42.9).to_u32().eq(U32::from(42u32)));
+
+        // to_u64
+        assert!(*F64::from(42.9).to_u64().eq(U64::from(42u64)));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_int_nan() {
+        use crate::{F64, float::FloatOps};
+        F64::nan().to_integer();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_real_nan() {
+        use crate::{F64, float::FloatOps};
+        F64::nan().to_real();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_int_inf() {
+        use crate::{F64, float::FloatOps};
+        F64::infinity().to_integer();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_real_inf() {
+        use crate::{F64, float::FloatOps};
+        F64::infinity().to_real();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_u32_negative() {
+        use crate::{F64, float::FloatOps};
+        F64::from(-1.0).to_u32();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_u32_overflow() {
+        use crate::{F64, float::FloatOps};
+        F64::from(4294967296.0).to_u32();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_u32_nan() {
+        use crate::{F64, float::FloatOps};
+        F64::nan().to_u32();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_float_to_i32_overflow() {
+        use crate::{F64, float::FloatOps};
+        F64::from(3e10).to_i32();
     }
 }

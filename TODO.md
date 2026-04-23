@@ -20,5 +20,6 @@
 Priority: Check that the standard library functions and the backend do the same thing & fix the z3 smtlib generation so that it doesnt crash or we have performance good.
 
 > Good to have: update the unit tests for full coverage & change the functions in the IR and backend to return a `result` instead of panicking.
-
+> Remove Cloak from the IR — Z3 handles recursive types natively without needing a well-foundedness wrapper. Cloak is only needed for Rust's type system (to break infinite size), not for Z3.                         
+> Extend forall!/exists! to support unbounded quantification over sorts (e.g., forall!(x: Integer => ...)), not just iteration over collections. This would enable properties like "replacing an element not in the sequence leaves it unchanged" — currently inexpressible in the DSL.
 

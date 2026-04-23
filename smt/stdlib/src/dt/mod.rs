@@ -41,12 +41,12 @@ pub struct Real {
 /// ** SMT Float 32
 #[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct F32 {
-    inner: Intern<OrderedFloat<f32>>,
+    inner: OrderedFloat<f32>,
 }
 /// ** SMT Float 64
 #[derive(Debug, Clone, Copy, Default, Hash)]
 pub struct F64 {
-    inner: Intern<OrderedFloat<f64>>,
+    inner: OrderedFloat<f64>,
 }
 /// ** SMT BitVector32
 #[derive(Debug, Clone, Copy, Default, Hash)]

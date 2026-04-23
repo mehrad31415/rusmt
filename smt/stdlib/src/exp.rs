@@ -103,7 +103,7 @@ mod test {
         let s = set!(Integer::from(10));
 
         let v = forall!(var1 in m, var2 in s => var1.lt(var2));
-        assert!(!*v);
+        assert!(*v.not());
     }
 
     #[test]

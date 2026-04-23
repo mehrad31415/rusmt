@@ -407,7 +407,7 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                         if *is_valid_unicode_scalar(code_point_u32)
                                                         {
                                                             return ParseResult::Ok(
-                                                                String::from_code(code_point_u32),
+                                                                String::from_code(code_point),
                                                                 hex_state,
                                                             );
                                                         } else {

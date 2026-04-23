@@ -45,13 +45,6 @@ impl Real {
     }
 
     /// Exponentiation with integer exponent.
-    ///
-    /// # Panics
-    /// - Panics if exponent is negative or too large to fit in i32
-    /// - Only supports integer exponents
-    ///
-    /// Note: Z3 SMT-LIB does not have native Real exponentiation.
-    /// This is provided for interpreter convenience.
     pub fn pow(self, exp: Self) -> Self {
         Self {
             inner: Intern::new(
@@ -72,8 +65,6 @@ impl Real {
     /// Rounds to the nearest integer; ties toward +∞ (i.e. floor(x + 0.5)).
     ///
     /// Corresponds to Z3: `(to_int (+ x (/ 1.0 2.0)))`
-    ///
-    /// Note: This is NOT "ties away from zero" — negative half-integers round toward zero.
     /// Example: round(-2.5) = -2 (not -3), round(2.5) = 3.
     pub fn round(self) -> Integer {
         // floor(x + 0.5) matches Z3's (to_int (+ x 0.5))
@@ -131,22 +122,26 @@ impl Real {
     /// Corresponds to Z3: `(to_int x)` — Z3's `to_int` on Real is floor, not truncation.
     /// Example: to_int(-1.5) = -2 (not -1).
     pub fn to_int(self) -> Integer {
-        // BigRational::to_integer() truncates toward zero; we need floor.
         Integer {
             inner: Intern::new(self.inner.as_ref().floor().to_integer()),
         }
     }
 
-    /// convert to f32
+    /// convert to f32 (panics when the rational value is finite in f64 but exceeds f32 range)
     /// ((_ to_fp 8 24) RNE x) - uses Round to Nearest, ties to Even
     pub fn to_f32(self) -> F32 {
         F32::from(self.inner.as_ref().to_f32().unwrap())
     }
 
-    /// convert to f64
+    /// convert to f64 (in theory, this should never panic)
     /// ((_ to_fp 11 53) RNE x) - uses Round to Nearest, ties to Even
     pub fn to_f64(self) -> F64 {
-        F64::from(self.inner.as_ref().to_f64().unwrap())
+        F64::from(
+            self.inner
+                .as_ref()
+                .to_f64()
+                .expect("DSL Error: BigRational.to_f64 should never be None"),
+        )
     }
 }
 

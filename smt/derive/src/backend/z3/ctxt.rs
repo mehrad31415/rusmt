@@ -5,7 +5,7 @@ use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
-use crate::backend::response::NUM_CPU_CORES;
+// use crate::backend::response::NUM_CPU_CORES;
 use crate::backend::response::Response;
 use crate::backend::z3::exp::format_expression;
 use crate::backend::z3::fun::collect_function_call_edges;
@@ -78,9 +78,9 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "(set-option :sat.random_seed 42)"); // It decides the order to assign the variables
         l!(x, "(set-option :smt.random_seed 42)"); // like which theory to check first, which equality to propagate first.
         // Parallelism
-        l!(x, "(set-option :parallel.enable true)");
-        l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
-        l!(x, "(set-option :parallel.conquer.delay 60)");
+        // l!(x, "(set-option :parallel.enable true)");
+        // l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
+        // l!(x, "(set-option :parallel.conquer.delay 60)");
         // SAT Solver Optimizations - restart is sequential (one thread retrying with better knowledge).
         l!(x, "(set-option :sat.restart.max 100000)");
         // SMT Solver Optimizations

@@ -122,6 +122,135 @@ invalid inputs gracefully — it is not designed to. The stdlib assumes its inpu
 the documented preconditions. If you violate them, Rust panics and Z3 gives garbage, and
 any models Z3 finds on that path are unsound.
 
+### Integer — functions that panic
+
+The following `Integer` methods panic on certain inputs. When writing an interpreter,
+we guard against these inputs before calling the method (e.g., checking divisor != 0                                                                                           
+before calling `div`). On the unguarded path, we use the method as-is. On the guarded path, 
+the panic is unreachable in both Rust and Z3, and both must produce identical results — soundness holds. 
+Also we must replicate the behavior of the target language:    
+                                                                                                   
+- If the target language treats it as an error (e.g., division by zero is a runtime                                                                                            
+error in most languages), we produce `Error::fresh()` in the guard branch.                                                                                                   
+- If the target language defines specific behavior for that input (e.g., saturating,                                                                                           
+wrapping, returning a default), we implement that behavior using other stdlib
+operations in the guard branch.
+
+In either case, the guard branch handles the diverging input before the stdlib method                                                                                          
+is reached, so the panic never fires. We have not yet encountered a case where the                                                                                             
+stdlib lacks the operations needed to replicate a target language's behavior in the                                                                                            
+guard branch, but this may arise as more languages are implemented.
+
+If the interpreter does NOT guard, Rust panics (crashes) while Z3 silently
+returns a wrong value. Any models Z3 finds on that path are unsound because
+the Rust side never reaches the return — it crashes instead.
+
+- `div(rhs)` — panics when `rhs == 0`
+- `div_trunc(rhs)` — panics when `rhs == 0`
+- `modulo(rhs)` — panics when `rhs == 0`
+- `rem(rhs)` — panics when `rhs == 0`
+- `pow(exp)` — panics when `exp < 0` or `exp > u32::MAX`
+- `divides(rhs)` — panics when `self == 0`
+- `to_i32()` — panics when value is outside `[-2147483648, 2147483647]`
+- `to_i64()` — panics when value is outside `[-9223372036854775808, 9223372036854775807]`
+- `to_u32()` — panics when value is outside `[0, 4294967295]`
+- `to_u64()` — panics when value is outside `[0, 18446744073709551615]`
+- `to_f32()` — panics when value is too large for f32
+- `to_f64()` — panics when value is too large for f64
+- `from_hex_str(s)` — panics when `s` contains non-hex characters
+- `from_oct_str(s)` — panics when `s` contains non-octal characters
+- `from_bin_str(s)` — panics when `s` contains characters other than `0` or `1`
+
+### String — functions that panic
+
+- `at(index)` — panics when index is out of bounds (negative or >= length)
+- `index_of(substr, offset)` — panics when offset is negative or bigger than the length of the string, or when substr is not found
+- `index_of_default(substr)` — panics when substr is not found or the offset is bigger than the length of the string
+- `substr(offset, length)` — panics when offset or length are negative or when offset is beyond the string length
+- `to_int()` — panics when the string is not a valid integer. Divergence: Rust parses any valid integer (including negative), Z3's `str.to_int` returns -1 for non-digit strings & negative numbers. Guard: ensure the string contains only digits before calling.
+- `from_int(i)` — does not panic but diverges: Rust's `to_string()` gives gives the expected result for negative integers, Z3's `str.from_int` gives `""` for negative numbers. Guard: check for negative integers before calling if the target language needs specific behavior.
+- `replace_all(s, "", dst)` — does not panic but diverges: Rust inserts `dst` at every position (e.g., `"Hello"` → `"XHXeXlXlXoX"`), Z3 returns the original string unchanged. Guard: do not call `replace_all` with an empty source string.
+- `from_code(code)` — panics when code is negative, greater than u32 max, or not a valid Unicode scalar value (not all u32 values are valid characters). Z3's `str.from_code` returns `""` for invalid values instead of panicking.
+- `to_code()` — panics on empty string or string with more than one character but z3 returns -1.
+
+### Seq — functions that panic
+
+- `at(index)` — panics when index is out of bounds (negative or >= length). Z3's `seq.nth` returns an value `-1`.
+- `at_seq(index)` — panics when index is out of bounds (negative or >= length). Z3's `seq.extract` returns an empty sequence.
+- `extract(offset, length)` — panics when offset or length are negative, or when offset is beyond the sequence length. Z3's `seq.extract` returns an empty sequence for invalid inputs.
+- `index_of(sub, offset)` — panics when offset is negative, when the subsequence is longer than the sequence, when offset is beyond the valid search range, or when the subsequence is not found. Z3's `seq.indexof` returns -1 when not found.
+- `index_of_default(sub)` — same as `index_of` with offset 0.
+
+### Real — functions that panic
+
+- `div(rhs)` — panics when `rhs == 0`
+- `pow(exp)` — panics when `exp` is too large for i32 (outside `[-2147483648, 2147483647]`)
+- `to_f32()` — panics when value is too large for f32 but is finite in f64 (roughly `1.8 * 10^308 > |value| > 3.4 * 10^38`)
+
+### Bitvector — functions that panic
+
+- `bv_div(rhs)` — panics when `rhs == 0`. Z3's `bvsdiv`/`bvudiv` returns `0xFFFFFFFF` (all-ones) for division by zero. Note: signed `MIN / -1` does NOT panic — `wrapping_div` wraps to `MIN`, matching Z3's `bvsdiv` behavior.
+- `bv_rem(rhs)` — panics when `rhs == 0`. Z3's `bvsrem`/`bvurem` returns the dividend unchanged for remainder by zero.
+- `bv_mod(rhs)` — panics when `rhs == 0`. Z3's `bvsmod`/`bvurem` returns the dividend unchanged for modulo by zero.
+
+### Float — functions that panic
+
+- `to_integer()` — panics on NaN or Infinity. Z3's `(to_int (fp.to_real x))` returns an unspecified value.
+- `to_real()` — panics on NaN or Infinity. Z3's `(fp.to_real x)` returns an unspecified value.
+- `to_i32()` — panics on NaN, Infinity, or value outside `[-2147483648, 2147483647]`. Z3's `(fp.to_sbv 32)` returns an unspecified bitvector.
+- `to_i64()` — panics on NaN, Infinity, or value outside `[-9223372036854775808, 9223372036854775807]`. Z3's `(fp.to_sbv 64)` returns an unspecified bitvector.
+- `to_u32()` — panics on NaN, Infinity, negative values, or value > 4294967295. Z3's `(fp.to_ubv 32)` returns an unspecified bitvector.
+- `to_u64()` — panics on NaN, Infinity, negative values, or value > 18446744073709551615. Z3's `(fp.to_ubv 64)` returns an unspecified bitvector.
+- `from_hex_str(s)` — panics on invalid hex float string.
+
+### Float — NaN behavior notes
+
+- `is_negative()` / `is_positive()` — guarded with `!is_nan()` to match Z3. Rust's `is_sign_negative` returns true for `-NaN`, Z3's `fp.isNegative` returns false for all NaN. Without the guard, soundness breaks.
+- `rem(rhs)` — uses `libm::remainderf`/`libm::remainder` (IEEE 754 remainder), NOT Rust's `%` which is fmod. Z3's `fp.rem` matches IEEE 754.
+- `nearest()` — custom implementation for ties-to-even. Rust's `f64::round()` uses ties-away-from-zero, Z3's RNE uses ties-to-even.
+
+### Theoretical limitations (unguarded edge cases)
+
+The following cases are not explicitly guarded in the TOML interpreter because they
+require pathological inputs that are impractical in real-world usage. They are documented
+here for completeness.
+
+- **`Real.pow(exp)` with digit-count exponent**: In the TOML float parser (`float.rs`),
+  expressions like `Real::from(10).pow(number_of_digits(val).neg().to_real())` use the
+  digit count of a parsed number as the exponent. `Real.pow` internally calls
+  `exp.to_integer().to_i32().unwrap()`, which panics if the exponent exceeds i32 range.
+  The digit count is not explicitly bounded — a TOML file containing a number with more
+  than 2,147,483,647 digits (~2 GB of digits alone) would trigger this panic. In practice,
+  the parser would exhaust memory long before reaching this limit. No guard is added
+  because the input size makes this an unreachable test case in any realistic scenario.
+
+- **`Integer.pow(exp)` with digit-count exponent**: Similarly, `Integer::from(10).pow(number_of_digits(val))`
+  in the float parser uses the digit count as an exponent for `Integer.pow`, which requires
+  the exponent to fit in `u32`. A number with more than 4,294,967,295 digits (~4 GB) would
+  be needed to trigger this. Same practical impossibility applies.
+
+### String encoding: ASCII-only soundness
+
+The stdlib `String` operations (`length`, `at`, `substr`, `index_of`, etc.) count
+Unicode code points (via Rust's `.chars()`). Z3's string theory counts UTF-8 bytes.
+For ASCII (code points 0-127), one code point equals one byte so they agree. For
+non-ASCII, they diverge:
+
+| Input | Rust (code points) | Z3 (bytes) |
+|-------|-------------------|------------|
+| `"Hello"` | 5 | 5 |
+| `"é"` (U+00E9) | 1 | 2 |
+| `"😀"` (U+1F600) | 1 | 4 |
+
+This affects all position-based operations (`at`, `substr`, `index_of`) since indices
+refer to different units. The soundness invariant holds only for ASCII input.
+
+Changing the Rust side to byte-based is not feasible: Z3's `str.at` can return
+individual bytes of multi-byte UTF-8 sequences (e.g., `(str.at "😀" 0)` returns
+`\xF0`), which cannot be stored in a Rust `String` (requires valid UTF-8).
+
+For interpreter authors: restrict string inputs to ASCII for soundness.
+
 ---
 
 Rusmart standard library (_stdlib_) contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT. The _rusmart-smt-stdlib_ package consists of one _library crate_. The crate contains two modules: `dt` and `exp`. The `dt` module contains data types part of the type system in Rusmart, while the `exp` module contains expressions. Both modules are re-exported in the root of the crate to allow users to use data types and expressions directly.

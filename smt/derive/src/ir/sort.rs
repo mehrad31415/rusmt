@@ -74,7 +74,7 @@ impl Display for Sort {
             Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
             Self::Error => write!(f, "Error"),
             Self::User(sid) => write!(f, "${sid}"),
-            Self::Uninterpreted(name) => write!(f, "uninterpreted_{name}"),
+            Self::Uninterpreted(name) => write!(f, "{name}"),
         }
     }
 }

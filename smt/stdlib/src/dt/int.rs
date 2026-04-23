@@ -7,7 +7,6 @@ use num_rational::BigRational;
 use num_traits::Euclid;
 use num_traits::Num;
 use num_traits::Signed;
-use num_traits::Zero;
 use num_traits::cast::ToPrimitive;
 
 /// Integer operations
@@ -106,9 +105,6 @@ impl Integer {
     /// (= (mod rhs self) 0)
     /// Returns false if self is zero.
     pub fn divides(self, rhs: Self) -> Boolean {
-        if self.inner.is_zero() {
-            return false.into();
-        }
         (rhs.inner.as_ref() % self.inner.as_ref() == BigInt::from(0)).into()
     }
 

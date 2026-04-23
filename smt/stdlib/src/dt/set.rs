@@ -118,3 +118,23 @@ macro_rules! set {
         }
     };
 }
+
+mod tests {
+    #[test]
+    fn test_set_empty_len_insert() {
+        use crate::{Integer, Set, smt::SMT};
+
+        let empty: Set<Integer> = Set::new();
+        assert!(*empty.length().eq(Integer::from(0)));
+
+        let s1 = empty.insert(Integer::from(10));
+        assert!(*s1.length().eq(Integer::from(1)));
+
+        let s2 = s1.insert(Integer::from(20));
+        assert!(*s2.length().eq(Integer::from(2)));
+
+        // Duplicate insert — length stays the same
+        let s3 = s2.insert(Integer::from(10));
+        assert!(*s3.length().eq(Integer::from(2)));
+    }
+}

@@ -5,7 +5,7 @@ use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
-// use crate::backend::response::NUM_CPU_CORES;
+use crate::backend::response::NUM_CPU_CORES;
 use crate::backend::response::Response;
 use crate::backend::z3::exp::format_expression;
 use crate::backend::z3::fun::collect_function_call_edges;
@@ -66,21 +66,18 @@ impl CodeGen for CodeGenZ3 {
             error_targets: _,
         } = ir;
 
-        // disable success messages
         l!(x, "(set-option :print-success false)");
-        // enable model generation in case of satisfiability for debugging
         l!(x, "(set-option :produce-models true)");
-        // disable proof generation to save resources
         l!(x, "(set-option :produce-proofs false)");
-        // disable unsat core generation to save resources
         l!(x, "(set-option :produce-unsat-cores false)");
         // Reproducibility - fixed seed = deterministic search order = same runtime every time.
         l!(x, "(set-option :sat.random_seed 42)"); // It decides the order to assign the variables
         l!(x, "(set-option :smt.random_seed 42)"); // like which theory to check first, which equality to propagate first.
         // Parallelism
-        // l!(x, "(set-option :parallel.enable true)");
-        // l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
-        // l!(x, "(set-option :parallel.conquer.delay 60)");
+        l!(x, "(set-option :parallel.enable true)");
+        l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
+        l!(x, "(set-option :parallel.conquer.delay 6000)");
+        l!(x); // add new line
         // SAT Solver Optimizations - restart is sequential (one thread retrying with better knowledge).
         l!(x, "(set-option :sat.restart.max 100000)");
         // SMT Solver Optimizations
@@ -102,6 +99,14 @@ impl CodeGen for CodeGenZ3 {
         l!(
             x,
             "(declare-datatype Cloak (par (T) ((mk-Cloak (uncloak T)) (Cloak-null))))"
+        );
+        l!(
+            x,
+            "(declare-datatypes ((RusmartSet 1)) ((par (T) ((mk-rset (rset-data (Array T Bool)) (rset-card Int))))))"
+        );
+        l!(
+            x,
+            "(declare-datatypes ((RusmartArray 2)) ((par (K V) ((mk-rarr (rarr-data (Array K V)) (rarr-card Int))))))"
         );
         l!(x);
 
@@ -491,13 +496,13 @@ impl CodeGen for CodeGenZ3 {
                                 Sort::Array(_key_sort, val_sort) => {
                                     let null_name = array_null_value(val_sort, ir);
                                     format!(
-                                        "(not (= (select {} {}) {}))",
+                                        "(not (= (select (rarr-data {}) {}) {}))",
                                         coll_str, var.name, null_name
                                     )
                                 }
                                 Sort::Set(_) => {
-                                    // Sets are (Array T Bool), membership is (select set elem)
-                                    format!("(select {} {})", coll_str, var.name)
+                                    // Sets are RusmartSet wrapping (Array T Bool), membership via rset-data
+                                    format!("(select (rset-data {}) {})", coll_str, var.name)
                                 }
                                 Sort::Seq(_) => {
                                     format!(

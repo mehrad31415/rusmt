@@ -88,7 +88,6 @@ These are exposed via the `FloatOps` trait (receiver is `F32` or `F64`):
 - **Conversions**: `to_integer()`, `to_real()`, `to_u32()`, `to_i32()`, `to_u64()`, `to_i64()`
 - **Rounding**: `ceil()`, `floor()`, `trunc()`, `nearest()`
 - **Equality**: `fp_eq(_)` (the compiler also accepts `fq_eq(_)` as a legacy alias)
-- **Parsing**: `from_hex_str(String)`
 
 ### `Error`
 

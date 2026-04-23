@@ -12,7 +12,6 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 bitvec = { workspace = true }
-hexf-parse = {workspace = true }
 internment = { workspace = true }
 libm = { workspace = true }
 itertools = { workspace = true }

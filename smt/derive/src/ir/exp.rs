@@ -616,7 +616,7 @@ impl ExpRegistry {
                 | Intrinsic::StrIndexOf { .. }
                 | Intrinsic::StrIndexOfDefault { .. }
                 | Intrinsic::StrToInt { .. } => Sort::Integer,
-                Intrinsic::StrToCode { .. } => Sort::U32,
+                Intrinsic::StrToCode { .. } => Sort::Integer,
                 Intrinsic::StrLt { .. }
                 | Intrinsic::StrLe { .. }
                 | Intrinsic::StrGt { .. }
@@ -732,7 +732,6 @@ impl ExpRegistry {
                 | Intrinsic::FloatFloor { .. }
                 | Intrinsic::FloatTrunc { .. }
                 | Intrinsic::FloatNearest { .. } => Sort::Integer,
-                Intrinsic::FloatFromHexStr { t, .. } => t.clone(),
                 Intrinsic::ErrFresh(_) | Intrinsic::ErrMerge { .. } => Sort::Error,
                 Intrinsic::SmtEq { .. } | Intrinsic::SmtNe { .. } => Sort::Boolean,
             },
@@ -1623,7 +1622,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         val: self.resolve(val, Some(&Sort::Integer)),
                     },
                     Native::StrFromCode { val } => Intrinsic::StrFromCode {
-                        val: self.resolve(val, Some(&Sort::U32)),
+                        val: self.resolve(val, Some(&Sort::Integer)),
                     },
                     Native::StrToCode { val } => Intrinsic::StrToCode {
                         val: self.resolve(val, Some(&Sort::String)),
@@ -2422,13 +2421,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                             t: sort.clone(),
                             lhs: self.resolve(lhs, Some(&sort)),
                             rhs: self.resolve(rhs, Some(&sort)),
-                        }
-                    }
-                    Native::FloatFromHexStr { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::FloatFromHexStr {
-                            t: sort,
-                            val: self.resolve(val, Some(&Sort::String)),
                         }
                     }
                     Native::ErrFresh => {

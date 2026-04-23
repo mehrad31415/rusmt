@@ -246,8 +246,8 @@ impl ApplyDatabase {
         );
         db.builtin("to_int", Q::String, fn1(String, Integer));
         db.builtin("from_int", Q::String, fn1(Integer, String));
-        db.builtin("from_code", Q::String, fn1(U32, String));
-        db.builtin("to_code", Q::String, fn1(String, U32));
+        db.builtin("from_code", Q::String, fn1(Integer, String));
+        db.builtin("to_code", Q::String, fn1(String, Integer));
 
         db.builtin("shield", Q::Cloak, fn1(t(), box_t()));
         db.builtin("reveal", Q::Cloak, fn1(box_t(), t()));
@@ -370,7 +370,6 @@ impl ApplyDatabase {
             db.builtin("trunc", q, fn1(ty.clone(), ty.clone()));
             db.builtin("nearest", q, fn1(ty.clone(), ty.clone()));
             db.builtin("fp_eq", q, fn2_cmp(ty.clone()));
-            db.builtin("from_hex_str", q, fn1(String, ty));
         }
 
         db.builtin("fresh", Q::Error, fn0(Error));

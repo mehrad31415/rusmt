@@ -3,7 +3,10 @@
 //! This is the main entry point for running the interpreters on concrete inputs.
 
 use clap::{Parser, Subcommand};
-use rusmart_lang::toml::{ParseResult, State, default_parser_context, parse_toml};
+use rusmart_lang::rego::{ParseResult as RegoParseResult, State as RegoState, parse_policy};
+use rusmart_lang::toml::{
+    ParseResult as TomlParseResult, State as TomlState, default_parser_context, parse_toml,
+};
 use rusmart_smt_stdlib::{Integer, Seq, String};
 use std::fs;
 use std::path::PathBuf;
@@ -22,6 +25,7 @@ struct Cli {
 
 /// Enum representing available subcommands for the CLI
 /// `cargo run -- toml <file_path>` or `cargo run toml <file_path>`
+/// `cargo run -- rego <file_path>` or `cargo run rego <file_path>`
 /// `cargo run -- help` (or `cargo run -- --help` or `cargo run help`) shows the help message for the CLI.
 /// Note that this is different from `cargo run --help` which shows the help message for the `cargo run` command. Also `cargo help` shows the help message for the `cargo` command.
 #[derive(Subcommand, Debug)]
@@ -30,6 +34,12 @@ enum Languages {
     /// Parse and execute a TOML file.
     Toml {
         /// Path to the TOML file to parse.
+        #[arg(required = true)]
+        file: PathBuf,
+    },
+    /// Interpret a Rego (subset) policy file.
+    Rego {
+        /// Path to the Rego policy file to interpret.
         #[arg(required = true)]
         file: PathBuf,
     },
@@ -55,17 +65,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 char_seq = char_seq.append(smt_char);
             }
 
-            let initial_state = State {
+            let initial_state = TomlState {
                 stream: char_seq,
-                cursor: Integer::from(0), // Start at the beginning
+                cursor: Integer::from(0),
                 context: default_parser_context(),
             };
 
             let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let file_name = format!("{}.txt", input_file.file_stem().unwrap().to_string_lossy());
-            // Parse the TOML content
             match parse_toml(initial_state) {
-                ParseResult::Ok(toml_value, _) => {
+                TomlParseResult::Ok(toml_value, _) => {
                     let output_path = PathBuf::from(format!(
                         "{}/toml/output/{}",
                         root_crate_dir.display(),
@@ -75,14 +84,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     fs::write(&output_path, format!("{:#?}", toml_value))?;
                     println!("[Rusmart] Successfully parsed TOML file!");
                 }
-                ParseResult::Err(_e) => {
+                TomlParseResult::Err(_e) => {
                     println!("[Rusmart] Parse Error occurred!");
                 }
-                ParseResult::NoMatch => panic!("No match found while parsing TOML file."),
+                TomlParseResult::NoMatch => panic!("No match found while parsing TOML file."),
+            }
+        }
+        Languages::Rego { file: input_file } => {
+            println!("[Rusmart] Interpreting Rego file: {}", input_file.display());
+
+            let _content = fs::read_to_string(&input_file)
+                .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
+
+            let mut char_seq = Seq::new();
+            for ch in _content.chars() {
+                let smt_char = String::from(ch.to_string());
+                char_seq = char_seq.append(smt_char);
+            }
+
+            let initial_state = RegoState {
+                stream: char_seq,
+                cursor: Integer::from(0),
+            };
+
+            let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let file_name = format!("{}.txt", input_file.file_stem().unwrap().to_string_lossy());
+            match parse_policy(initial_state) {
+                RegoParseResult::Ok(module, _) => {
+                    let output_path = PathBuf::from(format!(
+                        "{}/rego/output/{}",
+                        root_crate_dir.display(),
+                        file_name
+                    ));
+                    fs::create_dir_all(output_path.parent().unwrap())?;
+                    fs::write(&output_path, format!("{:#?}", module))?;
+                    println!("[Rusmart] Successfully interpreted Rego file!");
+                }
+                RegoParseResult::Err(_e) => {
+                    println!("[Rusmart] Interpretation Error occurred!");
+                }
+                RegoParseResult::NoMatch => panic!("No match found while interpreting Rego file."),
             }
         }
     }
 
-    // Successful execution
     Ok(())
 }

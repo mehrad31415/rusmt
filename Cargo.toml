@@ -9,7 +9,6 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-hexf-parse = "0.2.1"
 num_cpus = "1.17.0"
 anyhow = "1.0.102"
 command-group = "5.0.1"

@@ -201,13 +201,50 @@ the Rust side never reaches the return — it crashes instead.
 - `to_i64()` — panics on NaN, Infinity, or value outside `[-9223372036854775808, 9223372036854775807]`. Z3's `(fp.to_sbv 64)` returns an unspecified bitvector.
 - `to_u32()` — panics on NaN, Infinity, negative values, or value > 4294967295. Z3's `(fp.to_ubv 32)` returns an unspecified bitvector.
 - `to_u64()` — panics on NaN, Infinity, negative values, or value > 18446744073709551615. Z3's `(fp.to_ubv 64)` returns an unspecified bitvector.
-- `from_hex_str(s)` — panics on invalid hex float string.
 
 ### Float — NaN behavior notes
 
 - `is_negative()` / `is_positive()` — guarded with `!is_nan()` to match Z3. Rust's `is_sign_negative` returns true for `-NaN`, Z3's `fp.isNegative` returns false for all NaN. Without the guard, soundness breaks.
 - `rem(rhs)` — uses `libm::remainderf`/`libm::remainder` (IEEE 754 remainder), NOT Rust's `%` which is fmod. Z3's `fp.rem` matches IEEE 754.
 - `nearest()` — custom implementation for ties-to-even. Rust's `f64::round()` uses ties-away-from-zero, Z3's RNE uses ties-to-even.
+
+### Set — unsupported binary operations
+
+The following set operations panic at transpile time if used:
+- `intersection(other)` — use `a.contains(x).and(b.contains(x))` instead
+- `union(other)` — use `a.contains(x).or(b.contains(x))` instead
+- `difference(other)` — use `a.contains(x).and(b.contains(x).not())` instead
+- `symmetric_difference(other)` — combine the above
+
+**Why these are removed:** Z3 does not support `set.*` operations (like `set.inter`,
+`set.union`, `set.setminus`) in SMT-LIB2 mode. These operations only exist in Z3's
+programmatic API (Python/C++), not in the text-based SMT-LIB2 format that RuSmart
+generates.
+
+**Why keep `SetLen` but remove binary ops:** This is a deliberate trade-off based on
+what Z3 can efficiently handle.
+
+- **Cardinality** (`SetLen`) can be tracked exactly for step-by-step set construction
+  (`new`/`insert`/`remove`) by pairing the array data with an integer counter
+  (`RusmartSet` datatype). No quantifiers, no performance cost.
+
+- **Binary operations** (`union`/`intersection`/`difference`) can be expressed as
+  array operations (`(_ map or)`, `(_ map and)`, etc.), but their cardinality cannot
+  be computed — Z3 cannot count how many elements are `true` in the resulting array.
+  Axiomatizing cardinality for binary results requires universal quantifiers, which
+  cause Z3 to time out. The inclusion-exclusion identity
+  (`card(A∪B) = card(A) + card(B) - card(A∩B)`) is circular — it relates two unknowns.
+
+- **The alternative** (keep binary ops, remove `SetLen`) was considered. Binary ops
+  are expressible as array operations, but every use case of materializing an
+  intermediate set can be rewritten using membership checks:
+  `a.intersection(b).contains(x)` → `a.contains(x).and(b.contains(x))`.
+  Cardinality, however, cannot be rewritten — checking `set.length() == 3` requires
+  a verbose exists/forall encoding. Keeping `SetLen` provides more practical value.
+
+### Array — functions that panic
+
+- `select(key)` — panics when key does not exist. Z3 returns the null sentinel value.
 
 ### Theoretical limitations (unguarded edge cases)
 

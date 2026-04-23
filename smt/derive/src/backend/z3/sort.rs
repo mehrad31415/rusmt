@@ -67,9 +67,9 @@ pub(crate) fn format_sort(sort: &Sort, ir: &IRContext) -> String {
         Sort::Real => "Real".to_string(),
         Sort::String => "String".to_string(),
         Sort::Seq(inner) => format!("(Seq {})", format_sort(inner, ir)),
-        Sort::Set(inner) => format!("(Set {})", format_sort(inner, ir)),
+        Sort::Set(inner) => format!("(RusmartSet {})", format_sort(inner, ir)),
         Sort::Array(key, value) => format!(
-            "(Array {} {})",
+            "(RusmartArray {} {})",
             format_sort(key, ir),
             format_sort(value, ir)
         ),

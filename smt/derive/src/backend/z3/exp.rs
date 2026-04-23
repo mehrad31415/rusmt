@@ -203,9 +203,9 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                 let guard = match &coll_sort {
                     Sort::Array(_, val_sort) => {
                         let null_name = array_null_value(val_sort, ir);
-                        format!("(not (= (select {} {}) {}))", coll_str, var.name, null_name)
+                        format!("(not (= (select (rarr-data {}) {}) {}))", coll_str, var.name, null_name)
                     }
-                    Sort::Set(_) => format!("(select {} {})", coll_str, var.name),
+                    Sort::Set(_) => format!("(select (rset-data {}) {})", coll_str, var.name),
                     Sort::Seq(_) => format!(
                         "(and (>= {} 0) (< {} (seq.len {})))",
                         var.name, var.name, coll_str
@@ -249,9 +249,9 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                 let guard = match &coll_sort {
                     Sort::Array(_, val_sort) => {
                         let null_name = array_null_value(val_sort, ir);
-                        format!("(not (= (select {} {}) {}))", coll_str, var.name, null_name)
+                        format!("(not (= (select (rarr-data {}) {}) {}))", coll_str, var.name, null_name)
                     }
-                    Sort::Set(_) => format!("(select {} {})", coll_str, var.name),
+                    Sort::Set(_) => format!("(select (rset-data {}) {})", coll_str, var.name),
                     Sort::Seq(_) => format!(
                         "(and (>= {} 0) (< {} (seq.len {})))",
                         var.name, var.name, coll_str

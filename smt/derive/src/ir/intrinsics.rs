@@ -1389,13 +1389,6 @@ pub enum Intrinsic {
         /// The right operand
         rhs: ExpId,
     },
-    /// `FloatOps::from_hex_str`
-    FloatFromHexStr {
-        /// The type of the float from hex str
-        t: Sort,
-        /// The value of the float from hex str
-        val: ExpId,
-    },
     /// `Error::fresh` - carries the globally unique error ID assigned at IR-build time
     ErrFresh(usize),
     /// `Error::merge`

@@ -1387,13 +1387,6 @@ pub enum Intrinsic {
         /// The right operand
         rhs: Expr,
     },
-    /// `FloatOps::from_hex_str`
-    FloatFromHexStr {
-        /// The type operand
-        t: TypeRef,
-        /// The value operand
-        val: Expr,
-    },
     /// `Error::fresh`
     ErrFresh,
     /// `Error::merge`
@@ -2090,7 +2083,6 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "floor") => mk1_impl!(FloatFloor, val),
             (Q::F32 | Q::F64, "trunc") => mk1_impl!(FloatTrunc, val),
             (Q::F32 | Q::F64, "nearest") => mk1_impl!(FloatNearest, val),
-            (Q::F32 | Q::F64, "from_hex_str") => mk1_impl!(FloatFromHexStr, val),
 
             (Q::F32 | Q::F64, "is_nan") => mk1_impl!(FloatIsNaN, val),
             (Q::F32 | Q::F64, "is_infinite") => mk1_impl!(FloatIsInf, val),
@@ -2416,7 +2408,6 @@ impl Display for Intrinsic {
             Self::FloatTrunc { val, .. } => write!(f, "trunc({val})"),
             Self::FloatNearest { val, .. } => write!(f, "nearest({val})"),
             Self::FloatFqEq { lhs, rhs, .. } => write!(f, "({lhs} fq_eq {rhs})"),
-            Self::FloatFromHexStr { val, .. } => write!(f, "Float::from_hex({val})"),
             Self::ErrFresh => write!(f, "err_fresh"),
             Self::ErrMerge { lhs, rhs } => write!(f, "err_merge({lhs}, {rhs})"),
             Self::SmtEq { lhs, rhs, .. } => write!(f, "({lhs} == {rhs})"),

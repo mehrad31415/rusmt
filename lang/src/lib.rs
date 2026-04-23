@@ -6,3 +6,7 @@
 /// TOML module for parsing TOML files.
 /// This module can be accessed from the binary crate (and other external crates).
 pub mod toml;
+
+/// Rego module for parsing and evaluating Rego policies (subset).
+/// See `rego/README.md` for the in-scope / out-of-scope boundary.
+pub mod rego;

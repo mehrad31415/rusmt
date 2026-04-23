@@ -3,7 +3,6 @@
 use crate::backend::codegen::solvers;
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context;
-use proc_macro2::Span;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
@@ -103,35 +102,33 @@ pub fn solve<P: AsRef<Path>>(
 }
 
 /// Solve using the Z3 API backend.
-/// Results are written to `lang/src/synthesis/<parser_name>/z3_api/target_N/response.txt` incrementally.
+/// Results are written to `lang/src/synthesis/<parser_name>/z3_api/target_N/response.txt` and `timing.txt`.
 pub fn solve_z3_api<P: AsRef<Path>>(
     model: &IRContext,
     top_level_fn: Option<&str>,
     output: P,
 ) -> Result<()> {
-    // let path_solver = output.as_ref().join("z3_api");
-    // fs::create_dir_all(&path_solver).expect("workspace freshly created");
+    let path_solver = output.as_ref().join("z3_api");
+    fs::create_dir_all(&path_solver).expect("workspace freshly created");
 
-    // // Skip entirely if no top-level function was specified.
-    // let Some(top_level_fn) = top_level_fn else {
-    //     return Err(syn::Error::new(Span::call_site(), "No top-level function specified"));
-    // };
+    let Some(top_level_fn) = top_level_fn else {
+        return Ok(());
+    };
 
-    // // Write results incrementally as each target completes
-    // let write_result = |result: &backend::z3_api::solver::SolveResult| {
-    //     let target_label = format!("target_{}", result.target_idx);
-    //     let path_error_dir = path_solver.join(&target_label);
-    //     fs::create_dir_all(&path_error_dir).expect("error directory created");
+    let write_result = |result: &backend::z3_api::SolveResult| {
+        let target_label = format!("target_{}", result.target_idx);
+        let path_error_dir = path_solver.join(&target_label);
+        fs::create_dir_all(&path_error_dir).expect("error directory created");
 
-    //     let resp_file = path_error_dir.join("response.txt");
-    //     fs::write(&resp_file, result.response.to_string()).expect("failed to write query response");
+        let resp_file = path_error_dir.join("response.txt");
+        fs::write(&resp_file, result.response.to_string()).expect("failed to write query response");
 
-    //     let timing_file = path_error_dir.join("timing.txt");
-    //     fs::write(&timing_file, format!("{}ms", result.elapsed_ms))
-    //         .expect("failed to write timing file");
-    // };
+        let timing_file = path_error_dir.join("timing.txt");
+        fs::write(&timing_file, format!("{}ms", result.elapsed_ms))
+            .expect("failed to write timing file");
+    };
 
-    // backend::z3_api::solver::solve_with_api(model, top_level_fn, &write_result);
+    backend::z3_api::solver::solve_with_api(model, top_level_fn, &write_result);
 
     Ok(())
 }

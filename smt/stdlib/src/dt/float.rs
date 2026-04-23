@@ -1,6 +1,6 @@
 //! Floating-point types and operations.
 
-use crate::dt::{Boolean, F32, F64, I32, I64, Integer, Real, String, U32, U64, smt::SMT};
+use crate::dt::{Boolean, F32, F64, I32, I64, Integer, Real, U32, U64, smt::SMT};
 use internment::Intern;
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -178,10 +178,6 @@ pub trait FloatOps: Sized + SMT {
     ///
     /// Corresponds to Z3: (fp.eq self rhs)
     fn fp_eq(self, rhs: Self) -> Boolean;
-    /// Creates a float from a hexadecimal string.
-    ///
-    /// Corresponds to Z3: ((_ to_fp 8 24) ((_ int2bv 32) (from_hex_str s))) or ((_ to_fp 11 53) ((_ int2bv 64) (from_hex_str s)))
-    fn from_hex_str(s: String) -> Self;
 }
 
 /// Operations for F32.
@@ -371,15 +367,6 @@ impl FloatOps for F32 {
     fn to_u64(self) -> U64 {
         U64 {
             inner: Intern::new(self.inner.0.to_u64().unwrap()),
-        }
-    }
-
-    fn from_hex_str(s: String) -> Self {
-        // You MUST use a helper here (e.g. hexf_parse crate)
-        // Rust .parse() does not support hex floats.
-        let val = hexf_parse::parse_hexf32(&s.inner, false).expect("Invalid Hex Float");
-        Self {
-            inner: OrderedFloat(val),
         }
     }
 
@@ -605,13 +592,6 @@ impl FloatOps for F64 {
     fn to_u64(self) -> U64 {
         U64 {
             inner: Intern::new(self.inner.0.to_u64().unwrap()),
-        }
-    }
-
-    fn from_hex_str(s: String) -> Self {
-        let val = hexf_parse::parse_hexf64(&s.inner, false).expect("Invalid Hex Float");
-        Self {
-            inner: OrderedFloat(val),
         }
     }
 

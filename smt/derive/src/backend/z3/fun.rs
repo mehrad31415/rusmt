@@ -67,9 +67,9 @@ pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
         Sort::Real => "Real".to_string(),
         Sort::String => "String".to_string(),
         Sort::Seq(inner) => format!("(Seq {})", format_sort_for_fn(inner, ir)),
-        Sort::Set(inner) => format!("(Set {})", format_sort_for_fn(inner, ir)),
+        Sort::Set(inner) => format!("(RusmartSet {})", format_sort_for_fn(inner, ir)),
         Sort::Array(key, value) => format!(
-            "(Array {} {})",
+            "(RusmartArray {} {})",
             format_sort_for_fn(key, ir),
             format_sort_for_fn(value, ir)
         ),

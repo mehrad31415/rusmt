@@ -22,14 +22,15 @@ pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
         Sort::F32 => "((_ to_fp 8 24) RNE 0.0)".to_string(),
         Sort::F64 => "((_ to_fp 11 53) RNE 0.0)".to_string(),
         Sort::Seq(_) => format!("(as seq.empty ({}))", format_sort(sort, ir)),
-        Sort::Set(_) => format!("((as const ({})) false)", format_sort(sort, ir)),
+        Sort::Set(inner) => format!("(mk-rset ((as const (Array {} Bool)) false) 0)", format_sort(inner, ir)),
         Sort::Error => "((as const (Array Int Bool)) false)".to_string(),
         Sort::Cloak(inner) => format!("(as Cloak-null (Cloak {}))", format_sort(inner, ir)),
-        Sort::Array(_, v) => format!(
-            "((as const ({})) {})",
-            format_sort(sort, ir),
-            array_null_value(v, ir)
-        ),
+        Sort::Array(k, v) => {
+            let ks = format_sort(k, ir);
+            let vs = format_sort(v, ir);
+            let null = array_null_value(v, ir);
+            format!("(mk-rarr ((as const (Array {} {})) {}) 0)", ks, vs, null)
+        }
         Sort::User(_) => {
             let vs = format_sort(sort, ir);
             let safe = vs.replace(' ', "_").replace('(', "").replace(')', "");
@@ -133,8 +134,7 @@ pub(crate) fn collect_fn_from_intrinsic(
         | Intrinsic::FloatCeil { val, .. }
         | Intrinsic::FloatFloor { val, .. }
         | Intrinsic::FloatTrunc { val, .. }
-        | Intrinsic::FloatNearest { val, .. }
-        | Intrinsic::FloatFromHexStr { val, .. } => {
+        | Intrinsic::FloatNearest { val, .. } => {
             called_fns.append(&mut collect_called_functions(exp_registry, val));
         }
         Intrinsic::BoolAnd { lhs, rhs }
@@ -677,112 +677,99 @@ pub fn format_intrinsic(
         Intrinsic::FloatToI32 { val, .. } => format!("((_ fp.to_sbv 32) RTZ {})", fmt(*val)),
         Intrinsic::FloatToU64 { val, .. } => format!("((_ fp.to_ubv 64) RTZ {})", fmt(*val)),
         Intrinsic::FloatToI64 { val, .. } => format!("((_ fp.to_sbv 64) RTZ {})", fmt(*val)),
-        Intrinsic::FloatFromHexStr { val, .. } => format!("(fp.from_str {})", fmt(*val)),
 
         Intrinsic::SetEmpty { t } => {
-            format!(
-                "((as const (Array {} Bool)) false)",
-                format_sort_for_fn(t, ir)
-            )
+            let ts = format_sort_for_fn(t, ir);
+            format!("(mk-rset ((as const (Array {} Bool)) false) 0)", ts)
         }
-        Intrinsic::SetLen { set, .. } => format!("(set.card {})", fmt(*set)),
+        Intrinsic::SetLen { set, .. } => format!("(rset-card {})", fmt(*set)),
         Intrinsic::SetInsert { set, item, .. } => {
-            format!("(store {} {} true)", fmt(*set), fmt(*item))
-        }
-        Intrinsic::SetRemove { set, item, t } => {
-            let sort = format_sort_for_fn(t, ir);
+            let s = fmt(*set);
+            let x = fmt(*item);
             format!(
-                "(set.setminus {} (set.insert {} (as set.empty (Set {}))))",
-                fmt(*set),
-                fmt(*item),
-                sort
+                "(mk-rset (store (rset-data {s}) {x} true) (ite (select (rset-data {s}) {x}) (rset-card {s}) (+ (rset-card {s}) 1)))"
             )
         }
-        Intrinsic::SetContains { set, item, t } => {
-            let sort = format_sort_for_fn(t, ir);
+        Intrinsic::SetRemove { set, item, .. } => {
+            let s = fmt(*set);
+            let x = fmt(*item);
             format!(
-                "(set.subset (set.insert {} (as set.empty (Set {}))) {})",
-                fmt(*item),
-                sort,
-                fmt(*set)
+                "(mk-rset (store (rset-data {s}) {x} false) (ite (select (rset-data {s}) {x}) (- (rset-card {s}) 1) (rset-card {s})))"
             )
         }
-        Intrinsic::SetIsEmpty { set, .. } => format!("(= (set.card {}) 0)", fmt(*set)),
-        Intrinsic::SetIntersect { lhs, rhs, .. } => {
-            format!("(set.inter {} {})", fmt(*lhs), fmt(*rhs))
+        Intrinsic::SetContains { set, item, .. } => {
+            format!("(select (rset-data {}) {})", fmt(*set), fmt(*item))
         }
-        Intrinsic::SetUnion { lhs, rhs, .. } => format!("(set.union {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::SetDiff { lhs, rhs, .. } => {
-            format!("(set.setminus {} {})", fmt(*lhs), fmt(*rhs))
-        }
-        Intrinsic::SetSymDiff { lhs, rhs, .. } => {
-            let (l, r) = (fmt(*lhs), fmt(*rhs));
-            format!("(set.union (set.setminus {l} {r}) (set.setminus {r} {l}))")
-        }
+        Intrinsic::SetIsEmpty { set, .. } => format!("(= (rset-card {}) 0)", fmt(*set)),
         Intrinsic::SetIsSubset { lhs, rhs, .. } => {
-            format!("(set.subset {} {})", fmt(*lhs), fmt(*rhs))
+            let l = fmt(*lhs);
+            let r = fmt(*rhs);
+            format!("(= ((_ map and) (rset-data {l}) (rset-data {r})) (rset-data {l}))")
         }
         Intrinsic::SetIsProperSubset { lhs, rhs, .. } => {
-            let (l, r) = (fmt(*lhs), fmt(*rhs));
-            format!("(and (set.subset {l} {r}) (not (= {l} {r})))")
+            let l = fmt(*lhs);
+            let r = fmt(*rhs);
+            format!(
+                "(and (= ((_ map and) (rset-data {l}) (rset-data {r})) (rset-data {l})) (< (rset-card {l}) (rset-card {r})))"
+            )
         }
         Intrinsic::SetIsDisjoint { t, lhs, rhs } => {
             let ts = format_sort_for_fn(t, ir);
+            let l = fmt(*lhs);
+            let r = fmt(*rhs);
             format!(
-                "(= (set.inter {} {}) (as set.empty (Set {})))",
-                fmt(*lhs),
-                fmt(*rhs),
-                ts
+                "(= ((_ map and) (rset-data {l}) (rset-data {r})) ((as const (Array {ts} Bool)) false))"
             )
         }
         Intrinsic::SetHasSize { set, size, .. } => {
-            format!("(= (set.card {}) {})", fmt(*set), fmt(*size))
+            format!("(= (rset-card {}) {})", fmt(*set), fmt(*size))
         }
-
-        // --- Array Operations ---
-        // Note: Z3's `@default` is an internal output symbol, not a valid input.
-        // We use a declared symbolic null constant instead so Z3 can reason about
-        // "key absent" vs "key present" without requiring a concrete default value.
         Intrinsic::ArrayEmpty { k, v } => {
             let (ks, vs) = (format_sort_for_fn(k, ir), format_sort_for_fn(v, ir));
             let null = array_null_value(v, ir);
-            format!("((as const (Array {ks} {vs})) {null})")
+            format!("(mk-rarr ((as const (Array {ks} {vs})) {null}) 0)")
         }
-        // array.size is not standard SMT-LIB2 and not supported in Z3's -smt2 mode.
-        // Encode ArrayLen as an uninterpreted expression (just returns 0 as placeholder,
-        // since ArrayLen is not currently used in the TOML parser synthesis).
-        Intrinsic::ArrayLen { arr, v, .. } => {
+        Intrinsic::ArrayLen { arr, .. } => {
+            format!("(rarr-card {})", fmt(*arr))
+        }
+        Intrinsic::ArrayStore { arr, key, val, v, .. } => {
+            let a = fmt(*arr);
+            let k = fmt(*key);
+            let vl = fmt(*val);
             let null = array_null_value(v, ir);
-            // Count non-null entries: use a placeholder 0 since SMT-LIB2 has no array size.
-            // TODO: declare array_len as an uninterpreted function if needed.
             format!(
-                "(ite (forall ((_ak_ String)) (= (select {} _ak_) {})) 0 1)",
-                fmt(*arr),
-                null
+                "(mk-rarr (store (rarr-data {a}) {k} {vl}) (ite (= (select (rarr-data {a}) {k}) {null}) (+ (rarr-card {a}) 1) (rarr-card {a})))"
             )
         }
-        Intrinsic::ArrayStore { arr, key, val, .. } => {
-            format!("(store {} {} {})", fmt(*arr), fmt(*key), fmt(*val))
+        Intrinsic::ArraySelect { arr, key, .. } => {
+            format!("(select (rarr-data {}) {})", fmt(*arr), fmt(*key))
         }
-        Intrinsic::ArraySelect { arr, key, .. } => format!("(select {} {})", fmt(*arr), fmt(*key)),
         Intrinsic::ArrayRemove { arr, key, v, .. } => {
+            let a = fmt(*arr);
+            let k = fmt(*key);
             let null = array_null_value(v, ir);
-            format!("(store {} {} {})", fmt(*arr), fmt(*key), null)
+            format!(
+                "(mk-rarr (store (rarr-data {a}) {k} {null}) (ite (= (select (rarr-data {a}) {k}) {null}) (rarr-card {a}) (- (rarr-card {a}) 1)))"
+            )
         }
         Intrinsic::ArrayContainsKey { arr, key, v, .. } => {
             let null = array_null_value(v, ir);
-            format!("(not (= (select {} {}) {}))", fmt(*arr), fmt(*key), null)
+            format!("(not (= (select (rarr-data {}) {}) {}))", fmt(*arr), fmt(*key), null)
         }
-        // array.size is not standard SMT-LIB2. Encode isEmpty as: ∀k. select(arr,k) = null
-        Intrinsic::ArrayIsEmpty { arr, k, v } => {
-            let null = array_null_value(v, ir);
-            let k_sort = format_sort_for_fn(k, ir);
-            format!(
-                "(forall ((_ak_ {})) (= (select {} _ak_) {}))",
-                k_sort,
-                fmt(*arr),
-                null
-            )
+        Intrinsic::ArrayIsEmpty { arr, .. } => {
+            format!("(= (rarr-card {}) 0)", fmt(*arr))
+        }
+        Intrinsic::SetIntersect { .. } => {
+            panic!("SetIntersect is not supported — use membership checks with forall/exists instead")
+        }
+        Intrinsic::SetUnion { .. } => {
+            panic!("SetUnion is not supported — use membership checks with forall/exists instead")
+        }
+        Intrinsic::SetDiff { .. } => {
+            panic!("SetDiff is not supported — use membership checks with forall/exists instead")
+        }
+        Intrinsic::SetSymDiff { .. } => {
+            panic!("SetSymDiff is not supported — use membership checks with forall/exists instead")
         }
     }
 }

@@ -138,3 +138,56 @@ mod tests {
         assert!(*s3.length().eq(Integer::from(2)));
     }
 }
+
+mod test {
+    #[test]
+    fn test_set_operations() {
+        use crate::{Integer, Set, smt::SMT};
+
+        let empty: Set<Integer> = Set::new();
+        assert!(*empty.is_empty());
+        assert!(*empty.length().eq(Integer::from(0)));
+
+        let s1 = empty.insert(Integer::from(10));
+        assert!(*s1.length().eq(Integer::from(1)));
+        assert!(*s1.contains(Integer::from(10)));
+        assert!(*s1.contains(Integer::from(20)).not());
+
+        let s2 = s1.insert(Integer::from(20));
+        assert!(*s2.length().eq(Integer::from(2)));
+
+        // duplicate insert
+        let s3 = s2.insert(Integer::from(10));
+        assert!(*s3.length().eq(Integer::from(2)));
+
+        // remove
+        let s4 = s3.remove(Integer::from(20));
+        assert!(*s4.length().eq(Integer::from(1)));
+        assert!(*s4.contains(Integer::from(10)));
+        assert!(*s4.contains(Integer::from(20)).not());
+
+        // remove non-existent
+        let s5 = s4.remove(Integer::from(99));
+        assert!(*s5.length().eq(Integer::from(1)));
+
+        // is_subset
+        assert!(*s4.is_subset(s2));
+        assert!(*s2.is_subset(s4).not());
+        assert!(*empty.is_subset(s2));
+
+        // is_proper_subset
+        assert!(*s4.is_proper_subset(s2));
+        assert!(*s2.is_proper_subset(s2).not());
+
+        // has_size
+        assert!(*s2.has_size(Integer::from(2)));
+        assert!(*s2.has_size(Integer::from(3)).not());
+
+        // is_disjoint
+        let a = Set::new().insert(Integer::from(1)).insert(Integer::from(2));
+        let b = Set::new().insert(Integer::from(3)).insert(Integer::from(4));
+        let c = Set::new().insert(Integer::from(2)).insert(Integer::from(3));
+        assert!(*a.is_disjoint(b));
+        assert!(*a.is_disjoint(c).not());
+    }
+}

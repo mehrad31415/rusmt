@@ -76,9 +76,9 @@ impl Display for VarDecl {
 pub struct LetDecl {
     /// it is a mapping to TypeRef (instead of TypeTag) because if there is no type, we have a TypeRef::Var where the type is subsequently inferred
     /// vars is used to prevent duplicate declarations of the same variable inside one let statement. Also the vars is added to the overall vars to prevent duplicate declarations of the same variable in the whole function
-    pub vars: BTreeMap<VarName, TypeRef>, 
+    pub vars: BTreeMap<VarName, TypeRef>,
     /// marks the current declaration (name and type)
-    pub decl: VarDecl,                    
+    pub decl: VarDecl,
 }
 
 impl LetDecl {
@@ -328,7 +328,7 @@ pub enum Op {
     /// `<var>`
     Var(VarName),
     /// `(a1, a2, ...)`
-    Pack { 
+    Pack {
         /// The elements of the pack
         elems: Vec<Expr>,
     },
@@ -376,14 +376,14 @@ pub enum Op {
         fields: BTreeMap<String, Expr>,
     },
     /// `<base>.<index>`
-    AccessSlot { 
+    AccessSlot {
         /// The base of the access slot
         base: Expr,
         /// The slot of the access slot
         slot: usize,
     },
     /// `<base>.<field>`
-    AccessField { 
+    AccessField {
         /// The base of the access field
         base: Expr,
         /// The field of the access field
@@ -397,7 +397,7 @@ pub enum Op {
         combo: Vec<MatchCombo>,
     },
     /// `if (<c1>) { <v1> } else if (<c2>) { <v2> } ... else { <default> }`
-    Phi { 
+    Phi {
         /// The nodes of the phi
         nodes: Vec<PhiNode>,
         /// The default of the phi
@@ -618,7 +618,7 @@ pub enum Expr {
     /// a single instruction
     Unit(Inst),
     /// `{ let <v1> = ...; let <v2> = ...; ...; <op>(<v1>, <v2>, ...) }`
-    Block { 
+    Block {
         /// The lets of the block
         lets: Vec<LetBinding>,
         /// The body of the block
@@ -1092,8 +1092,7 @@ impl Expr {
                 | Intrinsic::FloatCeil { t, val }
                 | Intrinsic::FloatFloor { t, val }
                 | Intrinsic::FloatTrunc { t, val }
-                | Intrinsic::FloatNearest { t, val }
-                | Intrinsic::FloatFromHexStr { t, val } => {
+                | Intrinsic::FloatNearest { t, val } => {
                     ty(t)?;
                     val.visit(ty, pre, post)?;
                 }

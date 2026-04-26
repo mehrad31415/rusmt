@@ -13,6 +13,9 @@
 - [TOML v1.0](case-studies/toml/overview.md)
   - [Parser architecture](case-studies/toml/parser.md)
   - [AST and value model](case-studies/toml/ast.md)
+- [Rego (subset)](case-studies/rego/overview.md)
+  - [Parser architecture](case-studies/rego/parser.md)
+  - [AST and value model](case-studies/rego/ast.md)
 
 # Developer guide
 - [Project Setup](dev/project-setup.md)

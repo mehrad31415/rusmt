@@ -5,7 +5,7 @@ use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
 use crate::backend::response::BACKEND_TIMEOUT;
-use crate::backend::response::NUM_CPU_CORES;
+// use crate::backend::response::NUM_CPU_CORES;
 use crate::backend::response::Response;
 use crate::backend::z3::exp::format_expression;
 use crate::backend::z3::fun::collect_function_call_edges;
@@ -73,10 +73,10 @@ impl CodeGen for CodeGenZ3 {
         // Reproducibility - fixed seed = deterministic search order = same runtime every time.
         l!(x, "(set-option :sat.random_seed 42)"); // It decides the order to assign the variables
         l!(x, "(set-option :smt.random_seed 42)"); // like which theory to check first, which equality to propagate first.
-        // Parallelism
-        l!(x, "(set-option :parallel.enable true)");
-        l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
-        l!(x, "(set-option :parallel.conquer.delay 6000)");
+        // Parallelism - bus error
+        // l!(x, "(set-option :parallel.enable true)");
+        // l!(x, "(set-option :parallel.threads.max {})", *NUM_CPU_CORES);
+        // l!(x, "(set-option :parallel.conquer.delay 6000)");
         l!(x); // add new line
         // SAT Solver Optimizations - restart is sequential (one thread retrying with better knowledge).
         l!(x, "(set-option :sat.restart.max 100000)");
@@ -132,7 +132,6 @@ impl CodeGen for CodeGenZ3 {
             // (e.g., ParseResult<String> and ParseResult<Value> both map to one ParseResult in Z3).
             // We group by type name and choose the instance whose type parameters are
             // uninterpreted sorts (the "generic" version) as the representative.
-            let mut seen_type_names: HashSet<String> = HashSet::new();
             let mut name_to_best_sid: HashMap<String, UsrSortId> = HashMap::new();
 
             // find the best representative for each type name
@@ -140,33 +139,30 @@ impl CodeGen for CodeGenZ3 {
                 let type_name_z3 = resolve_type_name(ir, sid);
                 let (ty_name, type_params) = ir.ty_registry.reverse_lookup(sid);
 
-                if ty_name.is_none() {
-                    // Unnamed tuple — always unique, no dedup needed
-                    seen_type_names.insert(type_name_z3.clone());
-                    name_to_best_sid.insert(type_name_z3, sid);
+                let is_canonical = match ty_name {
+                    None => true, // unnamed tuple — unique by construction
+                    Some(name) => {
+                        type_params.is_empty()
+                            || type_params.iter().all(|sort| {
+                                matches!(
+                                    sort,
+                                    Sort::Uninterpreted(smt_name)
+                                        if smt_name.as_ref().starts_with(&format!("{}_", name))
+                                )
+                            })
+                    }
+                };
+
+                if !is_canonical {
                     continue;
                 }
 
-                // Skip monomorphized entries — only keep the generic template or where there are no type parameters
-                let is_generic_template = type_params.is_empty()
-                    || type_params.iter().all(|sort| {
-                        if let Sort::Uninterpreted(smt_name) = sort {
-                            smt_name
-                                .as_ref()
-                                .starts_with(&format!("{}_", ty_name.unwrap()))
-                        } else {
-                            false
-                        }
-                    });
-
-                if !is_generic_template {
-                    continue; // monomorphized entry, skip
-                }
-
-                if !seen_type_names.contains(&type_name_z3) {
-                    seen_type_names.insert(type_name_z3.clone());
-                    name_to_best_sid.insert(type_name_z3, sid);
-                }
+                let prev = name_to_best_sid.insert(type_name_z3.clone(), sid);
+                assert!(
+                    prev.is_none(),
+                    "duplicate canonical sid for type '{}'",
+                    type_name_z3
+                );
             }
 
             // Second pass: build deduplicated SCCs using the best representatives.
@@ -184,7 +180,12 @@ impl CodeGen for CodeGenZ3 {
                     .iter()
                     .filter_map(|&sid| {
                         let type_name = resolve_type_name(ir, sid);
-                        name_to_best_sid.get(&type_name).copied()
+                        Some(*name_to_best_sid.get(&type_name).unwrap_or_else(|| {
+                            panic!(
+                                "no template representative for type '{}' (sid {:?})",
+                                type_name, sid
+                            )
+                        }))
                     })
                     .collect();
 

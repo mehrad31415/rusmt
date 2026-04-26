@@ -80,3 +80,53 @@ this as a type error -- they are two different, incompatible sorts.
 | Functions (gen)  | YES (body entry point)   | NO (dead code, filtered out) |
 | Functions (mono) | YES (call site targets)  | YES (define-fun each one)   |
 | undef_sorts      | NOT in IRContext         | NOT emitted to SMT-LIB      |
+
+### Registry Entry Kinds (refined taxonomy)
+
+For every name in the type registry (and analogously for the function registry), the registry can hold up to four kinds of entries. They differ only in what their `ty_args` slice contains:
+
+| Kind                  | `ty_args` shape                                         | How it gets created                                                                          | Emit?                       |
+|-----------------------|---------------------------------------------------------|----------------------------------------------------------------------------------------------|-----------------------------|
+| Template (canonical)  | all `Uninterpreted("{ThisName}_*")`                     | `build()` registers it for sort-checking the body                                            | Types: yes (with `par`). Functions: no. |
+| All-uninterpreted but foreign | all `Uninterpreted("{OtherName}_*")`            | A generic parent walks its body, references this name with the parent's type vars            | No                          |
+| Partial mono          | mix of concrete sorts and `Uninterpreted` (any prefix)  | Same as above, but the parent passed some concrete sorts mixed with its own type vars         | No                          |
+| Fully concrete (mono) | no `Uninterpreted` anywhere                             | Materialized when a fully-concrete `ty_inst` walks the body                                   | Types: no (lookup-only). Functions: yes (`define-fun`). |
+
+The canonical-template predicate distinguishes kind 1 from kind 2 by checking the prefix of each uninterpreted name; without that check, a foreign-uninterpreted entry could be picked as the representative for a name and mis-printed.
+
+### SCC-based Emission Layout (text backend)
+
+Type emission is driven by Tarjan-style SCC analysis on the type-reference graph. Each registered sid is a node; an edge `A -> B` means A's body references B.
+
+- **`isolated`**: sids with no edges in the graph (nothing references them, they reference nothing, no self-loop).
+- **`recursive_sccs`**: every other sid, partitioned into SCCs. An SCC is either a true mutual recursion (size > 1) or a singleton (a sid that has at least one edge but isn't in a cycle). Singletons-with-self-loop are also here (a self-referential generic via `Cloak<Foo<T>>` becomes a singleton-with-self-loop).
+
+The emission pipeline runs three passes:
+
+1. **Pick a canonical sid per name.** Walk both `recursive_sccs` and `isolated`. For each sid, if it satisfies the canonical-template predicate (`type_params.is_empty()` or all-uninterpreted-with-this-name's-prefix), record it in `name_to_best_sid`.
+2. **Canonicalize and merge SCCs.** For each SCC in `recursive_sccs`, replace each member sid by its canonical sid (via `name_to_best_sid`). If the resulting set overlaps with an SCC already in `deduplicated_sccs`, merge them (because two original SCCs sharing a canonical sid must end up in the same `(declare-datatypes ...)` block — Z3 forbids declaring the same datatype twice).
+3. **Add isolated singletons.** For each sid in `isolated`, look up its canonical sid. If that canonical sid isn't already inside any block produced by step 2, push a new singleton block for it.
+
+Step 3 is what gets non-recursive, non-mutually-recursive types (e.g., a leaf `enum Color { Red, Green, Blue }`) into the SMT-LIB output.
+
+### Validated Assumptions
+
+These were checked against the source and hold:
+
+- **Type taxonomy.** The split is exactly `isolated` (no edges) vs `recursive_sccs` (edges or self-loop). A self-loop alone (e.g., a generic with `Cloak<Self>`) is enough to push a node into `recursive_sccs` as a singleton.
+- **`ty_args` slot count.** The slice has one slot per generic parameter declared in the source-level definition. Non-generic types have an empty slice; a type with N parameters has N slots. The slot length is fixed; only the slot contents vary.
+- **Backend emits only canonical templates as datatypes.** Generic ones are wrapped in `par (T1 ... Tn)`; non-generic ones are flat. All other entries (foreign-uninterpreted, partial, fully concrete) are silently dropped from declarations, but their sids are still used by `format_sort` to print references like `(Foo Int String)` against the parametric declaration.
+- **Use-site references.** When `format_sort` encounters `Sort::User(sid)`, it does `reverse_lookup(sid)` to get `(Name, [arg1, arg2])` and emits `(Name <fmt(arg1)> <fmt(arg2)>)`. This works whether the args are concrete sorts or uninterpreted names.
+- **Backend emits only fully-concrete functions.** The filter `!ty_args.iter().any(Uninterpreted)` keeps only kind-4 function entries. Templates, foreign-uninterpreted, and partial entries are dropped; SMT-LIB has no parametric `define-fun`, so this is the only legal path.
+- **Closure of the emitted call graph.** Each fully-concrete function fid had its body re-materialized with a fully-concrete `ty_inst`. Re-materialization rewalks every call site and resolves it to another fully-concrete fid. So inside an emitted body, every call edge points to another emitted fid. Templates and partials are referenced only from other templates' bodies, which are themselves not emitted.
+
+### Soundness Invariants
+
+The architecture maintains two invariants that together guarantee valid SMT-LIB output:
+
+1. **Uninterpreted names only appear inside a `par` clause that binds them.** A reference like `(Inner Foo_T)` is well-formed when emitted inside `(declare-datatypes ((Foo 1)) ((par (Foo_T) ...)))` because `Foo_T` is bound by the `par`. The code prevents unbound uninterpreted names from leaking to top-level positions:
+   - Top-level `(declare-datatypes ...)` blocks for generic types are wrapped in `par`.
+   - Non-generic types have no params and no uninterpreted to begin with.
+   - Function bodies are emitted only for fully-concrete functions, whose bodies were materialized with a fully-concrete `ty_inst`, so no `Uninterpreted` survives in their expressions.
+   - Null sentinels (and any other top-level constants) explicitly filter out sids with any uninterpreted before declaring them.
+2. **Filtering out non-fully-concrete function entries removes only dead code.** Because of the closure property above, no kept entry references a dropped entry. Dropping the non-mono entries therefore preserves call-site semantics — every original call has a fully-concrete instantiation that captures it — and does not change decidability, since SMT-LIB has no parametric `define-fun` to begin with and the kept entries are standard SMT-LIB.

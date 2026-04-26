@@ -1,17 +1,14 @@
 //! Translate IR intrinsic operations to Z3 API calls.
 
-use crate::backend::z3::fun::format_sort_for_fn;
-use crate::backend::z3::intrinsics::array_null_const_name;
 use crate::backend::z3_api::Z3Ast;
 use crate::backend::z3_api::context::Z3ApiContext;
 use crate::backend::z3_api::mk_string_symbol;
 use crate::backend::z3_api::translate::translate_expression;
 use crate::ir::exp::ExpRegistry;
-use crate::ir::index::{ExpId, UsrFunId};
 use crate::ir::intrinsics::Intrinsic;
 use crate::ir::sort::Sort;
 use num_bigint::BigInt;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 /// Translate an IR Intrinsic to a Z3 AST.
 pub fn translate_intrinsic<'ctx>(
@@ -19,14 +16,13 @@ pub fn translate_intrinsic<'ctx>(
     intrinsic: &Intrinsic,
     exp_registry: &ExpRegistry,
     var_map: &HashMap<String, z3_sys::Z3_ast>,
-    scc_fids: &BTreeSet<UsrFunId>,
 ) -> Z3Ast<'ctx> {
     let ctx = api_ctx.ctx;
 
     // Macro to translate sub-expressions (avoids mutable borrow issues with closures)
     macro_rules! tr {
         ($id:expr) => {
-            translate_expression(api_ctx, exp_registry, $id, var_map, scc_fids)
+            translate_expression(api_ctx, exp_registry, $id, var_map)
         };
     }
 
@@ -390,7 +386,6 @@ pub fn translate_intrinsic<'ctx>(
             Intrinsic::RealRound { val } => {
                 // floor(x + 0.5)
                 let v = tr!(*val);
-                let real_sort = z3_sys::Z3_mk_real_sort(ctx).expect("Z3_mk_real_sort");
                 let half = z3_sys::Z3_mk_real(ctx, 1, 2).expect("Z3_mk_real");
                 let sum = z3_sys::Z3_mk_add(ctx, 2, [v.raw(), half].as_ptr()).expect("Z3_mk_add");
                 Z3Ast::new(
@@ -647,11 +642,20 @@ pub fn translate_intrinsic<'ctx>(
                 )
             }
             Intrinsic::StrFromCode { val } => {
+                // The IR's `String::from_code` takes a U32 code point and
+                // returns a String. Z3's `str.from_code` takes an Int, so we
+                // convert unsigned BV → Int first.
                 let v = tr!(*val);
-                let bv2int = z3_sys::Z3_mk_bv2int(ctx, v.raw(), false).expect("Z3_mk_bv2int");
+                let sort = z3_sys::Z3_get_sort(ctx, v.raw()).expect("Z3_get_sort");
+                let sort_kind = z3_sys::Z3_get_sort_kind(ctx, sort);
+                let as_int = if sort_kind == z3_sys::SortKind::Bv {
+                    z3_sys::Z3_mk_bv2int(ctx, v.raw(), false).expect("Z3_mk_bv2int")
+                } else {
+                    v.raw()
+                };
                 Z3Ast::new(
                     ctx,
-                    crate::backend::z3_api::Z3_mk_string_from_code(ctx, bv2int),
+                    crate::backend::z3_api::Z3_mk_string_from_code(ctx, as_int),
                 )
             }
             Intrinsic::StrToCode { val } => {
@@ -930,7 +934,7 @@ pub fn translate_intrinsic<'ctx>(
             // --- Array ---
             Intrinsic::ArrayEmpty { k, v } => {
                 let k_sort = api_ctx.translate_sort(k);
-                let null = api_ctx.get_null_const(&array_null_const_name(v, api_ctx.ir));
+                let null = api_ctx.null_for_sort(v);
                 Z3Ast::new(
                     ctx,
                     z3_sys::Z3_mk_const_array(ctx, k_sort, null).expect("Z3_mk_const_array"),
@@ -938,7 +942,7 @@ pub fn translate_intrinsic<'ctx>(
             }
             Intrinsic::ArrayLen { arr, v, .. } => {
                 let a = tr!(*arr);
-                let null = api_ctx.get_null_const(&array_null_const_name(v, api_ctx.ir));
+                let null = api_ctx.null_for_sort(v);
                 // Approximate: ite forall(k, select(arr,k)==null) 0 1
                 let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("Z3_mk_int_sort");
                 let zero = z3_sys::Z3_mk_int(ctx, 0, int_sort).expect("Z3_mk_int");
@@ -982,7 +986,7 @@ pub fn translate_intrinsic<'ctx>(
             }
             Intrinsic::ArrayRemove { arr, key, v, .. } => {
                 let (a, k) = (tr!(*arr), tr!(*key));
-                let null = api_ctx.get_null_const(&array_null_const_name(v, api_ctx.ir));
+                let null = api_ctx.null_for_sort(v);
                 Z3Ast::new(
                     ctx,
                     z3_sys::Z3_mk_store(ctx, a.raw(), k.raw(), null).expect("Z3_mk_store"),
@@ -990,14 +994,14 @@ pub fn translate_intrinsic<'ctx>(
             }
             Intrinsic::ArrayContainsKey { arr, key, v, .. } => {
                 let (a, k) = (tr!(*arr), tr!(*key));
-                let null = api_ctx.get_null_const(&array_null_const_name(v, api_ctx.ir));
+                let null = api_ctx.null_for_sort(v);
                 let sel = z3_sys::Z3_mk_select(ctx, a.raw(), k.raw()).expect("Z3_mk_select");
                 let eq = z3_sys::Z3_mk_eq(ctx, sel, null).expect("Z3_mk_eq");
                 Z3Ast::new(ctx, z3_sys::Z3_mk_not(ctx, eq).expect("Z3_mk_not"))
             }
             Intrinsic::ArrayIsEmpty { arr, k, v } => {
                 let a = tr!(*arr);
-                let null = api_ctx.get_null_const(&array_null_const_name(v, api_ctx.ir));
+                let null = api_ctx.null_for_sort(v);
                 let k_sort = api_ctx.translate_sort(k);
                 let k_sym = mk_string_symbol(ctx, "_ak_");
                 let k_var = z3_sys::Z3_mk_const(ctx, k_sym, k_sort).expect("Z3_mk_const");
@@ -1618,7 +1622,6 @@ pub fn translate_intrinsic<'ctx>(
             // --- Error ---
             Intrinsic::ErrFresh(id) => {
                 let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("Z3_mk_int_sort");
-                let bool_sort = z3_sys::Z3_mk_bool_sort(ctx).expect("Z3_mk_bool_sort");
                 let false_val = z3_sys::Z3_mk_false(ctx).expect("Z3_mk_false");
                 let empty =
                     z3_sys::Z3_mk_const_array(ctx, int_sort, false_val).expect("Z3_mk_const_array");
@@ -1678,13 +1681,16 @@ unsafe fn mk_int_cmp<'ctx>(
     op: &str,
     bound: &str,
 ) -> Z3Ast<'ctx> {
-    let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("Z3_mk_int_sort");
-    let c = std::ffi::CString::new(bound).unwrap();
-    let bound_val = z3_sys::Z3_mk_numeral(ctx, c.as_ptr(), int_sort).expect("Z3_mk_numeral");
-    let result = match op {
-        ">" => z3_sys::Z3_mk_gt(ctx, val.raw(), bound_val).expect("Z3_mk_gt"),
-        "<" => z3_sys::Z3_mk_lt(ctx, val.raw(), bound_val).expect("Z3_mk_lt"),
-        _ => unreachable!(),
-    };
-    Z3Ast::new(ctx, result)
+    unsafe {
+        let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("Z3_mk_int_sort");
+        let c = std::ffi::CString::new(bound).unwrap();
+        let bound_val =
+            z3_sys::Z3_mk_numeral(ctx, c.as_ptr(), int_sort).expect("Z3_mk_numeral");
+        let result = match op {
+            ">" => z3_sys::Z3_mk_gt(ctx, val.raw(), bound_val).expect("Z3_mk_gt"),
+            "<" => z3_sys::Z3_mk_lt(ctx, val.raw(), bound_val).expect("Z3_mk_lt"),
+            _ => unreachable!(),
+        };
+        Z3Ast::new(ctx, result)
+    }
 }

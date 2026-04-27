@@ -1,14 +1,14 @@
 //! Parses floating-point literals in TOML.
 
 use crate::toml::{
-    Optional, ParseResult, State, advance, current_char,
+    Optional, ParseResult, State, advance, cp_to_str, current_char,
     integer::{is_hex_digit, is_minus, is_plus, is_underscore, parse_integer},
     is_dec_digit, parse_literal,
 };
 use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_remark_derive::smt_type;
 use rusmart_smt_stdlib::{
-    Error, F64, I64, Integer, Real, String, bitvector::BitvectorOps, float::FloatOps, smt::SMT,
+    Error, F64, I64, Integer, Real, String, U32, bitvector::BitvectorOps, float::FloatOps, smt::SMT,
 };
 
 #[smt_type]
@@ -31,7 +31,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                 ParseResult::Ok(_d, _i) => {
                     match current_char(_i) {
                         Optional::Some(nc) => {
-                            if *nc.eq(".".into()) {
+                            if *nc.eq(U32::from(0x2E)) {
                                 match parse_unsigned_dec_rest(advance(_i), Integer::from(0)) {
                                     ParseResult::NoMatch => return ParseResult::NoMatch,
                                     ParseResult::Err(e) => return ParseResult::Err(e),
@@ -39,7 +39,10 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                         let first_part = _d.to_int();
                                         match current_char(after_val) {
                                             Optional::Some(ec) => {
-                                                if *ec.eq("e".into()).or(ec.eq("E".into())) {
+                                                if *ec
+                                                    .eq(U32::from(0x65))
+                                                    .or(ec.eq(U32::from(0x45)))
+                                                {
                                                     match parse_float_exp_part(advance(after_val)) {
                                                         ParseResult::Ok(exp_val, after_exp) => {
                                                             let combined = first_part
@@ -188,7 +191,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                 }
                             } else {
                                 // check if there is an exponent part
-                                if *nc.eq("e".into()).or(nc.eq("E".into())) {
+                                if *nc.eq(U32::from(0x65)).or(nc.eq(U32::from(0x45))) {
                                     match parse_float_exp_part(advance(_i)) {
                                         ParseResult::Ok(exp_val, after_exp) => {
                                             let combined = _d.to_int();
@@ -285,7 +288,7 @@ fn parse_unsigned_dec_rest(input: State, number: Integer) -> ParseResult<Integer
                 // println!("must have at least one digit after decimal point; found {:?}", first_char);
                 return ParseResult::Err(Error::fresh()); // must start with a digit
             } else {
-                match parse_float_rest(advance(input), first_char, number) {
+                match parse_float_rest(advance(input), cp_to_str(first_char), number) {
                     ParseResult::Ok(s, i) => {
                         return ParseResult::Ok(s.to_int(), i);
                     }
@@ -308,10 +311,10 @@ fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<S
         Optional::Some(c) => {
             if *is_dec_digit(c) {
                 // Case 1: The next character is a digit. Append it and continue.
-                let new_acc = acc.concat(c);
+                let new_acc = acc.concat(cp_to_str(c));
                 return parse_float_rest(advance(input), new_acc, number);
             } else {
-                if *c.eq("_".into()) {
+                if *c.eq(U32::from(0x5F)) {
                     // Case 2: The next character is an underscore.
                     let after_underscore = advance(input);
                     // An underscore MUST be followed by a digit.
@@ -323,7 +326,7 @@ fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<S
                         Optional::Some(next_c) => {
                             if *is_dec_digit(next_c) {
                                 // This is a valid `_DIGIT`. Append the digit and continue.
-                                let new_acc = acc.concat(next_c);
+                                let new_acc = acc.concat(cp_to_str(next_c));
                                 return parse_float_rest(
                                     advance(after_underscore),
                                     new_acc,
@@ -348,7 +351,7 @@ fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<S
                         }
                     }
                 } else {
-                    if *c.eq("e".into()).or(c.eq("E".into())) {
+                    if *c.eq(U32::from(0x65)).or(c.eq(U32::from(0x45))) {
                         if *number.eq(Integer::from(0)) {
                             // end of float part; exponent part follows.
                             ParseResult::Ok(acc, input) // start of exponent part

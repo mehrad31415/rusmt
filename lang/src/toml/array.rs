@@ -4,7 +4,7 @@ use crate::toml::{
     key_value::parse_value, parse_comment, parse_newline, parse_wschar,
 };
 use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{Boolean, Error, Seq, String, smt::SMT};
+use rusmart_smt_stdlib::{Boolean, Error, Seq, String, U32, smt::SMT};
 
 /// array = array-open [ array-values ] ws-comment-newline array-close
 #[smt_fn]
@@ -87,20 +87,20 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
 
 /// array-open =  %x5B ; [
 #[smt_fn]
-fn is_array_open(c: String) -> Boolean {
-    c.eq("[".into())
+fn is_array_open(c: U32) -> Boolean {
+    c.eq(U32::from(0x5B))
 }
 
 /// array-close = %x5D ; ]
 #[smt_fn]
-fn is_array_close(c: String) -> Boolean {
-    c.eq("]".into())
+fn is_array_close(c: U32) -> Boolean {
+    c.eq(U32::from(0x5D))
 }
 
 /// array-sep = %x2C  ; , Comma
 #[smt_fn]
-fn is_array_sep(c: String) -> Boolean {
-    c.eq(",".into())
+fn is_array_sep(c: U32) -> Boolean {
+    c.eq(U32::from(0x2C))
 }
 
 /// array-values =  ws-comment-newline val ws-comment-newline array-sep array-values

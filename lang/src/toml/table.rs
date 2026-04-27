@@ -5,13 +5,13 @@ use crate::toml::{
     Optional, ParseResult, ParserContext, State, advance,
     array::parse_ws_comment_newline,
     ast::Value,
-    current_char,
+    cp_to_str, current_char,
     expr::make_nested_table,
     key_value::{parse_key, parse_key_value},
     parse_ws,
 };
 use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{Array, Cloak, Error, Integer, Seq, String, choose, forall, smt::SMT};
+use rusmart_smt_stdlib::{Array, Cloak, Error, Integer, Seq, String, U32, choose, forall, smt::SMT};
 
 /// `std-table = std-table-open key std-table-close`
 #[smt_fn]
@@ -24,7 +24,7 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
                     ParseResult::Err(Error::fresh())
                 } // cannot have [
                 Optional::Some(x) => {
-                    if *x.eq(String::from("]")) {
+                    if *x.eq(U32::from(0x5D)) {
                         // empty table name
                         {
                             // println!("cannot have empty table name");
@@ -70,10 +70,10 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
 fn parse_std_table_open(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(ch) => {
-            if *ch.eq(String::from("[")) {
+            if *ch.eq(U32::from(0x5B)) {
                 let next_state = advance(state);
                 let state_after_ws = parse_ws(next_state);
-                return ParseResult::Ok(ch, state_after_ws);
+                return ParseResult::Ok(cp_to_str(ch), state_after_ws);
             } else {
                 return ParseResult::NoMatch;
             }
@@ -88,9 +88,9 @@ fn parse_std_table_close(state: State) -> ParseResult<String> {
     let state_after_ws = parse_ws(state);
     match current_char(state_after_ws) {
         Optional::Some(ch) => {
-            if *ch.eq(String::from("]")) {
+            if *ch.eq(U32::from(0x5D)) {
                 let next_state = advance(state_after_ws);
-                ParseResult::Ok(ch, next_state)
+                ParseResult::Ok(cp_to_str(ch), next_state)
             } else {
                 ParseResult::NoMatch
             }
@@ -110,7 +110,7 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
                     ParseResult::Err(Error::fresh())
                 } // cannot have [[
                 Optional::Some(x) => {
-                    if *x.eq(String::from("]")) {
+                    if *x.eq(U32::from(0x5D)) {
                         // empty table name
                         {
                             // println!("cannot have empty table name");
@@ -156,14 +156,14 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
 fn parse_array_table_open(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(ch1) => {
-            if *ch1.eq(String::from("[")) {
+            if *ch1.eq(U32::from(0x5B)) {
                 let next_state = advance(state);
                 match current_char(next_state) {
                     Optional::Some(ch2) => {
-                        if *ch2.eq(String::from("[")) {
+                        if *ch2.eq(U32::from(0x5B)) {
                             let next_next_state = advance(next_state);
                             let state_after_ws = parse_ws(next_next_state);
-                            ParseResult::Ok(ch1.concat(ch2), state_after_ws)
+                            ParseResult::Ok(cp_to_str(ch1).concat(cp_to_str(ch2)), state_after_ws)
                         } else {
                             ParseResult::NoMatch
                         }
@@ -184,13 +184,13 @@ fn parse_array_table_close(state: State) -> ParseResult<String> {
     let state_after_ws = parse_ws(state);
     match current_char(state_after_ws) {
         Optional::Some(ch1) => {
-            if *ch1.eq(String::from("]")) {
+            if *ch1.eq(U32::from(0x5D)) {
                 let next_state = advance(state_after_ws);
                 match current_char(next_state) {
                     Optional::Some(ch2) => {
-                        if *ch2.eq(String::from("]")) {
+                        if *ch2.eq(U32::from(0x5D)) {
                             let next_next_state = advance(next_state);
-                            let res = ch1.concat(ch2);
+                            let res = cp_to_str(ch1).concat(cp_to_str(ch2));
                             ParseResult::Ok(res, next_next_state)
                         } else {
                             ParseResult::NoMatch
@@ -451,10 +451,12 @@ fn parse_inline_table_keyvals(
 fn parse_inline_table_open(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(ch) => {
-            if *ch.eq(String::from("{")) {
+            if *ch.eq(U32::from(0x7B)) {
                 let next_state = advance(state);
                 match parse_ws_comment_newline(next_state) {
-                    ParseResult::Ok(_ws, state_after_ws) => ParseResult::Ok(ch, state_after_ws),
+                    ParseResult::Ok(_ws, state_after_ws) => {
+                        ParseResult::Ok(cp_to_str(ch), state_after_ws)
+                    }
                     ParseResult::Err(e) => ParseResult::Err(e),
                     ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
                 }
@@ -474,9 +476,9 @@ fn parse_inline_table_close(state: State) -> ParseResult<String> {
         ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
         ParseResult::Ok(_ws, state_after_ws) => match current_char(state_after_ws) {
             Optional::Some(ch) => {
-                if *ch.eq(String::from("}")) {
+                if *ch.eq(U32::from(0x7D)) {
                     let next_state = advance(state_after_ws);
-                    ParseResult::Ok(ch, next_state)
+                    ParseResult::Ok(cp_to_str(ch), next_state)
                 } else {
                     ParseResult::NoMatch
                 }
@@ -494,11 +496,11 @@ fn parse_inline_table_sep(state: State) -> ParseResult<String> {
         ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
         ParseResult::Ok(_ws1, state_after_ws1) => match current_char(state_after_ws1) {
             Optional::Some(ch) => {
-                if *ch.eq(String::from(",")) {
+                if *ch.eq(U32::from(0x2C)) {
                     let next_state = advance(state_after_ws1);
                     match parse_ws_comment_newline(next_state) {
                         ParseResult::Ok(_ws2, state_after_ws2) => {
-                            ParseResult::Ok(ch, state_after_ws2)
+                            ParseResult::Ok(cp_to_str(ch), state_after_ws2)
                         }
                         ParseResult::Err(e) => ParseResult::Err(e),
                         ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen

@@ -2,7 +2,9 @@
 
 use crate::toml::{ast::Value, expr::parse_expression, table::recursive_merge_tables};
 use rusmart_smt_remark_derive::{smt_fn, smt_type};
-use rusmart_smt_stdlib::{Array, Boolean, Cloak, Error, Integer, Seq, String, smt::SMT};
+use rusmart_smt_stdlib::{
+    Array, Boolean, Cloak, Error, Integer, Seq, String, U32, bitvector::BitvectorOps, smt::SMT,
+};
 
 /// array
 mod array;
@@ -25,12 +27,12 @@ mod string;
 /// table
 mod table;
 
-/// Represents the parser's input state: a sequence of characters, a cursor, and context.
+/// Represents the parser's input state: a sequence of Unicode codepoints, a cursor, and context.
 #[smt_type]
 pub struct State {
-    /// The full sequence of characters being parsed.
-    pub stream: Seq<String>,
-    /// The current position (character index) in the stream.
+    /// The full sequence of codepoints being parsed.
+    pub stream: Seq<U32>,
+    /// The current position (codepoint index) in the stream.
     pub cursor: Integer,
     /// Context (semantics) of the parser
     pub context: ParserContext,
@@ -56,11 +58,17 @@ enum Optional<T: SMT> {
     Some(T),
 }
 
+/// Convert a Unicode codepoint to a 1-character `String`.
+#[smt_fn]
+pub(crate) fn cp_to_str(c: U32) -> String {
+    String::from_code(c.to_int())
+}
+
 /// is LF `newline = %x0A`
 #[smt_fn]
 fn is_lf_newline(input: State) -> Boolean {
     match current_char(input) {
-        Optional::Some(c) => c.eq(String::from("\n")),
+        Optional::Some(c) => c.eq(U32::from(0x0A)),
         Optional::None => Boolean::from(false),
     }
 }
@@ -72,7 +80,7 @@ fn is_crlf_newline(input: State) -> Boolean {
     let second_char = peek(input, 1.into());
     match first_char {
         Optional::Some(c1) => match second_char {
-            Optional::Some(c2) => c1.eq(String::from("\r")).and(c2.eq(String::from("\n"))),
+            Optional::Some(c2) => c1.eq(U32::from(0x0D)).and(c2.eq(U32::from(0x0A))),
             Optional::None => Boolean::from(false),
         },
         Optional::None => Boolean::from(false),
@@ -100,9 +108,9 @@ fn parse_newline(input: State) -> ParseResult<String> {
     }
 }
 
-/// Returns the character at the current cursor position.
+/// Returns the codepoint at the current cursor position.
 #[smt_fn]
-fn current_char(input: State) -> Optional<String> {
+fn current_char(input: State) -> Optional<U32> {
     if *input.cursor.lt(input.stream.length()) {
         return Optional::Some(input.stream.at(input.cursor));
     } else {
@@ -123,7 +131,7 @@ fn advance(input: State) -> State {
 
 /// Peek ahead N characters
 #[smt_fn]
-fn peek(state: State, n: Integer) -> Optional<String> {
+fn peek(state: State, n: Integer) -> Optional<U32> {
     let new_state = State {
         stream: state.stream,
         cursor: state.cursor.add(n),
@@ -134,19 +142,19 @@ fn peek(state: State, n: Integer) -> Optional<String> {
 
 /// is Horizontal Tab (%x09)
 #[smt_fn]
-fn is_htab(c: String) -> Boolean {
-    c.eq(String::from("\t"))
+fn is_htab(c: U32) -> Boolean {
+    c.eq(U32::from(0x09))
 }
 
 /// is Space (%x20)
 #[smt_fn]
-fn is_space(c: String) -> Boolean {
-    c.eq(String::from(" "))
+fn is_space(c: U32) -> Boolean {
+    c.eq(U32::from(0x20))
 }
 
 /// wschar = %x20 / %x09  (Space / Horizontal Tab)
 #[smt_fn]
-fn is_wschar(c: String) -> Boolean {
+fn is_wschar(c: U32) -> Boolean {
     is_space(c).or(is_htab(c))
 }
 
@@ -157,7 +165,7 @@ fn parse_wschar(input: State) -> ParseResult<String> {
     match current_char(input) {
         Optional::Some(c) => {
             if *is_wschar(c) {
-                ParseResult::Ok(c, advance(input))
+                ParseResult::Ok(cp_to_str(c), advance(input))
             } else {
                 // we expect a whitespace character but something else found
                 return ParseResult::NoMatch;
@@ -189,34 +197,34 @@ fn parse_ws(input: State) -> State {
 
 /// `comment-start-symbol = %x23 ; #`
 #[smt_fn]
-fn is_comment_start_symbol(c: String) -> Boolean {
-    c.eq(String::from("#"))
+fn is_comment_start_symbol(c: U32) -> Boolean {
+    c.eq(U32::from(0x23))
 }
 
 /// non-ascii = %x80-D7FF / %xE000-10FFFF
 #[smt_fn]
-fn is_non_ascii(c: String) -> Boolean {
-    // Check character is >= U+0080 (first non-ASCII)
-    let is_above_ascii = c.ge(String::from("\u{0080}"));
+fn is_non_ascii(c: U32) -> Boolean {
+    // Check codepoint is >= U+0080 (first non-ASCII)
+    let is_above_ascii = c.bv_ge(U32::from(0x0080));
 
     // Check NOT in surrogate range (U+D800..U+DFFF)
     let not_surrogate = c
-        .le(String::from("\u{D7FF}"))
-        .or(c.ge(String::from("\u{E000}")));
+        .bv_le(U32::from(0xD7FF))
+        .or(c.bv_ge(U32::from(0xE000)));
 
     // Check <= U+10FFFF (max valid Unicode)
-    let is_valid_unicode = c.le(String::from("\u{10FFFF}"));
+    let is_valid_unicode = c.bv_le(U32::from(0x10FFFF));
 
     is_above_ascii.and(not_surrogate).and(is_valid_unicode)
 }
 
 /// `non-eol = %x09 / %x20-7E / non-ascii`
 #[smt_fn]
-fn is_non_eol(c: String) -> Boolean {
-    c.eq(String::from("\t")) // %x09
+fn is_non_eol(c: U32) -> Boolean {
+    c.eq(U32::from(0x09)) // %x09
         .or(c
-            .ge(String::from("\u{0020}"))
-            .and(c.le(String::from("\u{007E}")))) // %x20-7E
+            .bv_ge(U32::from(0x0020))
+            .and(c.bv_le(U32::from(0x007E)))) // %x20-7E
         .or(is_non_ascii(c)) // non-ascii
 }
 
@@ -243,7 +251,7 @@ fn parse_comment_rest(acc: String, state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(c) => {
             if *is_non_eol(c) {
-                parse_comment_rest(acc.concat(c), advance(state))
+                parse_comment_rest(acc.concat(cp_to_str(c)), advance(state))
             } else {
                 // reached eol
                 if *is_newline(state) {
@@ -262,39 +270,39 @@ fn parse_comment_rest(acc: String, state: State) -> ParseResult<String> {
 
 /// is alpha `A-Z / a-z`
 #[smt_fn]
-fn is_alpha(c: String) -> Boolean {
-    let a_upper = String::from("A");
-    let z_upper = String::from("Z");
-    let a_lower = String::from("a");
-    let z_lower = String::from("z");
+fn is_alpha(c: U32) -> Boolean {
+    let a_upper = U32::from(0x41); // 'A'
+    let z_upper = U32::from(0x5A); // 'Z'
+    let a_lower = U32::from(0x61); // 'a'
+    let z_lower = U32::from(0x7A); // 'z'
 
-    c.ge(a_upper)
-        .and(c.le(z_upper))
-        .or(c.ge(a_lower).and(c.le(z_lower)))
+    c.bv_ge(a_upper)
+        .and(c.bv_le(z_upper))
+        .or(c.bv_ge(a_lower).and(c.bv_le(z_lower)))
 }
 
 /// A character is a decimal digit (0-9).
 #[smt_fn]
-fn is_dec_digit(c: String) -> Boolean {
-    c.ge("0".into()).and(c.le("9".into()))
+fn is_dec_digit(c: U32) -> Boolean {
+    c.bv_ge(U32::from(0x30)).and(c.bv_le(U32::from(0x39)))
 }
 
 /// is quotation-mark = %x22  (")
 #[smt_fn]
-fn is_quotation_mark(c: String) -> Boolean {
-    c.eq(String::from("\""))
+fn is_quotation_mark(c: U32) -> Boolean {
+    c.eq(U32::from(0x22))
 }
 
 /// %x21 = "!"
 #[smt_fn]
-fn is_exclamation(c: String) -> Boolean {
-    c.eq(String::from("!"))
+fn is_exclamation(c: U32) -> Boolean {
+    c.eq(U32::from(0x21))
 }
 
 /// %x27 = apostrophe (')
 #[smt_fn]
-pub(crate) fn is_apostrophe(c: String) -> Boolean {
-    c.eq(String::from("'"))
+pub(crate) fn is_apostrophe(c: U32) -> Boolean {
+    c.eq(U32::from(0x27))
 }
 
 /// Building block for keyword parsing.
@@ -314,18 +322,18 @@ fn parse_literal_recursive(
     if *literal_cursor.eq(literal.length()) {
         return ParseResult::Ok(literal, input);
     } else {
-        // Get the character from the literal we need to match.
-        let expected_char = literal.at(literal_cursor);
+        // Get the codepoint of the literal character we need to match.
+        let expected_cp = literal.at(literal_cursor).to_code().to_u32();
 
-        // Get the character from the input stream.
+        // Get the codepoint from the input stream.
         match current_char(input) {
             Optional::None => {
                 // the input stream ends early and this rule doesn't match.
                 return ParseResult::NoMatch;
             }
-            Optional::Some(actual_char) => {
-                // Check the characters match.
-                if *actual_char.eq(expected_char) {
+            Optional::Some(actual_cp) => {
+                // Check the codepoints match.
+                if *actual_cp.eq(expected_cp) {
                     // If they match, recurse on the next character of both the input and the literal.
                     return parse_literal_recursive(
                         advance(input),
@@ -376,7 +384,7 @@ pub fn default_parser_context() -> ParserContext {
 ///
 /// `toml = expression *( newline expression )`
 #[smt_fn]
-pub fn parse_toml(input: Seq<String>) -> ParseResult<Value> {
+pub fn parse_toml(input: Seq<U32>) -> ParseResult<Value> {
     parse_toml_inner(State {
         stream: input,
         cursor: 0.into(),

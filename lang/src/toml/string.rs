@@ -4,9 +4,9 @@
 //! string = ml-basic-string / basic-string / ml-literal-string / literal-string
 
 use crate::toml::{
-    Optional, ParseResult, State, advance, current_char, integer::is_hex_digit, is_apostrophe,
-    is_exclamation, is_htab, is_newline, is_non_ascii, is_quotation_mark, is_wschar, parse_newline,
-    parse_ws, parse_wschar,
+    Optional, ParseResult, State, advance, cp_to_str, current_char, integer::is_hex_digit,
+    is_apostrophe, is_exclamation, is_htab, is_newline, is_non_ascii, is_quotation_mark, is_wschar,
+    parse_newline, parse_ws, parse_wschar,
 };
 use rusmart_smt_remark_derive::smt_fn;
 use rusmart_smt_stdlib::{Boolean, Error, Integer, String, U32, bitvector::BitvectorOps, smt::SMT};
@@ -234,23 +234,23 @@ fn parse_mlb_unescaped(state: State) -> ParseResult<String> {
         Optional::Some(c) => {
             // Check for %x21
             if *is_exclamation(c) {
-                return ParseResult::Ok(c, advance(state));
+                return ParseResult::Ok(cp_to_str(c), advance(state));
             } else {
                 // Check for %x23-5B
                 if *is_range_23_5b(c) {
-                    return ParseResult::Ok(c, advance(state));
+                    return ParseResult::Ok(cp_to_str(c), advance(state));
                 } else {
                     // Check for %x5D-7E
                     if *is_range_5d_7e(c) {
-                        return ParseResult::Ok(c, advance(state));
+                        return ParseResult::Ok(cp_to_str(c), advance(state));
                     } else {
                         // Check for non-ascii
                         if *is_non_ascii(c) {
-                            return ParseResult::Ok(c, advance(state));
+                            return ParseResult::Ok(cp_to_str(c), advance(state));
                         } else {
                             // Check for wschar
                             if *is_wschar(c) {
-                                return ParseResult::Ok(c, advance(state));
+                                return ParseResult::Ok(cp_to_str(c), advance(state));
                             } else {
                                 return ParseResult::NoMatch;
                             }
@@ -286,8 +286,8 @@ fn parse_escaped(state: State, val: Integer) -> ParseResult<String> {
 
 /// escape = %x5C ; \
 #[smt_fn]
-fn is_escape_char(c: String) -> Boolean {
-    c.eq(String::from("\\"))
+fn is_escape_char(c: U32) -> Boolean {
+    c.eq(U32::from(0x5C))
 }
 
 /// Helper to parse exactly `count` hex digits and return them as a String
@@ -296,7 +296,7 @@ fn parse_n_hex_digits(state: State, count: Integer, acc: String) -> ParseResult<
     match current_char(state) {
         Optional::Some(c) => {
             if *is_hex_digit(c) {
-                let new_acc = acc.concat(c);
+                let new_acc = acc.concat(cp_to_str(c));
                 if *count.eq(Integer::from(1)) {
                     return ParseResult::Ok(new_acc, advance(state));
                 } else {
@@ -320,41 +320,41 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
     match current_char(state) {
         Optional::None => return ParseResult::NoMatch,
         Optional::Some(c) => {
-            if *c.eq(String::from("\""))
+            if *c.eq(U32::from(0x22))
             // %x22 - "
             {
                 return ParseResult::Ok(String::from("\""), advance(state));
             } else {
-                if *c.eq(String::from("\\"))
+                if *c.eq(U32::from(0x5C))
                 // %x5C - \
                 {
                     return ParseResult::Ok(String::from("\\"), advance(state));
                 } else {
-                    if *c.eq(String::from("b"))
+                    if *c.eq(U32::from(0x62))
                     // %x62 - b
                     {
                         return ParseResult::Ok(String::from("\x08"), advance(state));
                     } else {
                         // %x65 - e
-                        if *c.eq(String::from("e")) {
+                        if *c.eq(U32::from(0x65)) {
                             return ParseResult::Ok(String::from("\x1B"), advance(state));
                         } else {
-                            if *c.eq(String::from("f"))
+                            if *c.eq(U32::from(0x66))
                             // %x66 - f
                             {
                                 return ParseResult::Ok(String::from("\x0C"), advance(state));
                             } else {
-                                if *c.eq(String::from("n"))
+                                if *c.eq(U32::from(0x6E))
                                 // %x6E - n
                                 {
                                     return ParseResult::Ok(String::from("\n"), advance(state));
                                 } else {
-                                    if *c.eq(String::from("r"))
+                                    if *c.eq(U32::from(0x72))
                                     // %x72 - r
                                     {
                                         return ParseResult::Ok(String::from("\r"), advance(state));
                                     } else {
-                                        if *c.eq(String::from("t"))
+                                        if *c.eq(U32::from(0x74))
                                         // %x74 - t
                                         {
                                             return ParseResult::Ok(
@@ -363,10 +363,10 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                             );
                                         } else {
                                             if *c
-                                                .eq(String::from("u"))
+                                                .eq(U32::from(0x75))
                                                 .not()
-                                                .and(c.eq(String::from("U")).not())
-                                                .and(c.eq(String::from("x")).not())
+                                                .and(c.eq(U32::from(0x55)).not())
+                                                .and(c.eq(U32::from(0x78)).not())
                                             {
                                                 if *val.eq(Integer::from(0)) {
                                                     return ParseResult::NoMatch; // for multi-line string try other escape sequences
@@ -378,10 +378,10 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                     return ParseResult::Err(Error::fresh()); // for basic strings, other escape sequences are invalid
                                                 }
                                             } else {
-                                                let needed = if *c.eq(String::from("x")) {
+                                                let needed = if *c.eq(U32::from(0x78)) {
                                                     Integer::from(2)
                                                 } else {
-                                                    if *c.eq(String::from("u")) {
+                                                    if *c.eq(U32::from(0x75)) {
                                                         Integer::from(4)
                                                     } else {
                                                         Integer::from(8)
@@ -806,16 +806,16 @@ fn parse_ml_literal_char(state: State) -> ParseResult<String> {
         Optional::None => return ParseResult::NoMatch,
         Optional::Some(c) => {
             if *is_htab(c) {
-                return ParseResult::Ok(c, advance(state));
+                return ParseResult::Ok(cp_to_str(c), advance(state));
             } else {
                 if *is_range_20_26(c) {
-                    return ParseResult::Ok(c, advance(state));
+                    return ParseResult::Ok(cp_to_str(c), advance(state));
                 } else {
                     if *is_range_28_7e(c) {
-                        return ParseResult::Ok(c, advance(state));
+                        return ParseResult::Ok(cp_to_str(c), advance(state));
                     } else {
                         if *is_non_ascii(c) {
-                            return ParseResult::Ok(c, advance(state));
+                            return ParseResult::Ok(cp_to_str(c), advance(state));
                         } else {
                             return ParseResult::NoMatch;
                         }
@@ -1049,22 +1049,22 @@ fn parse_basic_unescaped(state: State) -> ParseResult<String> {
         Optional::Some(c) => {
             // Check for %x21
             if *is_exclamation(c) {
-                return ParseResult::Ok(c, advance(state));
+                return ParseResult::Ok(cp_to_str(c), advance(state));
             } else {
                 // Check for %x23-5B
                 if *is_range_23_5b(c) {
-                    return ParseResult::Ok(c, advance(state));
+                    return ParseResult::Ok(cp_to_str(c), advance(state));
                 } else {
                     // Check for %x5D-7E
                     if *is_range_5d_7e(c) {
-                        return ParseResult::Ok(c, advance(state));
+                        return ParseResult::Ok(cp_to_str(c), advance(state));
                     } else {
                         if *is_non_ascii(c) {
-                            return ParseResult::Ok(c, advance(state));
+                            return ParseResult::Ok(cp_to_str(c), advance(state));
                         } else {
                             // Check for wschar
                             if *is_wschar(c) {
-                                return ParseResult::Ok(c, advance(state));
+                                return ParseResult::Ok(cp_to_str(c), advance(state));
                             } else {
                                 return ParseResult::NoMatch;
                             }
@@ -1078,14 +1078,14 @@ fn parse_basic_unescaped(state: State) -> ParseResult<String> {
 
 /// %x23-5B range: # through [
 #[smt_fn]
-fn is_range_23_5b(c: String) -> Boolean {
-    c.ge(String::from("#")).and(c.le(String::from("[")))
+fn is_range_23_5b(c: U32) -> Boolean {
+    c.bv_ge(U32::from(0x23)).and(c.bv_le(U32::from(0x5B)))
 }
 
 /// %x5D-7E range: ] through ~
 #[smt_fn]
-fn is_range_5d_7e(c: String) -> Boolean {
-    c.ge(String::from("]")).and(c.le(String::from("~")))
+fn is_range_5d_7e(c: U32) -> Boolean {
+    c.bv_ge(U32::from(0x5D)).and(c.bv_le(U32::from(0x7E)))
 }
 
 /// literal-string = apostrophe *literal-char apostrophe
@@ -1171,16 +1171,16 @@ fn parse_literal_char(state: State) -> ParseResult<String> {
         Optional::None => return ParseResult::NoMatch,
         Optional::Some(c) => {
             if *is_htab(c) {
-                return ParseResult::Ok(c, advance(state));
+                return ParseResult::Ok(cp_to_str(c), advance(state));
             } else {
                 if *is_range_20_26(c) {
-                    return ParseResult::Ok(c, advance(state));
+                    return ParseResult::Ok(cp_to_str(c), advance(state));
                 } else {
                     if *is_range_28_7e(c) {
-                        return ParseResult::Ok(c, advance(state));
+                        return ParseResult::Ok(cp_to_str(c), advance(state));
                     } else {
                         if *is_non_ascii(c) {
-                            return ParseResult::Ok(c, advance(state));
+                            return ParseResult::Ok(cp_to_str(c), advance(state));
                         } else {
                             return ParseResult::NoMatch;
                         }
@@ -1193,12 +1193,12 @@ fn parse_literal_char(state: State) -> ParseResult<String> {
 
 /// %x20-26 range: space through &
 #[smt_fn]
-fn is_range_20_26(c: String) -> Boolean {
-    c.ge(String::from(" ")).and(c.le(String::from("&")))
+fn is_range_20_26(c: U32) -> Boolean {
+    c.bv_ge(U32::from(0x20)).and(c.bv_le(U32::from(0x26)))
 }
 
 /// %x28-7E range: ( through ~
 #[smt_fn]
-fn is_range_28_7e(c: String) -> Boolean {
-    c.ge(String::from("(")).and(c.le(String::from("~")))
+fn is_range_28_7e(c: U32) -> Boolean {
+    c.bv_ge(U32::from(0x28)).and(c.bv_le(U32::from(0x7E)))
 }

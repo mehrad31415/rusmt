@@ -5,7 +5,7 @@ use crate::toml::{
     array::parse_array,
     ast::Value,
     boolean::parse_boolean,
-    current_char,
+    cp_to_str, current_char,
     datetime::parse_datetime,
     float::{Number, parse_float},
     is_alpha, is_apostrophe, is_dec_digit, is_quotation_mark, parse_ws,
@@ -13,7 +13,7 @@ use crate::toml::{
     table::parse_inline_table,
 };
 use rusmart_smt_remark_derive::{smt_fn, smt_type};
-use rusmart_smt_stdlib::{Cloak, Error, Seq, String, smt::SMT};
+use rusmart_smt_stdlib::{Cloak, Error, Seq, String, U32, smt::SMT};
 
 /// A key-value pair returned by `parse_key_value`.
 ///
@@ -71,7 +71,7 @@ pub(crate) fn parse_key(state: State) -> ParseResult<Seq<String>> {
             match current_char(after_ws) {
                 Optional::Some(_c) => {
                     let acc = Seq::new().append(first_key);
-                    if *_c.eq(String::from(".")) {
+                    if *_c.eq(U32::from(0x2E)) {
                         // it's a dotted key
                         parse_dotted_key_loop(acc, after_ws)
                     } else {
@@ -94,8 +94,8 @@ fn parse_keyval_sep(state: State) -> ParseResult<String> {
     let c = current_char(state_after_ws);
     match c {
         Optional::Some(ch) => {
-            if *ch.eq(String::from("=")) {
-                ParseResult::Ok(ch, parse_ws(advance(state_after_ws)))
+            if *ch.eq(U32::from(0x3D)) {
+                ParseResult::Ok(cp_to_str(ch), parse_ws(advance(state_after_ws)))
             } else {
                 // expected '=' but found something else
                 // println!("expected '=' but found another character {:?}", ch);
@@ -138,8 +138,8 @@ fn parse_dot_sep(state: State) -> ParseResult<String> {
     let c = current_char(state_after_ws);
     match c {
         Optional::Some(ch) => {
-            if *ch.eq(String::from(".")) {
-                return ParseResult::Ok(ch, parse_ws(advance(state_after_ws)));
+            if *ch.eq(U32::from(0x2E)) {
+                return ParseResult::Ok(cp_to_str(ch), parse_ws(advance(state_after_ws)));
             } else {
                 return ParseResult::NoMatch; // cannot happen
             }
@@ -166,16 +166,16 @@ fn parse_unquoted_key(state: State) -> ParseResult<String> {
     match current_char(state) {
         Optional::Some(first_char) => {
             if *is_alpha(first_char) {
-                parse_rest_of_unquoted_key(advance(state), first_char)
+                parse_rest_of_unquoted_key(advance(state), cp_to_str(first_char))
             } else {
                 if *is_dec_digit(first_char) {
-                    parse_rest_of_unquoted_key(advance(state), first_char)
+                    parse_rest_of_unquoted_key(advance(state), cp_to_str(first_char))
                 } else {
-                    if *first_char.eq(String::from("-")) {
-                        parse_rest_of_unquoted_key(advance(state), first_char)
+                    if *first_char.eq(U32::from(0x2D)) {
+                        parse_rest_of_unquoted_key(advance(state), cp_to_str(first_char))
                     } else {
-                        if *first_char.eq(String::from("_")) {
-                            parse_rest_of_unquoted_key(advance(state), first_char)
+                        if *first_char.eq(U32::from(0x5F)) {
+                            parse_rest_of_unquoted_key(advance(state), cp_to_str(first_char))
                         } else {
                             // println!("invalid first character for unquoted key {:?}", first_char);
                             ParseResult::Err(Error::fresh()) // invalid first character for unquoted key
@@ -194,19 +194,19 @@ fn parse_rest_of_unquoted_key(state: State, acc: String) -> ParseResult<String> 
     match current_char(state) {
         Optional::Some(c) => {
             if *is_alpha(c) {
-                let new_acc = acc.concat(c);
+                let new_acc = acc.concat(cp_to_str(c));
                 parse_rest_of_unquoted_key(advance(state), new_acc)
             } else {
                 if *is_dec_digit(c) {
-                    let new_acc = acc.concat(c);
+                    let new_acc = acc.concat(cp_to_str(c));
                     parse_rest_of_unquoted_key(advance(state), new_acc)
                 } else {
-                    if *c.eq(String::from("-")) {
-                        let new_acc = acc.concat(c);
+                    if *c.eq(U32::from(0x2D)) {
+                        let new_acc = acc.concat(cp_to_str(c));
                         parse_rest_of_unquoted_key(advance(state), new_acc)
                     } else {
-                        if *c.eq(String::from("_")) {
-                            let new_acc = acc.concat(c);
+                        if *c.eq(U32::from(0x5F)) {
+                            let new_acc = acc.concat(cp_to_str(c));
                             parse_rest_of_unquoted_key(advance(state), new_acc)
                         } else {
                             ParseResult::Ok(acc, state) // end of unquoted key

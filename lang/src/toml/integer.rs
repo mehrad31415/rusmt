@@ -1,10 +1,12 @@
 //! Parses integer literals in TOML.
 
 use crate::toml::{
-    Optional, ParseResult, State, advance, current_char, is_alpha, is_dec_digit, peek,
+    Optional, ParseResult, State, advance, cp_to_str, current_char, is_alpha, is_dec_digit, peek,
 };
 use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{Boolean, Error, I64, Integer, String, smt::SMT};
+use rusmart_smt_stdlib::{
+    Boolean, Error, I64, Integer, String, U32, bitvector::BitvectorOps, smt::SMT,
+};
 
 /// `hex prefix = "0x"`
 #[smt_fn]
@@ -13,7 +15,7 @@ fn is_hex_prefix(input: State) -> Boolean {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
             match peek {
-                Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("x".into())),
+                Optional::Some(c2) => c1.eq(U32::from(0x30)).and(c2.eq(U32::from(0x78))),
                 Optional::None => Boolean::from(false),
             }
         }
@@ -28,7 +30,7 @@ fn is_hex_prefix_upper(input: State) -> Boolean {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
             match peek {
-                Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("X".into())),
+                Optional::Some(c2) => c1.eq(U32::from(0x30)).and(c2.eq(U32::from(0x58))),
                 Optional::None => Boolean::from(false),
             }
         }
@@ -43,7 +45,7 @@ fn is_oct_prefix(input: State) -> Boolean {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
             match peek {
-                Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("o".into())),
+                Optional::Some(c2) => c1.eq(U32::from(0x30)).and(c2.eq(U32::from(0x6F))),
                 Optional::None => Boolean::from(false),
             }
         }
@@ -58,7 +60,7 @@ fn is_oct_prefix_upper(input: State) -> Boolean {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
             match peek {
-                Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("O".into())),
+                Optional::Some(c2) => c1.eq(U32::from(0x30)).and(c2.eq(U32::from(0x4F))),
                 Optional::None => Boolean::from(false),
             }
         }
@@ -73,7 +75,7 @@ fn is_bin_prefix(input: State) -> Boolean {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
             match peek {
-                Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("b".into())),
+                Optional::Some(c2) => c1.eq(U32::from(0x30)).and(c2.eq(U32::from(0x62))),
                 Optional::None => Boolean::from(false),
             }
         }
@@ -88,7 +90,7 @@ fn is_bin_prefix_upper(input: State) -> Boolean {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
             match peek {
-                Optional::Some(c2) => c1.eq("0".into()).and(c2.eq("B".into())),
+                Optional::Some(c2) => c1.eq(U32::from(0x30)).and(c2.eq(U32::from(0x42))),
                 Optional::None => Boolean::from(false),
             }
         }
@@ -96,42 +98,42 @@ fn is_bin_prefix_upper(input: State) -> Boolean {
     }
 }
 
-/// Checks if a character is a hexadecimal digit (0-9, a-f, A-F).
+/// Checks if a codepoint is a hexadecimal digit (0-9, a-f, A-F).
 #[smt_fn]
-pub(crate) fn is_hex_digit(c: String) -> Boolean {
+pub(crate) fn is_hex_digit(c: U32) -> Boolean {
     is_dec_digit(c)
-        .or(c.ge("a".into()).and(c.le("f".into())))
-        .or(c.ge("A".into()).and(c.le("F".into())))
+        .or(c.bv_ge(U32::from(0x61)).and(c.bv_le(U32::from(0x66))))
+        .or(c.bv_ge(U32::from(0x41)).and(c.bv_le(U32::from(0x46))))
 }
 
-/// Checks if a character is an octal digit (0-7).
+/// Checks if a codepoint is an octal digit (0-7).
 #[smt_fn]
-fn is_oct_digit(c: String) -> Boolean {
-    c.ge("0".into()).and(c.le("7".into()))
+fn is_oct_digit(c: U32) -> Boolean {
+    c.bv_ge(U32::from(0x30)).and(c.bv_le(U32::from(0x37)))
 }
 
-/// Checks if a character is a binary digit (0 or 1).
+/// Checks if a codepoint is a binary digit (0 or 1).
 #[smt_fn]
-fn is_bin_digit(c: String) -> Boolean {
-    c.eq("0".into()).or(c.eq("1".into()))
+fn is_bin_digit(c: U32) -> Boolean {
+    c.eq(U32::from(0x30)).or(c.eq(U32::from(0x31)))
 }
 
-/// Checks if a character is +
+/// Checks if a codepoint is +
 #[smt_fn]
-pub(crate) fn is_plus(c: String) -> Boolean {
-    c.eq("+".into())
+pub(crate) fn is_plus(c: U32) -> Boolean {
+    c.eq(U32::from(0x2B))
 }
 
-/// Checks if a character is -
+/// Checks if a codepoint is -
 #[smt_fn]
-pub(crate) fn is_minus(c: String) -> Boolean {
-    c.eq("-".into())
+pub(crate) fn is_minus(c: U32) -> Boolean {
+    c.eq(U32::from(0x2D))
 }
 
-/// Checks if a character is an underscore (_)
+/// Checks if a codepoint is an underscore (_)
 #[smt_fn]
-pub(crate) fn is_underscore(c: String) -> Boolean {
-    c.eq("_".into())
+pub(crate) fn is_underscore(c: U32) -> Boolean {
+    c.eq(U32::from(0x5F))
 }
 
 /// The main dispatcher for parsing any integer type.
@@ -195,7 +197,7 @@ pub(crate) fn parse_integer(input: State) -> ParseResult<I64> {
 
 /// `dec-int = [ minus / plus ] unsigned-dec-int`
 #[smt_fn]
-pub(crate) fn parse_dec_int(sign: Optional<String>, input: State) -> ParseResult<I64> {
+pub(crate) fn parse_dec_int(sign: Optional<U32>, input: State) -> ParseResult<I64> {
     match sign {
         Optional::None => {
             match parse_unsigned_dec_int(input) {
@@ -282,7 +284,7 @@ fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
                 return ParseResult::NoMatch;
             } else {
                 // Handle single-digit '0'
-                if *first_char.eq("0".into()) {
+                if *first_char.eq(U32::from(0x30)) {
                     let next_input = advance(input);
                     // Check for the "leading zero" error. A '0' cannot be followed by another digit or underscore.
                     match current_char(next_input) {
@@ -311,7 +313,7 @@ fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
                     }
                 } else {
                     // Handle numbers starting with '1'-'9'
-                    match parse_unsigned_dec_rest_int(advance(input), first_char) {
+                    match parse_unsigned_dec_rest_int(advance(input), cp_to_str(first_char)) {
                         ParseResult::Ok(s, i) => return ParseResult::Ok(s.to_int(), i),
                         ParseResult::Err(e) => return ParseResult::Err(e),
                         ParseResult::NoMatch => return ParseResult::NoMatch,
@@ -332,20 +334,20 @@ fn parse_unsigned_dec_rest_int(input: State, acc: String) -> ParseResult<String>
             return ParseResult::Ok(acc, input);
         }
         Optional::Some(c) => {
-            if *c.eq(".".into()) {
+            if *c.eq(U32::from(0x2E)) {
                 // Decimal point indicates end of integer part.
                 return ParseResult::Ok(acc, input);
             } else {
                 // e or E indicates end of integer part.
-                if *c.eq("e".into()).or(c.eq("E".into())) {
+                if *c.eq(U32::from(0x65)).or(c.eq(U32::from(0x45))) {
                     return ParseResult::Ok(acc, input);
                 } else {
                     if *is_dec_digit(c) {
                         // Case 1: The next character is a digit. Append it and continue.
-                        let new_acc = acc.concat(c);
+                        let new_acc = acc.concat(cp_to_str(c));
                         return parse_unsigned_dec_rest_int(advance(input), new_acc);
                     } else {
-                        if *c.eq("_".into()) {
+                        if *c.eq(U32::from(0x5F)) {
                             // Case 2: The next character is an underscore.
                             let after_underscore = advance(input);
                             // An underscore MUST be followed by a digit.
@@ -357,7 +359,7 @@ fn parse_unsigned_dec_rest_int(input: State, acc: String) -> ParseResult<String>
                                 Optional::Some(next_c) => {
                                     if *is_dec_digit(next_c) {
                                         // This is a valid `_DIGIT`. Append the digit and continue.
-                                        let new_acc = acc.concat(next_c);
+                                        let new_acc = acc.concat(cp_to_str(next_c));
                                         return parse_unsigned_dec_rest_int(
                                             advance(after_underscore),
                                             new_acc,
@@ -403,7 +405,7 @@ fn parse_hex_int(input: State) -> ParseResult<I64> {
         Optional::Some(c) => {
             if *is_hex_digit(c) {
                 // Recursively parse the rest of the hex digits and underscores.
-                match parse_hex_rest(advance(after_prefix), c) {
+                match parse_hex_rest(advance(after_prefix), cp_to_str(c)) {
                     ParseResult::Ok(s, i) => {
                         // check for overflow?
                         if *Integer::from_hex_str(s).is_gt_i64_max() {
@@ -439,7 +441,7 @@ fn parse_hex_rest(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::Some(c) => {
             if *is_hex_digit(c) {
-                let new_acc = acc.concat(c);
+                let new_acc = acc.concat(cp_to_str(c));
                 return parse_hex_rest(advance(input), new_acc);
             } else {
                 if *is_underscore(c) {
@@ -447,7 +449,7 @@ fn parse_hex_rest(input: State, acc: String) -> ParseResult<String> {
                     match current_char(after_underscore) {
                         Optional::Some(next_c) => {
                             if *is_hex_digit(next_c) {
-                                let new_acc = acc.concat(next_c);
+                                let new_acc = acc.concat(cp_to_str(next_c));
                                 return parse_hex_rest(advance(after_underscore), new_acc);
                             } else {
                                 if *is_underscore(next_c) {
@@ -485,7 +487,7 @@ fn parse_oct_int(input: State) -> ParseResult<I64> {
         Optional::Some(c) => {
             if *is_oct_digit(c) {
                 // Recursively parse the rest of the oct digits and underscores.
-                match parse_oct_rest(advance(after_prefix), c) {
+                match parse_oct_rest(advance(after_prefix), cp_to_str(c)) {
                     ParseResult::Ok(s, i) => {
                         // check for overflow?
                         if *Integer::from_oct_str(s).is_gt_i64_max() {
@@ -531,7 +533,7 @@ fn parse_oct_rest(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::Some(c) => {
             if *is_oct_digit(c) {
-                let new_acc = acc.concat(c);
+                let new_acc = acc.concat(cp_to_str(c));
                 return parse_oct_rest(advance(input), new_acc);
             } else {
                 if *is_underscore(c) {
@@ -539,7 +541,7 @@ fn parse_oct_rest(input: State, acc: String) -> ParseResult<String> {
                     match current_char(after_underscore) {
                         Optional::Some(next_c) => {
                             if *is_oct_digit(next_c) {
-                                let new_acc = acc.concat(next_c);
+                                let new_acc = acc.concat(cp_to_str(next_c));
                                 return parse_oct_rest(advance(after_underscore), new_acc);
                             } else {
                                 if *is_underscore(next_c) {
@@ -597,7 +599,7 @@ fn parse_bin_int(input: State) -> ParseResult<I64> {
         Optional::Some(c) => {
             if *is_bin_digit(c) {
                 // Recursively parse the rest of the bin digits and underscores.
-                match parse_bin_rest(advance(after_prefix), c) {
+                match parse_bin_rest(advance(after_prefix), cp_to_str(c)) {
                     ParseResult::Ok(s, i) => {
                         // check for overflow?
                         if *Integer::from_bin_str(s).is_gt_i64_max() {
@@ -648,7 +650,7 @@ fn parse_bin_rest(input: State, acc: String) -> ParseResult<String> {
     match current_char(input) {
         Optional::Some(c) => {
             if *is_bin_digit(c) {
-                let new_acc = acc.concat(c);
+                let new_acc = acc.concat(cp_to_str(c));
                 return parse_bin_rest(advance(input), new_acc);
             } else {
                 if *is_underscore(c) {
@@ -656,7 +658,7 @@ fn parse_bin_rest(input: State, acc: String) -> ParseResult<String> {
                     match current_char(after_underscore) {
                         Optional::Some(next_c) => {
                             if *is_bin_digit(next_c) {
-                                let new_acc = acc.concat(next_c);
+                                let new_acc = acc.concat(cp_to_str(next_c));
                                 return parse_bin_rest(advance(after_underscore), new_acc);
                             } else {
                                 if *is_underscore(next_c) {

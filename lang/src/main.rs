@@ -5,7 +5,7 @@
 use clap::{Parser, Subcommand};
 use rusmart_lang::rego::{ParseResult as RegoParseResult, State as RegoState, parse_policy};
 use rusmart_lang::toml::{ParseResult as TomlParseResult, parse_toml};
-use rusmart_smt_stdlib::{Integer, Seq, String};
+use rusmart_smt_stdlib::{Integer, Seq, String, U32};
 use std::fs;
 use std::path::PathBuf;
 
@@ -57,15 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _content = fs::read_to_string(&input_file)
                 .map_err(|e| format!("Failed to read file '{}': {}", input_file.display(), e))?;
 
-            let mut char_seq = Seq::new();
+            let mut codepoint_seq: Seq<U32> = Seq::new();
             for ch in _content.chars() {
-                let smt_char = String::from(ch.to_string());
-                char_seq = char_seq.append(smt_char);
+                codepoint_seq = codepoint_seq.append(U32::from(ch as u32));
             }
 
             let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let file_name = format!("{}.txt", input_file.file_stem().unwrap().to_string_lossy());
-            match parse_toml(char_seq) {
+            match parse_toml(codepoint_seq) {
                 TomlParseResult::Ok(toml_value, _) => {
                     let output_path = PathBuf::from(format!(
                         "{}/toml/output/{}",
@@ -121,4 +120,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod codepoint_sanity {
+    #[test]
+    fn ascii_codepoints_match_hex_constants() {
+        for (ch, hex) in [
+            ('[', 0x5B),
+            (']', 0x5D),
+            (',', 0x2C),
+            ('=', 0x3D),
+            ('\n', 0x0A),
+            ('\r', 0x0D),
+            ('"', 0x22),
+            ('\'', 0x27),
+            ('{', 0x7B),
+            ('}', 0x7D),
+            ('.', 0x2E),
+            ('#', 0x23),
+            ('\t', 0x09),
+            (' ', 0x20),
+            ('0', 0x30),
+            ('9', 0x39),
+            ('A', 0x41),
+            ('Z', 0x5A),
+            ('a', 0x61),
+            ('z', 0x7A),
+        ] {
+            assert_eq!(ch as u32, hex, "{:?}", ch);
+        }
+    }
+
+    #[test]
+    fn invalid_codepoints_are_none() {
+        assert!(char::from_u32(0xD800).is_none()); // surrogate start                                                                                                          
+        assert!(char::from_u32(0xDFFF).is_none()); // surrogate end
+        assert!(char::from_u32(0x110000).is_none()); // > 0x10FFFF                                                                                                             
+    }
 }

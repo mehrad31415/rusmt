@@ -594,6 +594,21 @@ impl CodeGen for CodeGenZ3 {
             }
 
             for scc in recursive_sccs {
+                // A singleton SCC without a self-loop is structurally
+                // non-recursive — it has outgoing call or incoming call edges to other
+                // (possibly recursive) functions but not both or self-loop.
+                if scc.len() == 1 {
+                    let fid = *scc.iter().next().unwrap();
+                    let has_self_loop = edges.iter().any(|(a, b)| *a == fid && *b == fid);
+                    if !has_self_loop {
+                        let function_name = resolve_function_name(ir, fid);
+                        let sig = ir.fn_registry.retrieve_sig(fid);
+                        let def = ir.fn_registry.retrieve_def(fid);
+                        let function_str = mk_function_str(function_name, sig, def, ir);
+                        l!(x, "{}", function_str);
+                        continue;
+                    }
+                }
                 let functions_str = mk_functions_rec_str(&scc, ir);
                 l!(x, "{}", functions_str);
             }
@@ -721,7 +736,7 @@ impl CodeGen for CodeGenZ3 {
 
                 match verdict {
                     Some("unsat") => Response::Unsat,
-                    Some("unknown") => Response::Unknown,
+                    Some("unknown") => Response::Unknown(extract_reason_unknown(&output)),
                     Some("sat") => Response::Sat(output),
                     Some(_) => unreachable!("unexpected verdict"),
                     None => {
@@ -767,13 +782,21 @@ impl CodeGen for CodeGenZ3 {
         let fn_id = instantiations.values().next().unwrap();
         let sig = ir.fn_registry.retrieve_sig(fn_id.clone());
 
-        // Declare one fresh SMT constant per parameter of the top-level function.
+        // Declare one fresh SMT constant per parameter of the top-level function,
+        // and — for any U32 or Seq<U32> parameter — emit a Unicode-scalar-value
+        // bound on it. Without this, Z3 may pick BV32 values outside the valid
+        // codepoint range (surrogates 0xD800-0xDFFF, or > 0x10FFFF), which the
+        // generic seq solver tries to materialize via str.from_code and can
+        // overflow internal vectors.
         let mut query = base_code.to_string();
         let mut param_vars: Vec<String> = Vec::new();
         for (i, (_, param_sort)) in sig.params.iter().enumerate() {
             let var_name = format!("input_{}", i);
             let sort_str = format_sort_for_fn(param_sort, ir);
             query.push_str(&format!("\n(declare-const {} {})", var_name, sort_str));
+            if let Some(bound) = unicode_bound_for(&var_name, param_sort) {
+                query.push_str(&format!("\n{}", bound));
+            }
             param_vars.push(var_name);
         }
 
@@ -797,12 +820,75 @@ impl CodeGen for CodeGenZ3 {
             _ => format!("(and {})", member_assertions.join(" ")),
         };
 
-        // Append the assertion, check-sat, and get-model to the query.
+        // Append the assertion, check-sat, get-info, and get-model.
         query.push_str(&format!("(assert {})\n", assertion));
         query.push_str("(check-sat)\n");
+        query.push_str("(get-info :reason-unknown)\n");
         query.push_str("(get-model)\n");
 
         query
+    }
+}
+
+/// Extract the reason string Z3 reported via `(get-info :reason-unknown)`.
+fn extract_reason_unknown(output: &str) -> String {
+    let marker = "(:reason-unknown";
+    let after_marker = match output.find(marker) {
+        Some(idx) => &output[idx + marker.len()..],
+        None => return String::new(),
+    };
+    let bytes = after_marker.as_bytes();
+    // Find the opening quote.
+    let mut i = 0;
+    while i < bytes.len() && bytes[i] != b'"' {
+        i += 1;
+    }
+    if i >= bytes.len() {
+        return String::new();
+    }
+    i += 1; // skip the opening quote
+    let start = i;
+    let mut out = String::new();
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            // SMT-LIB: `""` is an escaped quote within a string literal.
+            if i + 1 < bytes.len() && bytes[i + 1] == b'"' {
+                out.push('"');
+                i += 2;
+                continue;
+            }
+            // Otherwise this `"` closes the literal.
+            return out;
+        }
+        // Push raw byte (UTF-8 safe because we're rebuilding from the source).
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    // Reached end without closing quote — return what we have.
+    let _ = start;
+    out
+}
+
+/// If `param_sort` is `U32` or `Seq<U32>`, return an SMT-LIB assertion
+/// constraining the variable's codepoints to the valid Unicode scalar value
+/// range: `[0x0, 0xD7FF] ∪ [0xE000, 0x10FFFF]`. Returns `None` for sorts
+/// that don't reach a `U32` representing a codepoint.
+///
+/// Soundness: this only narrows the search space. Every model satisfying
+/// the constraint is also a model of the unconstrained problem; only models
+/// with invalid codepoints are excluded, and those don't correspond to real
+/// `char` inputs anyway (since `char as u32` only produces valid USVs).
+fn unicode_bound_for(var_expr: &str, sort: &Sort) -> Option<String> {
+    match sort {
+        Sort::U32 => Some(format!(
+            "(assert (or (bvule {v} #x0000D7FF) (and (bvuge {v} #x0000E000) (bvule {v} #x0010FFFF))))",
+            v = var_expr
+        )),
+        Sort::Seq(inner) if matches!(**inner, Sort::U32) => Some(format!(
+            "(assert (forall ((__i Int)) (=> (and (>= __i 0) (< __i (seq.len {v}))) (let ((__c (seq.nth {v} __i))) (or (bvule __c #x0000D7FF) (and (bvuge __c #x0000E000) (bvule __c #x0010FFFF)))))))",
+            v = var_expr
+        )),
+        _ => None,
     }
 }
 

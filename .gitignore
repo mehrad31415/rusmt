@@ -9,3 +9,13 @@
 
 # tmp files
 tmp/
+
+# generated synthesis artifacts
+lang/src/synthesis/
+
+# z3 trace dumps
+**/.z3-trace
+**/*.z3-trace
+
+# z3 dumps
+z.smt

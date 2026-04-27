@@ -158,7 +158,7 @@ fn solve_single_target(
                     {
                         Response::Timeout
                     } else {
-                        Response::Unknown
+                        Response::Unknown(reason)
                     }
                 }
             }

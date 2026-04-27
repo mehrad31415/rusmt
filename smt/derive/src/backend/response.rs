@@ -14,21 +14,23 @@ pub enum Response {
     Sat(String),
     /// Unsatisfiable
     Unsat,
-    /// Unknown result
-    Unknown,
+    /// Unknown result; carries the reason string Z3 reported via
+    /// `(get-info :reason-unknown)` (empty if Z3 didn't emit one).
+    Unknown(String),
     /// Timeout occurred
     Timeout,
 }
 
-impl Display for Response {                                                                                                                                                    
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {                                                                                                               
-        match self {                                                                                                                                                           
+impl Display for Response {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
             Self::Timeout => f.write_str("timeout"),
-            Self::Unknown => f.write_str("unknown"),                                                                                                                           
-            Self::Sat(model) => f.write_str(model),                                                                                                                          
-            Self::Unsat => f.write_str("unsat"),                                                                                                                               
+            Self::Unknown(reason) if reason.is_empty() => f.write_str("unknown"),
+            Self::Unknown(reason) => write!(f, "unknown\nreason: {}", reason),
+            Self::Sat(model) => f.write_str(model),
+            Self::Unsat => f.write_str("unsat"),
         }
-    }                                                                                                                                                                          
+    }
 }
 
 

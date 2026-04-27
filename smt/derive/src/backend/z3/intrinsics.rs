@@ -22,7 +22,10 @@ pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
         Sort::F32 => "((_ to_fp 8 24) RNE 0.0)".to_string(),
         Sort::F64 => "((_ to_fp 11 53) RNE 0.0)".to_string(),
         Sort::Seq(_) => format!("(as seq.empty ({}))", format_sort(sort, ir)),
-        Sort::Set(inner) => format!("(mk-rset ((as const (Array {} Bool)) false) 0)", format_sort(inner, ir)),
+        Sort::Set(inner) => format!(
+            "(mk-rset ((as const (Array {} Bool)) false) 0)",
+            format_sort(inner, ir)
+        ),
         Sort::Error => "((as const (Array Int Bool)) false)".to_string(),
         Sort::Cloak(inner) => format!("(as Cloak-null (Cloak {}))", format_sort(inner, ir)),
         Sort::Array(k, v) => {
@@ -732,7 +735,9 @@ pub fn format_intrinsic(
         Intrinsic::ArrayLen { arr, .. } => {
             format!("(rarr-card {})", fmt(*arr))
         }
-        Intrinsic::ArrayStore { arr, key, val, v, .. } => {
+        Intrinsic::ArrayStore {
+            arr, key, val, v, ..
+        } => {
             let a = fmt(*arr);
             let k = fmt(*key);
             let vl = fmt(*val);
@@ -754,13 +759,20 @@ pub fn format_intrinsic(
         }
         Intrinsic::ArrayContainsKey { arr, key, v, .. } => {
             let null = array_null_value(v, ir);
-            format!("(not (= (select (rarr-data {}) {}) {}))", fmt(*arr), fmt(*key), null)
+            format!(
+                "(not (= (select (rarr-data {}) {}) {}))",
+                fmt(*arr),
+                fmt(*key),
+                null
+            )
         }
         Intrinsic::ArrayIsEmpty { arr, .. } => {
             format!("(= (rarr-card {}) 0)", fmt(*arr))
         }
         Intrinsic::SetIntersect { .. } => {
-            panic!("SetIntersect is not supported — use membership checks with forall/exists instead")
+            panic!(
+                "SetIntersect is not supported — use membership checks with forall/exists instead"
+            )
         }
         Intrinsic::SetUnion { .. } => {
             panic!("SetUnion is not supported — use membership checks with forall/exists instead")

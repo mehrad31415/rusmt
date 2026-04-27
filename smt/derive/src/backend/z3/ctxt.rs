@@ -477,10 +477,9 @@ impl CodeGen for CodeGenZ3 {
                         }
                         let body_str = format_expression(&def.body, *body, ir);
 
-                        // Build membership constraints from vars.
-                        // Each choose variable must be a member of its collection.
-                        // choose!(s in array => ...) means s must be a key in array.
+                        // Build membership + non-emptiness constraints from vars.
                         let mut membership_constraints = Vec::new();
+                        let mut non_empty_preconditions: Vec<String> = Vec::new();
                         for (vid, coll_eid) in vars {
                             let var = def.body.lookup_var(vid);
                             let coll_exp = def.body.lookup_exp(coll_eid);
@@ -493,33 +492,51 @@ impl CodeGen for CodeGenZ3 {
                             };
                             let coll_str = format_expression(&def.body, *coll_eid, ir);
 
-                            let membership = match &coll_sort {
-                                Sort::Array(_key_sort, val_sort) => {
+                            let (membership, non_empty) = match &coll_sort {
+                                Sort::Array(key_sort, val_sort) => {
                                     let null_name = array_null_value(val_sort, ir);
-                                    format!(
+                                    let key_str = format_sort(key_sort, ir);
+                                    let m = format!(
                                         "(not (= (select (rarr-data {}) {}) {}))",
                                         coll_str, var.name, null_name
-                                    )
+                                    );
+                                    let ne = format!(
+                                        "(exists ((__ne_k {})) (not (= (select (rarr-data {}) __ne_k) {})))",
+                                        key_str, coll_str, null_name
+                                    );
+                                    (m, ne)
                                 }
-                                Sort::Set(_) => {
+                                Sort::Set(elem_sort) => {
                                     // Sets are RusmartSet wrapping (Array T Bool), membership via rset-data
-                                    format!("(select (rset-data {}) {})", coll_str, var.name)
+                                    let elem_str = format_sort(elem_sort, ir);
+                                    let m = format!(
+                                        "(select (rset-data {}) {})",
+                                        coll_str, var.name
+                                    );
+                                    let ne = format!(
+                                        "(exists ((__ne_v {})) (select (rset-data {}) __ne_v))",
+                                        elem_str, coll_str
+                                    );
+                                    (m, ne)
                                 }
                                 Sort::Seq(_) => {
-                                    format!(
+                                    let m = format!(
                                         "(and (>= {} 0) (< {} (seq.len {})))",
                                         var.name, var.name, coll_str
-                                    )
+                                    );
+                                    let ne = format!("(>= (seq.len {}) 1)", coll_str);
+                                    (m, ne)
                                 }
                                 _ => panic!(
-                                    "choose! collection must be Array or Set, got {:?}",
+                                    "choose! collection must be Array, Set, or Seq, got {:?}",
                                     coll_sort
                                 ),
                             };
                             membership_constraints.push(membership);
+                            non_empty_preconditions.push(non_empty);
                         }
 
-                        // Combine: (and membership1 ... body_condition)
+                        // Combine memberships + body into the constrained branch.
                         let full_condition = if membership_constraints.is_empty() {
                             body_str
                         } else {
@@ -527,12 +544,25 @@ impl CodeGen for CodeGenZ3 {
                             format!("(and {})", membership_constraints.join(" "))
                         };
 
+                        // Guard the whole conjunction with non-emptiness so the
+                        // axiom is vacuously satisfied for empty collections.
+                        let guarded = if non_empty_preconditions.is_empty() {
+                            full_condition
+                        } else {
+                            let precond = if non_empty_preconditions.len() == 1 {
+                                non_empty_preconditions.pop().unwrap()
+                            } else {
+                                format!("(and {})", non_empty_preconditions.join(" "))
+                            };
+                            format!("(=> {} {})", precond, full_condition)
+                        };
+
                         l!(
                             x,
                             "(assert (forall ({}) (let ({}) {})))",
                             param_decls.join(" "),
                             let_bindings.join(" "),
-                            full_condition
+                            guarded
                         );
                     }
                 }

@@ -33,11 +33,16 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<IRContext> {
 }
 
 /// Solve the models by synthesizing inputs for specific Error IDs.
+///
+/// When the env var `RUSMART_SKIP_INVOKE=1` is set, the per-target Z3 invocation
+/// is skipped — only the SMT files are generated. Useful when iterating on the
+/// codegen and you want to inspect / spot-check a few targets manually.
 pub fn solve<P: AsRef<Path>>(
     model: &IRContext,
     top_level_fn: Option<&str>,
     output: P,
 ) -> Result<()> {
+    let skip_invoke = std::env::var("RUSMART_SKIP_INVOKE").ok().as_deref() == Some("1");
     for solver in solvers() {
         let name = solver.name();
 
@@ -70,6 +75,10 @@ pub fn solve<P: AsRef<Path>>(
                 solver.process_error_queries(&base_code, model, top_level_fn, target_ids);
             let query_path = path_error_dir.join(format!("main.{}", solver.flavor()));
             fs::write(&query_path, &query_code).expect("failed to write query file");
+
+            if skip_invoke {
+                continue;
+            }
 
             let resp_file = path_error_dir.join("response.txt");
             let timing_file = path_error_dir.join("timing.txt");

@@ -376,7 +376,17 @@ pub fn default_parser_context() -> ParserContext {
 ///
 /// `toml = expression *( newline expression )`
 #[smt_fn]
-pub fn parse_toml(state: State) -> ParseResult<Value> {
+pub fn parse_toml(input: Seq<String>) -> ParseResult<Value> {
+    parse_toml_inner(State {
+        stream: input,
+        cursor: 0.into(),
+        context: default_parser_context(),
+    })
+}
+
+/// Inner function for parsing a TOML document
+#[smt_fn]
+fn parse_toml_inner(state: State) -> ParseResult<Value> {
     let exp = parse_expression(state);
     match exp {
         ParseResult::Ok(first_value, new_state) => {

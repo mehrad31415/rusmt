@@ -4,9 +4,7 @@
 
 use clap::{Parser, Subcommand};
 use rusmart_lang::rego::{ParseResult as RegoParseResult, State as RegoState, parse_policy};
-use rusmart_lang::toml::{
-    ParseResult as TomlParseResult, State as TomlState, default_parser_context, parse_toml,
-};
+use rusmart_lang::toml::{ParseResult as TomlParseResult, parse_toml};
 use rusmart_smt_stdlib::{Integer, Seq, String};
 use std::fs;
 use std::path::PathBuf;
@@ -65,15 +63,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 char_seq = char_seq.append(smt_char);
             }
 
-            let initial_state = TomlState {
-                stream: char_seq,
-                cursor: Integer::from(0),
-                context: default_parser_context(),
-            };
-
             let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let file_name = format!("{}.txt", input_file.file_stem().unwrap().to_string_lossy());
-            match parse_toml(initial_state) {
+            match parse_toml(char_seq) {
                 TomlParseResult::Ok(toml_value, _) => {
                     let output_path = PathBuf::from(format!(
                         "{}/toml/output/{}",

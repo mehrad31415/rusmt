@@ -370,34 +370,24 @@ fn parse_inline_table_keyvals(
                                         }
                                         ParseResult::NoMatch => {
                                             // Parse the next key-value pair(s) recursively
-                                            match parse_inline_table_keyvals(
-                                                key,
-                                                state_after_sep,
-                                            ) {
+                                            match parse_inline_table_keyvals(key, state_after_sep) {
                                                 ParseResult::Ok(rest_kvs, final_state) => {
-                                                    let nested_table =
-                                                        make_nested_table(key, val);
+                                                    let nested_table = make_nested_table(key, val);
                                                     let combined = recursive_merge_tables(
                                                         nested_table,
                                                         rest_kvs,
                                                     );
                                                     match combined {
                                                         Optional::Some(merged_table) => {
-                                                            let final_state_temp =
-                                                                final_state;
-                                                            let stream =
-                                                                final_state_temp.stream;
-                                                            let cursor =
-                                                                final_state_temp.cursor;
-                                                            let context =
-                                                                final_state_temp.context;
+                                                            let final_state_temp = final_state;
+                                                            let stream = final_state_temp.stream;
+                                                            let cursor = final_state_temp.cursor;
+                                                            let context = final_state_temp.context;
                                                             let context_tmp2 = context;
                                                             let current_table_path4 =
-                                                                context_tmp2
-                                                                    .current_table_path;
+                                                                context_tmp2.current_table_path;
                                                             let explicit_tables4 =
-                                                                context_tmp2
-                                                                    .explicit_tables;
+                                                                context_tmp2.explicit_tables;
                                                             let closed_tables4 =
                                                                 context_tmp2.closed_tables;
                                                             let inline_tables4 =
@@ -405,24 +395,17 @@ fn parse_inline_table_keyvals(
                                                             let inline_arrays4 =
                                                                 context_tmp2.inline_arrays;
                                                             let array_of_tables4 =
-                                                                context_tmp2
-                                                                    .array_of_tables;
-                                                            let new_context =
-                                                                ParserContext {
-                                                                    current_table_path:
-                                                                        current_table_path4,
-                                                                    explicit_tables:
-                                                                        explicit_tables4,
-                                                                    closed_tables:
-                                                                        closed_tables4,
-                                                                    inline_tables:
-                                                                        inline_tables4
-                                                                            .append(new_key),
-                                                                    inline_arrays:
-                                                                        inline_arrays4,
-                                                                    array_of_tables:
-                                                                        array_of_tables4,
-                                                                };
+                                                                context_tmp2.array_of_tables;
+                                                            let new_context = ParserContext {
+                                                                current_table_path:
+                                                                    current_table_path4,
+                                                                explicit_tables: explicit_tables4,
+                                                                closed_tables: closed_tables4,
+                                                                inline_tables: inline_tables4
+                                                                    .append(new_key),
+                                                                inline_arrays: inline_arrays4,
+                                                                array_of_tables: array_of_tables4,
+                                                            };
                                                             let new_final_state = State {
                                                                 stream,
                                                                 cursor,
@@ -440,9 +423,7 @@ fn parse_inline_table_keyvals(
                                                         }
                                                     }
                                                 }
-                                                ParseResult::NoMatch => {
-                                                    ParseResult::NoMatch
-                                                } // cannot happen
+                                                ParseResult::NoMatch => ParseResult::NoMatch, // cannot happen
                                                 ParseResult::Err(e) => {
                                                     return ParseResult::Err(e);
                                                 }
@@ -552,99 +533,103 @@ pub(crate) fn recursive_merge_tables(
     if *new_table.is_empty() {
         return Optional::Some(acc_table);
     } else {
-        let key_to_merge = array_key_min(new_table);
-        let new_val = new_table.select(key_to_merge);
-        let rest_of_new_table = new_table.del(key_to_merge);
-        let key_exists = acc_table.contains_key(key_to_merge);
+        if *new_table.is_empty() {
+            return Optional::Some(acc_table); // early-return, no choose!
+        } else {
+            let key_to_merge = array_key_min(new_table);
+            let new_val = new_table.select(key_to_merge);
+            let rest_of_new_table = new_table.del(key_to_merge);
+            let key_exists = acc_table.contains_key(key_to_merge);
 
-        if *key_exists {
-            let acc_val = acc_table.select(key_to_merge);
+            if *key_exists {
+                let acc_val = acc_table.select(key_to_merge);
 
-            match acc_val {
-                Value::Table(_tab) => match new_val {
-                    Value::Table(_next_table) => {
-                        let sub_merge_result =
-                            recursive_merge_tables(_tab.reveal(), _next_table.reveal());
+                match acc_val {
+                    Value::Table(_tab) => match new_val {
+                        Value::Table(_next_table) => {
+                            let sub_merge_result =
+                                recursive_merge_tables(_tab.reveal(), _next_table.reveal());
 
-                        // Check if the sub-merge succeeded
-                        match sub_merge_result {
-                            Optional::Some(merged_sub_array) => {
-                                let next_acc = acc_table.store(
-                                    key_to_merge,
-                                    Value::Table(Cloak::shield(merged_sub_array)),
-                                );
-                                return recursive_merge_tables(next_acc, rest_of_new_table);
+                            // Check if the sub-merge succeeded
+                            match sub_merge_result {
+                                Optional::Some(merged_sub_array) => {
+                                    let next_acc = acc_table.store(
+                                        key_to_merge,
+                                        Value::Table(Cloak::shield(merged_sub_array)),
+                                    );
+                                    return recursive_merge_tables(next_acc, rest_of_new_table);
+                                }
+                                Optional::None => return Optional::None,
                             }
-                            Optional::None => return Optional::None,
                         }
-                    }
+                        _ => {
+                            return Optional::None;
+                        }
+                    },
+                    Value::Array(acc_cloak) => match new_val {
+                        Value::Array(new_cloak) => {
+                            let acc_seq = acc_cloak.reveal();
+                            let new_seq = new_cloak.reveal();
+
+                            // Concatenate the new items to the existing array
+                            let final_seq = acc_seq.concat(new_seq);
+
+                            let next_acc = acc_table
+                                .store(key_to_merge, Value::Array(Cloak::shield(final_seq)));
+                            return recursive_merge_tables(next_acc, rest_of_new_table);
+                        }
+
+                        Value::Table(new_cloak) => {
+                            let acc_seq = acc_cloak.reveal();
+                            if *acc_seq.is_empty() {
+                                return Optional::None;
+                            } else {
+                                let last_idx = acc_seq.length().sub(Integer::from(1));
+                                let last_val = acc_seq.at(last_idx);
+
+                                match last_val {
+                                    Value::Table(last_table_cloak) => {
+                                        let sub_merge_result = recursive_merge_tables(
+                                            last_table_cloak.reveal(),
+                                            new_cloak.reveal(),
+                                        );
+
+                                        match sub_merge_result {
+                                            Optional::Some(merged_last_table) => {
+                                                let prefix: Seq<Value> =
+                                                    acc_seq.extract(Integer::from(0), last_idx);
+
+                                                let new_last_val =
+                                                    Value::Table(Cloak::shield(merged_last_table));
+                                                let new_tail: Seq<Value> =
+                                                    Seq::new().append(new_last_val);
+                                                let new_seq = prefix.concat(new_tail);
+                                                let next_acc = acc_table.store(
+                                                    key_to_merge,
+                                                    Value::Array(Cloak::shield(new_seq)),
+                                                );
+                                                return recursive_merge_tables(
+                                                    next_acc,
+                                                    rest_of_new_table,
+                                                );
+                                            }
+                                            Optional::None => return Optional::None,
+                                        }
+                                    }
+                                    _ => return Optional::None,
+                                }
+                            }
+                        }
+                        _ => return Optional::None,
+                    },
                     _ => {
                         return Optional::None;
                     }
-                },
-                Value::Array(acc_cloak) => match new_val {
-                    Value::Array(new_cloak) => {
-                        let acc_seq = acc_cloak.reveal();
-                        let new_seq = new_cloak.reveal();
-
-                        // Concatenate the new items to the existing array
-                        let final_seq = acc_seq.concat(new_seq);
-
-                        let next_acc =
-                            acc_table.store(key_to_merge, Value::Array(Cloak::shield(final_seq)));
-                        return recursive_merge_tables(next_acc, rest_of_new_table);
-                    }
-
-                    Value::Table(new_cloak) => {
-                        let acc_seq = acc_cloak.reveal();
-                        if *acc_seq.is_empty() {
-                            return Optional::None;
-                        } else {
-                            let last_idx = acc_seq.length().sub(Integer::from(1));
-                            let last_val = acc_seq.at(last_idx);
-
-                            match last_val {
-                                Value::Table(last_table_cloak) => {
-                                    let sub_merge_result = recursive_merge_tables(
-                                        last_table_cloak.reveal(),
-                                        new_cloak.reveal(),
-                                    );
-
-                                    match sub_merge_result {
-                                        Optional::Some(merged_last_table) => {
-                                            let prefix: Seq<Value> =
-                                                acc_seq.extract(Integer::from(0), last_idx);
-
-                                            let new_last_val =
-                                                Value::Table(Cloak::shield(merged_last_table));
-                                            let new_tail: Seq<Value> =
-                                                Seq::new().append(new_last_val);
-                                            let new_seq = prefix.concat(new_tail);
-                                            let next_acc = acc_table.store(
-                                                key_to_merge,
-                                                Value::Array(Cloak::shield(new_seq)),
-                                            );
-                                            return recursive_merge_tables(
-                                                next_acc,
-                                                rest_of_new_table,
-                                            );
-                                        }
-                                        Optional::None => return Optional::None,
-                                    }
-                                }
-                                _ => return Optional::None,
-                            }
-                        }
-                    }
-                    _ => return Optional::None,
-                },
-                _ => {
-                    return Optional::None;
                 }
+            } else {
+                let next_acc = acc_table.store(key_to_merge, new_val);
+                recursive_merge_tables(next_acc, rest_of_new_table)
             }
-        } else {
-            let next_acc = acc_table.store(key_to_merge, new_val);
-            recursive_merge_tables(next_acc, rest_of_new_table)
         }
     }
 }

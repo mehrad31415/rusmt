@@ -115,17 +115,27 @@ These were checked against the source and hold:
 
 - **Type taxonomy.** The split is exactly `isolated` (no edges) vs `recursive_sccs` (edges or self-loop). A self-loop alone (e.g., a generic with `Cloak<Self>`) is enough to push a node into `recursive_sccs` as a singleton.
 - **`ty_args` slot count.** The slice has one slot per generic parameter declared in the source-level definition. Non-generic types have an empty slice; a type with N parameters has N slots. The slot length is fixed; only the slot contents vary.
-- **Backend emits only canonical templates as datatypes.** Generic ones are wrapped in `par (T1 ... Tn)`; non-generic ones are flat. All other entries (foreign-uninterpreted, partial, fully concrete) are silently dropped from declarations, but their sids are still used by `format_sort` to print references like `(Foo Int String)` against the parametric declaration.
-- **Use-site references.** When `format_sort` encounters `Sort::User(sid)`, it does `reverse_lookup(sid)` to get `(Name, [arg1, arg2])` and emits `(Name <fmt(arg1)> <fmt(arg2)>)`. This works whether the args are concrete sorts or uninterpreted names.
+- **Backend emits only canonical templates as datatypes (named types).** Generic ones are wrapped in `par (T1 ... Tn)`; non-generic ones are flat. All other entries (foreign-uninterpreted, partial, fully concrete) are silently dropped from declarations, but their sids are still used by `format_sort` to print references like `(Foo Int String)` against the parametric declaration. Unnamed tuples are handled differently — see the **Unnamed Tuples** section below.
+- **Use-site references.** When `format_sort` encounters `Sort::User(sid)` for a *named* type, it does `reverse_lookup(sid)` to get `(Name, [arg1, arg2])` and emits `(Name <fmt(arg1)> <fmt(arg2)>)`. This works whether the args are concrete sorts or uninterpreted names. For *unnamed* tuples, only the distinct `Uninterpreted` elements are passed as instantiation args (concrete elements are baked into the tn); see the **Unnamed Tuples** section.
 - **Backend emits only fully-concrete functions.** The filter `!ty_args.iter().any(Uninterpreted)` keeps only kind-4 function entries. Templates, foreign-uninterpreted, and partial entries are dropped; SMT-LIB has no parametric `define-fun`, so this is the only legal path.
 - **Closure of the emitted call graph.** Each fully-concrete function fid had its body re-materialized with a fully-concrete `ty_inst`. Re-materialization rewalks every call site and resolves it to another fully-concrete fid. So inside an emitted body, every call edge points to another emitted fid. Templates and partials are referenced only from other templates' bodies, which are themselves not emitted.
+
+### Unnamed Tuples
+
+Unnamed tuples (registered via `TypeRef::Pack`, `ty_name = None`) don't fit the template/monomorph split above. Each distinct `args` list is its own sid with its own SMT-LIB declaration — there is no shared template wrapping them.
+
+- **Always canonical.** `name_to_best_sid` uses `None => true`. Two unnamed tuples with the same `args` share a sid (dedup'd at registration); different `args` = different sid = different declaration. There is no template/monomorph collapse for unnamed tuples.
+- **`par`-wrap when `args` contain `Uninterpreted`.** When an unnamed tuple appears inside a generic body, its `args` may include `Uninterpreted` entries (parent's type vars), possibly partially monomorphized with concrete sorts. `get_generic_param_count` returns the *distinct* `Uninterpreted` entries in first-appearance order; `mk_unnamed_tuple_str` `par`-wraps when this is non-empty. Concrete element sorts are emitted directly in the body and need no binder.
+- **Use-sites instantiate only those distinct binders.** `format_sort` for an unnamed-tuple `Sort::User(sid)` reads the same `(_, params)` from `get_generic_param_count`. If empty: bare `tn` (e.g. `Tuple_Int_String`). If non-empty: `(tn <fmt(p1)> ...)`, e.g. `(Tuple_Foo_T_Int Foo_T)` for `(T, I32)` referenced inside `Foo<T>`'s body.
+
+The visual coincidence in `(Tuple_Foo_T_Int Foo_T)` is just naming convention — `Tuple_Foo_T_Int` is one opaque symbol whose components happen to encode the args (per `resolve_type_name`), and the trailing `Foo_T` is the parent declaration's `par`-bound sort being passed as the instantiation argument. They are unrelated bindings that share a name; SMT-LIB resolves them by lexical scope.
 
 ### Soundness Invariants
 
 The architecture maintains two invariants that together guarantee valid SMT-LIB output:
 
 1. **Uninterpreted names only appear inside a `par` clause that binds them.** A reference like `(Inner Foo_T)` is well-formed when emitted inside `(declare-datatypes ((Foo 1)) ((par (Foo_T) ...)))` because `Foo_T` is bound by the `par`. The code prevents unbound uninterpreted names from leaking to top-level positions:
-   - Top-level `(declare-datatypes ...)` blocks for generic types are wrapped in `par`.
+   - Top-level `(declare-datatypes ...)` blocks for generic types are wrapped in `par`. Unnamed tuples whose `args` contain `Uninterpreted` are also wrapped (see the **Unnamed Tuples** section).
    - Non-generic types have no params and no uninterpreted to begin with.
    - Function bodies are emitted only for fully-concrete functions, whose bodies were materialized with a fully-concrete `ty_inst`, so no `Uninterpreted` survives in their expressions.
    - Null sentinels (and any other top-level constants) explicitly filter out sids with any uninterpreted before declaring them.

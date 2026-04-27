@@ -224,15 +224,15 @@ impl<'ctx> Z3ApiContext<'ctx> {
     ///
     /// Every sid gets its own Z3 datatype, including each monomorphized instantiation of a generic type.
     /// Contrast with the text backend, which declares the generic template once and passes each concrete instantiation as a type argument.
+    /// No par in the C API. Z3_mk_datatypes takes a flat array of names + constructor lists. Parametric polymorphism lives only in the SMT-LIB2 parser's frontend (par).
     fn build_datatypes(&mut self) {
         let ir = self.ir;
         if ir.ty_registry.data_types().is_empty() {
             return;
         }
 
-        // All sids, sorted for reproducibility.
-        let mut sids: Vec<UsrSortId> = ir.ty_registry.data_types().keys().copied().collect();
-        sids.sort();
+        // All sids.
+        let sids: Vec<UsrSortId> = ir.ty_registry.data_types().keys().copied().collect();
 
         // Each sid needs a unique Z3 symbol. Name format:
         //   - sid 0 of type Option<T>  -> "Option"      (generic template)
@@ -240,10 +240,13 @@ impl<'ctx> Z3ApiContext<'ctx> {
         let mut sid_symbols: HashMap<UsrSortId, String> = HashMap::new();
         for &sid in &sids {
             let tn = resolve_type_name(ir, sid);
-            let (_, args) = ir.ty_registry.reverse_lookup(sid);
+            let (ty_name_opt, args) = ir.ty_registry.reverse_lookup(sid);
             let is_template = args.iter().all(|s| matches!(s, Sort::Uninterpreted(_)));
             let sym_name = if is_template {
                 tn
+            } else if ty_name_opt.is_none() {
+                // unnamed tuple: tn already encodes args
+                format!("{}_{}", tn, sid.index)
             } else {
                 let suffix: Vec<String> = args
                     .iter()
@@ -260,13 +263,14 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 let sym = mk_string_symbol(self.ctx, &sid_symbols[&sid]);
                 let fwd = z3_sys::Z3_mk_datatype_sort(self.ctx, sym, 0, std::ptr::null())
                     .expect("Z3_mk_datatype_sort");
+                let ast = z3_sys::Z3_sort_to_ast(self.ctx, fwd).expect("Z3_sort_to_ast");
+                z3_sys::Z3_inc_ref(self.ctx, ast);
                 self.datatype_sorts.insert(sid, fwd);
                 self.sort_cache.insert(Sort::User(sid), fwd);
             }
         }
 
-        // Phase 2: build constructor lists. Composite sorts reference the
-        // forward refs from Phase 1, so there's no ordering constraint.
+        // Phase 2: build constructor lists.
         let ctx = self.ctx;
         let mut sort_names: Vec<z3_sys::Z3_symbol> = Vec::new();
         let mut constructor_lists: Vec<z3_sys::Z3_constructor_list> = Vec::new();
@@ -274,13 +278,12 @@ impl<'ctx> Z3ApiContext<'ctx> {
         let mut raw_ctors_per_type: Vec<Vec<z3_sys::Z3_constructor>> = Vec::new();
 
         for &sid in &sids {
-            let type_name = resolve_type_name(ir, sid);
             let dt = ir.ty_registry.retrieve(sid);
             unsafe {
                 sort_names.push(mk_string_symbol(ctx, &sid_symbols[&sid]));
             }
 
-            let (ctors, infos) = self.build_constructors_flat(sid, &type_name, dt);
+            let (ctors, infos) = self.build_constructors_flat(sid, &sid_symbols[&sid], dt);
             unsafe {
                 let clist = z3_sys::Z3_mk_constructor_list(
                     ctx,
@@ -309,6 +312,8 @@ impl<'ctx> Z3ApiContext<'ctx> {
 
             for (i, &sid) in sids.iter().enumerate() {
                 let real_sort = result_sorts[i].assume_init();
+                let ast = z3_sys::Z3_sort_to_ast(self.ctx, real_sort).expect("Z3_sort_to_ast");
+                z3_sys::Z3_inc_ref(self.ctx, ast);
                 self.datatype_sorts.insert(sid, real_sort);
                 self.sort_cache.insert(Sort::User(sid), real_sort);
             }
@@ -355,8 +360,7 @@ impl<'ctx> Z3ApiContext<'ctx> {
         }
     }
 
-    /// Build constructors for a single datatype, using forward-ref sorts
-    /// already in `datatype_sorts` for every nested User reference.
+    /// Build constructors for a single datatype.
     fn build_constructors_flat(
         &mut self,
         _sid: UsrSortId,
@@ -464,10 +468,6 @@ impl<'ctx> Z3ApiContext<'ctx> {
         }
     }
 
-    // ──────────────────────────────────────────────────────────────
-    //  Null sentinels
-    // ──────────────────────────────────────────────────────────────
-
     /// Declare one null sentinel per concrete user-defined value sort.
     /// These match the text backend's `null_<safe_name>` constants.
     fn build_null_consts(&mut self) {
@@ -498,10 +498,6 @@ impl<'ctx> Z3ApiContext<'ctx> {
             }
         }
     }
-
-    // ──────────────────────────────────────────────────────────────
-    //  Integer string-parsing helpers (hex/oct/bin)
-    // ──────────────────────────────────────────────────────────────
 
     fn build_string_helpers(&mut self) {
         let ctx = self.ctx;
@@ -761,10 +757,6 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 .insert("rusmart_from_bin_str".to_string(), bin_top);
         }
     }
-
-    // ──────────────────────────────────────────────────────────────
-    //  User function declarations
-    // ──────────────────────────────────────────────────────────────
 
     fn build_functions(&mut self) {
         let ir = self.ir;

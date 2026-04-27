@@ -31,15 +31,20 @@ pub fn resolve_type_name(ir: &IRContext, sid: UsrSortId) -> String {
 
 /// get the number of generic parameters for a type
 pub fn get_generic_param_count(ir: &IRContext, sid: UsrSortId) -> (usize, Vec<Sort>) {
-    // if unnamed tuple, no generics
-    let dt = ir.ty_registry.retrieve(sid);
-    match dt {
-        DataType::Tuple(_) if ir.ty_registry.reverse_lookup(sid).0.is_none() => (0, vec![]),
-        _ => {
-            let (_, generics) = ir.ty_registry.reverse_lookup(sid);
-            (generics.len(), generics.to_vec())
+    let (ty_name_opt, args) = ir.ty_registry.reverse_lookup(sid);
+    if ty_name_opt.is_none() {
+        let mut params: Vec<Sort> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        for elem in args {
+            if let Sort::Uninterpreted(name) = elem
+                && seen.insert(name.to_string())
+            {
+                params.push(elem.clone());
+            }
         }
+        return (params.len(), params);
     }
+    (args.len(), args.to_vec())
 }
 
 /// Helper to format a Sort into its SMT string representation.
@@ -50,7 +55,17 @@ pub(crate) fn format_sort(sort: &Sort, ir: &IRContext) -> String {
             let type_name = resolve_type_name(ir, *sid);
 
             match ty_name_opt {
-                None => type_name, // unnamed tuple — name encodes the params
+                None => {
+                    // unnamed tuple: instantiate par-binders if any uninterpreted elements.
+                    let (_, params) = get_generic_param_count(ir, *sid);
+                    if params.is_empty() {
+                        type_name
+                    } else {
+                        let formatted: Vec<String> =
+                            params.iter().map(|p| format_sort(p, ir)).collect();
+                        format!("({} {})", type_name, formatted.join(" "))
+                    }
+                }
                 Some(_) if user_type_params.is_empty() => type_name, // named type without generics
                 Some(_) => {
                     let formatted_params: Vec<String> = user_type_params
@@ -85,8 +100,14 @@ pub(crate) fn format_sort(sort: &Sort, ir: &IRContext) -> String {
 }
 
 /// Converts an unnamed tuple to SMT-LIB string body.
-/// Output format: for `(Integer, String)` it returns `((mk-Tuple-Integer-String (field_Tuple-Integer-String_1 Integer) (field_Tuple-Integer-String_2 String)))`
-pub fn mk_unnamed_tuple_str(type_name: String, elems: &[Sort], ir: &IRContext) -> String {
+/// `type_params` is the distinct Uninterpreted args (from `get_generic_param_count`);
+/// non-empty triggers `par`-wrapping. Concrete elements are emitted directly in the body.
+pub fn mk_unnamed_tuple_str(
+    type_name: String,
+    elems: &[Sort],
+    ir: &IRContext,
+    type_params: &[Sort],
+) -> String {
     let constructor_name = format!("mk-{type_name}");
 
     let fields: Vec<String> = elems
@@ -98,7 +119,21 @@ pub fn mk_unnamed_tuple_str(type_name: String, elems: &[Sort], ir: &IRContext) -
         })
         .collect();
 
-    format!("(({} {}))", constructor_name, fields.join(" "))
+    let body = format!("(({} {}))", constructor_name, fields.join(" "));
+
+    if !type_params.is_empty() {
+        format!(
+            "(par ({}) {})",
+            type_params
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" "),
+            body
+        )
+    } else {
+        body
+    }
 }
 
 /// Converts a named tuple to SMT-LIB string body.

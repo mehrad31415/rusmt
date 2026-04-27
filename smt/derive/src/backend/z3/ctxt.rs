@@ -233,7 +233,7 @@ impl CodeGen for CodeGenZ3 {
                         DataType::Tuple(elems)
                             if ir.ty_registry.reverse_lookup(*sid).0.is_none() =>
                         {
-                            mk_unnamed_tuple_str(type_name_str, elems, ir)
+                            mk_unnamed_tuple_str(type_name_str, elems, ir, &type_params)
                         }
                         DataType::Tuple(elems) => {
                             mk_named_tuple_str(type_name_str, elems, ir, &type_params)

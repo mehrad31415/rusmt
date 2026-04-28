@@ -22,7 +22,7 @@ pub(crate) trait CodeGen {
 
     /// Given an IRContext, generate the backend source code.
     /// Returns a `BackendResult<String>` containing either the full source code or a BackendError.
-    fn process(&self, ir: &IRContext) -> BackendResult<String>;
+    fn process(&self, ir: &IRContext, unroll_depth: usize) -> BackendResult<String>;
 
     /// process generates SMT-LIB as a String → caller writes it to a file → invoke_backend takes that file path. The intermediate file step is intentional (keeps the generated code inspectable for debugging).
     fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response>;

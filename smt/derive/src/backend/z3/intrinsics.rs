@@ -1,6 +1,6 @@
 //! This module contains the conversion of Rusmart intrinsics to SMT-LIB format.
 
-use crate::backend::z3::exp::format_expression;
+use crate::backend::z3::exp::format_expression_renamed;
 use crate::backend::z3::fun::{collect_called_functions, format_sort_for_fn};
 use crate::backend::z3::sort::format_sort;
 use crate::ir::ctxt::IRContext;
@@ -9,6 +9,7 @@ use crate::ir::index::UsrFunId;
 use crate::ir::intrinsics::Intrinsic;
 use crate::ir::sort::Sort;
 use num_bigint::BigInt;
+use std::collections::BTreeMap;
 
 /// Generate an SMT-LIB value for the "null" (absent) sentinel of an array value sort.
 pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
@@ -21,7 +22,7 @@ pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
         Sort::I64 | Sort::U64 => "(_ bv0 64)".to_string(),
         Sort::F32 => "((_ to_fp 8 24) RNE 0.0)".to_string(),
         Sort::F64 => "((_ to_fp 11 53) RNE 0.0)".to_string(),
-        Sort::Seq(_) => format!("(as seq.empty ({}))", format_sort(sort, ir)),
+        Sort::Seq(_) => format!("(as seq.empty {})", format_sort(sort, ir)),
         Sort::Set(inner) => format!(
             "(mk-rset ((as const (Array {} Bool)) false) 0)",
             format_sort(inner, ir)
@@ -342,9 +343,10 @@ pub fn format_intrinsic(
     intrinsic: &Intrinsic,
     exp_registry: &ExpRegistry,
     ir: &IRContext,
+    rename: &BTreeMap<UsrFunId, String>,
 ) -> String {
     // Helper to format sub-expressions
-    let fmt = |id| format_expression(exp_registry, id, ir);
+    let fmt = |id| format_expression_renamed(exp_registry, id, ir, rename);
 
     match intrinsic {
         Intrinsic::BoolVal(b) => b.to_string(),

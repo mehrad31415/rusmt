@@ -1,7 +1,7 @@
 //! This module contains functions for working with Z3 function declarations and definitions.
 
-use crate::backend::z3::exp::format_expression;
-use crate::backend::z3::intrinsics::collect_fn_from_intrinsic;
+use crate::backend::z3::exp::{format_expression, format_expression_renamed};
+use crate::backend::z3::intrinsics::{array_null_value, collect_fn_from_intrinsic};
 use crate::backend::z3::sort::resolve_type_name;
 use crate::ir::exp::{ExpRegistry, Expression, VarKind, VariantCtor};
 use crate::ir::index::ExpId;
@@ -9,9 +9,9 @@ use crate::ir::{
     ctxt::IRContext,
     fun::{FunDef, FunRegistry, FunSig},
     index::UsrFunId,
-    sort::Sort,
+    sort::{DataType, Sort, Variant},
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Helper to resolve a unique SMT function name from a function ID.
 /// Non-generic functions use their base name (e.g., "parse_toml").
@@ -302,4 +302,128 @@ pub fn mk_functions_rec_str(scc_fids: &BTreeSet<UsrFunId>, ir: &IRContext) -> St
         signatures.join(" "),
         bodies.join(" ")
     )
+}
+
+/// Convert a recursive SCC into a sequence of non-recursive `define-fun`
+/// declarations realizing bounded-recursion unrolling to depth `k` (k ≥ 1).
+///
+/// Soundness: a sat model under depth-k unrolling is a genuine witness that
+/// the SCC reaches the asserted condition within ≤ k recursive steps. Inputs
+/// whose path requires more than k steps return the terminator instead.
+pub fn mk_functions_unrolled_str(
+    scc_fids: &BTreeSet<UsrFunId>,
+    depth: usize,
+    ir: &IRContext,
+) -> String {
+    assert!(depth >= 1, "mk_functions_unrolled_str requires depth >= 1");
+
+    let names: BTreeMap<UsrFunId, String> = scc_fids
+        .iter()
+        .map(|&fid| (fid, resolve_function_name(ir, fid)))
+        .collect();
+
+    let format_params = |sig: &FunSig| -> Vec<String> {
+        sig.params
+            .iter()
+            .map(|(n, s)| format!("({} {})", n, format_sort_for_fn(s, ir)))
+            .collect()
+    };
+
+    let mut out = String::new();
+
+    // Depth 0: terminator (null sentinel of return type)
+    for &fid in scc_fids {
+        let sig = ir.fn_registry.retrieve_sig(fid);
+        let params = format_params(sig);
+        let ret = format_sort_for_fn(&sig.ret_ty, ir);
+        let terminator = bmc_terminator(&sig.ret_ty, ir);
+        out.push_str(&format!(
+            "(define-fun {}_0 ({}) {} {})\n",
+            names[&fid],
+            params.join(" "),
+            ret,
+            terminator
+        ));
+    }
+
+    // Depths 1..=k
+    for d in 1..=depth {
+        let rename: BTreeMap<UsrFunId, String> = names
+            .iter()
+            .map(|(&fid, name)| (fid, format!("{}_{}", name, d - 1)))
+            .collect();
+        for &fid in scc_fids {
+            let sig = ir.fn_registry.retrieve_sig(fid);
+            let def = ir.fn_registry.retrieve_def(fid);
+            let params = format_params(sig);
+            let ret = format_sort_for_fn(&sig.ret_ty, ir);
+            let body = format_expression_renamed(&def.body, def.root_exp_id, ir, &rename);
+            out.push_str(&format!(
+                "(define-fun {}_{} ({}) {} {})\n",
+                names[&fid],
+                d,
+                params.join(" "),
+                ret,
+                body
+            ));
+        }
+    }
+
+    // Aliases — route external callers through the depth-k copy.
+    for &fid in scc_fids {
+        let sig = ir.fn_registry.retrieve_sig(fid);
+        let params = format_params(sig);
+        let ret = format_sort_for_fn(&sig.ret_ty, ir);
+        let arg_names: Vec<String> = sig.params.iter().map(|(n, _)| n.to_string()).collect();
+        let call = if arg_names.is_empty() {
+            format!("{}_{}", names[&fid], depth)
+        } else {
+            format!("({}_{} {})", names[&fid], depth, arg_names.join(" "))
+        };
+        out.push_str(&format!(
+            "(define-fun {} ({}) {} {})\n",
+            names[&fid],
+            params.join(" "),
+            ret,
+            call
+        ));
+    }
+
+    // Trim the final newline so the calling `l!` macro doesn't double up.
+    if out.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
+/// Pick the SMT-LIB terminator value to return when a bounded-recursion
+/// unrolled function exhausts its depth budget.
+///
+/// 1. If the return sort is a user-defined enum (e.g. `ParseResult<T>`,
+///    `Optional<T>`), return the constructor application of the first
+///    `Variant::Unit` declared on it. For parser-shaped types this picks
+///    a meaningful "ran out of budget" sentinel — `NoMatch` for
+///    `ParseResult`, `None` for `Optional`.
+/// 2. Otherwise (primitives, records, tuples, enums with no Unit variant)
+///    fall back to `array_null_value`, which produces the type's null
+///    sentinel (`0` for ints, `false` for bools, the declared
+///    `null_<TypeName>` constant for records/tuples, etc.).
+fn bmc_terminator(sort: &Sort, ir: &IRContext) -> String {
+    if let Sort::User(sid) = sort {
+        let dt = ir.ty_registry.retrieve(*sid);
+        if let DataType::Enum(variants) = dt {
+            if let Some(vname) = variants.iter().find_map(|(n, v)| {
+                if matches!(v, Variant::Unit) {
+                    Some(n.clone())
+                } else {
+                    None
+                }
+            }) {
+                let type_name = resolve_type_name(ir, *sid);
+                let sort_str = crate::backend::z3::sort::format_sort(sort, ir);
+                return format!("(as {}_{} {})", type_name, vname, sort_str);
+            }
+        }
+    }
+    array_null_value(sort, ir)
 }

@@ -5,11 +5,24 @@ use crate::backend::z3::fun::{format_sort_for_fn, resolve_function_name};
 use crate::backend::z3::intrinsics::{array_null_value, format_intrinsic};
 use crate::backend::z3::sort::resolve_type_name;
 use crate::ir::exp::{EnumSelector, Expression, VarKind, VariantCtor};
+use crate::ir::index::UsrFunId;
 use crate::ir::sort::Sort;
 use crate::ir::{ctxt::IRContext, exp::ExpRegistry, index::ExpId};
+use std::collections::BTreeMap;
 
 /// Convert an expression to SMT-LIB string format.
 pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRContext) -> String {
+    format_expression_renamed(exp_registry, exp_id, ir, &BTreeMap::new())
+}
+
+/// Convert an expression to SMT-LIB string format, redirecting calls to
+/// callees in `rename` to the renamed function name. Used by bounded-recursion unrolling.
+pub fn format_expression_renamed(
+    exp_registry: &ExpRegistry,
+    exp_id: ExpId,
+    ir: &IRContext,
+    rename: &BTreeMap<UsrFunId, String>,
+) -> String {
     let exp = exp_registry.lookup_exp(&exp_id);
 
     match exp {
@@ -17,7 +30,9 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
             let var = exp_registry.lookup_var(var_id);
             match &var.kind {
                 VarKind::Param => var.name.to_string(),
-                VarKind::Bound { bind } => format_expression(exp_registry, *bind, ir),
+                VarKind::Bound { bind } => {
+                    format_expression_renamed(exp_registry, *bind, ir, rename)
+                }
                 VarKind::Quant | VarKind::Axiom => var.name.to_string(),
                 VarKind::Match {
                     head,
@@ -26,7 +41,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                     selector,
                 } => {
                     // Match-introduced variable: access the field from the head
-                    let head_str = format_expression(exp_registry, *head, ir);
+                    let head_str = format_expression_renamed(exp_registry, *head, ir, rename);
                     let type_name = resolve_type_name(ir, *sort);
                     let accessor_name = match selector {
                         EnumSelector::Tuple(idx) => {
@@ -45,7 +60,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
             let constructor_name = format!("mk-{}", type_name);
             let elem_strs: Vec<String> = elems
                 .iter()
-                .map(|e| format_expression(exp_registry, *e, ir))
+                .map(|e| format_expression_renamed(exp_registry, *e, ir, rename))
                 .collect();
             format!("({} {})", constructor_name, elem_strs.join(" "))
         }
@@ -54,7 +69,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
             let constructor_name = format!("mk-{}", type_name);
             let slot_strs: Vec<String> = slots
                 .iter()
-                .map(|s| format_expression(exp_registry, *s, ir))
+                .map(|s| format_expression_renamed(exp_registry, *s, ir, rename))
                 .collect();
             format!("({} {})", constructor_name, slot_strs.join(" "))
         }
@@ -63,7 +78,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
             let constructor_name = format!("mk-{}", type_name);
             let ordered_values: Vec<String> = fields
                 .values()
-                .map(|exp_id| format_expression(exp_registry, *exp_id, ir))
+                .map(|exp_id| format_expression_renamed(exp_registry, *exp_id, ir, rename))
                 .collect();
             format!("({} {})", constructor_name, ordered_values.join(" "))
         }
@@ -84,7 +99,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                 let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
                 let elem_strs: Vec<String> = elems
                     .iter()
-                    .map(|e| format_expression(exp_registry, *e, ir))
+                    .map(|e| format_expression_renamed(exp_registry, *e, ir, rename))
                     .collect();
                 format!(
                     "((as {} {}) {})",
@@ -99,20 +114,20 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                 let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
                 let values: Vec<String> = fields
                     .values()
-                    .map(|exp_id| format_expression(exp_registry, *exp_id, ir))
+                    .map(|exp_id| format_expression_renamed(exp_registry, *exp_id, ir, rename))
                     .collect();
                 format!("((as {} {}) {})", constructor, sort_str, values.join(" "))
             }
         },
         Expression::AccessSlot { base, slot } => {
-            let base_str = format_expression(exp_registry, *base, ir);
+            let base_str = format_expression_renamed(exp_registry, *base, ir, rename);
             let base_sort = exp_registry.derive_type(*base, ir);
             let type_name = resolve_type_name(ir, ExpRegistry::expect_sort_user(&base_sort));
             let accessor_name = format!("field_{}_{}_", type_name, slot + 1);
             format!("({} {})", accessor_name, base_str)
         }
         Expression::AccessField { base, field } => {
-            let base_str = format_expression(exp_registry, *base, ir);
+            let base_str = format_expression_renamed(exp_registry, *base, ir, rename);
             let base_sort = exp_registry.derive_type(*base, ir);
             let type_name = resolve_type_name(ir, ExpRegistry::expect_sort_user(&base_sort));
             let accessor_name = format!("record_{}_{}_", type_name, field);
@@ -120,27 +135,30 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
         }
         Expression::Phi { cases, default } => {
             // If-then-else chain: (ite condition1 body1 (ite condition2 body2 ... default))
-            let mut result = format_expression(exp_registry, *default, ir);
+            let mut result = format_expression_renamed(exp_registry, *default, ir, rename);
             for case in cases.iter().rev() {
-                let cond_str = format_expression(exp_registry, case.cond, ir);
-                let body_str = format_expression(exp_registry, case.body, ir);
+                let cond_str = format_expression_renamed(exp_registry, case.cond, ir, rename);
+                let body_str = format_expression_renamed(exp_registry, case.body, ir, rename);
                 result = format!("(ite {} {} {})", cond_str, body_str, result);
             }
             result
         }
         Expression::Procedure { callee, args } => {
-            let function_name = resolve_function_name(ir, *callee);
+            let function_name = match rename.get(callee) {
+                Some(renamed) => renamed.clone(),
+                None => resolve_function_name(ir, *callee),
+            };
             if args.is_empty() {
                 format!("{}", function_name)
             } else {
                 let arg_strs: Vec<String> = args
                     .iter()
-                    .map(|a| format_expression(exp_registry, *a, ir))
+                    .map(|a| format_expression_renamed(exp_registry, *a, ir, rename))
                     .collect();
                 format!("({} {})", function_name, arg_strs.join(" "))
             }
         }
-        Expression::Intrinsic(intrinsic) => format_intrinsic(intrinsic, exp_registry, ir),
+        Expression::Intrinsic(intrinsic) => format_intrinsic(intrinsic, exp_registry, ir, rename),
         Expression::Match { cases } => {
             // Match expression: (ite condition1 body1 (ite condition2 body2 ... default))
             // For enums, we use tester functions: (is-VariantName expr)
@@ -148,13 +166,14 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                 return "true".to_string(); // Fallback
             }
 
-            let mut result = format_expression(exp_registry, cases.last().unwrap().body, ir);
+            let mut result =
+                format_expression_renamed(exp_registry, cases.last().unwrap().body, ir, rename);
 
             // Build nested ite expressions from last to first (excluding the last case)
             for case in cases.iter().rev().skip(1) {
                 let condition = if case.atoms.len() == 1 {
                     let atom = &case.atoms[0];
-                    let head_str = format_expression(exp_registry, atom.head, ir);
+                    let head_str = format_expression_renamed(exp_registry, atom.head, ir, rename);
                     let type_name = resolve_type_name(ir, atom.sort);
                     // Use tester function for enum — prefixed with type name to match declaration
                     format!("(is-{}_{} {})", type_name, atom.branch, head_str)
@@ -164,14 +183,15 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                         .atoms
                         .iter()
                         .map(|atom| {
-                            let head_str = format_expression(exp_registry, atom.head, ir);
+                            let head_str =
+                                format_expression_renamed(exp_registry, atom.head, ir, rename);
                             let type_name = resolve_type_name(ir, atom.sort);
                             format!("(is-{}_{} {})", type_name, atom.branch, head_str)
                         })
                         .collect();
                     format!("(and {})", conditions.join(" "))
                 };
-                let body_str = format_expression(exp_registry, case.body, ir);
+                let body_str = format_expression_renamed(exp_registry, case.body, ir, rename);
                 result = format!("(ite {} {} {})", condition, body_str, result);
             }
             result
@@ -187,7 +207,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                     format!("({} {})", var.name, format_sort_for_fn(&var.sort, ir))
                 })
                 .collect();
-            let body_str = format_expression(exp_registry, *body, ir);
+            let body_str = format_expression_renamed(exp_registry, *body, ir, rename);
 
             // Build membership guards: forall uses (=> guard body)
             let mut guards = Vec::new();
@@ -199,11 +219,14 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                     Expression::Var(coll_vid) => exp_registry.lookup_var(coll_vid).sort.clone(),
                     _ => panic!("forall! collection must be a variable"),
                 };
-                let coll_str = format_expression(exp_registry, *coll_eid, ir);
+                let coll_str = format_expression_renamed(exp_registry, *coll_eid, ir, rename);
                 let guard = match &coll_sort {
                     Sort::Array(_, val_sort) => {
                         let null_name = array_null_value(val_sort, ir);
-                        format!("(not (= (select (rarr-data {}) {}) {}))", coll_str, var.name, null_name)
+                        format!(
+                            "(not (= (select (rarr-data {}) {}) {}))",
+                            coll_str, var.name, null_name
+                        )
                     }
                     Sort::Set(_) => format!("(select (rset-data {}) {})", coll_str, var.name),
                     Sort::Seq(_) => format!(
@@ -234,7 +257,7 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                     format!("({} {})", var.name, format_sort_for_fn(&var.sort, ir))
                 })
                 .collect();
-            let body_str = format_expression(exp_registry, *body, ir);
+            let body_str = format_expression_renamed(exp_registry, *body, ir, rename);
 
             // Build membership guards: exists uses (and guard body)
             let mut guards = Vec::new();
@@ -245,11 +268,14 @@ pub fn format_expression(exp_registry: &ExpRegistry, exp_id: ExpId, ir: &IRConte
                     Expression::Var(coll_vid) => exp_registry.lookup_var(coll_vid).sort.clone(),
                     _ => panic!("exists! collection must be a variable"),
                 };
-                let coll_str = format_expression(exp_registry, *coll_eid, ir);
+                let coll_str = format_expression_renamed(exp_registry, *coll_eid, ir, rename);
                 let guard = match &coll_sort {
                     Sort::Array(_, val_sort) => {
                         let null_name = array_null_value(val_sort, ir);
-                        format!("(not (= (select (rarr-data {}) {}) {}))", coll_str, var.name, null_name)
+                        format!(
+                            "(not (= (select (rarr-data {}) {}) {}))",
+                            coll_str, var.name, null_name
+                        )
                     }
                     Sort::Set(_) => format!("(select (rset-data {}) {})", coll_str, var.name),
                     Sort::Seq(_) => format!(

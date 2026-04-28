@@ -11,7 +11,7 @@ use crate::backend::z3::exp::format_expression;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
-use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str};
+use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str, mk_functions_unrolled_str};
 use crate::backend::z3::intrinsics::array_null_value;
 use crate::backend::z3::sort::format_sort;
 use crate::backend::z3::sort::get_generic_param_count;
@@ -55,7 +55,7 @@ impl CodeGen for CodeGenZ3 {
     }
 
     /// Generates the backend source code from the provided `IRContext` and give the response.
-    fn process(&self, ir: &IRContext) -> BackendResult<String> {
+    fn process(&self, ir: &IRContext, unroll_depth: usize) -> BackendResult<String> {
         // create a new content builder for writing the SMT-LIB code
         let mut x = ContentBuilder::new();
         // destructure the IRContext
@@ -609,7 +609,11 @@ impl CodeGen for CodeGenZ3 {
                         continue;
                     }
                 }
-                let functions_str = mk_functions_rec_str(&scc, ir);
+                let functions_str = if unroll_depth >= 1 {
+                    mk_functions_unrolled_str(&scc, unroll_depth, ir)
+                } else {
+                    mk_functions_rec_str(&scc, ir)
+                };
                 l!(x, "{}", functions_str);
             }
 

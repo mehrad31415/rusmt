@@ -1,5 +1,9 @@
 //! This is the main entry point for the derive crate.
-//! usage: cargo run -- <parser_name> <top_level_fn> [text|api|both]
+//! usage: cargo run -- <parser_name> <top_level_fn> [text|api|both] [k=<N>]
+//!
+//! `k=<N>` enables bounded-recursion unrolling in the text backend:
+//!   k=0 (or omitted) -> recursive define-funs-rec.
+//!   k=N (N≥1)        -> every recursive SCC is unrolled to depth N.
 
 use rusmart_smt_derive::{model, solve, solve_z3_api};
 use std::error::Error;
@@ -32,8 +36,30 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err(format!("Parser '{}' not found at {:?}", parser_name, parser_dir).into());
         }
         let output_dir = synthesis_base.join(parser_name);
-        // Determine which backend to use
-        let backend = args.get(3).map(|s| s.as_str()).unwrap_or("text");
+        
+        let mut backend: &str = "text";
+        let mut unroll_depth: usize = 0;
+        let mut k_set = false;
+        let mut backend_set = false;
+        for extra in args.iter().skip(3) {
+            if let Some(n_str) = extra.strip_prefix("k=") {
+                if k_set {
+                    return Err(format!("k= specified more than once").into());
+                }
+                unroll_depth = n_str
+                    .parse::<usize>()
+                    .map_err(|_| format!("k= must be a non-negative integer, got '{}'", n_str))?;
+                k_set = true;
+            } else if matches!(extra.as_str(), "api" | "text" | "both") {
+                if backend_set {
+                    return Err(format!("backend specified more than once").into());
+                }
+                backend = extra.as_str();
+                backend_set = true;
+            } else {
+                return Err(format!("unrecognized argument: '{}'", extra).into());
+            }
+        }
 
         if output_dir.exists() {
             fs::remove_dir_all(&output_dir)?;
@@ -45,16 +71,36 @@ fn main() -> Result<(), Box<dyn Error>> {
         match backend {
             "api" => {
                 // Z3 API backend only
-                solve_z3_api(&model, Some(top_level_fn.as_str()), &output_dir)?;
+                solve_z3_api(
+                    &model,
+                    Some(top_level_fn.as_str()),
+                    &output_dir,
+                    unroll_depth,
+                )?;
             }
             "text" => {
                 // Run the text backend only
-                solve(&model, Some(top_level_fn.as_str()), &output_dir)?;
+                solve(
+                    &model,
+                    Some(top_level_fn.as_str()),
+                    &output_dir,
+                    unroll_depth,
+                )?;
             }
             "both" => {
                 // Run both backends for comparison
-                solve(&model, Some(top_level_fn.as_str()), &output_dir)?;
-                solve_z3_api(&model, Some(top_level_fn.as_str()), &output_dir)?;
+                solve(
+                    &model,
+                    Some(top_level_fn.as_str()),
+                    &output_dir,
+                    unroll_depth,
+                )?;
+                solve_z3_api(
+                    &model,
+                    Some(top_level_fn.as_str()),
+                    &output_dir,
+                    unroll_depth,
+                )?;
             }
             _ => {
                 return Err(format!("Invalid backend: {}", backend).into());
@@ -62,7 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     } else {
         return Err(
-            "Usage: cargo run -- <parser_name> <top_level_fn> [text|api|both]\nExample: cargo run -- toml parse_toml api".into()
+            "Usage: cargo run -- <parser_name> <top_level_fn> [text|api|both] [k=<N>]\nExample: cargo run -- toml parse_toml k=3".into()
         );
     }
 

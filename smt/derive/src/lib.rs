@@ -34,6 +34,9 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<IRContext> {
 
 /// Solve the models by synthesizing inputs for specific Error IDs.
 ///
+/// `unroll_depth` controls bounded-recursion unrolling in the text backend
+/// (see `CodeGen::process`); pass 0 or not specified to keep the existing recursive emission.
+///
 /// When the env var `RUSMART_SKIP_INVOKE=1` is set, the per-target Z3 invocation
 /// is skipped — only the SMT files are generated. Useful when iterating on the
 /// codegen and you want to inspect / spot-check a few targets manually.
@@ -41,6 +44,7 @@ pub fn solve<P: AsRef<Path>>(
     model: &IRContext,
     top_level_fn: Option<&str>,
     output: P,
+    unroll_depth: usize,
 ) -> Result<()> {
     let skip_invoke = std::env::var("RUSMART_SKIP_INVOKE").ok().as_deref() == Some("1");
     for solver in solvers() {
@@ -51,7 +55,7 @@ pub fn solve<P: AsRef<Path>>(
         fs::create_dir_all(&path_solver).expect("workspace freshly created");
 
         // Generate base SMT-LIB (types + functions, no queries).
-        let base_code = match solver.process(model) {
+        let base_code = match solver.process(model, unroll_depth) {
             Ok(code) => code,
             Err(e) => panic!("error generating SMT-LIB code: {:?}", e),
         };
@@ -112,10 +116,14 @@ pub fn solve<P: AsRef<Path>>(
 
 /// Solve using the Z3 API backend.
 /// Results are written to `lang/src/synthesis/<parser_name>/z3_api/target_N/response.txt` and `timing.txt`.
+///
+/// `_unroll_depth` is accepted for CLI parity with [`solve`] but is ignored:
+/// bounded-recursion unrolling is currently text-backend-only.
 pub fn solve_z3_api<P: AsRef<Path>>(
     model: &IRContext,
     top_level_fn: Option<&str>,
     output: P,
+    _unroll_depth: usize, // TODO: bounded-recursion unrolling is currently text-backend-only.
 ) -> Result<()> {
     let path_solver = output.as_ref().join("z3_api");
     fs::create_dir_all(&path_solver).expect("workspace freshly created");

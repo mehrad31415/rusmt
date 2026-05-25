@@ -98,7 +98,7 @@ impl ApplyDatabase {
 
     /// Initializes the database with built-in functions (intrinsics).
     ///
-    /// This method registers common functions for system types like `Integer`, `Boolean`, `Real`, `String`, `F32`, `F64`, `I32`, `I64`, `U32`, `U64`, `Cloak`, `Seq`, `Set`, `Array`, `Error`.
+    /// This method registers common functions for system types like `Integer`, `Boolean`, `Real`, `String`, `F32`, `F64`, `I32`, `I64`, `U32`, `U64`, `Cloak`, `Seq`, `Set`, `Array`, `Path`.
     ///
     /// # Returns
     ///
@@ -274,14 +274,6 @@ impl ApplyDatabase {
         db.builtin("remove", Q::Set, fn2(set_t(), t(), set_t()));
         db.builtin("contains", Q::Set, fn2(set_t(), t(), Boolean));
         db.builtin("is_empty", Q::Set, fn1(set_t(), Boolean));
-        db.builtin("intersection", Q::Set, fn2(set_t(), set_t(), set_t()));
-        db.builtin("union", Q::Set, fn2(set_t(), set_t(), set_t()));
-        db.builtin("difference", Q::Set, fn2(set_t(), set_t(), set_t()));
-        db.builtin(
-            "symmetric_difference",
-            Q::Set,
-            fn2(set_t(), set_t(), set_t()),
-        );
         db.builtin("is_subset", Q::Set, fn2(set_t(), set_t(), Boolean));
         db.builtin("is_proper_subset", Q::Set, fn2(set_t(), set_t(), Boolean));
         db.builtin("is_disjoint", Q::Set, fn2(set_t(), set_t(), Boolean));
@@ -372,8 +364,8 @@ impl ApplyDatabase {
             db.builtin("fp_eq", q, fn2_cmp(ty.clone()));
         }
 
-        db.builtin("fresh", Q::Error, fn0(Error));
-        db.builtin("merge", Q::Error, fn2_arith(Error));
+        db.builtin("fresh", Q::Path, fn0(Path));
+        db.builtin("merge", Q::Path, fn2_arith(Path));
 
         db
     }

@@ -1,0 +1,140 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "ld1",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            LocalDate(
+                                String {
+                                    inner: "1979-05-27",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "ldt1",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            LocalDateTime(
+                                String {
+                                    inner: "1979-05-27T07:32:00",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "ldt2",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            LocalDateTime(
+                                String {
+                                    inner: "1979-05-27T00:32:00.9999999",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "lt1",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            LocalTime(
+                                String {
+                                    inner: "07:32:00",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "lt2",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            LocalTime(
+                                String {
+                                    inner: "00:32:00.9999999",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "odt1",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            OffsetDateTime(
+                                String {
+                                    inner: "1979-05-27T07:32:00Z",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "odt2",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            OffsetDateTime(
+                                String {
+                                    inner: "1979-05-27T00:32:00-07:00",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "odt3",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            OffsetDateTime(
+                                String {
+                                    inner: "1979-05-27T00:32:00.9999999-07:00",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "odt4",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            OffsetDateTime(
+                                String {
+                                    inner: "1979-05-27 07:32:00Z",
+                                },
+                            ),
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "odt5",
+                        },
+                    ): SMTWrap(
+                        DateTime(
+                            OffsetDateTime(
+                                String {
+                                    inner: "1979-05-27t00:32:00-07:00",
+                                },
+                            ),
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

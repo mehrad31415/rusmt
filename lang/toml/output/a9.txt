@@ -1,0 +1,86 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "name",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "Orange",
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "physical",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "color",
+                                                },
+                                            ): SMTWrap(
+                                                String(
+                                                    String {
+                                                        inner: "orange",
+                                                    },
+                                                ),
+                                            ),
+                                            SMTWrap(
+                                                String {
+                                                    inner: "shape",
+                                                },
+                                            ): SMTWrap(
+                                                String(
+                                                    String {
+                                                        inner: "round",
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "site",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "google.com",
+                                                },
+                                            ): SMTWrap(
+                                                Boolean(
+                                                    Boolean {
+                                                        inner: true,
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

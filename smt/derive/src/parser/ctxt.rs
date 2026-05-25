@@ -438,7 +438,7 @@ impl ContextWithSig {
         for (name, (sig, stmts)) in &self.funcs {
             trace!("handling function body: {name}");
             // build the expression tree from the statements
-            // this is called for each function in `rusmart`
+            // this is called for each function in `rusmt`
             // The function body can only contain one expression statement (must be at the end) and the rest are Local let-binding statements
             // The function is pure (no side effects e.g. mutable references ... ).
             // `body` can be a block expression or unit expression. It is a block, if let bindings are present in the function body and they are stored accordingly.

@@ -1,5 +1,5 @@
 [package]
-name = "rusmart-lang"
+name = "rusmt-lang"
 version = "0.1.0"
 description = "Executable semantics of programming languages"
 readme = "README.md"
@@ -10,8 +10,8 @@ categories = ["compilers", "parser-implementations"]
 edition = "2024"
 
 [dependencies]
-rusmart-smt-stdlib = { workspace = true }
-rusmart-smt-remark-derive = { workspace = true }
+rusmt-smt-stdlib = { workspace = true }
+rusmt-smt-remark-derive = { workspace = true }
 clap = { workspace = true }
 
 [lints.clippy]

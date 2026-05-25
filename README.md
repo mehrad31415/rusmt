@@ -1,238 +1,153 @@
-<h1 style="text-align: center;">Rusmart</h1>
+<h1 style="text-align: center;">RuSmt</h1>
 <p style="text-align: center;">Implemented in Rust | Transpiled to SMT</p>
+
+---
 
 ## Introduction
 
-**Rusmart** is a domain-specific language (DSL) embedded in Rust that enables writing language interpreters with **dual semantics**:
-
-- The _operational semantics_ is represented by executable Rust code that can run concrete programs
-- The _denotational semantics_ is automatically transpiled into SMT-LIB formulas for symbolic reasoning
-
-This dual nature is achieved through a custom standard library (`rusmart-smt-stdlib`) and a transpiler (`rusmart-smt-derive`) that converts annotated Rust code into SMT constraints.
+**RuSmt** is a Rust embedded DSL for writing executable language specifications. Each specification:
+- runs as a Rust program on concrete inputs;
+- compiles to SMT-LIB for symbolic reasoning in Z3.
 
 ## The Problem
 
-Testing language implementations (parsers, interpreters, compilers) is challenging:
+Testing interpreters & compilers on specific edge/error cases is challenging:
+
 - Hand-written test suites have limited coverage
-- Fuzzing produces random inputs but misses edge cases
-- Formal verification requires manually writing specifications in theorem provers
+- Fuzzing produces random inputs but may miss certain edge cases
 
-**Rusmart solves this** by letting you write a reference interpreter _once_ in Rust, then:
-1. **Execute it** on concrete inputs like a normal program
-2. **Transpile it** to SMT formulas for symbolic analysis
-3. **Synthesize test programs** using an SMT solver (Z3)
-4. **Find bugs** in real-world implementations through automated conformance testing
+**RuSmt solves this** by letting you write the specification of language as an executable program, then:
+1. **Transpile it** to SMT formulas for symbolic analysis
+2. **Synthesize input programs** by solving path conditions with Z3, producing inputs that reach the markers you embedded while writing the interpreter.
+3. **Execute the program** on the synthesized inputs.
+3. **Find bugs** in real-world implementations through conformance testing. In other words, the input programs are used as a test suite to compare the output of your implementation of the language against other implementations on those specific edge/error cases.
 
-## How It Works
+## How to use it
 
-### 1. Write an Interpreter in the Rusmart DSL
+Using only the types and methods of the DSL you can write your own software. Wherever necessary, drop in a path condition (`Path::fresh()`) to mark a program point you want to reach. Your code is lifted to SMT-LIB where Z3 searches for concrete inputs that drive the program to each marked point.
 
-```rust
-use rusmart_smt_stdlib::{Integer, String, Seq, Boolean};
+This works because every stdlib operation satisfies `rust(f, x) == z3(f, x)` — the Rust implementation and the Z3 formula return the same result on every input. From this we get:
+- **soundness** — if Z3 returns an input, running the Rust program on it really does reach the path condition;
+- **completeness** — if the path condition is reachable, the transpiled formula in Z3 is satisfiable. Whether Z3 actually finds the corresponding input program that triggers that path condition, i.e., completeness, is bounded by Z3's own decidability and resource limits.
 
-fn parse_toml(input: Seq<String>) -> Result<TomlValue, Error> {
-    // Implementation uses only DSL types and methods
-    // This code is BOTH executable AND transpilable to SMT
-}
-```
+## Case studies
 
-### 2. Transpile to SMT-LIB
+| Case study  | Location | Status |
+|-------------|----------|--------|
+| **TOML v1.1.0 parser** | `lang/src/toml/` | Parser is a complete runnable specification. Synthesis hits Z3's scaling frontier — all queries time out. See `book/src/case-studies/toml/`. |
+| **IMP / WHILE** | `lang/src/imp/` | Canonical small imperative language from Winskel, *The Formal Semantics of Programming Languages* (MIT Press, 1993). End-to-end synthesis works: Z3 returns models, the printer renders them as `.imp` source, and a replay test confirms the marker fires. See `book/src/case-studies/imp/`. |
 
-```bash
-# Text backend (generates SMT-LIB2 files, spawns Z3 as subprocess)
-cargo run -p rusmart-smt-derive -- toml parse_toml
-
-# API backend (uses Z3 in-process via z3-sys bindings)
-cargo run -p rusmart-smt-derive -- toml parse_toml api
-
-# Run both backends for comparison
-cargo run -p rusmart-smt-derive -- toml parse_toml both
-```
-
-This generates SMT-LIB formulas and solver results to `lang/src/synthesis/toml/`.
-
-### 3. Synthesize Test Programs
-
-Ask Z3 to find inputs that reach a specific path — an error, a target output, or an edge case.
-
-```smt2
-(assert (exists ((p Program)) 
-  (= (parse_toml p) (Error ParseError))))
-```
-
-### 4. Conformance Testing
-
-Feed synthesized programs to the implementation under test:
-
-```
-[SMT Solver] → Synthesized Program → [Your TOML Reference Parser]
-                                   ↓
-                              Compare with
-                                   ↓
-                            [Other Parsers]
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Rusmart DSL Interpreter (e.g., TOML parser)           │
-│  Written using rusmart-smt-stdlib types                 │
-└─────────────────┬───────────────────────────────────────┘
-                  │
-         ┌────────┴────────┐
-         │                 │
-         ▼                 ▼
-   Concrete Exec      SMT Transpiler
-   (cargo run)      (rusmart-smt-derive)
-         │                 │
-         │          ┌──────┴──────┐
-         │          │             │
-         │      Text Backend  API Backend
-         │     (SMT-LIB2 +   (in-process
-         │      Z3 subprocess) z3-sys)
-         │          │             │
-         │          └──────┬──────┘
-         │                 │
-         │                 ▼
-         │        Synthesized Programs
-         │                 │
-         └────────┬────────┘
-                  │
-                  ▼
- Feed to Other Parsers & Conformance Testing
-      (Compare outputs & find bugs)
-```
-
-## Project Structure
-
-```
-rusmart/
-├── smt/
-│   ├── stdlib/       # SMT-backed Rust types (Integer, String, Seq, etc.)
-│   ├── remark/       # Annotation system marking functions and types
-│   └── derive/       # Parser + IR + SMT-LIB code generator + Z3 backends
-│       └── src/
-│           ├── parser/    # DSL parsing, intrinsic recognition
-│           ├── ir/        # Intermediate representation, sort checking
-│           └── backend/
-│               ├── z3/      # Text backend: generates SMT-LIB2, spawns Z3
-│               └── z3_api/  # API backend: in-process Z3 via z3-sys
-├── lang/             # Language interpreters (TOML, WASM, Rego, etc.)
-│   └── src/
-│       ├── toml/          # TOML v1.1.0 parser
-│       └── synthesis/     # Synthesis output directory
-```
-
-## Current Implementation
-
-### TOML v1.1.0 Parser
-
-The first language implementation is a complete TOML parser demonstrating the full Rusmart workflow:
-
-**Execute concrete programs:**
-```bash
-cargo run -p rusmart-lang toml lang/toml/input/example.toml
-```
-
-**Transpile to SMT and synthesize:**
-```bash
-cargo run -p rusmart-smt-derive -- toml parse_toml
-# Outputs SMT-LIB formulas and solver results to lang/src/synthesis/toml/
-```
-
-**Future:** Planned Languages:
-- WebAssembly interpreter
-- WHILE language (pedagogical)
-- Rego policy language
-- EBNF grammar processor
-
-## Key Features
-
-### The Rusmart Standard Library
-
-Provides SMT-compatible types that work in both concrete and symbolic contexts:
-
-- **Primitive types**: `Boolean`, `Integer`, `Real`, `String`
-- **Bitvectors & Floats**: `I32`, `I64`, `U32`, `U64`, `F32`, `F64`
-- **Collections**: `Seq<T>`, `Set<T>`, `Array<K,V>`
-- **Quantifiers**: `forall`, `exists`, `choice`
-- **Error**: a path marker used by the SMT solver to synthesize inputs that reach a specific code path (e.g., an error case or edge case)
-- **Recursive types**: `Cloak<T>` for defining recursive data structures
-
-### Constraints
-
-To ensure transpilability, the DSL enforces:
-- No mutable or global variables
-- No pointers or references
-- All types are `Copy`
-- Limited statement types: `match`, `if-else`, `let`, `return`
-- No loops (use quantifiers or recursion instead)
-
-## Build & Run
+## Build
 
 ### Prerequisites
-- Rust (edition 2024)
-- CMake and a C++ compiler (included with Xcode on macOS, `build-essential` + `cmake` on Ubuntu)
-- The Z3 dependency is vendored (compiled from source automatically on first build, ~5 minutes). No system Z3 installation is required.
+
+- Rust (edition 2024) — toolchain pinned by `rust-toolchain`.
+- CMake and a C++ compiler — required because the Z3 dependency is vendored and built from source on first compile (~5 minutes). No system Z3 is needed.
+  - macOS: included with Xcode CLT (`xcode-select --install`).
+  - Debian/Ubuntu: `sudo apt install build-essential cmake`.
 
 ### Build
+
 ```bash
 cargo build --workspace
 ```
 
-### Run TOML Parser
+## Tiny end-to-end example (IMP)
+
 ```bash
-cargo run -p rusmart-lang toml lang/toml/input/example.toml
+# 1. Run an IMP program concretely.
+cargo run -p rusmt-lang -- imp lang/imp/input/factorial.imp
+
+# 2. Synthesise inputs that fire the path-condition markers in eval_com.
+#    Two backends are available; both accept k=N for bounded-recursion unrolling.
+cargo run -p rusmt-smt-derive -- imp eval_com k=3            # text backend (default)
+cargo run -p rusmt-smt-derive -- imp eval_com api k=3        # in-process Z3 API backend
+cargo run -p rusmt-smt-derive -- imp eval_com both k=3       # both, for cross-checking
+
+# 3. The printer emits each `sat` response as a runnable .imp file.
+cat lang/src/synthesis/imp/z3_chc/target_0/response.txt
+
+# 4. Replay the witness through the same interpreter — it must reach the marker.
+cargo run -p rusmt-lang -- imp lang/src/synthesis/imp/z3_chc/target_0/response.txt
 ```
 
-### Generate SMT Formulas and Synthesize
-```bash
-# Text backend (default)
-cargo run -p rusmart-smt-derive -- toml parse_toml
+## Pipeline
 
-# API backend (in-process Z3)
-cargo run -p rusmart-smt-derive -- toml parse_toml api
-
-# Both backends (for comparison)
-cargo run -p rusmart-smt-derive -- toml parse_toml both
+```
+┌──────────────────────────────────────────────────────────┐
+│  Annotated Rust interpreter (e.g. lang/src/imp/mod.rs)   │
+│  — uses rusmt-smt-stdlib types                         │
+│  — uses #[smt_type], #[smt_fn] from rusmt-smt-remark   │
+└─────────────────┬────────────────────────────────────────┘
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+        ▼                   ▼
+  Concrete exec        SMT transpiler  (rusmt-smt-derive)
+  (cargo run)               │
+                            │
+                ┌───────────┴───────────┐
+                │                       │
+            Text backend            API backend
+        (SMT-LIB2 + z3 subproc.)   (in-process via z3-sys)
+                │                       │
+                └─────────┬─────────────┘
+                          ▼
+                  Z3 verdict (sat/unsat/unknown/timeout)
+                          │
+                          ▼
+                  Printer (smt/derive/src/backend/printer.rs)
+                          │
+                          ▼  (sat case)
+                runnable source in target_*/response.txt
+                          │
+                          ▼
+              Conformance / replay test
 ```
 
-### Documentation
-```bash
-make docs  # Requires mdBook
+## Project layout
+
+```
+rusmt/
+├── smt/
+│   ├── stdlib/                 SMT-backed Rust types (Boolean, Integer, Real,
+│   │                            BV/Float, String, Seq, Set, Array, Cloak,
+│   │                            Path).
+│   ├── remark/                 #[smt_type], #[smt_fn] attribute checks.
+│   ├── remark/remark_derive/   The proc-macro front-end.
+│   └── derive/                 Parser → IR → backend pipeline.
+│       └── src/
+│           ├── parser/         Restricted-Rust parsing, intrinsic lookup.
+│           ├── ir/             IR construction.
+│           └── backend/
+│               ├── codegen.rs  Backend-shared CodeGen trait.
+│               ├── response.rs Response enum (Sat/Unsat/Unknown/Timeout).
+│               ├── printer.rs  Renders Z3 responses to runnable IMP source.
+│               ├── z3/         Text backend (SMT-LIB2 + z3 subprocess).
+│               └── z3_api/     API backend (in-process Z3 via z3-sys).
+└── lang/
+    ├── src/toml/               TOML v1.1.0 parser (case study).
+    ├── src/imp/                IMP/WHILE interpreter (case study).
+    ├── src/synthesis/          Per-backend synthesis output (gitignored).
+    ├── imp/input/              Sample .imp programs used by the IMP CLI.
+    └── toml/input/             Sample TOML documents used by the parser CLI.
 ```
 
-## Why Rusmart?
+## Documentation
 
-Traditional approaches to language testing require:
-- Writing test cases manually (limited coverage)
-- Writing specifications in theorem provers like Coq (steep learning curve)
-- Maintaining separate reference implementations (duplicated effort)
+The RuSmt Book (mdBook under `book/`) is the long-form reference for both
+users of the DSL and contributors to the framework.
 
-**Rusmart gives you:**
-- ✅ One codebase for both execution and verification
-- ✅ Automatic test generation via SMT solving
-- ✅ Familiar Rust syntax with type safety
-- ✅ Push-button conformance testing
+```bash
+make docs           # builds and serves the book locally
+mdbook build book   # build only
+```
 
-## Development Status
+## References
 
-Rusmart is under active development. The core infrastructure is in place:
-- ✅ SMT standard library with soundness-audited intrinsics
-- ✅ Parser and IR
-- ✅ Two Z3 backends: text-based (SMT-LIB2 + subprocess) and API-based (in-process z3-sys)
-- ✅ TOML parser implementation
-- ✅ Z3 query interface for program synthesis
-- ✅ Vendored Z3 build (no system installation required)
-- ✅ Automated conformance testing framework
-
-Expect API changes and refactorings as the design evolves.
-
-## Contributing
-
-Rusmart is a research project. Documentation in `documents/` and the Rusmart Book (via `make docs`) explain design decisions and implementation details.
+- Glynn Winskel, *The Formal Semantics of Programming Languages: An Introduction.* MIT Press, 1993. (Ch. 2 specifies the IMP/WHILE language used as a case study.)
+- The TOML v1.1.0 specification: <https://toml.io/en/v1.1.0>.
 
 ## License
 
-GPL-3.0-or-later
+GPL-3.0-or-later (see `LICENSE`).

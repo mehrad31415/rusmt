@@ -1,0 +1,32 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "str2",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "Roses are red\nViolets are blue",
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "str3",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "Roses are red\r\nViolets are blue",
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

@@ -351,92 +351,6 @@ impl ExpRegistry {
         self.exps.get(idx).expect("no such exp id")
     }
 
-    /// Collect all error IDs (from `ErrFresh(id)` intrinsics) that appear directly in the
-    /// expression tree rooted at `exp_id`. Does NOT follow calls into other functions.
-    pub fn collect_error_ids(&self, exp_id: &ExpId) -> Vec<usize> {
-        let mut ids = vec![];
-        let exp = self.lookup_exp(exp_id);
-        match exp {
-            Expression::Var(_) => (),
-            Expression::Pack { elems, .. } => {
-                for e in elems {
-                    ids.extend(self.collect_error_ids(e));
-                }
-            }
-            Expression::Tuple { slots, .. } => {
-                for s in slots {
-                    ids.extend(self.collect_error_ids(s));
-                }
-            }
-            Expression::Record { fields, .. } => {
-                for (_, f) in fields {
-                    ids.extend(self.collect_error_ids(f));
-                }
-            }
-            Expression::Enum { variant, .. } => match variant {
-                VariantCtor::Unit => (),
-                VariantCtor::Tuple(elems) => {
-                    for e in elems {
-                        ids.extend(self.collect_error_ids(e));
-                    }
-                }
-                VariantCtor::Record(fields) => {
-                    for (_, f) in fields {
-                        ids.extend(self.collect_error_ids(f));
-                    }
-                }
-            },
-            Expression::AccessSlot { base, .. } => ids.extend(self.collect_error_ids(base)),
-            Expression::AccessField { base, .. } => ids.extend(self.collect_error_ids(base)),
-            Expression::Match { cases } => {
-                for case in cases {
-                    for atom in &case.atoms {
-                        ids.extend(self.collect_error_ids(&atom.head));
-                    }
-                    ids.extend(self.collect_error_ids(&case.body));
-                }
-            }
-            Expression::Phi { cases, default } => {
-                for case in cases {
-                    ids.extend(self.collect_error_ids(&case.cond));
-                    ids.extend(self.collect_error_ids(&case.body));
-                }
-                ids.extend(self.collect_error_ids(default));
-            }
-            Expression::IterForall { vars, body } => {
-                for (_, e) in vars {
-                    ids.extend(self.collect_error_ids(e));
-                }
-                ids.extend(self.collect_error_ids(body));
-            }
-            Expression::IterExists { vars, body } => {
-                for (_, e) in vars {
-                    ids.extend(self.collect_error_ids(e));
-                }
-                ids.extend(self.collect_error_ids(body));
-            }
-            Expression::IterChoose { vars, body, .. } => {
-                for (_, e) in vars {
-                    ids.extend(self.collect_error_ids(e));
-                }
-                ids.extend(self.collect_error_ids(body));
-            }
-            Expression::Procedure { args, .. } => {
-                for a in args {
-                    ids.extend(self.collect_error_ids(a));
-                }
-            }
-            Expression::Intrinsic(intrinsic) => match intrinsic.as_ref() {
-                Intrinsic::ErrFresh(id) => ids.push(*id),
-                Intrinsic::ErrMerge { ids: existing, .. } => {
-                    ids.extend(existing.iter().copied());
-                }
-                _ => {}
-            },
-        }
-        ids
-    }
-
     /// Derive type of an expression
     pub fn derive_type(&self, eid: ExpId, ir: &IRContext) -> Sort {
         let sort = match self.lookup_exp(&eid) {
@@ -626,8 +540,6 @@ impl ExpRegistry {
                 | Intrinsic::StrStartsWith { .. }
                 | Intrinsic::StrEndsWith { .. }
                 | Intrinsic::StrIsDigit { .. } => Sort::Boolean,
-                Intrinsic::BoxShield { t, .. } => Sort::Cloak(Box::new(t.clone())),
-                Intrinsic::BoxReveal { t, .. } => t.clone(),
                 Intrinsic::SeqEmpty { t }
                 | Intrinsic::SeqUnit { t, .. }
                 | Intrinsic::SeqPush { t, .. }
@@ -645,11 +557,7 @@ impl ExpRegistry {
                 | Intrinsic::SeqIsEmpty { .. } => Sort::Boolean,
                 Intrinsic::SetEmpty { t }
                 | Intrinsic::SetInsert { t, .. }
-                | Intrinsic::SetRemove { t, .. }
-                | Intrinsic::SetIntersect { t, .. }
-                | Intrinsic::SetUnion { t, .. }
-                | Intrinsic::SetDiff { t, .. }
-                | Intrinsic::SetSymDiff { t, .. } => Sort::Set(Box::new(t.clone())),
+                | Intrinsic::SetRemove { t, .. } => Sort::Set(Box::new(t.clone())),
                 Intrinsic::SetLen { .. } => Sort::Integer,
                 Intrinsic::SetContains { .. }
                 | Intrinsic::SetIsEmpty { .. }
@@ -732,7 +640,7 @@ impl ExpRegistry {
                 | Intrinsic::FloatFloor { .. }
                 | Intrinsic::FloatTrunc { .. }
                 | Intrinsic::FloatNearest { .. } => Sort::Integer,
-                Intrinsic::ErrFresh(_) | Intrinsic::ErrMerge { .. } => Sort::Error,
+                Intrinsic::PathFresh(_) | Intrinsic::PathMerge { .. } => Sort::Path,
                 Intrinsic::SmtEq { .. } | Intrinsic::SmtNe { .. } => Sort::Boolean,
             },
             Expression::Procedure { callee, args: _ } => {
@@ -1627,22 +1535,10 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                     Native::StrToCode { val } => Intrinsic::StrToCode {
                         val: self.resolve(val, Some(&Sort::String)),
                     },
-                    Native::BoxShield { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        // shield takes T, returns Cloak<T>
-                        Intrinsic::BoxShield {
-                            t: sort.clone(),
-                            val: self.resolve(val, Some(&sort)),
-                        }
-                    }
-                    Native::BoxReveal { t, val } => {
-                        let sort = self.parent.resolve_type(t);
-                        // reveal takes Cloak<T>, returns T
-                        let cloak_sort = Sort::Cloak(Box::new(sort.clone()));
-                        Intrinsic::BoxReveal {
-                            t: sort.clone(),
-                            val: self.resolve(val, Some(&cloak_sort)),
-                        }
+                    Native::BoxShield { val, .. } | Native::BoxReveal { val, .. } => {
+                        let inner = self.resolve(val, exp_ty);
+                        self.namespace = old_namespace;
+                        return inner;
                     }
                     Native::SeqEmpty { t } => Intrinsic::SeqEmpty {
                         t: self.parent.resolve_type(t),
@@ -1808,38 +1704,6 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         Intrinsic::SetIsEmpty {
                             t: sort.clone(),
                             set: self.resolve(set, Some(&Sort::Set(sort.clone().into()))),
-                        }
-                    }
-                    Native::SetIntersect { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::SetIntersect {
-                            t: sort.clone(),
-                            lhs: self.resolve(lhs, Some(&Sort::Set(sort.clone().into()))),
-                            rhs: self.resolve(rhs, Some(&Sort::Set(sort.clone().into()))),
-                        }
-                    }
-                    Native::SetUnion { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::SetUnion {
-                            t: sort.clone(),
-                            lhs: self.resolve(lhs, Some(&Sort::Set(sort.clone().into()))),
-                            rhs: self.resolve(rhs, Some(&Sort::Set(sort.clone().into()))),
-                        }
-                    }
-                    Native::SetDiff { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::SetDiff {
-                            t: sort.clone(),
-                            lhs: self.resolve(lhs, Some(&Sort::Set(sort.clone().into()))),
-                            rhs: self.resolve(rhs, Some(&Sort::Set(sort.clone().into()))),
-                        }
-                    }
-                    Native::SetSymDiff { t, lhs, rhs } => {
-                        let sort = self.parent.resolve_type(t);
-                        Intrinsic::SetSymDiff {
-                            t: sort.clone(),
-                            lhs: self.resolve(lhs, Some(&Sort::Set(sort.clone().into()))),
-                            rhs: self.resolve(rhs, Some(&Sort::Set(sort.clone().into()))),
                         }
                     }
                     Native::SetIsSubset { t, lhs, rhs } => {
@@ -2423,34 +2287,34 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                             rhs: self.resolve(rhs, Some(&sort)),
                         }
                     }
-                    Native::ErrFresh => {
-                        let id = self.parent.ir.error_count;
-                        self.parent.ir.error_count += 1;
-                        // Register a single-ID target: "find input reaching error site `id`"
-                        self.parent.ir.error_targets.push(BTreeSet::from([id]));
-                        Intrinsic::ErrFresh(id)
+                    Native::PathFresh => {
+                        let id = self.parent.ir.path_count;
+                        self.parent.ir.path_count += 1;
+                        // Register a single-ID target: "find input reaching path site `id`"
+                        self.parent.ir.path_targets.push(BTreeSet::from([id]));
+                        Intrinsic::PathFresh(id)
                     }
-                    Native::ErrMerge { lhs, rhs } => {
-                        let lhs_id = self.resolve(lhs, Some(&Sort::Error));
-                        let rhs_id = self.resolve(rhs, Some(&Sort::Error));
+                    Native::PathMerge { lhs, rhs } => {
+                        let lhs_id = self.resolve(lhs, Some(&Sort::Path));
+                        let rhs_id = self.resolve(rhs, Some(&Sort::Path));
                         let mut ids = BTreeSet::new();
                         for eid in [&lhs_id, &rhs_id] {
                             match self.registry.lookup_exp(eid) {
                                 Expression::Intrinsic(i) => match i.as_ref() {
-                                    Intrinsic::ErrFresh(id) => {
+                                    Intrinsic::PathFresh(id) => {
                                         ids.insert(*id);
                                     }
-                                    Intrinsic::ErrMerge { ids: existing, .. } => {
+                                    Intrinsic::PathMerge { ids: existing, .. } => {
                                         ids.extend(existing.iter().copied());
                                     }
-                                    _ => panic!("ErrMerge operand is not an error expression"),
+                                    _ => panic!("PathMerge operand is not a path expression"),
                                 },
-                                _ => panic!("ErrMerge operand is not an intrinsic"),
+                                _ => panic!("PathMerge operand is not an intrinsic"),
                             }
                         }
                         // Register a multi-ID target: "find input reaching all these sites together"
-                        self.parent.ir.error_targets.push(ids.clone());
-                        Intrinsic::ErrMerge {
+                        self.parent.ir.path_targets.push(ids.clone());
+                        Intrinsic::PathMerge {
                             lhs: lhs_id,
                             rhs: rhs_id,
                             ids,

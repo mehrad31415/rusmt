@@ -1,4 +1,4 @@
-//! Rusmart standard library DSL
+//! RuSmt standard library DSL
 //!
 //! Module Tree:
 //! * dt - SMT-related data types

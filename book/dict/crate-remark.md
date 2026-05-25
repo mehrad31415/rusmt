@@ -1,1 +1,1 @@
-[`rusmart-smt-remark`](#)
+[`rusmt-smt-remark`](#)

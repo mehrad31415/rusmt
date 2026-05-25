@@ -1,0 +1,43 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "x",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 0,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "y",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 0,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "z",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 0,
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

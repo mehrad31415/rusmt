@@ -1,10 +1,8 @@
-### Rusmart Standard Library (stdlib)
+### RuSmt Standard Library
 
 ---
 
-## Stdlib Semantics and the Soundness Invariant
-
-### What the stdlib represents
+## Stdlib Semantics
 
 Every stdlib function has **two sides** that must agree:
 
@@ -17,7 +15,7 @@ The core soundness requirement is:
 > ```
 > rust_impl(f, x) == z3_eval(z3_formula(f), x)
 > ```
-> That is, evaluating `f` concretely in Rust must yield the same result as evaluating Z3's formula for `f` on the same concrete value.
+> That is, evaluating `f` concretely in Rust must yield the same result as evaluating Z3's formula for `f` on the same concrete value (or the encoded z3-version of that concrete value).
 
 This matters because the workflow is:
 1. You write an interpreter for a target language using the DSL.
@@ -25,28 +23,19 @@ This matters because the workflow is:
 3. Z3 finds **models** — concrete inputs that trigger specific path conditions.
 4. Those models are fed back into the **Rust interpreter** to generate conformance test cases.
 
-If the Rust side and the Z3 side disagree, a model that Z3 finds "satisfies condition C" may not actually satisfy C when run concretely — producing **unsound test cases**.
+If the Rust side and the Z3 side disagree, a model that Z3 finds _satisfies condition C_ may not actually hit the path condition corresponding to the condition _C_ when run concretely — producing **unsound test cases**.
 
-### What the stdlib does NOT represent
-
-The stdlib represents **Z3's mathematical theories** — not Rust's native semantics, and not the semantics of any specific target language.
-
-- **Not Rust semantics.** Rust's `i32` overflows; `Integer` (backed by `BigInt`) does not. Rust's integer division truncates; `Integer::div` is Euclidean. These deliberate divergences make the stdlib match Z3, not Rust.
-- **Not target language semantics.** WebAssembly, Python, C, and JavaScript all have different overflow, rounding, and division rules. The stdlib cannot simultaneously model all of them. This is the **interpreter author's responsibility**.
-
-Think of it as three layers:
-
-```
-Layer 3: Conformance test case (a Z3 model — concrete inputs)
-               ↑  produced by
-Layer 2: Your interpreter (encodes YOUR target language's semantics)
-               ↑  uses as building blocks
-Layer 1: Stdlib (Z3-correct primitives — the vocabulary)
-```
+> Note that we do not claim completeness. In other words, even if an input that reaches condition C exists, Z3 may fail to find it: the encoded formula can fall outside what Z3 decides within its resource limits, so the solver returns unknown or times out.
 
 ### Adapting stdlib operations to your target language
 
-When a target language operation matches a stdlib primitive exactly, use it directly:
+The stdlib mostly represents **Z3's mathematical theories** — not Rust's native semantics, and not the semantics of any specific target language. WebAssembly, Python, C, and JavaScript all differ in their overflow, rounding, and division rules, and the stdlib cannot model all of them at once. Bridging the stdlib to a given target language is the **interpreter author's responsibility**. In some cases the stdlib's behavior also diverges from Z3's *native* operator — where Z3's default would be unintuitive for our
+purposes. In every such case the backend emits a **custom Z3 encoding** rather than the native operator, so the Rust frontend and the Z3 backend always compute the same result. Before writing any interpreter using the stdlib types and functions, please familiarize yourself with the internal workings of each of the operations in the standard library. So far we have not encountered a case where the stdlib lacks an operation needed to replicate a target  language's behavior — though this may change as more 
+languages are added. If you hit such a gap, please [email the maintainers](mailto:m3haghsh@uwaterloo.ca) or open a pull request adding the missing operation.
+
+We in general have three patterns:
+
+> 1. When a target language operation matches a stdlib primitive exactly, use it directly:
 
 ```rust
 // Python's // uses floor division — Integer::div is Euclidean = floor for ints
@@ -60,10 +49,10 @@ fn c_divide(a: Integer, b: Integer) -> Integer {
 }
 ```
 
-When a target language semantics only diverges for **specific inputs** (e.g., error cases, overflow, NaN), use **guard branches** to handle the diverging cases and fall through to the stdlib for the rest:
+> 2. When a target language semantics only diverges for **specific inputs** (e.g., error cases, overflow, NaN), use **guard branches** to handle the diverging cases and fall through to the stdlib for the rest:
 
 ```rust
-fn wasm_i32_div_s(a: I32, b: I32) -> Result<I32, Error> {
+fn wasm_i32_div_s(a: I32, b: I32) -> Result<I32, Path> {
     // WebAssembly traps on division by zero and on i32::MIN / -1
     if b.eq(I32::from(0)) {
         return Err(trap());
@@ -75,7 +64,7 @@ fn wasm_i32_div_s(a: I32, b: I32) -> Result<I32, Error> {
 }
 ```
 
-When no single stdlib primitive matches, compose multiple primitives:
+> 3. When no single stdlib primitive matches, compose multiple primitives:
 
 ```rust
 // Saturating 32-bit addition (clamps at ±MAX instead of wrapping)
@@ -91,12 +80,6 @@ fn lang_sat_add(a: I32, b: I32) -> I32 {
 }
 ```
 
-### The if-then-else pattern — summary
-
-> **If stdlib function `f` matches your target language for most inputs but diverges for some specific cases, write guard branches for the diverging cases first, then use `f` in the final else branch.**
-
-The guards encode the diverging cases as Z3-checkable conditions. Z3 will find models for each branch independently. For each model, the concrete Rust execution follows the same branch as Z3 predicted — so soundness is preserved in every branch.
-
 ### Input validation contract
 
 Some stdlib functions have preconditions on their inputs. For example, `Integer::from_hex_str`
@@ -105,45 +88,22 @@ expects a string of pure hex digits — no `0x` prefix, no underscores. On inval
 - **Rust** panics (`unwrap()` on a failed parse).
 - **Z3** silently returns a wrong value (e.g., 0 for an unrecognized character).
 
-These behaviors diverge, but this does NOT break soundness because:
-
-> **The interpreter must validate inputs before calling stdlib functions.**
-
-The TOML parser, for example, checks each character with `is_hex_digit` and strips
-prefixes/underscores before the string ever reaches `from_hex_str`. Invalid inputs are
-caught by the parser and produce `Error::fresh()` — they never reach the stdlib.
-
-Since the parser validates identically in both Rust and Z3, the invalid-input path is
-unreachable in both worlds. The divergence exists on a path that no execution can take.
+These behaviors diverge, but this does NOT break soundness because we make the assumption that the author of the the interpreter must validate inputs before calling stdlib functions. The TOML parser, for example, checks each character with `is_hex_digit` and strips prefixes/underscores before the string ever reaches `from_hex_str`. Invalid inputs are caught by the parser and produce `Path::fresh()` — they never reach the stdlib.
 
 **Rule for interpreter authors:** if a stdlib function can panic on certain inputs, your
 interpreter must guard against those inputs explicitly. Do not rely on the stdlib to handle
 invalid inputs gracefully — it is not designed to. The stdlib assumes its inputs satisfy
-the documented preconditions. If you violate them, Rust panics and Z3 gives garbage, and
-any models Z3 finds on that path are unsound.
+the documented preconditions. If you violate them, Rust panics and Z3 gives garbage.
 
 ### Integer — functions that panic
 
-The following `Integer` methods panic on certain inputs. When writing an interpreter,
-we guard against these inputs before calling the method (e.g., checking divisor != 0                                                                                           
-before calling `div`). On the unguarded path, we use the method as-is. On the guarded path, 
-the panic is unreachable in both Rust and Z3, and both must produce identical results — soundness holds. 
-Also we must replicate the behavior of the target language:    
-                                                                                                   
-- If the target language treats it as an error (e.g., division by zero is a runtime                                                                                            
-error in most languages), we produce `Error::fresh()` in the guard branch.                                                                                                   
-- If the target language defines specific behavior for that input (e.g., saturating,                                                                                           
-wrapping, returning a default), we implement that behavior using other stdlib
-operations in the guard branch.
+The following `Integer` methods panic on certain inputs. When writing an interpreter, we guard against these inputs before calling the method (e.g., checking divisor != 0 before calling `div`). On the unguarded path, we use the method as-is. On the guarded path, the panic is unreachable and we must replicate the behavior of the target language:
 
-In either case, the guard branch handles the diverging input before the stdlib method                                                                                          
-is reached, so the panic never fires. We have not yet encountered a case where the                                                                                             
-stdlib lacks the operations needed to replicate a target language's behavior in the                                                                                            
-guard branch, but this may arise as more languages are implemented.
+- If the target language treats the operation as an error — division by zero, for instance, is a runtime error in most languages — place a Path::fresh() in the guard branch. This marks the branch as a synthesis target: Z3 will search for an input that drives the program into that error case. If you don't want Z3 to synthesize such inputs (say the error case is uninteresting for testing), just handle the branch normally — return a sentinel or default value — and omit the marker. The branch still executes correctly under concrete Rust; it simply isn't used as a synthesis goal.
 
-If the interpreter does NOT guard, Rust panics (crashes) while Z3 silently
-returns a wrong value. Any models Z3 finds on that path are unsound because
-the Rust side never reaches the return — it crashes instead.
+- If the target language defines specific behavior for that input (e.g., saturating, wrapping, returning a default), we implement that behavior using other stdlib operations in the guard branch.
+
+In either case, the guard branch handles the diverging input before the stdlib method is reached, so the panic never fires. If the interpreter does NOT guard, Rust panics (crashes) while Z3 silently returns a wrong value. Any models Z3 finds on that path are unsound because the Rust side never reaches the return — it crashes instead.
 
 - `div(rhs)` — panics when `rhs == 0`
 - `div_trunc(rhs)` — panics when `rhs == 0`
@@ -165,7 +125,7 @@ the Rust side never reaches the return — it crashes instead.
 
 - `at(index)` — panics when index is out of bounds (negative or >= length)
 - `index_of(substr, offset)` — panics when offset is negative or bigger than the length of the string, or when substr is not found
-- `index_of_default(substr)` — panics when substr is not found or the offset is bigger than the length of the string
+- `index_of_default(substr)` — panics when substr is not found.
 - `substr(offset, length)` — panics when offset or length are negative or when offset is beyond the string length
 - `to_int()` — panics when the string is not a valid integer. Divergence: Rust parses any valid integer (including negative), Z3's `str.to_int` returns -1 for non-digit strings & negative numbers. Guard: ensure the string contains only digits before calling.
 - `from_int(i)` — does not panic but diverges: Rust's `to_string()` gives gives the expected result for negative integers, Z3's `str.from_int` gives `""` for negative numbers. Guard: check for negative integers before calling if the target language needs specific behavior.
@@ -210,68 +170,43 @@ the Rust side never reaches the return — it crashes instead.
 
 ### Set — unsupported binary operations
 
-The following set operations panic at transpile time if used:
-- `intersection(other)` — use `a.contains(x).and(b.contains(x))` instead
-- `union(other)` — use `a.contains(x).or(b.contains(x))` instead
-- `difference(other)` — use `a.contains(x).and(b.contains(x).not())` instead
-- `symmetric_difference(other)` — combine the above
+Z3 does not support binary operations (such as `set.inter`, `set.union`, `set.setminus`) in SMT-LIB2 mode; these exist only in Z3's programmatic API (Python/C++). We have therefore omitted supporting operations like intersection, union, difference, and symmetric difference entirely. If your interpreter needs any of them, follow the [Adding a new intrinsic-backed method](../../user/methods.md#adding-a-new-intrinsic-backed-method-what-files-change) section.
 
-**Why these are removed:** Z3 does not support `set.*` operations (like `set.inter`,
-`set.union`, `set.setminus`) in SMT-LIB2 mode. These operations only exist in Z3's
-programmatic API (Python/C++), not in the text-based SMT-LIB2 format that RuSmart
-generates.
-
-**Why keep `SetLen` but remove binary ops:** This is a deliberate trade-off based on
-what Z3 can efficiently handle.
-
-- **Cardinality** (`SetLen`) can be tracked exactly for step-by-step set construction
-  (`new`/`insert`/`remove`) by pairing the array data with an integer counter
-  (`RusmartSet` datatype). No quantifiers, no performance cost.
-
-- **Binary operations** (`union`/`intersection`/`difference`) can be expressed as
-  array operations (`(_ map or)`, `(_ map and)`, etc.), but their cardinality cannot
-  be computed — Z3 cannot count how many elements are `true` in the resulting array.
-  Axiomatizing cardinality for binary results requires universal quantifiers, which
-  cause Z3 to time out. The inclusion-exclusion identity
-  (`card(A∪B) = card(A) + card(B) - card(A∩B)`) is circular — it relates two unknowns.
-
-- **The alternative** (keep binary ops, remove `SetLen`) was considered. Binary ops
-  are expressible as array operations, but every use case of materializing an
-  intermediate set can be rewritten using membership checks:
-  `a.intersection(b).contains(x)` → `a.contains(x).and(b.contains(x))`.
-  Cardinality, however, cannot be rewritten — checking `set.length() == 3` requires
-  a verbose exists/forall encoding. Keeping `SetLen` provides more practical value.
+  > Note that `union` / `intersection` / `difference` /
+  `symmetric_difference`
+  > *could* be expressed in the text-based version as 
+  array operations
+  > (`(_ map or)`, `(_ map and)`, and so on). The problem 
+  is cardinality: Z3
+  > cannot count how many elements are `true` in the 
+  resulting array.
+  > Axiomatizing the cardinality of a combined set 
+  requires universal
+  > quantifiers, and those quantifiers add enough overhead
+   to make Z3 time out.
+  > By contrast, `SetLen` is tracked *exactly* for 
+  step-by-step construction
+  > (`new` / `insert` / `remove`) by pairing the 
+  membership array with an
+  > integer counter (the `RuSmtSet` datatype) — no 
+  quantifiers, no performance
+  > cost.
 
 ### Array — functions that panic
 
-- `select(key)` — panics when key does not exist. Z3 returns the null sentinel value.
+- `select(key)` — panics when key does not exist. Z3 returns the null sentinel value. Use `contains_key` to guard first.
 
 ### Theoretical limitations (unguarded edge cases)
 
-The following cases are not explicitly guarded in the TOML interpreter because they
-require pathological inputs that are impractical in real-world usage. They are documented
-here for completeness.
+The following cases are not explicitly guarded in the TOML interpreter because they require pathological inputs that are impractical in real-world usage. They are documented here for completeness.
 
-- **`Real.pow(exp)` with digit-count exponent**: In the TOML float parser (`float.rs`),
-  expressions like `Real::from(10).pow(number_of_digits(val).neg().to_real())` use the
-  digit count of a parsed number as the exponent. `Real.pow` internally calls
-  `exp.to_integer().to_i32().unwrap()`, which panics if the exponent exceeds i32 range.
-  The digit count is not explicitly bounded — a TOML file containing a number with more
-  than 2,147,483,647 digits (~2 GB of digits alone) would trigger this panic. In practice,
-  the parser would exhaust memory long before reaching this limit. No guard is added
-  because the input size makes this an unreachable test case in any realistic scenario.
+- **`Real.pow(exp)` with digit-count exponent**: In the TOML float parser (`float.rs`), expressions like `Real::from(10).pow(number_of_digits(val).neg().to_real())` use the digit count of a parsed number as the exponent. `Real.pow` internally calls `exp.to_integer().to_i32().unwrap()`, which panics if the exponent exceeds i32 range. The digit count is not explicitly bounded — a TOML file containing a number with more than 2,147,483,647 digits (~2 GB of digits alone) would trigger this panic. In practice, the parser would exhaust memory long before reaching this limit. No guard is added because the input size makes this an undesirable test case in any realistic scenario.
 
-- **`Integer.pow(exp)` with digit-count exponent**: Similarly, `Integer::from(10).pow(number_of_digits(val))`
-  in the float parser uses the digit count as an exponent for `Integer.pow`, which requires
-  the exponent to fit in `u32`. A number with more than 4,294,967,295 digits (~4 GB) would
-  be needed to trigger this. Same practical impossibility applies.
+- **`Integer.pow(exp)` with digit-count exponent**: Similarly, `Integer::from(10).pow(number_of_digits(val))`in the float parser uses the digit count as an exponent for `Integer.pow`, which requires the exponent to fit in `u32`. A number with more than 4,294,967,295 digits (~4 GB) would be needed to trigger this. Same practical impossibility applies.
 
 ### String encoding: ASCII-only soundness
 
-The stdlib `String` operations (`length`, `at`, `substr`, `index_of`, etc.) count
-Unicode code points (via Rust's `.chars()`). Z3's string theory counts UTF-8 bytes.
-For ASCII (code points 0-127), one code point equals one byte so they agree. For
-non-ASCII, they diverge:
+The stdlib `String` operations (`length`, `at`, `substr`, `index_of`, etc.) count Unicode code points (via Rust's `.chars()`). Z3's string theory counts UTF-8 bytes. For ASCII (code points 0-127), one code point equals one byte so they agree. For non-ASCII, they diverge:
 
 | Input | Rust (code points) | Z3 (bytes) |
 |-------|-------------------|------------|
@@ -279,46 +214,31 @@ non-ASCII, they diverge:
 | `"é"` (U+00E9) | 1 | 2 |
 | `"😀"` (U+1F600) | 1 | 4 |
 
-This affects all position-based operations (`at`, `substr`, `index_of`) since indices
-refer to different units. The soundness invariant holds only for ASCII input.
-
-Changing the Rust side to byte-based is not feasible: Z3's `str.at` can return
-individual bytes of multi-byte UTF-8 sequences (e.g., `(str.at "😀" 0)` returns
-`\xF0`), which cannot be stored in a Rust `String` (requires valid UTF-8).
+This affects all position-based operations (`at`, `substr`, `index_of`) since indices refer to different units. The soundness invariant holds only for ASCII input. Changing the Rust side to byte-based is not desirable: Z3's `str.at` can return individual bytes of multi-byte UTF-8 sequences (e.g., `(str.at "😀" 0)` returns `\xF0`), which cannot be stored in a Rust `String` (requires valid UTF-8).
 
 For interpreter authors: restrict string inputs to ASCII for soundness.
 
 ---
 
-Rusmart standard library (_stdlib_) contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT. The _rusmart-smt-stdlib_ package consists of one _library crate_. The crate contains two modules: `dt` and `exp`. The `dt` module contains data types part of the type system in Rusmart, while the `exp` module contains expressions. Both modules are re-exported in the root of the crate to allow users to use data types and expressions directly.
+RuSmt standard library (_stdlib_) contains language constructs that cannot be expressed readily in Rust as they have special semantics in SMT. The _rusmt-smt-stdlib_ package consists of one _library crate_. The crate contains two modules: `dt` and `exp`. The `dt` module contains data types part of the type system in RuSmt, while the `exp` module contains expressions. Both modules are re-exported in the root of the crate to allow users to use data types and expressions directly.
 
-#### Trait
+### Trait
+`SMT`: marks that a Rust type is also an SMT type. In order to bridge the semantic gap between a Rust type and an SMT type, the `SMT` trait encodes several restrictions.
+-  Rust types implementing the `SMT` trait must implement other traits (these are the supertraits of `SMT`): the supertraits are __'static, Copy, Default, Hash, Send, Sync__. 
+  - The _'static_ lifetime is used to indicate that the data type is valid for the entire duration of the program. 
+  - The _Copy_ trait is used to indicate that the data type can be copied by value as SMT types are not passed by reference. 
+  - The _Default_ trait is used to allow quantified expressions to type-check in the Rust type system. This has been removed since, but the implementation of _Default_ has been kept. 
+  - The _Hash_ trait is used to allow SMT values to be used as keys in ordered collections like _HashSet_ or _HashMap_. 
+  - The _Send_ trait indicates that ownership of values of the type implementing _Send_ can be transferred between threads. 
+  - The _Sync_ marker trait indicates that it is safe for the type implementing _Sync_ to be referenced from multiple threads. 
 
-- `SMT`: marks that a Rust type is also an SMT type.
-  In order to bridge the semantic gap between a Rust type and an SMT type,
-  the `SMT` trait encodes several restrictions:
+> As you can see, the _SMT_ trait does not implement the _Ord_ trait, even though SMT types should be comparable. This is because for the _Ord_ trait to be a supertrait, the traits _Eq_, _PartialEq_, and _PartialOrd_ should also be supertraits. The predefined functions of _ne_ and _eq_ of the PartialEq trait will both have the types _(&self, other: &Rhs) -> bool_, whereas for these functions we will want the types to be _(self, other: Rhs) -> Boolean_. Note that _Boolean_ is our self defined type that wraps the Rust boolean type and that the return types of all functions in _rusmt_ should be a type defined in _rusmt_. We could have used the _eq_ for example, but needed to wrap it inside `Boolean::from`. This clutters the code and makes it less readable. Therefore, we have decided to not implement the _Ord_ trait as a supertrait of the _SMT_ trait. 
 
-    - Rust types implementing the `SMT` trait
-      must also implement other traits (these are the supertraits of `SMT`):
-        - `Copy`: as SMT values are processed by value and never by reference.
-        - `Default`: to allow quantified expressions
-          (including `choose` operators)
-          to type-check in Rust type system.
-          The implementation can be arbitrary (including `panic!`)
-          as it won't be executed concretely.
-        - `Hash`: to allow SMT values to be used as keys in a `HashSet` or `HashMap`.
-        - `Send` and `Sync`: to allow SMT values to be sent across threads. The `Send`  indicates that ownership of values of the type implementing Send can be transferred between threads. The `Sync` marker trait indicates that it is safe for the type implementing Sync to be referenced from multiple threads. 
-    - Rust types implementing the `SMT` trait
-      will also need to implement the following functions
-      that are generally supported on SMT values:
-        - `_cmp`: comparison test
-        - `eq`: equality test
-        - `ne`: non-equality test
-        - The `ne` and `eq` methods have default implementations that use the `_cmp` method. The `_cmp` method is used to compare two values of the type implementing the `SMT` trait. The `_cmp` method returns an `Ordering` value. The `Ordering` enum is defined in the standard library and has the following variants: `Less`, `Equal`, and `Greater`. The `eq` method returns true if the `_cmp` method returns `Equal`. The `ne` method returns true if the `_cmp` method returns `Less` or `Greater`. The `_cmp` method is required to be defined by the type implementing the `SMT` trait.
+We have defined the method _cmp_ that returns an _Ordering_ enum and any type implementing the _SMT_ trait should define this method. The methods _ne_ and _eq_ are also defined in the _SMT_ trait and they use the _cmp_ method to compare two values of the type implementing the _SMT_ trait. This way SMT types can be compared and checked for equality and non-equality. The `ne` and `eq` methods have default implementations that use the `_cmp` method. The `eq` method returns true if the `_cmp` method returns `Equal`. The `ne` method returns true if the `_cmp` method returns `Less` or `Greater`. The `_cmp` method is required to be defined by the type implementing the `SMT` trait.
 
-#### Data types
+### Data types
 
-These data types are part of the [type system](../../../user/typing.md) in Rusmart:
+These data types are part of the [type system](../../../user/typing.md) in RuSmt:
 
 - `Boolean`: A wrapper around the Rust boolean type. The definition of the `Boolean` type is as follows:
 
@@ -327,61 +247,40 @@ pub struct Boolean {
     inner: bool,
 }
 ```
-Note that this approach of wrapping inside a struct with an `inner` field is a common way in the libraries of Rust itself and this approach is used in the Rusmart standard library as well.
+Note that this approach of wrapping inside a struct with an `inner` field is a common way in the libraries of Rust itself and this approach is used in the RuSmt standard library as well.
 
 - `Integer`: Unbounded integer (backed by `num_bigint::BigInt`).
 - `Real`: Unbounded rational (backed by `num_rational::BigRational`).
 - `I32`, `I64`, `U32`, `U64`: Bitvectors (SMT-LIB `(_ BitVec 32)` / `(_ BitVec 64)`), with signed/unsigned *interpretations* in the DSL API.
 - `F32`, `F64`: Floating-point sorts (SMT-LIB `(_ FloatingPoint 8 24)` / `(_ FloatingPoint 11 53)`).
 - `String`: A wrapper around Rust `String`, corresponding to SMT-LIB `String`.
-- `Cloak<T>`: A wrapper over `T` to allow recursive data types to be defined (similar to `Box<T>` in Rust). A `Cloak<T>` will be uncloaked to `T` after the parsing stage of Rusmart.
+- `Cloak<T>`: A **frontend-only** wrapper over `T` that lets users write self-referential ADTs without violating Rust's sized-type requirement (similar to `Box<T>` in Rust). The IR strips it: every `Cloak<T>` field becomes a plain `T` field, every `Cloak::shield(x)` lowers to `x`, every `.reveal()` lowers to identity. As a result the SMT-LIB output never mentions `Cloak`. The IR assumes every `Cloak<T>` appears alongside at least one non-recursive variant (i.e. the enum is well-founded).
 - `Seq<T>`: SMT sequence of type `T` similar to Rust `Vec<T>`.
 - `Set<T>`: SMT set of type `T` similar to Rust `BTreeSet<T>`.
 - `Array<K, V>`: SMT array of key type `K` and value type `V`, similar to a persistent `BTreeMap<K, V>` in the interpreter.
-- `Error`: A special marker to indicate error states. The error state is created by calling the `Error::fresh()` function. Every time the `fresh()` method is called, a new error state is created with a unique inner value. The inner values are incremented by one each time a new error state is created.
+- `Path`: A special marker to indicate path conditions reached during execution. A path marker is created by calling `Path::fresh()`; every call yields a new marker with a unique inner id (the inner id is incremented by one each time a new marker is created). Markers can be unioned with `Path::merge(a, b)`. The Z3 representation is `(Array Int Bool)` — see `book/src/dev/smt/derive.md`.
 
-## Expressions
+### Expressions
 
-- `forall |v1 in c1, v2 in c2, ..., vn in cn| <predicate>(v1, v2, ..., vn)`
-    - **SMT and Rust**: universally quantified over bounded collections
-    - In Rust, the `<predicate>` are checked in a loop
-      iterating over all possible combination of variables `v1, v2, ..., vn`.
+There are three quantified expressions: `forall!` / `exists!` / `choose!`, each in a _bounded_ form.
 
-Basically, the _forall_ macro has one form:
-    - `forall! (v1 in c1, v2 in c2, ..., vn in cn => <predicate>)`
+> **Bounded** — quantify over the elements of one or more collections. The collections must implement an `iterator()` method (every `Seq` / `Set` / `Array` / `String` does). Combining macros lets us write things like “the minimum value of a set”: 
+> ```rust
+> set! { 1, 2, 3, 4, 5 }
+> choose! (x in set => forall! (y in set => x.lt(y).or(x.eq(y))))
+> ```
 
-The _c1_, _c2_, ..., _cn_ are collections that have an _iterator_ method. A cartesian product of the collections is taken and the predicate is checked for each combination of the variables. If the predicate is true for **all** the combinations, then the forall macro is true.
+### Bounded form
 
-- `exists |v1 in c1, v2 in c2, ..., vn in cn| <predicate>(v1, v2, ..., vn)`
-    - **SMT and Rust**: existentially quantified over bounded collections
-    - In Rust, the `<predicate>` are checked in a loop
-      iterating over all possible combination of variables `v1, v2, ..., vn`.
-
-Basically, the _exists_ macro has one form:
-    - `exists! (v1 in c1, v2 in c2, ..., vn in cn => <predicate>)`
-
-The _c1_, _c2_, ..., _cn_ are collections that have an _iterator_ method. A cartesian product of the collections is taken and the predicate is checked for each combination of the variables. If the predicate is true for **any** of the combinations, then the exists macro is true.
-
-- `choose |v1 in c1, v2 in c2, ..., vn in cn| <predicate>(v1, v2, ..., vn)`
-    - **SMT and Rust**: choose operator over bounded collections
-    - In Rust, one set of variables `v1, v2, ..., vn`
-      that satisfies `<predicate>` will be returned
-      by iterating over all possible combinations.
-      If no such combination exists, exit with panic.
-    - In SMT, variables `v1, v2, ..., vn` will be defined in an axiomatized way.
-
-Basically, the _choose_ macro has one form:
-      - `choose! (v1 in c1, v2 in c2, ..., vn in cn => <predicate>)`
-
-The _c1_, _c2_, ..., _cn_ are collections that have an _iterator_ method. A cartesian product of the collections is taken and the predicate is checked for the combinations of the variables in order. The first combination that satisfies the predicate is returned. If no such combination exists, the program panics.
-
-The combination of these expression macros allows us to express complex logic for example getting the minimum value from a set of values as shown below:
-
-```rust
-set! { 1, 2, 3, 4, 5 }
-choose! (x in set => forall! (y in set => x.lt(y).or(x.eq(y))))
-```
-
-#### Note on the `SMT` trait
-
-As you can see for the _SMT_ trait, the supertraits are __'static, Copy, Default, Hash, Send, Sync__. The _'static_ lifetime is used to indicate that the data type is valid for the entire duration of the program. The _Copy_ trait is used to indicate that the data type can be copied by value as SMT types are not passed by reference. The _Default_ trait is used to allow quantified expressions to type-check in the Rust type system. This has been removed since, but the implementation of _Default_ has been kept. The _Hash_ trait is used to allow SMT values to be used as keys in ordered collections like _HashSet_ or _HashMap_. The _Send_ and _Sync_ traits are used to allow SMT values to be sent across threads. The _Send_ trait indicates that ownership of values of the type implementing _Send_ can be transferred between threads. The _Sync_ marker trait indicates that it is safe for the type implementing _Sync_ to be referenced from multiple threads. As you can see, the _SMT_ trait does not implement the _Ord_ trait, even though SMT types should be comparable. This is because for the _Ord_ trait to be a supertrait, the traits _Eq_, _PartialEq_, and _PartialOrd_ should also be supertraits. The predefined functions of _ne_ and _eq_ of the PartialEq trait will both have the types _(&self, other: &Rhs) -> bool_, whereas for these functions we will want the types to be _(self, other: Rhs) -> Boolean_. Note that _Boolean_ is our self defined type that wraps the Rust boolean type and that the return types of all functions in _rusmart_ should be a type defined in _rusmart_. We could have used the _eq_ for example, but needed to wrap it inside `Boolean::from`. This clutters the code and makes it less readable. Therefore, we have decided to not implement the _Ord_ trait as a supertrait of the _SMT_ trait. For this reason, we have defined the method _cmp_ that returns an _Ordering_ enum and any type implementing the _SMT_ trait should define this method. The methods _ne_ and _eq_ are also defined in the _SMT_ trait and they use the _cmp_ method to compare two values of the type implementing the _SMT_ trait. This way SMT types can be compared and checked for equality and non-equality.
+- `forall!(v1 in c1, ..., vn in cn => <predicate>)`
+    - **SMT and Rust**: universally quantified over the cartesian product of the collections.
+    - In Rust the predicate is checked in a loop over `c_i.iterator()`; in SMT it is gated on membership in `c_i`.
+- `exists!(v1 in c1, ..., vn in cn => <predicate>)`
+    - **SMT and Rust**: existentially quantified over the cartesian product.
+    - In Rust the predicate is checked in a loop and returns `true` on the first match.
+- `choose!(v1 in c1, ..., vn in cn => <predicate>)`
+    - **SMT and Rust**: Hilbert choice over the cartesian product.
+    - **In Rust**, `choose` returns the *first* witness satisfying the predicate; if none exists, the program panics. Guard any use of
+  `choose` with an existence check beforehand.
+  - **In SMT**, the witness is axiomatized via a Skolem function plus the choose axiom, so Z3 returns an *arbitrary* value satisfying
+  the predicate — not necessarily the first but this does not affect soundness: we assume only that the witness *satisfies the predicate*, never that a particular one is chosen. Any satisfying witness is equally valid.

@@ -88,9 +88,9 @@ pub struct Set<T: SMT> {
 pub struct Array<K: SMT, V: SMT> {
     inner: Intern<BTreeMap<SMTWrap<K>, SMTWrap<V>>>,
 }
-/// ** Error state
+/// ** Path-condition marker
 #[derive(Debug, Clone, Copy, Default, Hash)]
-pub struct Error {
+pub struct Path {
     inner: Intern<BTreeSet<usize>>,
 }
 /// ** Cloak
@@ -106,12 +106,12 @@ pub mod bitvector;
 pub mod boolean;
 /// * cloak module
 pub mod cloak;
-/// * error module
-pub mod error;
 /// * float module
 pub mod float;
 /// * integer module
 pub mod int;
+/// * path module
+pub mod path;
 /// * real module
 pub mod real;
 /// * sequence module
@@ -138,7 +138,7 @@ smt_impl!(String);
 smt_impl!(Seq, T);
 smt_impl!(Set, T);
 smt_impl!(Array, K, V);
-smt_impl!(Error);
+smt_impl!(Path);
 smt_impl!(Cloak, T);
 smt_impl! { A B } // Both a and B need to implement the SMT trait. To express (a,b,c) we write (a , (b , c)) or ((a,b), c)
 
@@ -575,32 +575,32 @@ mod test {
         }));
     }
 
-    /// testing the new method of Error
+    /// testing the new method of Path
     #[test]
-    fn test_error() {
-        let var1 = Error::fresh();
-        let var2 = Error::fresh();
+    fn test_path() {
+        let var1 = Path::fresh();
+        let var2 = Path::fresh();
 
-        // each newly created error only has one element.
+        // each newly created path-marker only has one element.
         assert_eq!(var1.inner.len(), 1);
         assert_eq!(var2.inner.len(), 1);
 
         // the first one is created with a value of zero and each new one is incremented by one.
-        assert_eq!(*var1.inner.iter().next().expect("Error is empty"), 0);
-        assert_eq!(*var2.inner.iter().next().expect("Error is empty"), 1);
+        assert_eq!(*var1.inner.iter().next().expect("Path is empty"), 0);
+        assert_eq!(*var2.inner.iter().next().expect("Path is empty"), 1);
 
         // in merging, the elements are included in one set, thus {0,1} is inside var3.
         let var3 = var1.merge(var2);
         assert_eq!(var3.inner.len(), 2);
 
         // the first element is 0 and the second element is 1.
-        assert_eq!(*var3.inner.iter().next().expect("Error is empty"), 0);
+        assert_eq!(*var3.inner.iter().next().expect("Path is empty"), 0);
         assert_eq!(
             *var3
                 .inner
                 .iter()
                 .nth(1)
-                .expect("Error does not have 2 elements"),
+                .expect("Path does not have 2 elements"),
             1
         );
 
@@ -908,11 +908,11 @@ mod test {
         assert!(*var1.eq(var2));
     }
 
-    /// the default value of Error is an empty set
+    /// the default value of Path is an empty set
     #[test]
-    fn test_default_error() {
-        let var1 = Error::default();
-        let var2 = Error {
+    fn test_default_path() {
+        let var1 = Path::default();
+        let var2 = Path {
             inner: Intern::new(BTreeSet::new()),
         };
         assert!(*var1.eq(var2));

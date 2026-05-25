@@ -10,8 +10,8 @@ use crate::toml::{
     key_value::{parse_key, parse_key_value},
     parse_ws,
 };
-use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{Array, Cloak, Error, Integer, Seq, String, U32, choose, forall, smt::SMT};
+use rusmt_smt_remark_derive::smt_fn;
+use rusmt_smt_stdlib::{Array, Cloak, Integer, Path, Seq, String, U32, choose, forall, smt::SMT};
 
 /// `std-table = std-table-open key std-table-close`
 #[smt_fn]
@@ -21,14 +21,14 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
             match current_char(state_after_open) {
                 Optional::None => {
                     // println!("cannot have [");
-                    ParseResult::Err(Error::fresh())
+                    ParseResult::Err(Path::fresh())
                 } // cannot have [
                 Optional::Some(x) => {
                     if *x.eq(U32::from(0x5D)) {
                         // empty table name
                         {
                             // println!("cannot have empty table name");
-                            return ParseResult::Err(Error::fresh());
+                            return ParseResult::Err(Path::fresh());
                         }
                     } else {
                         // non-empty table name
@@ -42,12 +42,12 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
                                         Optional::Some(_ch) => {
                                             // found another character where ] expected
                                             // println!("found another character where ] expected");
-                                            return ParseResult::Err(Error::fresh());
+                                            return ParseResult::Err(Path::fresh());
                                         }
                                         Optional::None => {
                                             // reached end of input where ] expected
                                             // println!("reached end of input where ] expected");
-                                            return ParseResult::Err(Error::fresh());
+                                            return ParseResult::Err(Path::fresh());
                                         }
                                     },
                                     ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
@@ -107,14 +107,14 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
             match current_char(state_after_open) {
                 Optional::None => {
                     // println!("cannot have [[");
-                    ParseResult::Err(Error::fresh())
+                    ParseResult::Err(Path::fresh())
                 } // cannot have [[
                 Optional::Some(x) => {
                     if *x.eq(U32::from(0x5D)) {
                         // empty table name
                         {
                             // println!("cannot have empty table name");
-                            return ParseResult::Err(Error::fresh());
+                            return ParseResult::Err(Path::fresh());
                         }
                     } else {
                         // non-empty table name
@@ -128,12 +128,12 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
                                         Optional::Some(_ch) => {
                                             // found another character where ]] expected
                                             // println!("found another character where ]] expected");
-                                            return ParseResult::Err(Error::fresh());
+                                            return ParseResult::Err(Path::fresh());
                                         }
                                         Optional::None => {
                                             // reached end of input where ]] expected
                                             // println!("reached end of input where ]] expected");
-                                            return ParseResult::Err(Error::fresh());
+                                            return ParseResult::Err(Path::fresh());
                                         }
                                     },
                                     ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
@@ -224,22 +224,22 @@ pub(crate) fn parse_inline_table(
     let new_key = current_table_path.concat(key);
     if *inline_tables.contains(new_key) {
         // println!("inline table already defined");
-        return ParseResult::Err(Error::fresh());
+        return ParseResult::Err(Path::fresh());
     } else {
         if *closed_tables.contains(new_key) {
             // println!("inline table already closed");
-            return ParseResult::Err(Error::fresh());
+            return ParseResult::Err(Path::fresh());
         } else {
             if *explicit_tables.contains(new_key) {
                 // println!("inline table already defined as explicit table");
-                return ParseResult::Err(Error::fresh());
+                return ParseResult::Err(Path::fresh());
             } else {
                 match parse_inline_table_open(state) {
                     ParseResult::Ok(_open_brace, state_after_open) => {
                         match current_char(state_after_open) {
                             Optional::None => {
                                 // println!("cannot have {{");
-                                ParseResult::Err(Error::fresh())
+                                ParseResult::Err(Path::fresh())
                             } // cannot have {
                             Optional::Some(_x) => {
                                 match parse_inline_table_close(state_after_open) {
@@ -302,7 +302,7 @@ fn parse_inline_table_keyvals(
             match current_char(state_after_kv) {
                 Optional::None => {
                     // println!("cannot have end of input here expecting }} or ,");
-                    ParseResult::Err(Error::fresh()) // cannot have end of input here expecting } or ,
+                    ParseResult::Err(Path::fresh()) // cannot have end of input here expecting } or ,
                 }
                 Optional::Some(_ch) => {
                     match parse_inline_table_close(state_after_kv) {
@@ -419,7 +419,7 @@ fn parse_inline_table_keyvals(
                                                         // merging failed because of conflicting keys
                                                         Optional::None => {
                                                             // println!("conflicting keys in inline table");
-                                                            ParseResult::Err(Error::fresh())
+                                                            ParseResult::Err(Path::fresh())
                                                         }
                                                     }
                                                 }
@@ -508,13 +508,13 @@ fn parse_inline_table_sep(state: State) -> ParseResult<String> {
                 } else {
                     // Another character present where comma expected
                     // println!("found another character where , expected");
-                    ParseResult::Err(Error::fresh())
+                    ParseResult::Err(Path::fresh())
                 }
             }
             // No character present where comma expected
             Optional::None => {
                 // println!("reached end of input where , expected");
-                ParseResult::Err(Error::fresh())
+                ParseResult::Err(Path::fresh())
             }
         },
     }

@@ -1,10 +1,6 @@
 ## AST
 
-The TOML parser’s output type is `Value` (defined in `lang/src/toml/ast.rs`).
-It represents TOML values *after* parsing succeeds, and is designed to be both:
-
-- **Executable** in Rust (for concrete parsing), and
-- **SMT-transpilable** (for symbolic reasoning).
+The TOML parser's output type is `Value`. It represents TOML values *after* parsing succeeds. The summary below is a guide, not the source of truth.
 
 ### `Value`
 
@@ -18,11 +14,16 @@ High-level shape:
 
 ### Why `Cloak<T>` shows up
 
-`Value` is recursive (arrays and tables contain values).
-To make recursive types manageable in the DSL/IR, the stdlib provides `Cloak<T>`:
+`Value` is recursive (arrays and tables contain values). Rust requires a
+self-referential ADT to be wrapped in some indirection so the type has a
+known size, and RuSmt's frontend supplies `Cloak<T>` for that purpose:
 
 - `Cloak::shield(t)` wraps a value
 - `Cloak::reveal(c)` unwraps it
 
-In the AST, arrays and tables are stored as `Cloak<...>` to keep recursion explicit and well-behaved for translation.
+`Cloak<T>` is **only** a frontend wrapper. The IR strips it: every
+`Cloak<T>` field becomes a plain `T` field, every `Cloak::shield`/
+`reveal` lowers to identity. The SMT-LIB output therefore sees `Value`
+as a direct mutually-recursive datatype, with no `Cloak` machinery in
+the SMT-LIB output.
 

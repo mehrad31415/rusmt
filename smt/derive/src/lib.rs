@@ -32,7 +32,7 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<IRContext> {
     Ok(ir)
 }
 
-/// Solve the models by synthesizing inputs for specific Error IDs.
+/// Solve the models by synthesizing inputs for specific Path IDs.
 ///
 /// `unroll_depth` controls bounded-recursion unrolling in the text backend
 /// (see `CodeGen::process`); pass 0 or not specified to keep the existing recursive emission.
@@ -65,27 +65,27 @@ pub fn solve<P: AsRef<Path>>(
         fs::write(&path_src, &base_code)
             .unwrap_or_else(|e| panic!("IO error on source file: {}", e));
 
-        // For each error target, generate one query against `top_level_fn` and run it.
+        // For each path-marker target, generate one query against `top_level_fn` and run it.
         // Skip entirely if no top-level function was specified.
         let Some(top_level_fn) = top_level_fn else {
             continue;
         };
-        for (target_idx, target_ids) in model.error_targets.iter().enumerate() {
+        for (target_idx, target_ids) in model.path_targets.iter().enumerate() {
             let target_label = format!("target_{}", target_idx);
-            let path_error_dir = path_solver.join(&target_label);
-            fs::create_dir_all(&path_error_dir).expect("error directory created");
+            let path_target_dir = path_solver.join(&target_label);
+            fs::create_dir_all(&path_target_dir).expect("target directory created");
 
             let query_code =
-                solver.process_error_queries(&base_code, model, top_level_fn, target_ids);
-            let query_path = path_error_dir.join(format!("main.{}", solver.flavor()));
+                solver.process_path_queries(&base_code, model, top_level_fn, target_ids);
+            let query_path = path_target_dir.join(format!("main.{}", solver.flavor()));
             fs::write(&query_path, &query_code).expect("failed to write query file");
 
             if skip_invoke {
                 continue;
             }
 
-            let resp_file = path_error_dir.join("response.txt");
-            let timing_file = path_error_dir.join("timing.txt");
+            let resp_file = path_target_dir.join("response.txt");
+            let timing_file = path_target_dir.join("timing.txt");
             let start = Instant::now();
             match solver.invoke_backend(&query_path) {
                 Ok(resp) => {
@@ -117,13 +117,12 @@ pub fn solve<P: AsRef<Path>>(
 /// Solve using the Z3 API backend.
 /// Results are written to `lang/src/synthesis/<parser_name>/z3_api/target_N/response.txt` and `timing.txt`.
 ///
-/// `_unroll_depth` is accepted for CLI parity with [`solve`] but is ignored:
-/// bounded-recursion unrolling is currently text-backend-only.
+/// `unroll_depth` controls bounded-recursion unrolling.
 pub fn solve_z3_api<P: AsRef<Path>>(
     model: &IRContext,
     top_level_fn: Option<&str>,
     output: P,
-    _unroll_depth: usize, // TODO: bounded-recursion unrolling is currently text-backend-only.
+    unroll_depth: usize,
 ) -> Result<()> {
     let path_solver = output.as_ref().join("z3_api");
     fs::create_dir_all(&path_solver).expect("workspace freshly created");
@@ -134,18 +133,19 @@ pub fn solve_z3_api<P: AsRef<Path>>(
 
     let write_result = |result: &backend::z3_api::SolveResult| {
         let target_label = format!("target_{}", result.target_idx);
-        let path_error_dir = path_solver.join(&target_label);
-        fs::create_dir_all(&path_error_dir).expect("error directory created");
+        let path_target_dir = path_solver.join(&target_label);
+        fs::create_dir_all(&path_target_dir).expect("target directory created");
 
-        let resp_file = path_error_dir.join("response.txt");
-        fs::write(&resp_file, result.response.to_string()).expect("failed to write query response");
+        let resp_file = path_target_dir.join("response.txt");
+        let raw_resp = result.response.to_string();
+        fs::write(&resp_file, raw_resp).expect("failed to write query response");
 
-        let timing_file = path_error_dir.join("timing.txt");
+        let timing_file = path_target_dir.join("timing.txt");
         fs::write(&timing_file, format!("{}ms", result.elapsed_ms))
             .expect("failed to write timing file");
     };
 
-    backend::z3_api::solver::solve_with_api(model, top_level_fn, &write_result);
+    backend::z3_api::solver::solve_with_api(model, top_level_fn, &write_result, unroll_depth);
 
     Ok(())
 }

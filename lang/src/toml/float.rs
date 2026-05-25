@@ -5,10 +5,10 @@ use crate::toml::{
     integer::{is_hex_digit, is_minus, is_plus, is_underscore, parse_integer},
     is_dec_digit, parse_literal,
 };
-use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_remark_derive::smt_type;
-use rusmart_smt_stdlib::{
-    Error, F64, I64, Integer, Real, String, U32, bitvector::BitvectorOps, float::FloatOps, smt::SMT,
+use rusmt_smt_remark_derive::smt_fn;
+use rusmt_smt_remark_derive::smt_type;
+use rusmt_smt_stdlib::{
+    F64, I64, Integer, Path, Real, String, U32, bitvector::BitvectorOps, float::FloatOps, smt::SMT,
 };
 
 #[smt_type]
@@ -59,7 +59,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                                 //     "the combination of integer part and fractional part overflows in float parsing"
                                                                 // );
                                                                 return ParseResult::Err(
-                                                                    Error::fresh(),
+                                                                    Path::fresh(),
                                                                 );
                                                             } else {
                                                                 let combined_f64 =
@@ -72,7 +72,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                                     //     "exponent after e overflows in float parsing"
                                                                     // );
                                                                     return ParseResult::Err(
-                                                                        Error::fresh(),
+                                                                        Path::fresh(),
                                                                     );
                                                                 } else {
                                                                     if *exp.is_lt_i32_min() {
@@ -80,7 +80,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                                         //     "exponent after e underflows in float parsing"
                                                                         // );
                                                                         return ParseResult::Err(
-                                                                            Error::fresh(),
+                                                                            Path::fresh(),
                                                                         );
                                                                     } else {
                                                                         let after_e =
@@ -95,7 +95,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                                             //     "the number after e is okay(within i32) but the 10^exp overflows in float parsing"
                                                                             // );
                                                                             return ParseResult::Err(
-                                                                                Error::fresh(),
+                                                                                Path::fresh(),
                                                                             );
                                                                         } else {
                                                                             let f = combined_f64
@@ -105,7 +105,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                                                 //     "the number before the decimal point and after the decimal point combined with the exponent overflows in float parsing"
                                                                                 // );
                                                                                 return ParseResult::Err(
-                                                                                    Error::fresh(),
+                                                                                    Path::fresh(),
                                                                                 );
                                                                             } else {
                                                                                 return ParseResult::Ok(
@@ -138,7 +138,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                         // println!(
                                                         //     "the combination of integer part and fractional part overflows in float parsing where no exponent part"
                                                         // );
-                                                        return ParseResult::Err(Error::fresh());
+                                                        return ParseResult::Err(Path::fresh());
                                                     } else {
                                                         let f = combined.to_f64().mul(
                                                             Real::from(10)
@@ -169,7 +169,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                     // println!(
                                                     //     "the combination of integer part and fractional part overflows in float parsing where nothing after decimal part"
                                                     // );
-                                                    return ParseResult::Err(Error::fresh());
+                                                    return ParseResult::Err(Path::fresh());
                                                 } else {
                                                     let f = combined.to_f64().mul(
                                                         Real::from(10)
@@ -200,7 +200,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                 // println!(
                                                 //     "the integer part overflows in float parsing with only exponent part"
                                                 // );
-                                                return ParseResult::Err(Error::fresh());
+                                                return ParseResult::Err(Path::fresh());
                                             } else {
                                                 let combined_f64 = combined.to_f64();
                                                 let exp = exp_val;
@@ -209,13 +209,13 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                     // println!(
                                                     //     "exponent after e overflows in float parsing with only exponent part"
                                                     // );
-                                                    return ParseResult::Err(Error::fresh());
+                                                    return ParseResult::Err(Path::fresh());
                                                 } else {
                                                     if *exp.is_lt_i32_min() {
                                                         // println!(
                                                         //     "exponent after e underflows in float parsing with only exponent part"
                                                         // );
-                                                        return ParseResult::Err(Error::fresh());
+                                                        return ParseResult::Err(Path::fresh());
                                                     } else {
                                                         let after_e =
                                                             Real::from(10).pow(exp.to_real());
@@ -224,7 +224,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                             // println!(
                                                             //     "the number after e is okay(within i32) but the 10^exp overflows in float parsing with only exponent part"
                                                             // );
-                                                            return ParseResult::Err(Error::fresh());
+                                                            return ParseResult::Err(Path::fresh());
                                                         } else {
                                                             let f = combined_f64.mul(after_e_f64);
                                                             if *f.is_infinite() {
@@ -232,7 +232,7 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
                                                                 //     "the number before the decimal point combined with the exponent overflows in float parsing with only exponent part"
                                                                 // );
                                                                 return ParseResult::Err(
-                                                                    Error::fresh(),
+                                                                    Path::fresh(),
                                                                 );
                                                             } else {
                                                                 return ParseResult::Ok(
@@ -276,17 +276,17 @@ pub(crate) fn parse_float(input: State) -> ParseResult<Number> {
 /// `zero-prefixable-int = DIGIT *( DIGIT / underscore DIGIT )`
 #[smt_fn]
 fn parse_unsigned_dec_rest(input: State, number: Integer) -> ParseResult<Integer> {
-    // Avoid `return ...` inside a match-as-expression; Rusmart does not treat `return`
+    // Avoid `return ...` inside a match-as-expression; RuSmt does not treat `return`
     // as a diverging expression for type-checking purposes.
     match current_char(input) {
         Optional::None => {
             // println!("must have at least one digit after decimal point");
-            return ParseResult::Err(Error::fresh());
+            return ParseResult::Err(Path::fresh());
         } // must have at least one digit after decimal point
         Optional::Some(first_char) => {
             if *is_dec_digit(first_char).not() {
                 // println!("must have at least one digit after decimal point; found {:?}", first_char);
-                return ParseResult::Err(Error::fresh()); // must start with a digit
+                return ParseResult::Err(Path::fresh()); // must start with a digit
             } else {
                 match parse_float_rest(advance(input), cp_to_str(first_char), number) {
                     ParseResult::Ok(s, i) => {
@@ -321,7 +321,7 @@ fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<S
                     match current_char(after_underscore) {
                         Optional::None => {
                             // println!("underscore at the end of float part");
-                            return ParseResult::Err(Error::fresh());
+                            return ParseResult::Err(Path::fresh());
                         }
                         Optional::Some(next_c) => {
                             if *is_dec_digit(next_c) {
@@ -335,16 +335,16 @@ fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<S
                             } else {
                                 if *is_underscore(next_c) {
                                     // println!("multiple underscores in float part");
-                                    return ParseResult::Err(Error::fresh());
+                                    return ParseResult::Err(Path::fresh());
                                 } else {
                                     if *is_hex_digit(next_c) {
                                         // println!("invalid hex character after underscore");
-                                        return ParseResult::Err(Error::fresh());
+                                        return ParseResult::Err(Path::fresh());
                                     } else {
                                         // println!(
                                         //     "invalid character after underscore in float part"
                                         // );
-                                        return ParseResult::Err(Error::fresh());
+                                        return ParseResult::Err(Path::fresh());
                                     }
                                 }
                             }
@@ -358,12 +358,12 @@ fn parse_float_rest(input: State, acc: String, number: Integer) -> ParseResult<S
                         } else {
                             // duplicate e in float part
                             // println!("duplicate e in float part");
-                            return ParseResult::Err(Error::fresh());
+                            return ParseResult::Err(Path::fresh());
                         }
                     } else {
                         if *is_hex_digit(c) {
                             // println!("invalid hex character in float part");
-                            return ParseResult::Err(Error::fresh());
+                            return ParseResult::Err(Path::fresh());
                         } else {
                             return ParseResult::Ok(acc, input); // end of float part
                         }
@@ -408,21 +408,21 @@ fn parse_special_float(input: State) -> ParseResult<F64> {
                         match parse_literal(new_state, "Nan".into()) {
                             ParseResult::Ok(_x, _remaining_input) => {
                                 // println!("invalid Nan casing");
-                                ParseResult::Err(Error::fresh())
+                                ParseResult::Err(Path::fresh())
                             }
                             ParseResult::Err(e) => return ParseResult::Err(e),
                             ParseResult::NoMatch => {
                                 match parse_literal(new_state, "Inf".into()) {
                                     ParseResult::Ok(_x, _remaining_input) => {
                                         // println!("invalid Inf casing");
-                                        ParseResult::Err(Error::fresh())
+                                        ParseResult::Err(Path::fresh())
                                     }
                                     ParseResult::Err(e) => return ParseResult::Err(e),
                                     ParseResult::NoMatch => {
                                         match parse_literal(new_state, "NAN".into()) {
                                             ParseResult::Ok(_x, _remaining_input) => {
                                                 // println!("invalid NAN casing");
-                                                ParseResult::Err(Error::fresh())
+                                                ParseResult::Err(Path::fresh())
                                             }
                                             ParseResult::Err(e) => return ParseResult::Err(e),
                                             ParseResult::NoMatch => {
@@ -431,7 +431,7 @@ fn parse_special_float(input: State) -> ParseResult<F64> {
                                                         // println!(
                                                         //     "invalid INF casing"
                                                         // );
-                                                        ParseResult::Err(Error::fresh())
+                                                        ParseResult::Err(Path::fresh())
                                                     }
                                                     ParseResult::Err(e) => {
                                                         return ParseResult::Err(e);
@@ -446,7 +446,7 @@ fn parse_special_float(input: State) -> ParseResult<F64> {
                                                                 // println!(
                                                                 //     "invalid NaN casing"
                                                                 // );
-                                                                ParseResult::Err(Error::fresh())
+                                                                ParseResult::Err(Path::fresh())
                                                             }
                                                             ParseResult::Err(e) => {
                                                                 ParseResult::Err(e)
@@ -521,7 +521,7 @@ fn parse_float_exp_part(input: State) -> ParseResult<Integer> {
         // after e there must be at least one digit
         Optional::None => {
             // println!("must have at least one digit after e in float exponent part");
-            return ParseResult::Err(Error::fresh());
+            return ParseResult::Err(Path::fresh());
         }
     }
 }

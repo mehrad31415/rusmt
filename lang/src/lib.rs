@@ -7,6 +7,6 @@
 /// This module can be accessed from the binary crate (and other external crates).
 pub mod toml;
 
-/// Rego module for parsing and evaluating Rego policies (subset).
-/// See `rego/README.md` for the in-scope / out-of-scope boundary.
-pub mod rego;
+/// IMP/WHILE module: the canonical small imperative language from
+/// Winskel, *The Formal Semantics of Programming Languages* (MIT Press, 1993),
+pub mod imp;

@@ -2,9 +2,9 @@
 
 See [Type system](typing.md) for the authoritative list of intrinsic SMT sorts.
 
-## Intrinsic method surface (by receiver type)
+## Intrinsic methods
 
-This list is the stdlib API that is expected to round-trip through the transpiler as intrinsics.
+This list is the stdlib API, i.e., the list of available methods per intrinsic type.
 
 ### `Boolean`
 
@@ -12,7 +12,7 @@ This list is the stdlib API that is expected to round-trip through the transpile
 - `and(Boolean)`, `or(Boolean)`, `xor(Boolean)`
 - `nand(Boolean)`, `nor(Boolean)`, `xnor(Boolean)`
 - `implies(Boolean)`, `iff(Boolean)`
-- `ite<T: SMT>(then: T, else_: T) -> T`
+- `ite<T: SMT>(then: T, else: T) -> T`
 
 ### `Integer`
 
@@ -55,7 +55,6 @@ This list is the stdlib API that is expected to round-trip through the transpile
 
 - `new()`, `length()`, `is_empty()`
 - `insert(T)`, `remove(T)`, `contains(T)`
-- `intersection(Set<T>)`, `union(Set<T>)`, `difference(Set<T>)`, `symmetric_difference(Set<T>)`
 - `is_subset(Set<T>)`, `is_proper_subset(Set<T>)`, `is_disjoint(Set<T>)`
 - `has_size(Integer)`
 
@@ -89,26 +88,25 @@ These are exposed via the `FloatOps` trait (receiver is `F32` or `F64`):
 - **Rounding**: `ceil()`, `floor()`, `trunc()`, `nearest()`
 - **Equality**: `fp_eq(_)` (the compiler also accepts `fq_eq(_)` as a legacy alias)
 
-### `Error`
+### `Path`
 
-- `fresh() -> Error`
-- `merge(Error) -> Error`
+- `fresh() -> Path`
+- `merge(Path) -> Path`
 
-## Expression intrinsics (macros)
+## Expression intrinsics
 
-Bounded variants iterate in Rust over `c.iterator()` (collections like `Seq/Set/Array/String` provide these iterators for macro use):
+**Bounded** — iterates in Rust over `c.iterator()` (collections like `Seq/Set/Array/String` provide these iterators for macro use):
 
 - `forall!(v1 in c1, ..., vn in cn => predicate)`
 - `exists!(v1 in c1, ..., vn in cn => predicate)`
 - `choose!(v1 in c1, ..., vn in cn => predicate)`
 
-
 ## What counts as an “intrinsic”
 
-An **intrinsic** is a type/method/operator/macro that the Rusmart compiler recognizes and gives **special SMT semantics** to (i.e., it does *not* treat it like a normal Rust function call).
+An **intrinsic** is a type/method/operator/macro that the RuSmt compiler recognizes and gives **special SMT semantics** to (i.e., it does *not* treat it like a normal Rust function call).
 
 - **Method intrinsics** (most of the stdlib API): e.g. `Integer::add`, `Seq::concat`, `Array::select`, …
-- **Generic operator intrinsics** (on any `T: SMT`): `eq`, `ne`
+- **Generic operator intrinsics** (on any `T: SMT`): `eq`, `ne`, `cmp`
 - **Expression intrinsics** (macros): `forall!`, `exists!`, `choose!`
 - **Literals**: booleans, integers, reals, strings, and numeric suffixes for bitvectors/floats
 

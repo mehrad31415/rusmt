@@ -27,17 +27,17 @@ pub(crate) trait CodeGen {
     /// process generates SMT-LIB as a String → caller writes it to a file → invoke_backend takes that file path. The intermediate file step is intentional (keeps the generated code inspectable for debugging).
     fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response>;
 
-    /// For a given error target (set of error IDs), generate an SMT-LIB query that asks Z3
+    /// For a given path-marker target (set of path IDs), generate an SMT-LIB query that asks Z3
     /// to find inputs to `top_level_fn` such that ALL IDs in the target are in the result's
-    /// error set. A single-element set queries one error site; a multi-element set queries
+    /// path-marker set. A single-element set queries one path site; a multi-element set queries
     /// a merge point where all those sites were reached simultaneously.
     ///
     /// # Panics
     ///
     /// - `top_level_fn` is not found in the function registry
     /// - `top_level_fn` is polymorphic (more than one instantiation)
-    /// - The return type of `top_level_fn` does not contain a `Sort::Error` field
-    fn process_error_queries(
+    /// - The return type of `top_level_fn` does not contain a `Sort::Path` field
+    fn process_path_queries(
         &self,
         base_code: &str,
         ir: &IRContext,

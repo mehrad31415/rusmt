@@ -62,8 +62,8 @@ impl CodeGen for CodeGenZ3 {
         let IRContext {
             ty_registry,
             fn_registry,
-            error_count: _,
-            error_targets: _,
+            path_count: _,
+            path_targets: _,
         } = ir;
 
         l!(x, "(set-option :print-success false)");
@@ -93,20 +93,15 @@ impl CodeGen for CodeGenZ3 {
         l!(x, "(set-option :smt.auto_config false)");
         l!(x); // add new line
 
-        // Declare the Cloak datatype — used for recursive type indirection.
-        // Cloak<T> wraps a value of type T, with a Cloak-null base case that provides
-        // the well-foundedness guarantee Z3 requires for recursive datatypes.
+        // Cloak<T> is erased at the IR layer; recursive ADTs are emitted as
+        // direct mutually-recursive datatypes (see ir/sort.rs::resolve_type).
         l!(
             x,
-            "(declare-datatype Cloak (par (T) ((mk-Cloak (uncloak T)) (Cloak-null))))"
+            "(declare-datatypes ((RuSmtSet 1)) ((par (T) ((mk-rset (rset-data (Array T Bool)) (rset-card Int))))))"
         );
         l!(
             x,
-            "(declare-datatypes ((RusmartSet 1)) ((par (T) ((mk-rset (rset-data (Array T Bool)) (rset-card Int))))))"
-        );
-        l!(
-            x,
-            "(declare-datatypes ((RusmartArray 2)) ((par (K V) ((mk-rarr (rarr-data (Array K V)) (rarr-card Int))))))"
+            "(declare-datatypes ((RuSmtArray 2)) ((par (K V) ((mk-rarr (rarr-data (Array K V)) (rarr-card Int))))))"
         );
         l!(x);
 
@@ -299,7 +294,7 @@ impl CodeGen for CodeGenZ3 {
 
         // Integer string parsing helpers (hex / octal / binary).
         l!(x, "; Integer string parsing helpers");
-        l!(x, "(define-fun rusmart_hex_char_to_int ((s String)) Int");
+        l!(x, "(define-fun rusmt_hex_char_to_int ((s String)) Int");
         l!(
             x,
             "\t(ite (and (str.<= \"0\" s) (str.<= s \"9\")) (- (str.to_code s) 48)"
@@ -316,23 +311,23 @@ impl CodeGen for CodeGenZ3 {
         l!(x);
         l!(
             x,
-            "(define-fun-rec rusmart_from_hex_str_impl ((s String) (acc Int)) Int"
+            "(define-fun-rec rusmt_from_hex_str_impl ((s String) (acc Int)) Int"
         );
         l!(x, "\t(ite (= (str.len s) 0)");
         l!(x, "\t\tacc");
-        l!(x, "\t\t(rusmart_from_hex_str_impl");
+        l!(x, "\t\t(rusmt_from_hex_str_impl");
         l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
         l!(
             x,
-            "\t\t\t(+ (* acc 16) (rusmart_hex_char_to_int (str.at s 0))))))"
+            "\t\t\t(+ (* acc 16) (rusmt_hex_char_to_int (str.at s 0))))))"
         );
         l!(x);
         l!(
             x,
-            "(define-fun rusmart_from_hex_str ((s String)) Int (rusmart_from_hex_str_impl s 0))"
+            "(define-fun rusmt_from_hex_str ((s String)) Int (rusmt_from_hex_str_impl s 0))"
         );
         l!(x);
-        l!(x, "(define-fun rusmart_oct_char_to_int ((s String)) Int");
+        l!(x, "(define-fun rusmt_oct_char_to_int ((s String)) Int");
         l!(
             x,
             "\t(ite (and (str.<= \"0\" s) (str.<= s \"7\")) (- (str.to_code s) 48) 0))"
@@ -340,35 +335,35 @@ impl CodeGen for CodeGenZ3 {
         l!(x);
         l!(
             x,
-            "(define-fun-rec rusmart_from_oct_str_impl ((s String) (acc Int)) Int"
+            "(define-fun-rec rusmt_from_oct_str_impl ((s String) (acc Int)) Int"
         );
         l!(x, "\t(ite (= (str.len s) 0)");
         l!(x, "\t\tacc");
-        l!(x, "\t\t(rusmart_from_oct_str_impl");
+        l!(x, "\t\t(rusmt_from_oct_str_impl");
         l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
         l!(
             x,
-            "\t\t\t(+ (* acc 8) (rusmart_oct_char_to_int (str.at s 0))))))"
+            "\t\t\t(+ (* acc 8) (rusmt_oct_char_to_int (str.at s 0))))))"
         );
         l!(x);
         l!(
             x,
-            "(define-fun rusmart_from_oct_str ((s String)) Int (rusmart_from_oct_str_impl s 0))"
+            "(define-fun rusmt_from_oct_str ((s String)) Int (rusmt_from_oct_str_impl s 0))"
         );
         l!(x);
         l!(
             x,
-            "(define-fun-rec rusmart_from_bin_str_impl ((s String) (acc Int)) Int"
+            "(define-fun-rec rusmt_from_bin_str_impl ((s String) (acc Int)) Int"
         );
         l!(x, "\t(ite (= (str.len s) 0)");
         l!(x, "\t\tacc");
-        l!(x, "\t\t(rusmart_from_bin_str_impl");
+        l!(x, "\t\t(rusmt_from_bin_str_impl");
         l!(x, "\t\t\t(str.substr s 1 (- (str.len s) 1))");
         l!(x, "\t\t\t(+ (* acc 2) (ite (= (str.at s 0) \"1\") 1 0)))))");
         l!(x);
         l!(
             x,
-            "(define-fun rusmart_from_bin_str ((s String)) Int (rusmart_from_bin_str_impl s 0))"
+            "(define-fun rusmt_from_bin_str ((s String)) Int (rusmt_from_bin_str_impl s 0))"
         );
         l!(x);
 
@@ -507,12 +502,10 @@ impl CodeGen for CodeGenZ3 {
                                     (m, ne)
                                 }
                                 Sort::Set(elem_sort) => {
-                                    // Sets are RusmartSet wrapping (Array T Bool), membership via rset-data
+                                    // Sets are RuSmtSet wrapping (Array T Bool), membership via rset-data
                                     let elem_str = format_sort(elem_sort, ir);
-                                    let m = format!(
-                                        "(select (rset-data {}) {})",
-                                        coll_str, var.name
-                                    );
+                                    let m =
+                                        format!("(select (rset-data {}) {})", coll_str, var.name);
                                     let ne = format!(
                                         "(exists ((__ne_v {})) (select (rset-data {}) __ne_v))",
                                         elem_str, coll_str
@@ -754,7 +747,7 @@ impl CodeGen for CodeGenZ3 {
         Ok(response)
     }
 
-    fn process_error_queries(
+    fn process_path_queries(
         &self,
         base_code: &str,
         ir: &IRContext,
@@ -811,12 +804,12 @@ impl CodeGen for CodeGenZ3 {
             format!("({} {})", top_level_fn, param_vars.join(" "))
         };
 
-        // Build assertions: for each error ID in the target, assert set membership.
+        // Build assertions: for each path ID in the target, assert set membership.
         // Single target {n}:     (select (accessor result) n)
         // Merge target {a,b,c}:  (and (select ... a) (select ... b) (select ... c))
         let member_assertions: Vec<String> = target_ids
             .iter()
-            .map(|&error_id| extract_error_assertion(&sig.ret_ty, &call_expr, error_id, ir))
+            .map(|&path_id| extract_path_assertion(&sig.ret_ty, &call_expr, path_id, ir))
             .collect();
 
         let assertion = match member_assertions.len() {
@@ -896,59 +889,59 @@ fn unicode_bound_for(var_expr: &str, sort: &Sort) -> Option<String> {
     }
 }
 
-/// Build an SMT-LIB assertion that checks whether `error_id` is reachable from
+/// Build an SMT-LIB assertion that checks whether `path_id` is reachable from
 /// the result of `call_expr`.
 ///
 /// # Background
 ///
-/// Error in RuSmart is `(Set Int)` in Z3. Each `ErrFresh(n)` in the interpreter
-/// becomes `(store ((as const (Array Int Bool)) false) n true)`, and `ErrMerge` becomes
-/// `((_ map or) ...)`. To test whether a specific error site was reached, we use array select:
-/// `(select result error_id)`.
+/// Path in RuSmt is `(Set Int)` in Z3. Each `PathFresh(n)` in the interpreter
+/// becomes `(store ((as const (Array Int Bool)) false) n true)`, and `PathMerge` becomes
+/// `((_ map or) ...)`. To test whether a specific path-marker site was reached, we use array select:
+/// `(select result path_id)`.
 ///
 /// # How it works
 ///
 /// The top-level function (e.g. `parse_toml`) typically returns a user-defined
-/// enum like `ParseResult<T>` rather than a bare `Error`. This function inspects
+/// enum like `ParseResult<T>` rather than a bare `Path`. This function inspects
 /// the return sort and generates the appropriate assertion:
 ///
-/// - **`Sort::Error`** — the function returns `Error` directly.
-///   Emits: `(select (fn input_0 ...) error_id)`.
+/// - **`Sort::Path`** — the function returns `Path` directly.
+///   Emits: `(select (fn input_0 ...) path_id)`.
 ///
-/// - **`Sort::User` (enum)** — scans each variant for fields of type `Sort::Error`.
+/// - **`Sort::User` (enum)** — scans each variant for fields of type `Sort::Path`.
 ///   For each such field, emits a guarded assertion:
-///   `(and (is-VariantName result) (select (accessor result) error_id))`.
-///   If multiple variants carry Error fields, the assertions are OR'd together.
+///   `(and (is-VariantName result) (select (accessor result) path_id))`.
+///   If multiple variants carry Path fields, the assertions are OR'd together.
 ///
 /// # Limitations
 ///
 /// - **Enums only**: only `DataType::Enum` is handled. Structs, tuples, and
 ///   primitives will panic.
-/// - **One level deep**: only checks direct fields of the enum variants. If Error
+/// - **One level deep**: only checks direct fields of the enum variants. If Path
 ///   is nested inside a struct inside an enum variant, it will not be found.
 /// - **No recursion**: does not follow nested user-defined types to find deeply
-///   buried Error fields.
+///   buried Path fields.
 ///
 /// These limitations are acceptable because interpreter entry points return
-/// flat enums like `ParseResult<T>` where Error is a direct field.
+/// flat enums like `ParseResult<T>` where Path is a direct field.
 ///
 /// # Panics
 ///
-/// Panics if the return sort does not contain a reachable `Sort::Error` field.
-/// This indicates a bug: `error_targets` was populated but the top-level function
-/// does not surface errors in its return type.
-fn extract_error_assertion(
+/// Panics if the return sort does not contain a reachable `Sort::Path` field.
+/// This indicates a bug: `path_targets` was populated but the top-level function
+/// does not surface path markers in its return type.
+fn extract_path_assertion(
     ret_sort: &Sort,
     call_expr: &str,
-    error_id: usize,
+    path_id: usize,
     ir: &IRContext,
 ) -> String {
     match ret_sort {
-        // Function returns Error directly — just check membership.
+        // Function returns Path directly — just check membership.
         // Example: (select (parse_toml input_0) 3)
-        Sort::Error => format!("(select {} {})", call_expr, error_id),
-        // Function returns a user-defined enum — find the variant(s) that carry an Error field.
-        // Example for ParseResult with Err(Error):
+        Sort::Path => format!("(select {} {})", call_expr, path_id),
+        // Function returns a user-defined enum — find the variant(s) that carry a Path field.
+        // Example for ParseResult with Err(Path):
         //   (and (is-Err (parse_toml input_0))
         //        (select (field_ParseResult_Err_1_ (parse_toml input_0)) 3))
         Sort::User(sid) => {
@@ -961,20 +954,20 @@ fn extract_error_assertion(
                         match vdef {
                             Variant::Tuple(slots) => {
                                 for (i, slot_sort) in slots.iter().enumerate() {
-                                    if *slot_sort == Sort::Error {
+                                    if *slot_sort == Sort::Path {
                                         let tester = format!("is-{}_{}", type_name, vname);
                                         let accessor =
                                             format!("field_{}_{}_{}_", type_name, vname, i + 1);
                                         assertions.push(format!(
                                             "(and ({} {}) (select ({} {}) {}))",
-                                            tester, call_expr, accessor, call_expr, error_id
+                                            tester, call_expr, accessor, call_expr, path_id
                                         ));
                                     }
                                 }
                             }
                             Variant::Record(fields) => {
                                 for (field_key, field_sort) in fields {
-                                    if *field_sort == Sort::Error {
+                                    if *field_sort == Sort::Path {
                                         let tester = format!("is-{}_{}", type_name, vname);
                                         let accessor = format!(
                                             "record_{}_{}_{}_",
@@ -982,7 +975,7 @@ fn extract_error_assertion(
                                         );
                                         assertions.push(format!(
                                             "(and ({} {}) (select ({} {}) {}))",
-                                            tester, call_expr, accessor, call_expr, error_id
+                                            tester, call_expr, accessor, call_expr, path_id
                                         ));
                                     }
                                 }
@@ -992,7 +985,7 @@ fn extract_error_assertion(
                     }
                     assert!(
                         !assertions.is_empty(),
-                        "return type '{}' has no Error fields in any variant",
+                        "return type '{}' has no Path fields in any variant",
                         type_name
                     );
                     if assertions.len() == 1 {
@@ -1002,13 +995,13 @@ fn extract_error_assertion(
                     }
                 }
                 _ => panic!(
-                    "return type is not an enum — cannot extract error assertion from {:?}",
+                    "return type is not an enum — cannot extract path assertion from {:?}",
                     ret_sort
                 ),
             }
         }
         _ => panic!(
-            "return sort {:?} does not contain Error — cannot generate error query",
+            "return sort {:?} does not contain Path — cannot generate path query",
             ret_sort
         ),
     }

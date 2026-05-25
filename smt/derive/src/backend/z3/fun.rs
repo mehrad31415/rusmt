@@ -67,9 +67,9 @@ pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
         Sort::Real => "Real".to_string(),
         Sort::String => "String".to_string(),
         Sort::Seq(inner) => format!("(Seq {})", format_sort_for_fn(inner, ir)),
-        Sort::Set(inner) => format!("(RusmartSet {})", format_sort_for_fn(inner, ir)),
+        Sort::Set(inner) => format!("(RuSmtSet {})", format_sort_for_fn(inner, ir)),
         Sort::Array(key, value) => format!(
-            "(RusmartArray {} {})",
+            "(RuSmtArray {} {})",
             format_sort_for_fn(key, ir),
             format_sort_for_fn(value, ir)
         ),
@@ -79,12 +79,11 @@ pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
         Sort::I64 => "(_ BitVec 64)".to_string(),
         Sort::U32 => "(_ BitVec 32)".to_string(),
         Sort::U64 => "(_ BitVec 64)".to_string(),
-        Sort::Cloak(inner) => format!("(Cloak {})", format_sort_for_fn(inner, ir)),
         Sort::Uninterpreted(x) => panic!(
             "uninterpreted sort {} should not be used in the monomorphized version of a function",
             x
         ),
-        Sort::Error => "(Array Int Bool)".to_string(), // Error is a set of integer IDs
+        Sort::Path => "(Array Int Bool)".to_string(), // Path is a set of integer IDs
     }
 }
 

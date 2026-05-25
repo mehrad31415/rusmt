@@ -1,6 +1,6 @@
-## Syntax subset (Rusmart DSL)
+## Syntax subset (RuSmt DSL)
 
-Rusmart programs are **Rust programs** written under additional restrictions so they can be translated into SMT. In short, we use `rusmart-smt-stdlib` types and intrinsic operations instead of Rust’s standard library.
+RuSmt programs are **Rust programs** written under additional restrictions so they can be translated into SMT. In short, we use `rusmt-smt-stdlib` types and intrinsic operations instead of Rust’s standard library.
 
 ### Supported structures
 
@@ -18,13 +18,4 @@ These are typically rejected by the remarking/transpilation pipeline:
 - references/pointers and borrowing (`&T`, `&mut T`)
 - arbitrary standard-library collections (use `Seq<T>`, `Set<T>`, `Array<K, V>` instead)
 
-This list is not comprehensive.
-
-### How to think about “parsing code” in the DSL
-
-Instead of mutating a cursor into a string, parsers thread an explicit `State` value:
-
-- `State { stream: Seq<String>, cursor: Integer, context: ParserContext }`
-- each rule consumes a state and returns `ParseResult<T>`
-
-This is exactly the shape used by the TOML parser in `lang/src/toml/`.
+This list is not comprehensive. For a complete grasp of what can be used (or not used) please look at the standard library and the case studies. The standard library will show you the list of allowed types and operations. The case studies will show you the eligible patterns.

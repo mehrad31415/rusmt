@@ -1,9 +1,9 @@
 //! A parser for the TOML v1.1.0 specification.
 
 use crate::toml::{ast::Value, expr::parse_expression, table::recursive_merge_tables};
-use rusmart_smt_remark_derive::{smt_fn, smt_type};
-use rusmart_smt_stdlib::{
-    Array, Boolean, Cloak, Error, Integer, Seq, String, U32, bitvector::BitvectorOps, smt::SMT,
+use rusmt_smt_remark_derive::{smt_fn, smt_type};
+use rusmt_smt_stdlib::{
+    Array, Boolean, Cloak, Integer, Path, Seq, String, U32, bitvector::BitvectorOps, smt::SMT,
 };
 
 /// array
@@ -48,7 +48,7 @@ pub enum ParseResult<T: SMT> {
     /// along with the remaining input stream to be passed to the next parser.
     Ok(T, State),
     /// The parser encountered an error.
-    Err(Error),
+    Err(Path),
 }
 
 /// An optional value type for the parser.
@@ -208,9 +208,7 @@ fn is_non_ascii(c: U32) -> Boolean {
     let is_above_ascii = c.bv_ge(U32::from(0x0080));
 
     // Check NOT in surrogate range (U+D800..U+DFFF)
-    let not_surrogate = c
-        .bv_le(U32::from(0xD7FF))
-        .or(c.bv_ge(U32::from(0xE000)));
+    let not_surrogate = c.bv_le(U32::from(0xD7FF)).or(c.bv_ge(U32::from(0xE000)));
 
     // Check <= U+10FFFF (max valid Unicode)
     let is_valid_unicode = c.bv_le(U32::from(0x10FFFF));
@@ -222,9 +220,7 @@ fn is_non_ascii(c: U32) -> Boolean {
 #[smt_fn]
 fn is_non_eol(c: U32) -> Boolean {
     c.eq(U32::from(0x09)) // %x09
-        .or(c
-            .bv_ge(U32::from(0x0020))
-            .and(c.bv_le(U32::from(0x007E)))) // %x20-7E
+        .or(c.bv_ge(U32::from(0x0020)).and(c.bv_le(U32::from(0x007E)))) // %x20-7E
         .or(is_non_ascii(c)) // non-ascii
 }
 
@@ -259,7 +255,7 @@ fn parse_comment_rest(acc: String, state: State) -> ParseResult<String> {
                 } else {
                     // invalid character in comment
                     // println!("Invalid character in comment");
-                    ParseResult::Err(Error::fresh())
+                    ParseResult::Err(Path::fresh())
                 }
             }
         }
@@ -432,7 +428,7 @@ fn parse_toml_loop(acc: Array<String, Value>, state: State) -> ParseResult<Value
                                 }
                                 Optional::None => {
                                     // println!("Error merging tables; type mismatch?");
-                                    return ParseResult::Err(Error::fresh());
+                                    return ParseResult::Err(Path::fresh());
                                 }
                             }
                         }
@@ -442,7 +438,7 @@ fn parse_toml_loop(acc: Array<String, Value>, state: State) -> ParseResult<Value
                 }
                 ParseResult::NoMatch => {
                     // println!("Expected newline but found something else");
-                    return ParseResult::Err(Error::fresh()); // expected newline but not found (for this to be invoked the expression parsing needs to terminate complete)
+                    return ParseResult::Err(Path::fresh()); // expected newline but not found (for this to be invoked the expression parsing needs to terminate complete)
                 }
                 ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
             }

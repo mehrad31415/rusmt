@@ -1,5 +1,5 @@
-// //! This module contains the conversion of expressions to SMT-LIB format.
-// //! An expression is what constitutes the body of a function or an axiom.
+//! This module contains the conversion of expressions to SMT-LIB format.
+//! An expression is what constitutes the body of a function or an axiom.
 
 use crate::backend::z3::fun::{format_sort_for_fn, resolve_function_name};
 use crate::backend::z3::intrinsics::{array_null_value, format_intrinsic};

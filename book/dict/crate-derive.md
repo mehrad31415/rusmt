@@ -1,1 +1,1 @@
-[`rusmart-smt-derive`](#) -- Rust→IR→SMT-LIB compiler with two Z3 backends (text: SMT-LIB2 + subprocess, API: in-process z3-sys)
+[`rusmt-smt-derive`](#) -- Rust→IR→SMT-LIB compiler with two Z3 backends (text: SMT-LIB2 + subprocess, API: in-process z3-sys)

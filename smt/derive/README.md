@@ -1,80 +1,73 @@
 ## Derive
 
-This crate analyzes Rusmart files, builds an intermediate representation (IR), and solves synthesis queries using Z3. It provides two Z3 backends for solving.
+`rusmt-smt-derive` is the **Rust → IR → SMT-LIB** compiler and the
+synthesis engine of RuSmt. It parses rusmt-annotated source files,
+builds an intermediate representation, lowers to either SMT-LIB2 text or
+in-process Z3 ASTs, and runs Z3 to find inputs that reach `Path::fresh()`
+markers placed in the source.
 
-### Purpose
+### Two backends
 
-This directory contains the `parser` which imposes syntactic constraints on the _expressions_ and _statements_ used in Rusmart language implementations. It contains `IR` definitions and it has a `backend` module that translates the `IR` into SMT-LIB format and solves synthesis queries. Some of the constraints are enforced using the `remark` crate.
+**Text backend** (`backend/z3/`): emits SMT-LIB2 to disk and spawns the
+`z3` binary as a subprocess. The `-t:{ms}` flag makes Z3 self-terminate at
+the deadline. Per-target output:
+`lang/src/synthesis/<parser>/z3_chc/target_<N>/{main.smt2,response.txt,timing.txt}`.
 
-### Architecture
+**API backend** (`backend/z3_api/`): uses Z3 in-process via `z3-sys`.
+Queries are built directly from Z3 ASTs. A watchdog thread calls `Z3_interrupt`
+at the timeout deadline and a hard fail-safe at 8× the deadline catches
+hangs in native code beyond `Z3_interrupt`. Per-target output:
+`lang/src/synthesis/<parser>/z3_api/target_<N>/{response.txt,timing.txt}`.
 
-```
-src/
-├── parser/         # DSL parsing, intrinsic recognition, overload resolution
-├── ir/             # Expression lowering, SMT sort checking, IR context
-└── backend/
-    ├── codegen.rs  # CodeGen trait shared by backends
-    ├── response.rs # Response enum (Sat, Unsat, Unknown, Timeout)
-    ├── z3/         # Text backend: generates SMT-LIB2 files, spawns Z3 subprocess
-    │   ├── ctxt.rs       # CodeGenZ3 implementation, invoke_backend, error queries
-    │   ├── exp.rs        # IR expression -> SMT-LIB2 text
-    │   ├── fun.rs        # Function declarations/definitions
-    │   ├── intrinsics.rs # Intrinsic operations -> SMT-LIB2 formulas
-    │   └── sort.rs       # IR sorts -> SMT-LIB2 datatype declarations
-    └── z3_api/     # API backend: in-process Z3 via z3-sys bindings
-        ├── mod.rs        # Core types (Z3Ast RAII wrapper, Z3Context)
-        ├── context.rs    # Z3 context building (datatypes, functions, helpers)
-        ├── solver.rs     # Per-target solving pipeline with timeout
-        ├── translate.rs  # IR expression -> Z3 AST objects
-        └── intrinsics.rs # Intrinsic operations -> Z3 C API calls
-```
+### Public entry points
 
-### Two Z3 Backends
+- **`model(path) -> Result<IRContext>`** — parse + lower; no solver.
+- **`solve(model, top_level_fn, output_dir, unroll_depth) -> Result<()>`**
+  — text backend.
+- **`solve_z3_api(model, top_level_fn, output_dir, unroll_depth) -> Result<()>`**
+  — API backend.
 
-**Text backend** (`z3/`): Generates SMT-LIB2 text files, writes them to disk, and spawns Z3 as a subprocess. Results are written to `z3_chc/target_N/response.txt`. We will store the `time` required to solve the model.
+`unroll_depth = 0` keeps native `define-funs-rec`. `unroll_depth ≥ 1`
+unfolds every recursive SCC into `N+1` depth-indexed copies and routes
+external callers through the depth-`N` copy.
 
-**API backend** (`z3_api/`): Uses Z3 in-process via the `z3-sys` crate and `Z3_eval_smtlib2_string`. Builds Z3 objects directly in memory for type and function definitions. Results are written to `z3_api/target_N/response.txt` with timing in `timing.txt`.
+Both functions skip the per-target Z3 invocation when the env var
+`RUSMART_SKIP_INVOKE=1` is set — useful when iterating on codegen.
 
-### Key Entry Points
-
-- **`model(path)`**: Parse and lower a Rusmart program into the internal IR (no solver required).
-- **`solve(models, top_level_fn, output)`**: Run the text backend -- generate SMT-LIB2, spawn subprocesses, collect responses.
-- **`solve_z3_api(models, top_level_fn, output)`**: Run the API backend -- solve in-process using z3-sys bindings.
-
-### Usage
+### CLI
 
 ```bash
-# Text backend (default)
-cargo run -p rusmart-smt-derive -- toml parse_toml
-
-# API backend
-cargo run -p rusmart-smt-derive -- toml parse_toml api
-
-# Both backends for comparison
-cargo run -p rusmart-smt-derive -- toml parse_toml both
+cargo run -p rusmt-smt-derive -- <parser_name> <top_level_fn> [text|api|both] [k=<N>]
 ```
 
-### Error Representation
+Examples:
 
-Errors are represented as `(Array Int Bool)` in the Z3 backend rather than `(Set Int)`. Each `ErrFresh(id)` becomes `(store ((as const (Array Int Bool)) false) id true)`, and `ErrMerge` uses `((_ map or) lhs rhs)`. Membership checking uses `(select expr error_id)`.
+```bash
+# IMP synthesis, both backends, depth 3.
+cargo run -p rusmt-smt-derive -- imp eval_com both k=3
 
-### Build Dependencies
+# TOML synthesis, text backend (default), no unrolling.
+cargo run -p rusmt-smt-derive -- toml parse_toml
+```
 
-Z3 is included as a vendored dependency (`z3 = { version = "0.20.0", features = ["vendored"] }`). This requires CMake and a C++ compiler. The first build compiles Z3 from source (~5 minutes); subsequent builds use the cached result.
+### Path-marker representation
 
-### Constraints
-The following constraints are enforced on the expressions and statements:
+Path markers are encoded as `(Array Int Bool)`. `Path::fresh(id)` becomes
+`(store ((as const (Array Int Bool)) false) id true)`; `Path::merge` is
+`((_ map or) lhs rhs)`; membership testing is `(select expr id)`.
 
-> We can only use the DSL types and methods.
-> No mutable or global variables are allowed.
-> No pointers are allowed.
-> No impl or mod block definitions.
-> All types are copyable.
-> All functions have input and output.
-> Only the following statements are allowed: Match, If-Else, Let, Return.
-> No loops or other statements are allowed.
+### Build
 
-This list is not exhaustive, and more constraints may be added in the future.
+Z3 is included as a vendored dependency:
+
+```toml
+z3 = { version = "0.20.0", features = ["vendored"] }
+z3-sys = "0.11.0"
+```
+
+This requires CMake and a C++ compiler; the first build compiles Z3 from
+source (~5 minutes). Subsequent builds use the cached artifacts.
 
 ### License
-The Rusmart project, a symbolic execution engine, is licensed under the _GPL-3.0-or-later_ license.
+
+GPL-3.0-or-later (see `LICENSE` in the workspace root).

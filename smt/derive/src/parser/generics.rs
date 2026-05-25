@@ -406,7 +406,7 @@ impl GenericsInstFull {
             TypeTag::U64 => TypeRef::U64,
             TypeTag::I32 => TypeRef::I32,
             TypeTag::I64 => TypeRef::I64,
-            TypeTag::Error => TypeRef::Error,
+            TypeTag::Path => TypeRef::Path,
             // the into method is for converting TypeRef to Box<TypeRef>
             TypeTag::Cloak(sub) => TypeRef::Cloak(self.instantiate(sub)?.into()),
             TypeTag::Seq(sub) => TypeRef::Seq(self.instantiate(sub)?.into()),

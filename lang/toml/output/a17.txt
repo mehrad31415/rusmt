@@ -1,0 +1,21 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "str",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "I'm a string. \"You can quote me\". Name\tJosé\nLocation\tSF.",
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

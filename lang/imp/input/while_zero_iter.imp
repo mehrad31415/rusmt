@@ -1,0 +1,6 @@
+// Loop guard is initially false; body never runs.
+x := 0;
+y := 99;
+while not (x == 0) do (
+  y := y + 1
+)

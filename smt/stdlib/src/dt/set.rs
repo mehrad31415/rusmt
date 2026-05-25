@@ -53,34 +53,6 @@ impl<T: SMT> Set<T> {
         self.inner.is_empty().into()
     }
 
-    /// take the intersection of two sets
-    pub fn intersection(self, other: Self) -> Self {
-        Self {
-            inner: Intern::new(self.inner.intersection(&other.inner).copied().collect()),
-        }
-    }
-
-    /// take the union of two sets
-    pub fn union(self, other: Self) -> Self {
-        Self {
-            inner: Intern::new(self.inner.union(&other.inner).copied().collect()),
-        }
-    }
-
-    /// take the difference of two sets (self - other)
-    pub fn difference(self, other: Self) -> Self {
-        Self {
-            inner: Intern::new(self.inner.difference(&other.inner).copied().collect()),
-        }
-    }
-
-    /// Symmetric difference (elements in either but not both)
-    pub fn symmetric_difference(self, other: Self) -> Self {
-        let diff1 = self.difference(other.clone());
-        let diff2 = other.difference(self.clone());
-        diff1.union(diff2)
-    }
-
     /// is subset of other (self <= other)
     pub fn is_subset(self, other: Self) -> Boolean {
         self.inner.is_subset(&other.inner).into()

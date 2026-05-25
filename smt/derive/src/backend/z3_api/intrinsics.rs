@@ -5,24 +5,30 @@ use crate::backend::z3_api::context::Z3ApiContext;
 use crate::backend::z3_api::mk_string_symbol;
 use crate::backend::z3_api::translate::translate_expression;
 use crate::ir::exp::ExpRegistry;
+use crate::ir::index::UsrFunId;
 use crate::ir::intrinsics::Intrinsic;
 use crate::ir::sort::Sort;
 use num_bigint::BigInt;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Translate an IR Intrinsic to a Z3 AST.
+///
+/// `rename` overrides function-call resolution for the unrolling pass: when an
+/// intrinsic delegates back to `translate_expression` for its sub-expressions,
+/// any `Procedure` calls to a fid in `rename` use the overridden decl.
 pub fn translate_intrinsic<'ctx>(
     api_ctx: &mut Z3ApiContext<'ctx>,
     intrinsic: &Intrinsic,
     exp_registry: &ExpRegistry,
     var_map: &HashMap<String, z3_sys::Z3_ast>,
+    rename: &BTreeMap<UsrFunId, z3_sys::Z3_func_decl>,
 ) -> Z3Ast<'ctx> {
     let ctx = api_ctx.ctx;
 
     // Macro to translate sub-expressions (avoids mutable borrow issues with closures)
     macro_rules! tr {
         ($id:expr) => {
-            translate_expression(api_ctx, exp_registry, $id, var_map)
+            translate_expression(api_ctx, exp_registry, $id, var_map, rename)
         };
     }
 
@@ -292,9 +298,9 @@ pub fn translate_intrinsic<'ctx>(
             | Intrinsic::IntFromBin { val } => {
                 let v = tr!(*val);
                 let func_name = match intrinsic {
-                    Intrinsic::IntFromHex { .. } => "rusmart_from_hex_str",
-                    Intrinsic::IntFromOct { .. } => "rusmart_from_oct_str",
-                    Intrinsic::IntFromBin { .. } => "rusmart_from_bin_str",
+                    Intrinsic::IntFromHex { .. } => "rusmt_from_hex_str",
+                    Intrinsic::IntFromOct { .. } => "rusmt_from_oct_str",
+                    Intrinsic::IntFromBin { .. } => "rusmt_from_bin_str",
                     _ => unreachable!(),
                 };
                 // Look up the helper function declared by build_string_parsing_helpers.
@@ -667,9 +673,6 @@ pub fn translate_intrinsic<'ctx>(
                 )
             }
 
-            // --- Box (passthrough) ---
-            Intrinsic::BoxShield { val, .. } | Intrinsic::BoxReveal { val, .. } => tr!(*val),
-
             // --- Sequence ---
             Intrinsic::SeqEmpty { t } => {
                 let seq_sort = api_ctx.translate_sort(&Sort::Seq(Box::new(t.clone())));
@@ -851,42 +854,6 @@ pub fn translate_intrinsic<'ctx>(
                 let card = z3_sys::Z3_mk_app(ctx, decl, 1, [s.raw()].as_ptr()).expect("Z3_mk_app");
                 let zero = z3_sys::Z3_mk_int(ctx, 0, int_sort).expect("Z3_mk_int");
                 Z3Ast::new(ctx, z3_sys::Z3_mk_eq(ctx, card, zero).expect("Z3_mk_eq"))
-            }
-            Intrinsic::SetIntersect { lhs, rhs, .. } => {
-                let (l, r) = (tr!(*lhs), tr!(*rhs));
-                Z3Ast::new(
-                    ctx,
-                    z3_sys::Z3_mk_set_intersect(ctx, 2, [l.raw(), r.raw()].as_ptr())
-                        .expect("Z3_mk_set_intersect"),
-                )
-            }
-            Intrinsic::SetUnion { lhs, rhs, .. } => {
-                let (l, r) = (tr!(*lhs), tr!(*rhs));
-                Z3Ast::new(
-                    ctx,
-                    z3_sys::Z3_mk_set_union(ctx, 2, [l.raw(), r.raw()].as_ptr())
-                        .expect("Z3_mk_set_union"),
-                )
-            }
-            Intrinsic::SetDiff { lhs, rhs, .. } => {
-                let (l, r) = (tr!(*lhs), tr!(*rhs));
-                Z3Ast::new(
-                    ctx,
-                    z3_sys::Z3_mk_set_difference(ctx, l.raw(), r.raw())
-                        .expect("Z3_mk_set_difference"),
-                )
-            }
-            Intrinsic::SetSymDiff { lhs, rhs, .. } => {
-                let (l, r) = (tr!(*lhs), tr!(*rhs));
-                let diff1 = z3_sys::Z3_mk_set_difference(ctx, l.raw(), r.raw())
-                    .expect("Z3_mk_set_difference");
-                let diff2 = z3_sys::Z3_mk_set_difference(ctx, r.raw(), l.raw())
-                    .expect("Z3_mk_set_difference");
-                Z3Ast::new(
-                    ctx,
-                    z3_sys::Z3_mk_set_union(ctx, 2, [diff1, diff2].as_ptr())
-                        .expect("Z3_mk_set_union"),
-                )
             }
             Intrinsic::SetIsSubset { lhs, rhs, .. } => {
                 let (l, r) = (tr!(*lhs), tr!(*rhs));
@@ -1619,8 +1586,8 @@ pub fn translate_intrinsic<'ctx>(
                 )
             }
 
-            // --- Error ---
-            Intrinsic::ErrFresh(id) => {
+            // --- Path ---
+            Intrinsic::PathFresh(id) => {
                 let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("Z3_mk_int_sort");
                 let false_val = z3_sys::Z3_mk_false(ctx).expect("Z3_mk_false");
                 let empty =
@@ -1632,7 +1599,7 @@ pub fn translate_intrinsic<'ctx>(
                     z3_sys::Z3_mk_store(ctx, empty, idx, true_val).expect("Z3_mk_store"),
                 )
             }
-            Intrinsic::ErrMerge { lhs, rhs, .. } => {
+            Intrinsic::PathMerge { lhs, rhs, .. } => {
                 let (l, r) = (tr!(*lhs), tr!(*rhs));
                 let bool_sort = z3_sys::Z3_mk_bool_sort(ctx).expect("Z3_mk_bool_sort");
                 let or_decl = z3_sys::Z3_mk_func_decl(
@@ -1684,8 +1651,7 @@ unsafe fn mk_int_cmp<'ctx>(
     unsafe {
         let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("Z3_mk_int_sort");
         let c = std::ffi::CString::new(bound).unwrap();
-        let bound_val =
-            z3_sys::Z3_mk_numeral(ctx, c.as_ptr(), int_sort).expect("Z3_mk_numeral");
+        let bound_val = z3_sys::Z3_mk_numeral(ctx, c.as_ptr(), int_sort).expect("Z3_mk_numeral");
         let result = match op {
             ">" => z3_sys::Z3_mk_gt(ctx, val.raw(), bound_val).expect("Z3_mk_gt"),
             "<" => z3_sys::Z3_mk_lt(ctx, val.raw(), bound_val).expect("Z3_mk_lt"),

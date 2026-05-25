@@ -539,21 +539,6 @@ pub enum Intrinsic {
         val: ExpId,
     },
 
-    /// `Cloak::shield`
-    BoxShield {
-        /// The type of the box shield
-        t: Sort,
-        /// The value of the box shield
-        val: ExpId,
-    },
-    /// `Cloak::reveal`
-    BoxReveal {
-        /// The type of the box reveal
-        t: Sort,
-        /// The value of the box reveal
-        val: ExpId,
-    },
-
     /// `Seq::new` (Empty)
     SeqEmpty {
         /// The type of the sequence empty
@@ -731,42 +716,6 @@ pub enum Intrinsic {
         t: Sort,
         /// The set of the set is empty
         set: ExpId,
-    },
-    /// `Set::intersection`
-    SetIntersect {
-        /// The type of the set intersect
-        t: Sort,
-        /// The left operand of the set intersect
-        lhs: ExpId,
-        /// The right operand of the set intersect
-        rhs: ExpId,
-    },
-    /// `Set::union`
-    SetUnion {
-        /// The type of the set union
-        t: Sort,
-        /// The left operand of the set union
-        lhs: ExpId,
-        /// The right operand of the set union
-        rhs: ExpId,
-    },
-    /// `Set::difference`
-    SetDiff {
-        /// The type of the set difference
-        t: Sort,
-        /// The left operand of the set difference
-        lhs: ExpId,
-        /// The right operand of the set difference
-        rhs: ExpId,
-    },
-    /// `Set::symmetric_difference`
-    SetSymDiff {
-        /// The type of the set symmetric difference
-        t: Sort,
-        /// The left operand of the set symmetric difference
-        lhs: ExpId,
-        /// The right operand of the set symmetric difference
-        rhs: ExpId,
     },
     /// `Set::is_subset`
     SetIsSubset {
@@ -1389,15 +1338,15 @@ pub enum Intrinsic {
         /// The right operand
         rhs: ExpId,
     },
-    /// `Error::fresh` - carries the globally unique error ID assigned at IR-build time
-    ErrFresh(usize),
-    /// `Error::merge`
-    ErrMerge {
+    /// `Path::fresh` - carries the globally unique path-marker ID assigned at IR-build time
+    PathFresh(usize),
+    /// `Path::merge`
+    PathMerge {
         /// The left operand
         lhs: ExpId,
         /// The right operand
         rhs: ExpId,
-        /// All ErrFresh IDs reachable through the merge tree
+        /// All PathFresh IDs reachable through the merge tree
         ids: BTreeSet<usize>,
     },
     /// `<any-smt-type>::eq`

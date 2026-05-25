@@ -18,7 +18,7 @@ use syn::{Ident, Pat, PatIdent, Path, Result};
 /// SysFuncName: //* Eq, Ne
 /// ReservedFuncName: //* Clone, Default
 /// SysTrait: //* SMT
-/// SysTypeName: //* Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Error
+/// SysTypeName: //* Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Path
 /// Sized is a supertrait of ReservedIdent, meaning that all types implementing ReservedIdent must also implement Sized.
 /// - ? This trait is not object safe. It cannot be used as a trait object because it is not DST (Dynamically Sized Type). For example, Box<dyn ReservedIdent> is not allowed. https://doc.rust-lang.org/std/marker/trait.Sized.html
 pub trait ReservedIdent: Sized {
@@ -85,7 +85,7 @@ fn validate_user_ident(ident: &Ident) -> Result<String> {
     if SysTypeName::from_str(&name).is_some() {
         bail_on!(
             ident,
-            "reserved type name (Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Error)"
+            "reserved type name (Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Path)"
         );
     }
     // Check for reserved function names.
@@ -390,14 +390,14 @@ impl UsrFuncName {
             | "add" | "mul" | "sub" | "neg" | "div" | "pow" | "abs" | "round" | "floor" | "ceil" | "is_integer" | "lt" | "le" | "gt" | "ge" | "to_int" | "to_f32" | "to_f64"
             // String operations.
             | "new" | "length" | "concat" | "at" | "index_of" | "index_of_default" | "substr" | "contains" | "starts_with" | "ends_with" | "to_int" | "from_int" | "le" | "lt" | "ge" | "gt" | "is_digit" | "from_code" | "to_code" | "is_empty" | "replace" | "replace_all" 
-            // Error handling.
+            // Path-condition marker.
             | "fresh" | "merge"
             // Cloak operations.
             | "shield" | "reveal"
             // Sequence operations.
             | "new" | "length" | "unit" | "append" | "concat" | "at" | "at_seq" | "extract" | "index_of" | "index_of_default" | "contains" | "prefix_of" | "suffix_of"  | "is_empty" | "replace"
             // Set operations.
-            | "new" | "length" | "insert" | "remove" | "contains" | "is_empty" | "intersection" | "union" | "difference" | "is_subset" | "has_size" | "is_disjoint" | "symmetric_difference" | "is_proper_subset"
+            | "new" | "length" | "insert" | "remove" | "contains" | "is_empty" | "is_subset" | "has_size" | "is_disjoint" | "is_proper_subset"
             // Array operations.
             | "new" | "store" | "contains_key" | "select" | "del" | "length"  | "is_empty"
             // All the above are valid intrinsic function names.
@@ -437,8 +437,8 @@ impl UsrTypeName {
             | "Cloak"
             // Collection types.
             | "Seq" | "Set" | "Array"
-            // Error type.
-            | "Error"
+            // Path-condition marker type.
+            | "Path"
             // All the above are valid intrinsic type names.
             => Self { ident: name.to_string() },
             // All other names are invalid.

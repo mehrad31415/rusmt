@@ -14,8 +14,7 @@ tmp/
 lang/src/synthesis/
 
 # z3 trace dumps
-**/.z3-trace
 **/*.z3-trace
 
-# z3 dumps
-z.smt
+# claude files
+.claude/

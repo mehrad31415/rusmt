@@ -1,4 +1,4 @@
-//! This module contains the conversion of Rusmart intrinsics to SMT-LIB format.
+//! This module contains the conversion of RuSmt intrinsics to SMT-LIB format.
 
 use crate::backend::z3::exp::format_expression_renamed;
 use crate::backend::z3::fun::{collect_called_functions, format_sort_for_fn};
@@ -27,8 +27,7 @@ pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
             "(mk-rset ((as const (Array {} Bool)) false) 0)",
             format_sort(inner, ir)
         ),
-        Sort::Error => "((as const (Array Int Bool)) false)".to_string(),
-        Sort::Cloak(inner) => format!("(as Cloak-null (Cloak {}))", format_sort(inner, ir)),
+        Sort::Path => "((as const (Array Int Bool)) false)".to_string(),
         Sort::Array(k, v) => {
             let ks = format_sort(k, ir);
             let vs = format_sort(v, ir);
@@ -67,7 +66,7 @@ pub(crate) fn collect_fn_from_intrinsic(
         | Intrinsic::FloatNegInf { .. }
         | Intrinsic::FloatPosZero { .. }
         | Intrinsic::FloatNegZero { .. }
-        | Intrinsic::ErrFresh(_) => {}
+        | Intrinsic::PathFresh(_) => {}
         Intrinsic::BoolNot { val }
         | Intrinsic::IntNeg { val }
         | Intrinsic::IntAbs { val }
@@ -105,8 +104,6 @@ pub(crate) fn collect_fn_from_intrinsic(
         | Intrinsic::StrFromInt { val }
         | Intrinsic::StrFromCode { val }
         | Intrinsic::StrToCode { val }
-        | Intrinsic::BoxShield { val, .. }
-        | Intrinsic::BoxReveal { val, .. }
         | Intrinsic::SeqUnit { val, .. }
         | Intrinsic::SeqLen { seq: val, .. }
         | Intrinsic::SeqIsEmpty { seq: val, .. }
@@ -233,10 +230,6 @@ pub(crate) fn collect_fn_from_intrinsic(
             item: rhs,
             ..
         }
-        | Intrinsic::SetIntersect { lhs, rhs, .. }
-        | Intrinsic::SetUnion { lhs, rhs, .. }
-        | Intrinsic::SetDiff { lhs, rhs, .. }
-        | Intrinsic::SetSymDiff { lhs, rhs, .. }
         | Intrinsic::SetIsSubset { lhs, rhs, .. }
         | Intrinsic::SetIsProperSubset { lhs, rhs, .. }
         | Intrinsic::SetIsDisjoint { lhs, rhs, .. }
@@ -287,7 +280,7 @@ pub(crate) fn collect_fn_from_intrinsic(
         | Intrinsic::FloatGt { lhs, rhs, .. }
         | Intrinsic::FloatGe { lhs, rhs, .. }
         | Intrinsic::FloatFqEq { lhs, rhs, .. }
-        | Intrinsic::ErrMerge { lhs, rhs, .. }
+        | Intrinsic::PathMerge { lhs, rhs, .. }
         | Intrinsic::SmtEq { lhs, rhs, .. }
         | Intrinsic::SmtNe { lhs, rhs, .. } => {
             called_fns.append(&mut collect_called_functions(exp_registry, &lhs));
@@ -397,9 +390,9 @@ pub fn format_intrinsic(
         Intrinsic::IntToU64 { val } => format!("((_ int2bv 64) {})", fmt(*val)),
         Intrinsic::IntToF32 { val } => format!("((_ to_fp 8 24) RNE (to_real {}))", fmt(*val)),
         Intrinsic::IntToF64 { val } => format!("((_ to_fp 11 53) RNE (to_real {}))", fmt(*val)),
-        Intrinsic::IntFromHex { val } => format!("(rusmart_from_hex_str {})", fmt(*val)),
-        Intrinsic::IntFromOct { val } => format!("(rusmart_from_oct_str {})", fmt(*val)),
-        Intrinsic::IntFromBin { val } => format!("(rusmart_from_bin_str {})", fmt(*val)),
+        Intrinsic::IntFromHex { val } => format!("(rusmt_from_hex_str {})", fmt(*val)),
+        Intrinsic::IntFromOct { val } => format!("(rusmt_from_oct_str {})", fmt(*val)),
+        Intrinsic::IntFromBin { val } => format!("(rusmt_from_bin_str {})", fmt(*val)),
         Intrinsic::IntIsGtI64Max { val } => format!("(> {} 9223372036854775807)", fmt(*val)),
         Intrinsic::IntIsLtI64Min { val } => format!("(< {} (- 9223372036854775808))", fmt(*val)),
         Intrinsic::IntIsGtU64Max { val } => format!("(> {} 18446744073709551615)", fmt(*val)),
@@ -471,12 +464,12 @@ pub fn format_intrinsic(
         ),
         Intrinsic::StrFromCode { val } => format!("(str.from_code {})", fmt(*val)),
         Intrinsic::StrToCode { val } => format!("(str.to_code {})", fmt(*val)),
-        Intrinsic::BoxShield { val, .. } => format!("(mk-Cloak {})", fmt(*val)),
-        Intrinsic::BoxReveal { val, .. } => format!("(uncloak {})", fmt(*val)),
-        Intrinsic::ErrFresh(id) => {
+        Intrinsic::PathFresh(id) => {
             format!("(store ((as const (Array Int Bool)) false) {} true)", id)
         }
-        Intrinsic::ErrMerge { lhs, rhs, .. } => format!("((_ map or) {} {})", fmt(*lhs), fmt(*rhs)),
+        Intrinsic::PathMerge { lhs, rhs, .. } => {
+            format!("((_ map or) {} {})", fmt(*lhs), fmt(*rhs))
+        }
         Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),
 
@@ -770,20 +763,6 @@ pub fn format_intrinsic(
         }
         Intrinsic::ArrayIsEmpty { arr, .. } => {
             format!("(= (rarr-card {}) 0)", fmt(*arr))
-        }
-        Intrinsic::SetIntersect { .. } => {
-            panic!(
-                "SetIntersect is not supported — use membership checks with forall/exists instead"
-            )
-        }
-        Intrinsic::SetUnion { .. } => {
-            panic!("SetUnion is not supported — use membership checks with forall/exists instead")
-        }
-        Intrinsic::SetDiff { .. } => {
-            panic!("SetDiff is not supported — use membership checks with forall/exists instead")
-        }
-        Intrinsic::SetSymDiff { .. } => {
-            panic!("SetSymDiff is not supported — use membership checks with forall/exists instead")
         }
     }
 }

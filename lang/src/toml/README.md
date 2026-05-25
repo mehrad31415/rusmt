@@ -1,5 +1,12 @@
 ## TOML Language
-This module provides a declarative parser for [TOML v1.1.0 specification](https://toml.io/en/v1.1.0#spec). TOML (Tom's Obvious, Minimal Language) is a minimal configuration file format that's easy to read due to obvious semantics.
+
+This module provides a declarative parser for the [TOML v1.1.0 specification](https://toml.io/en/v1.1.0#spec). TOML (Tom's Obvious, Minimal Language) is a minimal configuration file format with intentionally obvious semantics.
+
+### Status
+
+The parser is a complete **runnable specification** of the TOML 1.1.0 grammar — every rule from the ABNF below is implemented as a `#[smt_fn]` function over `Seq<U32>` (Unicode code points).
+
+Synthesis (lifting the parser into SMT and asking Z3 for inputs that reach `Path::fresh()` markers) hits Z3's scaling frontier on most targets. This is documented as a scaling-frontier finding rather than a defect; the IMP case study under `lang/src/imp/` is the demo where the loop fully closes.
 
 ### Language syntax
 TOML's syntax is based on key-value pairs, which are organized into sections called tables. It also supports arrays of values and nested tables. The syntax is designed to map unambiguously to a hash table. The ABNF of TOML is as follows:
@@ -273,7 +280,7 @@ This is an example TOML document:
 
 ```toml
 [package]
-name = "rusmart-smt-stdlib"
+name = "rusmt-smt-stdlib"
 version = "0.1.0"
 description = "Standard Rust library for SMT elements"
 readme = "README.md"

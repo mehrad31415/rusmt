@@ -7,11 +7,11 @@
 //! Build order (each step assumes the previous is complete):
 //!   1. `build_datatypes`         — user-defined ADTs (SCC by SCC)
 //!   2. `build_null_consts`       — one sentinel per concrete value sort
-//!   3. `build_string_helpers`    — rusmart_from_{hex,oct,bin}_str
+//!   3. `build_string_helpers`    — rusmt_from_{hex,oct,bin}_str
 //!   4. `build_functions`         — user functions + IterChoose axioms
 
-use crate::backend::z3::fun::resolve_function_name;
-use crate::backend::z3::sort::resolve_type_name;
+use crate::backend::z3::fun::{collect_function_call_edges, resolve_function_name};
+use crate::backend::z3::sort::{resolve_type_name, scc_from_edges};
 use crate::backend::z3_api::{
     Z3_mk_str_le, Z3_mk_string_to_code, array_null_const_name, mk_string_symbol,
 };
@@ -61,16 +61,29 @@ pub struct Z3ApiContext<'ctx> {
     /// Null sentinel constants keyed by their canonical name.
     null_consts: HashMap<String, z3_sys::Z3_ast>,
 
-    /// String-parsing helper functions: rusmart_from_{hex,oct,bin}_str.
+    /// String-parsing helper functions: rusmt_from_{hex,oct,bin}_str.
     helper_func_decls: HashMap<String, z3_sys::Z3_func_decl>,
 
-    /// Axioms to assert on the solver (e.g. choose! functions).
+    /// Axioms to assert on the solver (e.g. choose! functions and
+    /// bounded-recursion unrolling per-depth/alias equalities).
     pub axioms: Vec<z3_sys::Z3_ast>,
+
+    /// Bounded-recursion unrolling depth. `0` means use Z3's native recursion
+    /// handling (`define-funs-rec`); `>= 1` unfolds every recursive SCC.
+    pub unroll_depth: usize,
+
+    /// Per-(fid, depth) function declarations for unrolled recursive SCCs.
+    /// Depth ranges over `0..=unroll_depth`. Only populated when `unroll_depth >= 1`.
+    unrolled_decls: HashMap<(UsrFunId, usize), z3_sys::Z3_func_decl>,
 }
 
 impl<'ctx> Z3ApiContext<'ctx> {
     /// Create a new context with the given Z3 context and IR.
-    pub fn new(ctx: z3_sys::Z3_context, ir: &'ctx IRContext) -> Self {
+    ///
+    /// `unroll_depth` controls bounded-recursion unrolling for recursive SCCs:
+    /// `0` keeps Z3's native `define-funs-rec` handling; `>= 1` unfolds every
+    /// recursive SCC into per-depth non-recursive copies plus an alias.
+    pub fn new(ctx: z3_sys::Z3_context, ir: &'ctx IRContext, unroll_depth: usize) -> Self {
         let mut api = Self {
             ctx,
             ir,
@@ -83,6 +96,8 @@ impl<'ctx> Z3ApiContext<'ctx> {
             null_consts: HashMap::new(),
             helper_func_decls: HashMap::new(),
             axioms: Vec::new(),
+            unroll_depth,
+            unrolled_decls: HashMap::new(),
         };
 
         api.build_datatypes();
@@ -140,16 +155,11 @@ impl<'ctx> Z3ApiContext<'ctx> {
                     let v = self.translate_sort(value);
                     z3_sys::Z3_mk_array_sort(self.ctx, k, v).expect("Z3_mk_array_sort")
                 }
-                Sort::Error => {
-                    // Error is a set of Int IDs, i.e. (Array Int Bool).
+                Sort::Path => {
+                    // Path is a set of Int IDs, i.e. (Array Int Bool).
                     let ints = z3_sys::Z3_mk_int_sort(self.ctx).expect("Z3_mk_int_sort");
                     let bools = z3_sys::Z3_mk_bool_sort(self.ctx).expect("Z3_mk_bool_sort");
                     z3_sys::Z3_mk_array_sort(self.ctx, ints, bools).expect("Z3_mk_array_sort")
-                }
-                Sort::Cloak(inner) => {
-                    // Cloak is a transparent wrapper — shield/reveal are no-ops in the API.
-                    // Use the inner sort directly.
-                    self.translate_sort(inner)
                 }
                 Sort::User(sid) => *self.datatype_sorts.get(sid).unwrap_or_else(|| {
                     let tn = resolve_type_name(self.ir, *sid);
@@ -541,7 +551,7 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 };
 
             // hex_char_to_int(s: String) -> Int
-            let hex_char = declare_rec(ctx, "rusmart_hex_char_to_int", &[str_sort], int_sort);
+            let hex_char = declare_rec(ctx, "rusmt_hex_char_to_int", &[str_sort], int_sort);
             {
                 let s = mk_param(ctx, "hex_char_s", str_sort);
                 let code = Z3_mk_string_to_code(ctx, s);
@@ -597,12 +607,12 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, hex_char, 1, [s].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_hex_char_to_int".to_string(), hex_char);
+                .insert("rusmt_hex_char_to_int".to_string(), hex_char);
 
             // from_hex_str_impl(s, acc): recursive walk accumulating base-16 digits.
             let hex_impl = declare_rec(
                 ctx,
-                "rusmart_from_hex_str_impl",
+                "rusmt_from_hex_str_impl",
                 &[str_sort, int_sort],
                 int_sort,
             );
@@ -632,9 +642,9 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, hex_impl, 2, [s, acc].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_from_hex_str_impl".to_string(), hex_impl);
+                .insert("rusmt_from_hex_str_impl".to_string(), hex_impl);
 
-            let hex_top = declare_rec(ctx, "rusmart_from_hex_str", &[str_sort], int_sort);
+            let hex_top = declare_rec(ctx, "rusmt_from_hex_str", &[str_sort], int_sort);
             {
                 let s = mk_param(ctx, "hex_top_s", str_sort);
                 let body =
@@ -642,10 +652,10 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, hex_top, 1, [s].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_from_hex_str".to_string(), hex_top);
+                .insert("rusmt_from_hex_str".to_string(), hex_top);
 
             // Octal
-            let oct_char = declare_rec(ctx, "rusmart_oct_char_to_int", &[str_sort], int_sort);
+            let oct_char = declare_rec(ctx, "rusmt_oct_char_to_int", &[str_sort], int_sort);
             {
                 let s = mk_param(ctx, "oct_char_s", str_sort);
                 let code = Z3_mk_string_to_code(ctx, s);
@@ -664,11 +674,11 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, oct_char, 1, [s].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_oct_char_to_int".to_string(), oct_char);
+                .insert("rusmt_oct_char_to_int".to_string(), oct_char);
 
             let oct_impl = declare_rec(
                 ctx,
-                "rusmart_from_oct_str_impl",
+                "rusmt_from_oct_str_impl",
                 &[str_sort, int_sort],
                 int_sort,
             );
@@ -698,9 +708,9 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, oct_impl, 2, [s, acc].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_from_oct_str_impl".to_string(), oct_impl);
+                .insert("rusmt_from_oct_str_impl".to_string(), oct_impl);
 
-            let oct_top = declare_rec(ctx, "rusmart_from_oct_str", &[str_sort], int_sort);
+            let oct_top = declare_rec(ctx, "rusmt_from_oct_str", &[str_sort], int_sort);
             {
                 let s = mk_param(ctx, "oct_top_s", str_sort);
                 let body =
@@ -708,12 +718,12 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, oct_top, 1, [s].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_from_oct_str".to_string(), oct_top);
+                .insert("rusmt_from_oct_str".to_string(), oct_top);
 
             // Binary — no single-char helper; char "1" = 1, anything else = 0.
             let bin_impl = declare_rec(
                 ctx,
-                "rusmart_from_bin_str_impl",
+                "rusmt_from_bin_str_impl",
                 &[str_sort, int_sort],
                 int_sort,
             );
@@ -744,9 +754,9 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, bin_impl, 2, [s, acc].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_from_bin_str_impl".to_string(), bin_impl);
+                .insert("rusmt_from_bin_str_impl".to_string(), bin_impl);
 
-            let bin_top = declare_rec(ctx, "rusmart_from_bin_str", &[str_sort], int_sort);
+            let bin_top = declare_rec(ctx, "rusmt_from_bin_str", &[str_sort], int_sort);
             {
                 let s = mk_param(ctx, "bin_top_s", str_sort);
                 let body =
@@ -754,7 +764,7 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 z3_sys::Z3_add_rec_def(ctx, bin_top, 1, [s].as_mut_ptr(), body);
             }
             self.helper_func_decls
-                .insert("rusmart_from_bin_str".to_string(), bin_top);
+                .insert("rusmt_from_bin_str".to_string(), bin_top);
         }
     }
 
@@ -794,14 +804,293 @@ impl<'ctx> Z3ApiContext<'ctx> {
             self.build_choose_axiom(fid);
         }
 
-        // Regular functions: declare all, then add bodies.
+        // Regular functions: route through the unrolling pass when requested,
+        // otherwise fall back to Z3's native rec_func handling.
         let rec_fids: BTreeSet<UsrFunId> = mono_fids.difference(&choose_fids).copied().collect();
-        for &fid in &rec_fids {
+        if self.unroll_depth == 0 {
+            // Existing behavior: declare every regular fid as recursive, then
+            // attach bodies. Z3 resolves the fixpoint on its own.
+            for &fid in &rec_fids {
+                self.declare_rec_func(fid);
+            }
+            for &fid in &rec_fids {
+                self.add_rec_func_body(fid);
+            }
+            return;
+        }
+
+        // Bounded-recursion unrolling. Mirror the text backend's SCC pipeline
+        // (`smt/derive/src/backend/z3/ctxt.rs`) so the API and text outputs
+        // are semantically equivalent.
+        let edges = collect_function_call_edges(&rec_fids, &ir.fn_registry);
+        let recursive_sccs: Vec<BTreeSet<UsrFunId>> =
+            scc_from_edges(&edges).into_iter().rev().collect();
+        let covered: BTreeSet<UsrFunId> = recursive_sccs
+            .iter()
+            .flat_map(|s| s.iter().copied())
+            .collect();
+        let isolated: Vec<UsrFunId> = rec_fids.difference(&covered).copied().collect();
+
+        // Partition the SCCs: a singleton without a self-loop is structurally
+        // non-recursive (it has incoming or outgoing edges to other SCCs but
+        // never to itself) and is treated like an isolated function.
+        let mut to_unroll: Vec<BTreeSet<UsrFunId>> = Vec::new();
+        let mut non_recursive_singletons: Vec<UsrFunId> = Vec::new();
+        for scc in recursive_sccs {
+            if scc.len() == 1 {
+                let fid = *scc.iter().next().unwrap();
+                let has_self_loop = edges.iter().any(|(a, b)| *a == fid && *b == fid);
+                if !has_self_loop {
+                    non_recursive_singletons.push(fid);
+                    continue;
+                }
+            }
+            to_unroll.push(scc);
+        }
+
+        // Phase A: pre-declare alias decls for every SCC member *before* any
+        // body is translated. Cross-SCC calls during body translation resolve
+        // to these aliases via `get_func_decl`. The alias body (`alias =
+        // depth_k`) is attached in Phase C. Aliases use `rec_func_decl` so we
+        // can set their definition with `Z3_add_rec_def` — Z3 inlines them
+        // because the body never self-references.
+        for scc in &to_unroll {
+            for &fid in scc {
+                self.declare_rec_func(fid);
+            }
+        }
+
+        // Phase B: declare + define isolated functions and singleton-no-self-loop
+        // SCCs as rec_func + add_rec_def. These are non-recursive in shape, but
+        // rec_func handles forward references to recursive (now-aliased) callees.
+        for &fid in &isolated {
             self.declare_rec_func(fid);
         }
-        for &fid in &rec_fids {
+        for &fid in &non_recursive_singletons {
+            self.declare_rec_func(fid);
+        }
+        for &fid in &isolated {
             self.add_rec_func_body(fid);
         }
+        for &fid in &non_recursive_singletons {
+            self.add_rec_func_body(fid);
+        }
+
+        // Phase C: build per-depth decls and axioms for genuinely recursive
+        // SCCs. Each SCC produces decls f_unrolled_0..f_unrolled_k plus the
+        // alias equality `f(args) = f_unrolled_k(args)`.
+        for scc in &to_unroll {
+            self.build_unrolled_scc(scc);
+        }
+    }
+
+    /// Build the unrolled chain for one recursive SCC.
+    ///
+    /// At depth 0 every member returns the BMC terminator (the type's null
+    /// sentinel, or the first `Variant::Unit` of an enum return type). At
+    /// depths 1..=k each member's body is translated with a rename map
+    /// redirecting in-SCC callees to depth d-1, so the chain is non-recursive
+    /// by construction. The final alias body routes external callers (already
+    /// holding the alias decl from `func_decls`) through the depth-k copy.
+    ///
+    /// Each per-depth decl plus the alias is set via `Z3_add_rec_def`. The
+    /// recursive-decl form is required by `Z3_add_rec_def`, but Z3 inlines
+    /// these like ordinary `define-fun`s because the bodies never reference
+    /// the function being defined — recursion is broken structurally by the
+    /// rename map and the depth-0 terminator.
+    fn build_unrolled_scc(&mut self, scc: &BTreeSet<UsrFunId>) {
+        let k = self.unroll_depth;
+        debug_assert!(k >= 1, "build_unrolled_scc requires unroll_depth >= 1");
+
+        // Pre-declare the per-(fid, depth) decls for d in 0..=k. Depth d's body
+        // references depth d-1, so all decls must exist before any body is built.
+        for &fid in scc {
+            for d in 0..=k {
+                let decl = self.declare_unrolled_decl(fid, d);
+                self.unrolled_decls.insert((fid, d), decl);
+            }
+        }
+
+        // Depth 0: terminator. Then depth 1..=k: rename siblings to (d-1).
+        // Finally, the alias body `alias_fid(args) = depth_k(args)`.
+        for &fid in scc {
+            self.attach_unrolled_terminator_body(fid);
+            for d in 1..=k {
+                let rename: BTreeMap<UsrFunId, z3_sys::Z3_func_decl> = scc
+                    .iter()
+                    .map(|&sib| (sib, *self.unrolled_decls.get(&(sib, d - 1)).unwrap()))
+                    .collect();
+                self.attach_unrolled_depth_body(fid, d, &rename);
+            }
+            self.attach_alias_body(fid);
+        }
+    }
+
+    /// Declare a per-depth function decl `<name>_unrolled_<d>` as a recursive
+    /// decl so its body can be set with `Z3_add_rec_def`. The body never
+    /// self-references, so Z3 treats this like a non-recursive `define-fun`.
+    fn declare_unrolled_decl(&mut self, fid: UsrFunId, depth: usize) -> z3_sys::Z3_func_decl {
+        let ir = self.ir;
+        let ctx = self.ctx;
+        let sig = ir.fn_registry.retrieve_sig(fid);
+        let base = resolve_function_name(ir, fid);
+        let name = format!("{}_unrolled_{}", base, depth);
+
+        let param_sorts: Vec<z3_sys::Z3_sort> = sig
+            .params
+            .iter()
+            .map(|(_, s)| self.translate_sort(s))
+            .collect();
+        let ret = self.translate_sort(&sig.ret_ty);
+
+        unsafe {
+            let sym = mk_string_symbol(ctx, &name);
+            let decl = z3_sys::Z3_mk_rec_func_decl(
+                ctx,
+                sym,
+                param_sorts.len() as u32,
+                param_sorts.as_ptr(),
+                ret,
+            )
+            .expect("Z3_mk_rec_func_decl");
+            z3_sys::Z3_inc_ref(ctx, z3_sys::Z3_func_decl_to_ast(ctx, decl).expect("f2a"));
+            decl
+        }
+    }
+
+    /// Build fresh parameter constants for a per-depth body. Each constant is
+    /// keyed off `(fn_name, suffix, param_name)` so it does not collide with
+    /// any other depth's parameters (Z3 hash-conses constants by symbol+sort,
+    /// and `Z3_add_rec_def` alpha-renames every reference under the same
+    /// symbol — sharing would silently cross-contaminate bodies).
+    fn fresh_param_consts(
+        &mut self,
+        fid: UsrFunId,
+        suffix: &str,
+    ) -> (Vec<z3_sys::Z3_ast>, HashMap<String, z3_sys::Z3_ast>) {
+        let ir = self.ir;
+        let ctx = self.ctx;
+        let sig = ir.fn_registry.retrieve_sig(fid).clone();
+        let fn_name = resolve_function_name(ir, fid);
+
+        let mut param_asts: Vec<z3_sys::Z3_ast> = Vec::new();
+        let mut var_map: HashMap<String, z3_sys::Z3_ast> = HashMap::new();
+        for (name, sort) in &sig.params {
+            let z3_sort = self.translate_sort(sort);
+            unsafe {
+                let unique = format!("{}@{}@{}", fn_name, suffix, name);
+                let sym = mk_string_symbol(ctx, &unique);
+                let c = z3_sys::Z3_mk_const(ctx, sym, z3_sort).expect("mk_const");
+                z3_sys::Z3_inc_ref(ctx, c);
+                var_map.insert(name.to_string(), c);
+                param_asts.push(c);
+            }
+        }
+        (param_asts, var_map)
+    }
+
+    /// Attach `fid_unrolled_0(params) = bmc_terminator(ret_ty)` via `Z3_add_rec_def`.
+    fn attach_unrolled_terminator_body(&mut self, fid: UsrFunId) {
+        let ctx = self.ctx;
+        let sig = self.ir.fn_registry.retrieve_sig(fid).clone();
+        let decl = *self
+            .unrolled_decls
+            .get(&(fid, 0))
+            .expect("depth-0 decl missing");
+        let (mut param_asts, _) = self.fresh_param_consts(fid, "unrolled_0");
+        let terminator = self.bmc_terminator_ast(&sig.ret_ty);
+        let _ = sig; // sig already consumed via ret_ty
+        unsafe {
+            z3_sys::Z3_add_rec_def(
+                ctx,
+                decl,
+                param_asts.len() as u32,
+                param_asts.as_mut_ptr(),
+                terminator,
+            );
+        }
+    }
+
+    /// Attach `fid_unrolled_d(params) = body_renamed(params)` via `Z3_add_rec_def`.
+    fn attach_unrolled_depth_body(
+        &mut self,
+        fid: UsrFunId,
+        depth: usize,
+        rename: &BTreeMap<UsrFunId, z3_sys::Z3_func_decl>,
+    ) {
+        use crate::backend::z3_api::translate::translate_expression;
+
+        let ctx = self.ctx;
+        let def = self.ir.fn_registry.retrieve_def(fid);
+        let decl = *self
+            .unrolled_decls
+            .get(&(fid, depth))
+            .expect("per-depth decl missing");
+        let (mut param_asts, var_map) =
+            self.fresh_param_consts(fid, &format!("unrolled_{}", depth));
+        let body = translate_expression(self, &def.body, def.root_exp_id, &var_map, rename);
+        unsafe {
+            z3_sys::Z3_add_rec_def(
+                ctx,
+                decl,
+                param_asts.len() as u32,
+                param_asts.as_mut_ptr(),
+                body.raw(),
+            );
+        }
+    }
+
+    /// Attach `alias(params) = fid_unrolled_k(params)` via `Z3_add_rec_def`.
+    /// The alias decl was registered in Phase A as a `rec_func_decl` so this
+    /// definition replaces what would otherwise have been the recursive body.
+    fn attach_alias_body(&mut self, fid: UsrFunId) {
+        let ctx = self.ctx;
+        let alias = self.get_func_decl(fid);
+        let depth_k = *self
+            .unrolled_decls
+            .get(&(fid, self.unroll_depth))
+            .expect("depth-k decl missing");
+        let (mut param_asts, _) = self.fresh_param_consts(fid, "alias");
+        let depth_call = unsafe {
+            z3_sys::Z3_mk_app(ctx, depth_k, param_asts.len() as u32, param_asts.as_ptr())
+                .expect("mk_app")
+        };
+        unsafe {
+            z3_sys::Z3_add_rec_def(
+                ctx,
+                alias,
+                param_asts.len() as u32,
+                param_asts.as_mut_ptr(),
+                depth_call,
+            );
+        }
+    }
+
+    /// Z3-AST equivalent of the text backend's `bmc_terminator`. Picks the
+    /// first `Variant::Unit` constructor application for enum return types
+    /// (e.g. `NoMatch` for `ParseResult`, `None` for `Optional`); otherwise
+    /// falls back to the value sort's null sentinel.
+    fn bmc_terminator_ast(&mut self, sort: &Sort) -> z3_sys::Z3_ast {
+        if let Sort::User(sid) = sort {
+            let dt = self.ir.ty_registry.retrieve(*sid);
+            if let DataType::Enum(variants) = dt {
+                let unit_branch = variants.iter().find_map(|(n, v)| {
+                    if matches!(v, Variant::Unit) {
+                        Some(n.clone())
+                    } else {
+                        None
+                    }
+                });
+                if let Some(vname) = unit_branch {
+                    let ctor = self.get_constructor(*sid, &vname);
+                    let ctx = self.ctx;
+                    return unsafe {
+                        z3_sys::Z3_mk_app(ctx, ctor, 0, std::ptr::null()).expect("mk_app")
+                    };
+                }
+            }
+        }
+        self.null_for_sort(sort)
     }
 
     fn declare_uninterpreted_func(&mut self, fid: UsrFunId) {
@@ -889,7 +1178,8 @@ impl<'ctx> Z3ApiContext<'ctx> {
             }
         }
 
-        let body = translate_expression(self, &def.body, def.root_exp_id, &var_map);
+        let empty_rename: BTreeMap<UsrFunId, z3_sys::Z3_func_decl> = BTreeMap::new();
+        let body = translate_expression(self, &def.body, def.root_exp_id, &var_map, &empty_rename);
         unsafe {
             z3_sys::Z3_add_rec_def(
                 ctx,
@@ -974,9 +1264,12 @@ impl<'ctx> Z3ApiContext<'ctx> {
         }
 
         // Translate the body — the `v` references resolve via var_map.
-        let body_ast = translate_expression(self, &def.body, body, &var_map);
+        let empty_rename: BTreeMap<UsrFunId, z3_sys::Z3_func_decl> = BTreeMap::new();
+        let body_ast = translate_expression(self, &def.body, body, &var_map, &empty_rename);
 
-        // Each choose! variable must be a member of its collection.
+        // Each choose! variable must be a member of its collection — only
+        // applies to the bounded form. Unbounded sort-quantified choose has no
+        // membership constraints (the variable ranges over the entire sort).
         let mut membership: Vec<z3_sys::Z3_ast> = Vec::new();
         for (vid, coll_eid) in &vars {
             let var_ast = *var_map
@@ -986,7 +1279,8 @@ impl<'ctx> Z3ApiContext<'ctx> {
                 Expression::Var(v) => def.body.lookup_var(v).sort.clone(),
                 other => panic!("choose! collection must be a variable, got {other:?}"),
             };
-            let coll_ast = translate_expression(self, &def.body, *coll_eid, &var_map).raw();
+            let coll_ast =
+                translate_expression(self, &def.body, *coll_eid, &var_map, &empty_rename).raw();
 
             let m = unsafe {
                 match &coll_sort {
@@ -1094,7 +1388,7 @@ impl<'ctx> Z3ApiContext<'ctx> {
                     let inner_sort = self.translate_sort(inner);
                     z3_sys::Z3_mk_empty_set(ctx, inner_sort).expect("empty_set")
                 }
-                Sort::Error => {
+                Sort::Path => {
                     let ints = z3_sys::Z3_mk_int_sort(ctx).expect("int_sort");
                     let f = z3_sys::Z3_mk_false(ctx).expect("false");
                     z3_sys::Z3_mk_const_array(ctx, ints, f).expect("const_array")
@@ -1104,7 +1398,6 @@ impl<'ctx> Z3ApiContext<'ctx> {
                     let null_v = self.null_for_sort(v);
                     z3_sys::Z3_mk_const_array(ctx, ks, null_v).expect("const_array")
                 }
-                Sort::Cloak(inner) => self.null_for_sort(inner),
                 Sort::User(_) => {
                     let name = array_null_const_name(sort, self.ir);
                     self.get_null_const(&name)

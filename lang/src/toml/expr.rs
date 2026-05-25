@@ -7,8 +7,8 @@ use crate::toml::{
     parse_comment, parse_newline, parse_ws,
     table::{parse_array_table, parse_std_table},
 };
-use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{Array, Boolean, Cloak, Error, Integer, Seq, String, smt::SMT};
+use rusmt_smt_remark_derive::smt_fn;
+use rusmt_smt_stdlib::{Array, Boolean, Cloak, Integer, Path, Seq, String, smt::SMT};
 
 /// `expression = ws [ comment ] / ws keyval ws [ comment ] / ws table ws [ comment ]`
 #[smt_fn]
@@ -77,7 +77,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         // println!(
                                                         //     "Table redefinition error using dotted keys"
                                                         // );
-                                                        return ParseResult::Err(Error::fresh());
+                                                        return ParseResult::Err(Path::fresh());
                                                     } else {
                                                         if *has_intersection(
                                                             inline_tables,
@@ -87,7 +87,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                             // println!(
                                                             //     "Cannot redefine an inline table using dotted keys"
                                                             // );
-                                                            return ParseResult::Err(Error::fresh());
+                                                            return ParseResult::Err(Path::fresh());
                                                         } else {
                                                             if *has_intersection(
                                                                 array_of_tables,
@@ -98,7 +98,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                 //     "Cannot redefine an array table using dotted keys"
                                                                 // );
                                                                 return ParseResult::Err(
-                                                                    Error::fresh(),
+                                                                    Path::fresh(),
                                                                 );
                                                             } else {
                                                                 let new_implicit_table_names =
@@ -186,18 +186,18 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                             if *explicit_tables.contains(_table_name) {
                                                 // table redefinition error
                                                 // println!("Duplicate table definition error");
-                                                return ParseResult::Err(Error::fresh());
+                                                return ParseResult::Err(Path::fresh());
                                             } else {
                                                 // its a std table
                                                 if *closed_tables.contains(_table_name) {
                                                     // cannot define a table that was already implicitly defined
                                                     // println!("Cannot redefine an implicitly defined table");
-                                                    return ParseResult::Err(Error::fresh());
+                                                    return ParseResult::Err(Path::fresh());
                                                 } else {
                                                     if *array_of_tables.contains(_table_name) {
                                                         // cannot define a standard table that was already defined as an array table
                                                         // println!("Cannot redefine an array table as a standard table");
-                                                        return ParseResult::Err(Error::fresh());
+                                                        return ParseResult::Err(Path::fresh());
                                                     } else {
                                                         if *has_intersection(
                                                             inline_tables,
@@ -208,7 +208,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         ) {
                                                             // cannot define a table that was already defined as an inline table
                                                             // println!("Cannot redefine an inline table as a standard table");
-                                                            return ParseResult::Err(Error::fresh());
+                                                            return ParseResult::Err(Path::fresh());
                                                         } else {
                                                             let empty_smt_table = Value::Table(
                                                                 Cloak::shield(Array::new()),
@@ -281,13 +281,13 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                     if *explicit_tables.contains(new_array_table_name) {
                                         // table redefinition error
                                         // println!("This array table was already defined as a standard table");
-                                        return ParseResult::Err(Error::fresh());
+                                        return ParseResult::Err(Path::fresh());
                                     } else {
                                         // its a new array table
                                         if *closed_tables.contains(new_array_table_name) {
                                             // cannot define a table that was already closed
                                             // println!("Cannot redefine a closed table");
-                                            return ParseResult::Err(Error::fresh());
+                                            return ParseResult::Err(Path::fresh());
                                         } else {
                                             if *has_intersection(
                                                 inline_tables,
@@ -298,12 +298,12 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                             ) {
                                                 // cannot define a table that was already defined as an inline table
                                                 // println!("Cannot redefine an inline table as an array table");
-                                                return ParseResult::Err(Error::fresh());
+                                                return ParseResult::Err(Path::fresh());
                                             } else {
                                                 if *inline_arrays.contains(new_array_table_name) {
                                                     // cannot define an array table that was already defined as an inline array
                                                     // println!("Cannot redefine an inline array as an array table");
-                                                    return ParseResult::Err(Error::fresh());
+                                                    return ParseResult::Err(Path::fresh());
                                                 } else {
                                                     let new_array_tables = array_of_tables
                                                         .append(new_array_table_name);

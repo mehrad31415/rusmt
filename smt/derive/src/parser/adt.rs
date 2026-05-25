@@ -296,15 +296,15 @@ impl MatchOrganizer {
 
     /// Organize the arms into per-combo-by-permutation format
     pub fn into_organized(
-        self,             // holds Vec<MatchArm>, each MatchArm holds Vec<MatchAtom> and Expr. The unpacks here are populated in the analyze_pat_match_case function.
+        self, // holds Vec<MatchArm>, each MatchArm holds Vec<MatchAtom> and Expr. The unpacks here are populated in the analyze_pat_match_case function.
         expr: &ExprMatch, // the match expression
         heads: &[(UsrTypeName, BTreeMap<String, Unpack>)], // this holds the type name and all the variants of the type for all the variables in the match head
     ) -> Result<Vec<MatchCombo>> {
         // utility enum to indicate whether a match combo is abstract or concrete
         enum MatchComboStatus {
-            None, // no match found yet
+            None,                               // no match found yet
             Abstract(Vec<(usize, MatchCombo)>), // at least one position matched by _ wildcard
-            Concrete(usize, MatchCombo), // all positions matched by specific enum::variant
+            Concrete(usize, MatchCombo),        // all positions matched by specific enum::variant
         }
 
         // tracks how many combo are mapped to each arm
@@ -373,12 +373,14 @@ impl MatchOrganizer {
                             is_abstract = true;
                             *default_unpack // if a pattern is _, then the default unpacking is used because there is no binding
                         }
-                        MatchAtom::Binding(branch, unpack) => if branch != combo_branch {
-                            is_matched = false; // here the match head for example is MyEnum::MyVariant1(a) and the pattern is MyEnum::MyVariant2(b) so the type name of the head and the pattern match but the variant name does not match. If the type did not match it woul be caught earlier
-                            break;
-                        } else {
-                            unpack
-                        },
+                        MatchAtom::Binding(branch, unpack) => {
+                            if branch != combo_branch {
+                                is_matched = false; // here the match head for example is MyEnum::MyVariant1(a) and the pattern is MyEnum::MyVariant2(b) so the type name of the head and the pattern match but the variant name does not match. If the type did not match it woul be caught earlier
+                                break;
+                            } else {
+                                unpack
+                            }
+                        }
                     };
                     let variant = MatchVariant {
                         branch: combo_branch.clone(),

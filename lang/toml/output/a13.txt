@@ -1,0 +1,64 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "fruit",
+                        },
+                    ): SMTWrap(
+                        Table(
+                            Cloak {
+                                inner: SMTWrap(
+                                    Array {
+                                        inner: {
+                                            SMTWrap(
+                                                String {
+                                                    inner: "apple",
+                                                },
+                                            ): SMTWrap(
+                                                Table(
+                                                    Cloak {
+                                                        inner: SMTWrap(
+                                                            Array {
+                                                                inner: {
+                                                                    SMTWrap(
+                                                                        String {
+                                                                            inner: "smooth",
+                                                                        },
+                                                                    ): SMTWrap(
+                                                                        Boolean(
+                                                                            Boolean {
+                                                                                inner: true,
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            ),
+                                            SMTWrap(
+                                                String {
+                                                    inner: "orange",
+                                                },
+                                            ): SMTWrap(
+                                                Integer(
+                                                    I64 {
+                                                        inner: 2,
+                                                    },
+                                                ),
+                                            ),
+                                        },
+                                    },
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

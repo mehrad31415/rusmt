@@ -1,11 +1,11 @@
 //! This is the main entry point for the derive crate.
 //! usage: cargo run -- <parser_name> <top_level_fn> [text|api|both] [k=<N>]
 //!
-//! `k=<N>` enables bounded-recursion unrolling in the text backend:
+//! `k=<N>` enables bounded-recursion unrolling in the text and API backends:
 //!   k=0 (or omitted) -> recursive define-funs-rec.
 //!   k=N (N≥1)        -> every recursive SCC is unrolled to depth N.
 
-use rusmart_smt_derive::{model, solve, solve_z3_api};
+use rusmt_smt_derive::{model, solve, solve_z3_api};
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err(format!("Parser '{}' not found at {:?}", parser_name, parser_dir).into());
         }
         let output_dir = synthesis_base.join(parser_name);
-        
+
         let mut backend: &str = "text";
         let mut unroll_depth: usize = 0;
         let mut k_set = false;

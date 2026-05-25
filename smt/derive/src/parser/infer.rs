@@ -100,8 +100,8 @@ pub enum TypeRef {
     Set(Box<TypeRef>),
     /// SMT-array
     Array(Box<TypeRef>, Box<TypeRef>),
-    /// dynamic error type
-    Error,
+    /// path-condition marker type
+    Path,
     /// user-defined type
     User(UsrTypeName, Vec<TypeRef>),
     /// a tuple of types
@@ -132,7 +132,7 @@ impl From<&TypeTag> for TypeRef {
             TypeTag::Array(key, val) => {
                 Self::Array(Box::new(key.as_ref().into()), Box::new(val.as_ref().into()))
             }
-            TypeTag::Error => Self::Error,
+            TypeTag::Path => Self::Path,
             TypeTag::User(name, tags) => {
                 Self::User(name.clone(), tags.iter().map(|t| t.into()).collect())
             }
@@ -159,7 +159,7 @@ impl TypeRef {
             | Self::U32
             | Self::U64
             | Self::String
-            | Self::Error
+            | Self::Path
             | Self::Parameter(_) => true,
             Self::Cloak(sub) | Self::Seq(sub) | Self::Set(sub) => sub.validate(),
             Self::Array(key, val) => key.validate() && val.validate(),
@@ -187,7 +187,7 @@ impl Display for TypeRef {
             Self::Seq(sub) => write!(f, "Seq<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
             Self::Array(key, val) => write!(f, "Array<{key},{val}>"),
-            Self::Error => write!(f, "Error"),
+            Self::Path => write!(f, "Path"),
             Self::User(name, args) => {
                 if args.is_empty() {
                     name.fmt(f) // if there are no type arguments, just print the name.
@@ -469,7 +469,7 @@ impl Typing {
             (U32, U32) => U32,
             (U64, U64) => U64,
             (String, String) => String,
-            (Error, Error) => Error,
+            (Path, Path) => Path,
 
             // variadic types
             (Cloak(sub_lhs), Cloak(sub_rhs)) => {
@@ -634,7 +634,7 @@ impl TypeUnifier {
             TypeRef::Array(key, val) => {
                 TypeRef::Array(self.refresh_type(key).into(), self.refresh_type(val).into())
             }
-            TypeRef::Error => TypeRef::Error,
+            TypeRef::Path => TypeRef::Path,
             TypeRef::User(name, args) => TypeRef::User(
                 name.clone(),
                 args.iter().map(|t| self.refresh_type(t)).collect(),

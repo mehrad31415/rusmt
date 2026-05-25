@@ -1,0 +1,109 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "flt1",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: 1.0,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt2",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: 3.1415,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt3",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: 0.1,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt4",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: 5e22,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt5",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: 1000000.0,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt6",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: -0.02,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt7",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: -0.02,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt8",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: 224617.445991228,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "flt9",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: 6.626000000000001e-34,
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

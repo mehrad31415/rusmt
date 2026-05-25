@@ -1,0 +1,76 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "bin1",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 214,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "hex1",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 3735928559,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "hex2",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 3735928559,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "hex3",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 3735928559,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "oct1",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 342391,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "oct2",
+                        },
+                    ): SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 493,
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

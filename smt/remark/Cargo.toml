@@ -1,5 +1,5 @@
 [package]
-name = "rusmart-smt-remark"
+name = "rusmt-smt-remark"
 version = "0.1.0"
 description = "Annotations and macros for SMT modeling in Rust"
 readme = "README.md"

@@ -27,7 +27,7 @@ The root `Makefile` provides a few convenience targets:
 
 ### License
 
-This project is licensed under the **GNU General Public License (GPL) Version 3**. The GPLv3 is a free, copyleft license that ensures the software remains free and open for all users. Key points include:
+This project is licensed under the **GNU General Public License (GPL) Version 3** or later. The GPLv3 is a free, copyleft license that ensures the software remains free and open for all users. Key points include:
 
 - **Freedom to Use, Modify, and Share**: You are free to use, modify, and distribute the software, as long as any derivative work is also licensed under the GPLv3 (copyleft). This ensures that the software remains free and open.
 - **Source Code Availability**: If you distribute the software, you must also provide the source code, ensuring others can study and modify it.
@@ -79,7 +79,7 @@ The repository includes a `cov.sh` helper script at the workspace root for gener
 
 ### Cargo.toml
 
-Rusmart is a Rust workspace. The top-level `Cargo.toml` lists workspace members and shared dependencies.
+RuSmt is a Rust workspace. The top-level `Cargo.toml` lists workspace members and shared dependencies.
 The current workspace members are:
 
 - `smt/stdlib`
@@ -87,7 +87,7 @@ The current workspace members are:
 - `smt/derive`
 - `lang`
 
-Z3 is included as a vendored Rust crate dependency (`z3 = { version = "0.20.0", features = ["vendored"] }` and `z3-sys = "0.11.0"`). The vendored build compiles Z3 from source on first build (~5 minutes) and requires CMake and a C++ compiler (included with Xcode on macOS, `build-essential` + `cmake` on Ubuntu). Subsequent builds use the cached result. No system Z3 installation or `$PATH` configuration is required.
+Z3 is included as a vendored Rust crate dependency. The vendored build compiles Z3 from source on first build (~5 minutes) and requires CMake and a C++ compiler (included with Xcode on macOS, `build-essential` + `cmake` on Ubuntu). Subsequent builds use the cached result. No system Z3 installation or `$PATH` configuration is required.
 
 ### Cargo.lock
 

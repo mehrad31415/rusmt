@@ -1,6 +1,6 @@
-//! # Rusmart SMT Remark
+//! # RuSmt SMT Remark
 //!
-//! The `rusmart_smt_remark` package contains one library crate.
+//! The `rusmt_smt_remark` package contains one library crate.
 //!
 //! ## Module Tree
 //!
@@ -12,7 +12,7 @@
 //! ## Usage
 //!
 //! This library is primarily intended for use by derive macros in the
-//! `rusmart_smt_remark_derive` crate.
+//! `rusmt_smt_remark_derive` crate.
 
 #![warn(missing_docs)]
 

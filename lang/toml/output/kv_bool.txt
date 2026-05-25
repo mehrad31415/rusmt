@@ -1,0 +1,32 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "x",
+                        },
+                    ): SMTWrap(
+                        Boolean(
+                            Boolean {
+                                inner: true,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "y",
+                        },
+                    ): SMTWrap(
+                        Boolean(
+                            Boolean {
+                                inner: false,
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

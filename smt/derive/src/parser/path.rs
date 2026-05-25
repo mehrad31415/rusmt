@@ -46,7 +46,7 @@ impl TuplePath {
 
         // ensure that there are no more tokens (there is only one segment allowed)
         bail_if_exists!(iter.next());
-        
+
         let ty_name = ident.try_into()?;
         let generics = match ctxt.get_type_def(&ty_name) {
             None => bail_on!(ident, "no such type"),
@@ -147,10 +147,10 @@ impl ADTPath {
         let ty_name = ident.try_into()?; // if the ident is not a reserved keyword and not an underscore, it is converted to a UsrTypeName
         let (generics, variants) = match ctxt.get_type_def(&ty_name) {
             // get the type definition from the context for the user type name
-            None => bail_on!(ident, "no such type"), // if the type name is not found in the context, return an error (so the type should be marked as #[smt_type]). This means that no built in type from rust can be used (or no enums/structs which are not marked with #[smt_type]). Instead a wrapper enum marked as #[smt_type] should be created to use the built in type. This is so that the rusmart is closed and no external types can be used.
+            None => bail_on!(ident, "no such type"), // if the type name is not found in the context, return an error (so the type should be marked as #[smt_type]). This means that no built in type from rust can be used (or no enums/structs which are not marked with #[smt_type]). Instead a wrapper enum marked as #[smt_type] should be created to use the built in type. This is so that the rusmt is closed and no external types can be used.
             Some(def) => match &def.body {
                 TypeBody::Enum(details) => (&def.head, &details.variants), // if the type is an enum type, return the generics of the definition and variants (BTreeMap<String, EnumVariant>). details is a wrapper around the enum variants.
-                _ => bail_on!(ident, "not an enum type"), // if the type is defined but not an enum type (it is a struct), return an error. A struct is an Expr::Struct and not an Expr::Path. However, a unit struct is Expr::Path. But in rusmart a unit struct is not allowed to be used as a type.
+                _ => bail_on!(ident, "not an enum type"), // if the type is defined but not an enum type (it is a struct), return an error. A struct is an Expr::Struct and not an Expr::Path. However, a unit struct is Expr::Path. But in rusmt a unit struct is not allowed to be used as a type.
             },
         };
 
@@ -277,11 +277,7 @@ pub enum QualifiedPath {
     /// `<type-param>::<sys-func>(<args>)`
     SysFuncOnParamType(TypeParamName, SysFuncName),
     /// `<sys-type>::[type-inst]::<usr-func>::[type-inst](<args>)`
-    UsrFuncOnSysType(
-        SysTypeName,
-        GenericsInstPartial,
-        UsrFuncName,
-    ),
+    UsrFuncOnSysType(SysTypeName, GenericsInstPartial, UsrFuncName),
 }
 
 impl QualifiedPath {

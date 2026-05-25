@@ -1,77 +1,48 @@
-## Rusmart Language Implementations
+## RuSmt Language Implementations
 
-This crate provides implementations of interpreters for various programming languages.
+This crate hosts the **case-study language interpreters** used to exercise the
+RuSmt pipeline. Every interpreter is written in the restricted Rust subset
+defined in the `rusmt-smt-stdlib` crate. Every implementation has two equivalent meanings:
 
-### Purpose
-The primary goal of this crate is to define the semantics of languages using only the data types provided by the `rusmart-smt-stdlib` crate. Each language implementation in this crate is designed to be:
+> _Concretely executable_: the interpreter runs as ordinary Rust and produces
+> output for a concrete input program.
+>
+> _Symbolically transpilable_: because the implementation only uses DSL types and
+> intrinsics, `rusmt-smt-derive` can lift it into SMT-LIB / Z3 formulas and
+> ask Z3 to synthesise inputs that reach `Path::fresh()` markers placed in the
+> evaluator. Z3's witnesses become conformance test cases.
 
-> _Concretely Executable_: The interpreters can be run directly in Rust to execute concrete input programs.
+### Case studies
 
-> _Symbolically Transpilable_: Because the logic is written entirely with the Rusmart DSL, the code serves as a formal specification that can be analyzed and transpiled into SMT-LIB formulas.
+- **TOML v1.1.0** (`src/toml/`) — full grammar implementation per the
+  [TOML 1.1.0 spec](https://toml.io/en/v1.1.0#spec). Synthesis hits Z3's scaling frontier on most targets (recursive parsing produces large queries that time out).
+- **IMP / WHILE** (`src/imp/`) — the canonical small imperative language from Winskel, *The Formal Semantics of Programming Languages* (MIT Press, 1993), Ch. 2. End-to-end synthesis works: Z3 finds models, the printer renders them as `.imp` source, and replaying that source through the interpreter (`cargo run -p rusmt-lang -- imp <file>`) confirms the rendered witnesses fire the markers.
 
-### Architectural Role
+### CLI
 
-graph TD
-    subgraph "Oracle"
-        A[Standard_Type Library] --> B[Interpreter Implementation];
-        B --> C[SMT-LIB Transpiler];
-        C --> D[SMT Formula];
-    end
+The main binary (`src/main.rs`) runs an interpreter on a concrete program.
 
-    subgraph "Program Synthesis"
-        D --> E[Z3 SMT Solver];
-        E --> F{SAT?};
-        F -->|Yes| G[Extract Model];
-        F -->|No| H[Should Not Happen];
-        G --> I[Synthesize test programs];
-    end
-
-    subgraph "Conformance Testing"
-        I --> J[Our Reference Implementation];
-        I --> K[Commercial Implementations];
-        J --> L{Compare};
-        L -->|Divergence| M[Bug Report];
-        L -->|Agreement| N[Test Passes];
-        N --> P[Generate Next Test];
-    end
-
-### Structure
-This crate is organized by language, with each language implemented in its own module.
-
-> src/toml/: A parser for the TOML v1.1.0 specification.
-
-> src/wasm/: (Future Work) An interpreter for a subset of the WebAssembly virtual machine.
-
-> src/while/: (Future Work) An interpreter for a pedagogical WHILE language, used for demonstrating formal verification concepts.
-
-> src/rego/: (Future Work) An interpreter for a subset of the Rego policy language, used in Open Policy Agent (OPA).
-
-> src/ebnf/: (Future Work) An interpreter for defining and parsing grammars in EBNF notation.
-
-### Synthesis
-
-The `src/synthesis/` directory contains the outputs from running the derive crate's Z3 backends on the language interpreters. For the TOML parser, synthesis results are written to `src/synthesis/toml/` and organized by backend:
-
-- `z3_chc/` -- results from the text backend (SMT-LIB2 + Z3 subprocess)
-- `z3_api/` -- results from the API backend (in-process Z3 via z3-sys)
-
-Each backend directory contains per-target subdirectories (`target_N/`) with:
-- `main.smt2` -- the SMT-LIB2 query file (text backend only)
-- `response.txt` -- the solver's response (sat/unsat/unknown/timeout)
-- `timing.txt` -- elapsed time in milliseconds.
-
-### Usage
-This crate is primarily a library. Its main executable (`src/main.rs`) can be used to feed concrete programs into the interpreters for execution.
-
-**Concrete execution:**
 ```bash
-cargo run -p rusmart-lang -- toml lang/toml/input/example.toml
+# Parse a TOML document and pretty-print the AST under lang/toml/output/.
+cargo run -p rusmt-lang -- toml lang/toml/input/example.toml
+
+# Evaluate an IMP program from a `.imp` source file.
+cargo run -p rusmt-lang -- imp lang/imp/input/factorial.imp
 ```
 
-**Synthesis (via the derive crate):**
+### Running synthesis
+
+Synthesis lives in the derive crate (`rusmt-smt-derive`); see
+`smt/derive/README.md` for the full surface.
+
 ```bash
-cargo run -p rusmart-smt-derive -- toml parse_toml [text|api|both]
+# IMP eval_com, both backends, with k=3 bounded-recursion unrolling.
+cargo run -p rusmt-smt-derive -- imp eval_com both k=3
+
+# TOML parse_toml, text backend (default), no unrolling.
+cargo run -p rusmt-smt-derive -- toml parse_toml
 ```
 
 ### License
-The Rusmart project, a symbolic execution engine, is licensed under the _GPL-3.0-or-later_ license.
+
+GPL-3.0-or-later (see `LICENSE` in the workspace root).

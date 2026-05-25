@@ -1,4 +1,4 @@
-//! System types and functions of Rusmart
+//! System types and functions of RuSmt
 
 use crate::parser::expr::Expr;
 use crate::parser::infer::TypeRef;
@@ -733,42 +733,6 @@ pub enum Intrinsic {
         /// The set operand
         set: Expr,
     },
-    /// `Set::intersection`
-    SetIntersect {
-        /// The type operand
-        t: TypeRef,
-        /// The left operand
-        lhs: Expr,
-        /// The right operand
-        rhs: Expr,
-    },
-    /// `Set::union`
-    SetUnion {
-        /// The type operand
-        t: TypeRef,
-        /// The left operand
-        lhs: Expr,
-        /// The right operand
-        rhs: Expr,
-    },
-    /// `Set::difference` (Set minus)
-    SetDiff {
-        /// The type operand
-        t: TypeRef,
-        /// The left operand
-        lhs: Expr,
-        /// The right operand
-        rhs: Expr,
-    },
-    /// `Set::symmetric_difference`
-    SetSymDiff {
-        /// The type operand
-        t: TypeRef,
-        /// The left operand
-        lhs: Expr,
-        /// The right operand
-        rhs: Expr,
-    },
     /// `Set::is_subset` (Subset or equal)
     SetIsSubset {
         /// The type operand
@@ -1358,7 +1322,7 @@ pub enum Intrinsic {
         val: Expr,
     },
     /// `FloatOps::floor`
-    FloatFloor { 
+    FloatFloor {
         /// The type operand
         t: TypeRef,
         /// The value operand
@@ -1379,7 +1343,7 @@ pub enum Intrinsic {
         val: Expr,
     },
     /// `FloatOps::fq_eq`
-    FloatFqEq { 
+    FloatFqEq {
         /// The type operand
         t: TypeRef,
         /// The left operand
@@ -1387,10 +1351,10 @@ pub enum Intrinsic {
         /// The right operand
         rhs: Expr,
     },
-    /// `Error::fresh`
-    ErrFresh,
-    /// `Error::merge`
-    ErrMerge {
+    /// `Path::fresh`
+    PathFresh,
+    /// `Path::merge`
+    PathMerge {
         /// The left operand
         lhs: Expr,
         /// The right operand
@@ -1664,8 +1628,7 @@ impl Intrinsic {
                     lit: Lit::Bool(_), ..
                 }) => &TypeRef::Boolean,
                 Exp::Lit(ExprLit {
-                    lit: Lit::Float(_),
-                    ..
+                    lit: Lit::Float(_), ..
                 }) => &TypeRef::Real,
                 _ => exp_ty,
             },
@@ -1877,12 +1840,12 @@ impl Intrinsic {
                 Intrinsic::SmtNe { t, lhs, rhs }
             }
 
-            (Q::Error, "fresh") => {
+            (Q::Path, "fresh") => {
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
                 Intrinsic::unpack_expr_0(args)?;
-                Intrinsic::ErrFresh
+                Intrinsic::PathFresh
             }
-            (Q::Error, "merge") => mk2!(ErrMerge, ty_args, args),
+            (Q::Path, "merge") => mk2!(PathMerge, ty_args, args),
 
             (Q::Boolean, "not") => mk1!(BoolNot, ty_args, args),
             (Q::Boolean, "and") => mk2!(BoolAnd, ty_args, args),
@@ -2017,10 +1980,6 @@ impl Intrinsic {
             (Q::Set, "remove") => mk2_t!(SetRemove, ty_args, args, set, item),
             (Q::Set, "contains") => mk2_t!(SetContains, ty_args, args, set, item),
             (Q::Set, "is_empty") => mk1_t!(SetIsEmpty, ty_args, args, set),
-            (Q::Set, "intersection") => mk2_t!(SetIntersect, ty_args, args, lhs, rhs),
-            (Q::Set, "union") => mk2_t!(SetUnion, ty_args, args, lhs, rhs),
-            (Q::Set, "difference") => mk2_t!(SetDiff, ty_args, args, lhs, rhs),
-            (Q::Set, "symmetric_difference") => mk2_t!(SetSymDiff, ty_args, args, lhs, rhs),
             (Q::Set, "is_subset") => mk2_t!(SetIsSubset, ty_args, args, lhs, rhs),
             (Q::Set, "is_proper_subset") => mk2_t!(SetIsProperSubset, ty_args, args, lhs, rhs),
             (Q::Set, "is_disjoint") => mk2_t!(SetIsDisjoint, ty_args, args, lhs, rhs),
@@ -2328,10 +2287,6 @@ impl Display for Intrinsic {
             Self::SetRemove { set, item, .. } => write!(f, "remove({set}, {item})"),
             Self::SetContains { set, item, .. } => write!(f, "contains({set}, {item})"),
             Self::SetIsEmpty { set, .. } => write!(f, "is_empty({set})"),
-            Self::SetIntersect { lhs, rhs, .. } => write!(f, "intersect({lhs}, {rhs})"),
-            Self::SetUnion { lhs, rhs, .. } => write!(f, "union({lhs}, {rhs})"),
-            Self::SetDiff { lhs, rhs, .. } => write!(f, "diff({lhs}, {rhs})"),
-            Self::SetSymDiff { lhs, rhs, .. } => write!(f, "sym_diff({lhs}, {rhs})"),
             Self::SetIsSubset { lhs, rhs, .. } => write!(f, "subset({lhs}, {rhs})"),
             Self::SetIsProperSubset { lhs, rhs, .. } => write!(f, "proper_subset({lhs}, {rhs})"),
             Self::SetIsDisjoint { lhs, rhs, .. } => write!(f, "disjoint({lhs}, {rhs})"),
@@ -2408,8 +2363,8 @@ impl Display for Intrinsic {
             Self::FloatTrunc { val, .. } => write!(f, "trunc({val})"),
             Self::FloatNearest { val, .. } => write!(f, "nearest({val})"),
             Self::FloatFqEq { lhs, rhs, .. } => write!(f, "({lhs} fq_eq {rhs})"),
-            Self::ErrFresh => write!(f, "err_fresh"),
-            Self::ErrMerge { lhs, rhs } => write!(f, "err_merge({lhs}, {rhs})"),
+            Self::PathFresh => write!(f, "path_fresh"),
+            Self::PathMerge { lhs, rhs } => write!(f, "path_merge({lhs}, {rhs})"),
             Self::SmtEq { lhs, rhs, .. } => write!(f, "({lhs} == {rhs})"),
             Self::SmtNe { lhs, rhs, .. } => write!(f, "({lhs} != {rhs})"),
         }

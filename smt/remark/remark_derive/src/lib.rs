@@ -2,8 +2,8 @@
 
 use proc_macro::TokenStream as Syntax;
 use proc_macro2::TokenStream;
-use rusmart_smt_remark::fail_if_error;
-use rusmart_smt_remark::{func, ty};
+use rusmt_smt_remark::fail_if_error;
+use rusmt_smt_remark::{func, ty};
 
 /// Annotation over a Rust type (can only be applied on a Rust type definition i.e., struct and enum)
 /// Attributes will not be accepted. i.e., #[smt_type(<...attrs...>)] will cause an error

@@ -1,0 +1,76 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "sf1",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: inf,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "sf2",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: inf,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "sf3",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: -inf,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "sf4",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: NaN,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "sf5",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: NaN,
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "sf6",
+                        },
+                    ): SMTWrap(
+                        Float(
+                            F64 {
+                                inner: NaN,
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

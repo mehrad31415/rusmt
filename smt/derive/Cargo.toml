@@ -1,5 +1,5 @@
 [package]
-name = "rusmart-smt-derive"
+name = "rusmt-smt-derive"
 version = "0.1.0"
 description = "SMT model derivation from Rust code"
 readme = "README.md"

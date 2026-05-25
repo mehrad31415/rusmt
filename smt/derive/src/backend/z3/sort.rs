@@ -76,15 +76,14 @@ pub(crate) fn format_sort(sort: &Sort, ir: &IRContext) -> String {
                 }
             }
         }
-        Sort::Cloak(inner) => format!("(Cloak {})", format_sort(inner, ir)),
         Sort::Boolean => "Bool".to_string(),
         Sort::Integer => "Int".to_string(),
         Sort::Real => "Real".to_string(),
         Sort::String => "String".to_string(),
         Sort::Seq(inner) => format!("(Seq {})", format_sort(inner, ir)),
-        Sort::Set(inner) => format!("(RusmartSet {})", format_sort(inner, ir)),
+        Sort::Set(inner) => format!("(RuSmtSet {})", format_sort(inner, ir)),
         Sort::Array(key, value) => format!(
-            "(RusmartArray {} {})",
+            "(RuSmtArray {} {})",
             format_sort(key, ir),
             format_sort(value, ir)
         ),
@@ -95,7 +94,7 @@ pub(crate) fn format_sort(sort: &Sort, ir: &IRContext) -> String {
         Sort::U32 => "(_ BitVec 32)".to_string(),
         Sort::U64 => "(_ BitVec 64)".to_string(),
         Sort::Uninterpreted(x) => x.to_string(),
-        Sort::Error => "(Array Int Bool)".to_string(), // Error is a set of integer IDs
+        Sort::Path => "(Array Int Bool)".to_string(), // Path is a set of integer IDs
     }
 }
 

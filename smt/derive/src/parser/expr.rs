@@ -963,26 +963,6 @@ impl Expr {
                 Intrinsic::SetInsert { t, set, item }
                 | Intrinsic::SetRemove { t, set, item }
                 | Intrinsic::SetContains { t, set, item }
-                | Intrinsic::SetIntersect {
-                    t,
-                    lhs: set,
-                    rhs: item,
-                }
-                | Intrinsic::SetUnion {
-                    t,
-                    lhs: set,
-                    rhs: item,
-                }
-                | Intrinsic::SetDiff {
-                    t,
-                    lhs: set,
-                    rhs: item,
-                }
-                | Intrinsic::SetSymDiff {
-                    t,
-                    lhs: set,
-                    rhs: item,
-                }
                 | Intrinsic::SetIsSubset {
                     t,
                     lhs: set,
@@ -1112,8 +1092,8 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                Intrinsic::ErrFresh => (),
-                Intrinsic::ErrMerge { lhs, rhs } => {
+                Intrinsic::PathFresh => (),
+                Intrinsic::PathMerge { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
@@ -1214,7 +1194,7 @@ impl<'ctx> ExprParserRoot<'ctx> {
         // derive a parser
         // ExprParserCursor is used to parse the current expression
         // ExprParserRoot is the root parser for the whole function under consideration
-        let exp_ty = self.ret_ty.clone(); // the return type of the function is the expected type of ExprParserCursor at the start (the default expected type). This is because ExprParserCursor is used to parse the current expression. Every function body has some optional local let-binding statements and a mandatory sole expression (which is the return value of the function). Note that every function in `rusmart` must have a return value. Therefore, ExprParserCursor `definitely` parses the sole last expression of the body and the expected type of this expression is the function return type. For other expressions (for example right-hand side of a let-binding), the expected type needs to be altered. The is done by `forking` the parser to the defined type.
+        let exp_ty = self.ret_ty.clone(); // the return type of the function is the expected type of ExprParserCursor at the start (the default expected type). This is because ExprParserCursor is used to parse the current expression. Every function body has some optional local let-binding statements and a mandatory sole expression (which is the return value of the function). Note that every function in `rusmt` must have a return value. Therefore, ExprParserCursor `definitely` parses the sole last expression of the body and the expected type of this expression is the function return type. For other expressions (for example right-hand side of a let-binding), the expected type needs to be altered. The is done by `forking` the parser to the defined type.
         let parser = ExprParserCursor {
             root: &self,               // the root parser
             exp_ty, // at the start, the expected type is the return type of the function (the default expected type)
@@ -1866,7 +1846,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     });
 
                     // convert the else block
-                    // in functional programming it is mandatory to have an else block (so is in rusmart)
+                    // in functional programming it is mandatory to have an else block (so is in rusmt)
                     let else_expr = bail_if_missing!(
                         else_branch.as_ref().map(|(_, e)| e.as_ref()),
                         expr_if,
@@ -1975,7 +1955,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             }
                             // if the match head is a tuple, the pattern should also be a tuple
                             // a single pattern like x cannot be used
-                            // just like let x : (i32,i32) = (1,2) is not allowed in rusmart
+                            // just like let x : (i32,i32) = (1,2) is not allowed in rusmt
                             // you cannot have (x , y) | (z , w) in the pattern so the or pattern is not allowed for tuples
                             _ => bail_on!(case, "expect tuple"),
                         }
@@ -2236,7 +2216,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                 expr_call,
                             )?,
                         // user-defined function on a system type (i.e., intrinsic function)
-                        // Integer::add() or Error::fresh()
+                        // Integer::add() or Path::fresh()
                         QualifiedPath::UsrFuncOnSysType(ty_name, ty_inst, fn_name) => {
                             // derive type param substitutions
                             let fty =
@@ -2468,7 +2448,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             Err(e) => bail_on!(expr_method, "{}", e),
                         }
                     }
-                    // reserved methods (clone & default) are not allowed in the body of the function in the rusmart
+                    // reserved methods (clone & default) are not allowed in the body of the function in the rusmt
                     FuncName::Reserved(_) => bail_on!(method, "reserved method (clone & default)"),
                 }
             }

@@ -1,0 +1,6 @@
+// Three-statement variable swap using a temporary.
+x := 7;
+y := 11;
+t := x;
+x := y;
+y := t

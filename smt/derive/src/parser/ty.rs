@@ -1,4 +1,4 @@
-//! This module parses the rust defined types and converts them to the type tags of Rusmart.
+//! This module parses the rust defined types and converts them to the type tags of RuSmt.
 
 use crate::parser::ctxt::{ContextWithGenerics, MarkedType};
 use crate::parser::generics::Generics;
@@ -71,8 +71,8 @@ pub enum SysTypeName {
     Set,
     /// The array type.
     Array,
-    /// The error type.
-    Error,
+    /// The path-condition marker type.
+    Path,
 }
 
 impl Display for SysTypeName {
@@ -92,7 +92,7 @@ impl Display for SysTypeName {
             Self::Seq => "Seq",
             Self::Set => "Set",
             Self::Array => "Array",
-            Self::Error => "Error",
+            Self::Path => "Path",
         };
         f.write_str(name)
     }
@@ -116,7 +116,7 @@ impl ReservedIdent for SysTypeName {
             "Seq" => Self::Seq,
             "Set" => Self::Set,
             "Array" => Self::Array,
-            "Error" => Self::Error,
+            "Path" => Self::Path,
             _ => return None,
         };
         Some(matched)
@@ -138,7 +138,7 @@ impl SysTypeName {
             | Self::U64
             | Self::F32
             | Self::F64
-            | Self::Error => Generics::intrinsic(vec![]),
+            | Self::Path => Generics::intrinsic(vec![]),
             Self::Cloak | Self::Seq | Self::Set => {
                 Generics::intrinsic(vec![TypeParamName::intrinsic("T")])
             }
@@ -170,7 +170,7 @@ impl SysTypeName {
             Self::Seq => TypeTag::Seq(t()),
             Self::Set => TypeTag::Set(t()),
             Self::Array => TypeTag::Array(k(), v()),
-            Self::Error => TypeTag::Error,
+            Self::Path => TypeTag::Path,
         }
     }
 }
@@ -191,7 +191,7 @@ impl TypeName {
     /// Try to convert an ident into a type name
     pub fn try_from(generics: &Generics, ident: &Ident) -> Result<Self> {
         let name = ident.to_string();
-        // see if it is a reserved type name (Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Error)
+        // see if it is a reserved type name (Boolean, Integer, Real, F32, F64, I32, I64, U32, U64, String, Cloak, Seq, Set, Array, Path)
         let parsed = match SysTypeName::from_str(&name) {
             // if it is not a reserved type name, we try to convert it to a type parameter
             None => {
@@ -254,8 +254,8 @@ pub enum TypeTag {
     Set(Box<TypeTag>),
     /// The array type.
     Array(Box<TypeTag>, Box<TypeTag>),
-    /// The error type.
-    Error,
+    /// The path-condition marker type.
+    Path,
     /// A user-defined type with type parameters as a list
     User(UsrTypeName, Vec<TypeTag>),
     /// a tuple of types
@@ -384,7 +384,7 @@ impl TypeTag {
                     let (key, val) = Self::from_args_expect_2(ctxt, pack)?;
                     Self::Array(key.into(), val.into())
                 }
-                (SysTypeName::Error, PathArguments::None) => Self::Error,
+                (SysTypeName::Path, PathArguments::None) => Self::Path,
                 _ => bail_on!(segment, "invalid type tag for intrinsic type"),
             },
             // a user-defined type name
@@ -523,7 +523,7 @@ impl Display for TypeTag {
             Self::Seq(sub) => write!(f, "Seq<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
             Self::Array(key, val) => write!(f, "Array<{key},{val}>"),
-            Self::Error => write!(f, "Error"),
+            Self::Path => write!(f, "Path"),
             Self::User(name, args) => {
                 if args.is_empty() {
                     name.fmt(f)

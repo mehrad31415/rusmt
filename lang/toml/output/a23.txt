@@ -1,0 +1,43 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Array {
+                inner: {
+                    SMTWrap(
+                        String {
+                            inner: "str1",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "The quick brown fox jumps over the lazy dog.",
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "str2",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "The quick brown fox jumps over the lazy dog.",
+                            },
+                        ),
+                    ),
+                    SMTWrap(
+                        String {
+                            inner: "str3",
+                        },
+                    ): SMTWrap(
+                        String(
+                            String {
+                                inner: "The quick brown fox jumps over the lazy dog.",
+                            },
+                        ),
+                    ),
+                },
+            },
+        ),
+    },
+)

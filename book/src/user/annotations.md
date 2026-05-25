@@ -1,6 +1,6 @@
 # Annotations
 
-Rusmart is a restricted Rust DSL plus **proc-macro annotations** that mark which
+RuSmt is a restricted Rust DSL plus **proc-macro annotations** that mark which
 types and functions belong to the symbolic subset.
 
 In this repository, the only annotations used by the DSL are:
@@ -8,7 +8,7 @@ In this repository, the only annotations used by the DSL are:
 - `#[smt_type]` for data types
 - `#[smt_fn]` for functions
 
-They are implemented by the `rusmart_smt_remark_derive` crate (which calls into
+They are implemented by the `rusmt_smt_remark_derive` crate (which calls into
 {{#include ../../dict/crate-remark.md}}). The derive/transpiler crate
 ({{#include ../../dict/crate-derive.md}}) does the deeper semantic checks and
 translation.

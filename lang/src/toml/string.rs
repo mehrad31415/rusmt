@@ -8,8 +8,8 @@ use crate::toml::{
     is_apostrophe, is_exclamation, is_htab, is_newline, is_non_ascii, is_quotation_mark, is_wschar,
     parse_newline, parse_ws, parse_wschar,
 };
-use rusmart_smt_remark_derive::smt_fn;
-use rusmart_smt_stdlib::{Boolean, Error, Integer, String, U32, bitvector::BitvectorOps, smt::SMT};
+use rusmt_smt_remark_derive::smt_fn;
+use rusmt_smt_stdlib::{Boolean, Integer, Path, String, U32, bitvector::BitvectorOps, smt::SMT};
 
 /// `string = ml-basic-string / basic-string / ml-literal-string / literal-string`
 #[smt_fn]
@@ -56,7 +56,7 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
                                         // println!(
                                         //    "missing closing delimiter for multi-line basic string"
                                         // );
-                                        ParseResult::Err(Error::fresh())
+                                        ParseResult::Err(Path::fresh())
                                     }; // missing closing delimiter
                                 }
                             }
@@ -77,7 +77,7 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
                                     // println!(
                                     //    "missing closing delimiter for multi-line basic string where newline was present"
                                     // );
-                                    return ParseResult::Err(Error::fresh()); // missing closing delimiter
+                                    return ParseResult::Err(Path::fresh()); // missing closing delimiter
                                 }
                             }
                         }
@@ -86,7 +86,7 @@ fn parse_ml_basic_string(state: State) -> ParseResult<String> {
             }
             Optional::None => {
                 // println!("No input after opening delimiter for multi-line basic string");
-                return ParseResult::Err(Error::fresh());
+                return ParseResult::Err(Path::fresh());
             } // No input after opening delimiter
         }
     } else {
@@ -375,7 +375,7 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                     //    "invalid escape sequence in basic string: {:?}",
                                                     //     c
                                                     // );
-                                                    return ParseResult::Err(Error::fresh()); // for basic strings, other escape sequences are invalid
+                                                    return ParseResult::Err(Path::fresh()); // for basic strings, other escape sequences are invalid
                                                 }
                                             } else {
                                                 let needed = if *c.eq(U32::from(0x78)) {
@@ -397,7 +397,7 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                         // println!(
                                                         //    "invalid hex digits in unicode escape sequence"
                                                         // );
-                                                        return ParseResult::Err(Error::fresh());
+                                                        return ParseResult::Err(Path::fresh());
                                                     } // Invalid Hex
                                                     ParseResult::Err(e) => ParseResult::Err(e),
                                                     ParseResult::Ok(hex_str, hex_state) => {
@@ -415,7 +415,7 @@ fn parse_escape_seq_char(state: State, val: Integer) -> ParseResult<String> {
                                                             //    "invalid unicode scalar value in escape sequence: {:?}",
                                                             //    code_point
                                                             // );
-                                                            return ParseResult::Err(Error::fresh());
+                                                            return ParseResult::Err(Path::fresh());
                                                         }
                                                     }
                                                 }
@@ -461,7 +461,7 @@ fn parse_mlb_escaped_nl(state: State) -> ParseResult<String> {
                         // println!(
                         //   "newline expected after escaped newline in multi-line basic string"
                         //);
-                        return ParseResult::Err(Error::fresh());
+                        return ParseResult::Err(Path::fresh());
                     } // newline expected
                     ParseResult::Ok(_newline_str, after_newline_state) => {
                         match parse_wschar_newline_sequence(after_newline_state) {
@@ -531,7 +531,7 @@ fn parse_mlb_quote_content(state: State) -> ParseResult<String> {
                                 // println!(
                                 //    "at least one mlb-content is required after mlb-quotes in multi-line basic string"
                                 // );
-                                return ParseResult::Err(Error::fresh());
+                                return ParseResult::Err(Path::fresh());
                             }
                         } // at least one mlb-content is required
                         ParseResult::Ok(content_str, final_state) => {
@@ -663,7 +663,7 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
                                     // println!(
                                     //     "missing closing delimiter for multi-line literal string"
                                     // );
-                                    return ParseResult::Err(Error::fresh()); // missing closing delimiter
+                                    return ParseResult::Err(Path::fresh()); // missing closing delimiter
                                 }
                             }
                         }
@@ -683,7 +683,7 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
                                     // println!(
                                     //     "missing closing delimiter for multi-line literal string where newline was present"
                                     // );
-                                    return ParseResult::Err(Error::fresh()); // missing closing delimiter
+                                    return ParseResult::Err(Path::fresh()); // missing closing delimiter
                                 }
                             }
                         }
@@ -692,7 +692,7 @@ fn parse_ml_literal_string(state: State) -> ParseResult<String> {
             }
             Optional::None => {
                 // println!("no input after opening delimiter for multi-line literal string");
-                return ParseResult::Err(Error::fresh());
+                return ParseResult::Err(Path::fresh());
             } // No input after opening delimiter
         }
     } else {
@@ -845,7 +845,7 @@ fn parse_ml_literal_quote_content(state: State) -> ParseResult<String> {
                                 // println!(
                                 //    "at least one mll-content is required after mll-quotes in multi-line literal string"
                                 // );
-                                return ParseResult::Err(Error::fresh());
+                                return ParseResult::Err(Path::fresh());
                             }
                         }
                         ParseResult::Ok(content_str, final_state) => {
@@ -968,7 +968,7 @@ pub(crate) fn parse_basic_string(state: State) -> ParseResult<String> {
                         match current_char(state_after_content) {
                             Optional::None => {
                                 // println!("missing closing quotation mark for basic string");
-                                return ParseResult::Err(Error::fresh());
+                                return ParseResult::Err(Path::fresh());
                             } // missing closing quotation mark
                             Optional::Some(closing_char) => {
                                 if *is_quotation_mark(closing_char) {
@@ -978,7 +978,7 @@ pub(crate) fn parse_basic_string(state: State) -> ParseResult<String> {
                                     );
                                 } else {
                                     // println!("missing closing quotation mark for basic string");
-                                    return ParseResult::Err(Error::fresh());
+                                    return ParseResult::Err(Path::fresh());
                                 } // missing closing quotation mark
                             }
                         }
@@ -1001,7 +1001,7 @@ fn parse_basic_string_content(state: State, acc: String) -> ParseResult<String> 
             if *is_newline(state) {
                 {
                     // println!("newlines are not allowed in basic strings");
-                    return ParseResult::Err(Error::fresh());
+                    return ParseResult::Err(Path::fresh());
                 } // newlines are not allowed in basic strings
             } else {
                 if *is_quotation_mark(_c) {
@@ -1011,7 +1011,7 @@ fn parse_basic_string_content(state: State, acc: String) -> ParseResult<String> 
                         ParseResult::Err(e) => return ParseResult::Err(e),
                         ParseResult::NoMatch => {
                             // println!("invalid character in basic string: {:?}", _c);
-                            return ParseResult::Err(Error::fresh());
+                            return ParseResult::Err(Path::fresh());
                         } // invalid character
                         ParseResult::Ok(s1, new_state) => {
                             // Recurse to get the rest of the string content.
@@ -1103,7 +1103,7 @@ pub(crate) fn parse_literal_string(state: State) -> ParseResult<String> {
                         match current_char(state_after_content) {
                             Optional::None => {
                                 // println!("missing closing apostrophe for literal string");
-                                return ParseResult::Err(Error::fresh());
+                                return ParseResult::Err(Path::fresh());
                             }
                             Optional::Some(closing_char) => {
                                 if *is_apostrophe(closing_char) {
@@ -1113,7 +1113,7 @@ pub(crate) fn parse_literal_string(state: State) -> ParseResult<String> {
                                     );
                                 } else {
                                     // println!("missing closing apostrophe for literal string");
-                                    return ParseResult::Err(Error::fresh());
+                                    return ParseResult::Err(Path::fresh());
                                 } // missing closing apostrophe
                             }
                         }
@@ -1135,7 +1135,7 @@ fn parse_literal_string_content(state: State, acc: String) -> ParseResult<String
             if *is_newline(state) {
                 {
                     // println!("newlines are not allowed in literal strings");
-                    return ParseResult::Err(Error::fresh());
+                    return ParseResult::Err(Path::fresh());
                 } // newlines are not allowed in literal strings
             } else {
                 if *is_apostrophe(_c) {
@@ -1145,7 +1145,7 @@ fn parse_literal_string_content(state: State, acc: String) -> ParseResult<String
                         ParseResult::Err(e) => return ParseResult::Err(e),
                         ParseResult::NoMatch => {
                             // println!("invalid character in literal string: {:?}", _c);
-                            return ParseResult::Err(Error::fresh());
+                            return ParseResult::Err(Path::fresh());
                         } // invalid character
                         ParseResult::Ok(s1, new_state) => {
                             // Recurse to get the rest of the string content.

@@ -1,8 +1,8 @@
 //! Module containing the response enum, the execution timeout, and the number of CPU cores.
 
+use lazy_static::lazy_static;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
-use lazy_static::lazy_static;
 
 /// Execution timeout for the backend in seconds: by default 10 minutes (600 seconds).
 pub const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
@@ -32,7 +32,6 @@ impl Display for Response {
         }
     }
 }
-
 
 lazy_static! {
     /// Number of CPU cores available on this machine.

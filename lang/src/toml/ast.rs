@@ -1,8 +1,8 @@
 //! The Abstract Syntax Tree (AST) for a parsed TOML document.
 
-use rusmart_smt_remark_derive::smt_type;
-use rusmart_smt_stdlib::smt::SMT;
-use rusmart_smt_stdlib::{Array, Boolean, Cloak, F64, I64, Seq, String};
+use rusmt_smt_remark_derive::smt_type;
+use rusmt_smt_stdlib::smt::SMT;
+use rusmt_smt_stdlib::{Array, Boolean, Cloak, F64, I64, Seq, String};
 use std::hash::Hash;
 
 /// A term *in its valid state* is defined by the following ADT

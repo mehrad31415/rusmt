@@ -259,7 +259,7 @@ impl FuncSig {
 
         // Parse return type
         let ret_ty = match output {
-            ReturnType::Default => bail_on!(sig, "expect return type"), // all functions in rusmart must have a return type (like functionally typed languages)
+            ReturnType::Default => bail_on!(sig, "expect return type"), // all functions in rusmt must have a return type (like functionally typed languages)
             ReturnType::Type(_, rty) => TypeTag::from_type(&ctxt, rty)?, // construct the TypeTag from the return type
         };
 

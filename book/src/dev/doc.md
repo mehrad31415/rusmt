@@ -9,4 +9,4 @@ mdbook build
 mdbook serve
 ```
 
-Or just simply run `make docs`.
+Or just simply run `make docs` from the workspace.

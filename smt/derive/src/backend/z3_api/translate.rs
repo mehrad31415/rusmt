@@ -6,20 +6,26 @@ use crate::backend::z3_api::context::Z3ApiContext;
 use crate::backend::z3_api::intrinsics::translate_intrinsic;
 use crate::backend::z3_api::mk_string_symbol;
 use crate::ir::exp::{EnumSelector, ExpRegistry, Expression, VarKind, VariantCtor};
-use crate::ir::index::{ExpId, UsrSortId};
+use crate::ir::index::{ExpId, UsrFunId, UsrSortId};
 use crate::ir::sort::{DataType, Sort, Variant};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Translate an IR `Expression` to a Z3 AST.
 ///
 /// `var_map` maps variable names (as they appear in `Variable::name`) to their
 /// Z3 AST. Parameters, quantified iterator variables, axiomatized choose!
 /// variables, and match-bound locals are looked up here.
+///
+/// `rename` overrides per-call function decls during bounded-recursion
+/// unrolling: any `Procedure` call to a fid in `rename` resolves to the
+/// supplied decl instead of `api.get_func_decl(fid)`. Pass an empty map for
+/// regular (non-unrolled) translation.
 pub fn translate_expression<'ctx>(
     api: &mut Z3ApiContext<'ctx>,
     reg: &ExpRegistry,
     exp_id: ExpId,
     var_map: &HashMap<String, z3_sys::Z3_ast>,
+    rename: &BTreeMap<UsrFunId, z3_sys::Z3_func_decl>,
 ) -> Z3Ast<'ctx> {
     let ctx = api.ctx;
     match reg.lookup_exp(&exp_id) {
@@ -33,17 +39,19 @@ pub fn translate_expression<'ctx>(
                         .unwrap_or_else(|| panic!("variable '{}' not in var_map", name));
                     unsafe { Z3Ast::new(ctx, ast) }
                 }
-                VarKind::Bound { bind } => translate_expression(api, reg, *bind, var_map),
+                VarKind::Bound { bind } => translate_expression(api, reg, *bind, var_map, rename),
                 VarKind::Match {
                     head,
                     sort,
                     branch,
                     selector,
                 } => {
-                    let head_ast = translate_expression(api, reg, *head, var_map);
+                    let head_ast = translate_expression(api, reg, *head, var_map, rename);
                     let idx = match selector {
                         EnumSelector::Tuple(i) => *i,
-                        EnumSelector::Record(fname) => record_field_index(api, *sort, branch, fname),
+                        EnumSelector::Record(fname) => {
+                            record_field_index(api, *sort, branch, fname)
+                        }
                     };
                     let acc = api.get_accessor(*sort, branch, idx);
                     unsafe {
@@ -61,11 +69,11 @@ pub fn translate_expression<'ctx>(
             let ctor = api.get_constructor(*sort, &ctor_branch);
             let args: Vec<z3_sys::Z3_ast> = elems
                 .iter()
-                .map(|e| translate_expression(api, reg, *e, var_map).raw())
+                .map(|e| translate_expression(api, reg, *e, var_map, rename).raw())
                 .collect();
             unsafe {
-                let r = z3_sys::Z3_mk_app(ctx, ctor, args.len() as u32, args.as_ptr())
-                    .expect("mk_app");
+                let r =
+                    z3_sys::Z3_mk_app(ctx, ctor, args.len() as u32, args.as_ptr()).expect("mk_app");
                 Z3Ast::new(ctx, r)
             }
         }
@@ -80,15 +88,17 @@ pub fn translate_expression<'ctx>(
                 DataType::Record(type_fields) => type_fields
                     .keys()
                     .map(|k| {
-                        let e = fields.get(k).unwrap_or_else(|| panic!("field {} missing", k));
-                        translate_expression(api, reg, *e, var_map).raw()
+                        let e = fields
+                            .get(k)
+                            .unwrap_or_else(|| panic!("field {} missing", k));
+                        translate_expression(api, reg, *e, var_map, rename).raw()
                     })
                     .collect(),
                 _ => panic!("Record expression on non-record sort"),
             };
             unsafe {
-                let r = z3_sys::Z3_mk_app(ctx, ctor, args.len() as u32, args.as_ptr())
-                    .expect("mk_app");
+                let r =
+                    z3_sys::Z3_mk_app(ctx, ctor, args.len() as u32, args.as_ptr()).expect("mk_app");
                 Z3Ast::new(ctx, r)
             }
         }
@@ -103,7 +113,7 @@ pub fn translate_expression<'ctx>(
                 VariantCtor::Unit => Vec::new(),
                 VariantCtor::Tuple(elems) => elems
                     .iter()
-                    .map(|e| translate_expression(api, reg, *e, var_map).raw())
+                    .map(|e| translate_expression(api, reg, *e, var_map, rename).raw())
                     .collect(),
                 VariantCtor::Record(fields) => {
                     let dt = api.ir.ty_registry.retrieve(*sort);
@@ -115,7 +125,7 @@ pub fn translate_expression<'ctx>(
                                     let e = fields
                                         .get(k)
                                         .unwrap_or_else(|| panic!("field {} missing", k));
-                                    translate_expression(api, reg, *e, var_map).raw()
+                                    translate_expression(api, reg, *e, var_map, rename).raw()
                                 })
                                 .collect(),
                             _ => panic!("enum variant shape mismatch"),
@@ -125,27 +135,26 @@ pub fn translate_expression<'ctx>(
                 }
             };
             unsafe {
-                let r = z3_sys::Z3_mk_app(ctx, ctor, args.len() as u32, args.as_ptr())
-                    .expect("mk_app");
+                let r =
+                    z3_sys::Z3_mk_app(ctx, ctor, args.len() as u32, args.as_ptr()).expect("mk_app");
                 Z3Ast::new(ctx, r)
             }
         }
 
         Expression::AccessSlot { base, slot } => {
-            let base_ast = translate_expression(api, reg, *base, var_map);
+            let base_ast = translate_expression(api, reg, *base, var_map, rename);
             let base_sid = user_sort_of(reg, *base, api);
             let tname = resolve_type_name(api.ir, base_sid);
             let ctor_branch = format!("mk-{}", tname);
             let acc = api.get_accessor(base_sid, &ctor_branch, *slot);
             unsafe {
-                let r = z3_sys::Z3_mk_app(ctx, acc, 1, [base_ast.raw()].as_ptr())
-                    .expect("mk_app");
+                let r = z3_sys::Z3_mk_app(ctx, acc, 1, [base_ast.raw()].as_ptr()).expect("mk_app");
                 Z3Ast::new(ctx, r)
             }
         }
 
         Expression::AccessField { base, field } => {
-            let base_ast = translate_expression(api, reg, *base, var_map);
+            let base_ast = translate_expression(api, reg, *base, var_map, rename);
             let base_sid = user_sort_of(reg, *base, api);
             let dt = api.ir.ty_registry.retrieve(base_sid);
             let (branch, idx) = match dt {
@@ -162,8 +171,7 @@ pub fn translate_expression<'ctx>(
             };
             let acc = api.get_accessor(base_sid, &branch, idx);
             unsafe {
-                let r = z3_sys::Z3_mk_app(ctx, acc, 1, [base_ast.raw()].as_ptr())
-                    .expect("mk_app");
+                let r = z3_sys::Z3_mk_app(ctx, acc, 1, [base_ast.raw()].as_ptr()).expect("mk_app");
                 Z3Ast::new(ctx, r)
             }
         }
@@ -177,11 +185,12 @@ pub fn translate_expression<'ctx>(
             }
             // Right-fold: last case body is the base, each earlier case is
             // (ite condition body result).
-            let mut result = translate_expression(api, reg, cases.last().unwrap().body, var_map);
+            let mut result =
+                translate_expression(api, reg, cases.last().unwrap().body, var_map, rename);
             for case in cases.iter().rev().skip(1) {
                 let cond = if case.atoms.len() == 1 {
                     let atom = &case.atoms[0];
-                    let head = translate_expression(api, reg, atom.head, var_map);
+                    let head = translate_expression(api, reg, atom.head, var_map, rename);
                     let tester = api.get_tester(atom.sort, &atom.branch);
                     unsafe {
                         let r = z3_sys::Z3_mk_app(ctx, tester, 1, [head.raw()].as_ptr())
@@ -193,7 +202,7 @@ pub fn translate_expression<'ctx>(
                         .atoms
                         .iter()
                         .map(|atom| {
-                            let head = translate_expression(api, reg, atom.head, var_map);
+                            let head = translate_expression(api, reg, atom.head, var_map, rename);
                             let tester = api.get_tester(atom.sort, &atom.branch);
                             unsafe {
                                 z3_sys::Z3_mk_app(ctx, tester, 1, [head.raw()].as_ptr())
@@ -202,13 +211,12 @@ pub fn translate_expression<'ctx>(
                         })
                         .collect();
                     unsafe {
-                        let r =
-                            z3_sys::Z3_mk_and(ctx, conjs.len() as u32, conjs.as_ptr())
-                                .expect("mk_and");
+                        let r = z3_sys::Z3_mk_and(ctx, conjs.len() as u32, conjs.as_ptr())
+                            .expect("mk_and");
                         Z3Ast::new(ctx, r)
                     }
                 };
-                let body = translate_expression(api, reg, case.body, var_map);
+                let body = translate_expression(api, reg, case.body, var_map, rename);
                 unsafe {
                     let r = z3_sys::Z3_mk_ite(ctx, cond.raw(), body.raw(), result.raw())
                         .expect("mk_ite");
@@ -219,10 +227,10 @@ pub fn translate_expression<'ctx>(
         }
 
         Expression::Phi { cases, default } => {
-            let mut result = translate_expression(api, reg, *default, var_map);
+            let mut result = translate_expression(api, reg, *default, var_map, rename);
             for case in cases.iter().rev() {
-                let cond = translate_expression(api, reg, case.cond, var_map);
-                let body = translate_expression(api, reg, case.body, var_map);
+                let cond = translate_expression(api, reg, case.cond, var_map, rename);
+                let body = translate_expression(api, reg, case.body, var_map, rename);
                 unsafe {
                     let r = z3_sys::Z3_mk_ite(ctx, cond.raw(), body.raw(), result.raw())
                         .expect("mk_ite");
@@ -234,8 +242,8 @@ pub fn translate_expression<'ctx>(
 
         Expression::IterForall { vars, body } => {
             let (bound_apps, new_var_map) = bind_iter_vars(api, reg, vars, var_map);
-            let body_ast = translate_expression(api, reg, *body, &new_var_map);
-            let guard = build_iter_guard(api, reg, vars, &new_var_map);
+            let body_ast = translate_expression(api, reg, *body, &new_var_map, rename);
+            let guard = build_iter_guard(api, reg, vars, &new_var_map, rename);
             let implication = match guard {
                 Some(g) => unsafe {
                     z3_sys::Z3_mk_implies(ctx, g, body_ast.raw()).expect("implies")
@@ -259,8 +267,8 @@ pub fn translate_expression<'ctx>(
 
         Expression::IterExists { vars, body } => {
             let (bound_apps, new_var_map) = bind_iter_vars(api, reg, vars, var_map);
-            let body_ast = translate_expression(api, reg, *body, &new_var_map);
-            let guard = build_iter_guard(api, reg, vars, &new_var_map);
+            let body_ast = translate_expression(api, reg, *body, &new_var_map, rename);
+            let guard = build_iter_guard(api, reg, vars, &new_var_map, rename);
             let combined = match guard {
                 Some(g) => unsafe {
                     z3_sys::Z3_mk_and(ctx, 2, [g, body_ast.raw()].as_ptr()).expect("and")
@@ -289,24 +297,24 @@ pub fn translate_expression<'ctx>(
         }
 
         Expression::Procedure { callee, args } => {
-            let decl = api.get_func_decl(*callee);
+            let decl = match rename.get(callee) {
+                Some(&renamed) => renamed,
+                None => api.get_func_decl(*callee),
+            };
             let arg_asts: Vec<z3_sys::Z3_ast> = args
                 .iter()
-                .map(|a| translate_expression(api, reg, *a, var_map).raw())
+                .map(|a| translate_expression(api, reg, *a, var_map, rename).raw())
                 .collect();
             unsafe {
-                let r = z3_sys::Z3_mk_app(
-                    ctx,
-                    decl,
-                    arg_asts.len() as u32,
-                    arg_asts.as_ptr(),
-                )
-                .expect("mk_app");
+                let r = z3_sys::Z3_mk_app(ctx, decl, arg_asts.len() as u32, arg_asts.as_ptr())
+                    .expect("mk_app");
                 Z3Ast::new(ctx, r)
             }
         }
 
-        Expression::Intrinsic(intrinsic) => translate_intrinsic(api, intrinsic, reg, var_map),
+        Expression::Intrinsic(intrinsic) => {
+            translate_intrinsic(api, intrinsic, reg, var_map, rename)
+        }
     }
 }
 
@@ -343,6 +351,7 @@ fn build_iter_guard<'ctx>(
     reg: &ExpRegistry,
     vars: &std::collections::BTreeMap<crate::ir::index::VarId, ExpId>,
     var_map: &HashMap<String, z3_sys::Z3_ast>,
+    rename: &BTreeMap<UsrFunId, z3_sys::Z3_func_decl>,
 ) -> Option<z3_sys::Z3_ast> {
     let ctx = api.ctx;
     let mut guards: Vec<z3_sys::Z3_ast> = Vec::new();
@@ -352,7 +361,7 @@ fn build_iter_guard<'ctx>(
             Expression::Var(cv) => reg.lookup_var(cv).sort.clone(),
             _ => panic!("iterator collection must be a plain variable"),
         };
-        let coll_ast = translate_expression(api, reg, *coll_eid, var_map).raw();
+        let coll_ast = translate_expression(api, reg, *coll_eid, var_map, rename).raw();
         let var_ast = *var_map
             .get(&var.name.to_string())
             .expect("bound iter var missing");
@@ -413,10 +422,6 @@ fn record_field_index(api: &Z3ApiContext, sid: UsrSortId, branch: &str, field: &
 fn user_sort_of(reg: &ExpRegistry, base: ExpId, api: &Z3ApiContext) -> UsrSortId {
     match reg.derive_type(base, api.ir) {
         Sort::User(sid) => sid,
-        Sort::Cloak(inner) => match *inner {
-            Sort::User(sid) => sid,
-            s => panic!("expected user sort, got {s} (via Cloak)"),
-        },
         s => panic!("expected user sort, got {s}"),
     }
 }

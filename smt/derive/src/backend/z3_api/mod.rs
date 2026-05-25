@@ -16,7 +16,7 @@ use crate::ir::sort::Sort;
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 
-/// Result of solving a single error target.
+/// Result of solving a single path target.
 pub struct SolveResult {
     pub target_idx: usize,
     pub response: Response,

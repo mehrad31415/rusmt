@@ -42,13 +42,8 @@ pub enum Sort {
     Set(Box<Sort>),
     /// SMT-array
     Array(Box<Sort>, Box<Sort>),
-    /// Cloak<T> — indirection wrapper for recursive types.
-    /// In Z3, declared as a parametric datatype with a null base case:
-    ///   (declare-datatype Cloak (par (T) ((mk-Cloak (uncloak T)) (Cloak-null))))
-    /// This provides the well-foundedness base case that Z3 requires for recursive types.
-    Cloak(Box<Sort>),
-    /// dynamic error type
-    Error,
+    /// path-condition marker type
+    Path,
     /// user-defined type (including pack-defined type tuple)
     User(UsrSortId),
     /// uninterpreted (used for type parameters that implement the SMT trait)
@@ -71,8 +66,7 @@ impl Display for Sort {
             Self::Seq(sub) => write!(f, "Seq<{sub}>"),
             Self::Set(sub) => write!(f, "Set<{sub}>"),
             Self::Array(key, val) => write!(f, "Array<{key}, {val}>"),
-            Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
-            Self::Error => write!(f, "Error"),
+            Self::Path => write!(f, "Path"),
             Self::User(sid) => write!(f, "${sid}"),
             Self::Uninterpreted(name) => write!(f, "{name}"),
         }
@@ -260,17 +254,14 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
             TypeRef::U32 => Sort::U32,
             TypeRef::U64 => Sort::U64,
             TypeRef::String => Sort::String,
-            TypeRef::Cloak(sub) => {
-                // keep the cloak — Z3 needs it for well-foundedness of recursive types
-                Sort::Cloak(Box::new(self.resolve_type(sub.as_ref())))
-            }
+            TypeRef::Cloak(sub) => self.resolve_type(sub.as_ref()),
             TypeRef::Seq(sub) => Sort::Seq(self.resolve_type(sub.as_ref()).into()),
             TypeRef::Set(sub) => Sort::Set(self.resolve_type(sub.as_ref()).into()),
             TypeRef::Array(key, val) => Sort::Array(
                 self.resolve_type(key.as_ref()).into(),
                 self.resolve_type(val.as_ref()).into(),
             ),
-            TypeRef::Error => Sort::Error,
+            TypeRef::Path => Sort::Path,
             // For user-defined types, register the type and get its unique sort id. inst is the type parameters
             TypeRef::User(name, inst) => Sort::User(self.register_type(Some(name), inst)),
             // For pack-defined types (anonymous tuple types), register them without a name.

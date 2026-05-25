@@ -1,19 +1,21 @@
-# Type Unification
+### Type Unification
 
-Rusmart's transpiler performs **type inference** via a **unification-based** algorithm. This chapter explains the algorithm and how it integrates with expression parsing.
+---
 
-## Why Unification?
+RuSmt's transpiler performs **type inference** via a **unification-based** algorithm. This chapter explains the algorithm.
 
-Rusmart code often omits type annotations on local variables:
+### Why Unification?
+
+RuSmt code often omits type annotations on local variables:
 
 ```rust
 let x = Seq::new();          // what is T in Seq<T>?
 let y = Seq::append(x, v);   // now we know T from v's type
 ```
 
-The transpiler cannot assign a concrete type to `x` when it first encounters the declaration. Instead, it assigns a **type variable** — a placeholder — and later **unifies** it with concrete type information that flows in from surrounding expressions. This is the same core idea behind **Hindley–Milner** type inference used in ML, Haskell, and Rust itself, though Rusmart's version is simpler because it operates on a fixed set of SMT sorts rather than arbitrary polymorphic types.
+The transpiler cannot assign a concrete type to `x` when it first encounters the declaration. Instead, it assigns a **type variable** — a placeholder — and later **unifies** it with concrete type information that flows in from surrounding expressions. This is the same core idea behind **Hindley–Milner** type inference used in ML, Haskell, and Rust itself, though RuSmt's version is simpler because it operates on a fixed set of SMT sorts rather than arbitrary polymorphic types.
 
-## TypeTag vs TypeRef
+### TypeTag vs TypeRef
 
 The parser defines two parallel type representations:
 
@@ -25,11 +27,7 @@ The parser defines two parallel type representations:
 
 Every `TypeTag` can be converted to a `TypeRef` via `From<&TypeTag>`. The reverse is only valid after inference succeeds and all `Var` placeholders have been resolved.
 
-## Data Structures
-
-### Type Variables
-
-A `TypeVar(usize)` is a unique placeholder created by `TypeUnifier::mk_var()`. Each call produces a fresh index. In error messages and debug output, type variables are displayed as `?0`, `?1`, etc.
+> Type Variables: A `TypeVar(usize)` is a unique placeholder created by `TypeUnifier::mk_var()`. Each call produces a fresh index. In error messages and debug output, type variables are displayed as `?0`, `?1`, etc.
 
 ### Equivalence Groups
 
@@ -45,22 +43,11 @@ Each `TypeEquivGroup` contains:
 - **`vars: BTreeSet<usize>`** — the set of type variable indices that are known to be the same type.
 - **`sort: Option<TypeRef>`** — the concrete type assigned to this group, if known.
 
-When a group has no concrete type yet (`sort: None`), its representative is the variable with the smallest index in `vars`. When a concrete type is assigned, the representative is that type.
+When a group has no concrete type yet (`sort: None`), its _representative_ is the variable with the smallest index in `vars`. When a concrete type is assigned, the _representative_ is that type.
 
-**Example:** Consider parsing this function body where `v: Integer`:
+### The Unification Algorithm
 
-```rust
-let x = Seq::new();           // x gets exp_ty = ?0
-let y = Seq::append(x, v);    // y gets exp_ty = ?1
-```
-
-When `Seq::new()` is resolved, it returns `Seq<?2>` (T is a fresh variable `?2`). Unifying `?0` with `Seq<?2>` assigns `sort = Seq<?2)` to group 0.
-
-When `Seq::append(x, v)` is resolved, the signature `(Seq<T>, T) -> Seq<T>` is instantiated with `T = ?3`. Unifying the second argument `?3` with `v: Integer` gives `?3 = Integer`. Then unifying the first argument `Seq<?3>` with `x`'s type `Seq<?2>` merges `?2` and `?3`, so `?2 = Integer` too.
-
-## The Unification Algorithm
-
-The core function `unify(lhs, rhs, involved)` takes two `TypeRef` values and attempts to make them equal. It returns:
+The `ti_unify!` macro wraps a call to `unifier.unify(lhs, rhs)` with error handling. The core inner function `unify(lhs, rhs, involved)` takes two `TypeRef` values and attempts to make them equal. It returns:
 
 - `Ok(Some(unified_type))` — success; the two types are compatible
 - `Ok(None)` — failure; the types are incompatible (e.g., `Integer` vs `String`)
@@ -104,15 +91,11 @@ unify(?0, Seq<?0>)   →  update_group: group 0 gets sort = Seq<?0>
 //   4. involved ∩ {0} ≠ ∅ → CyclicUnification!
 ```
 
-In practice, this is sufficient because Rusmart's type system does not have recursive type constructors (outside of `Cloak`, which is structurally acyclic). The `update_group` path handles the common case of assigning a concrete type to a fresh variable, while `merge_group` catches mutual recursion between two type variable groups.
+In practice, this is sufficient because RuSmt's type system does not have recursive type constructors (outside of `Cloak`, which is structurally acyclic). The `update_group` path handles the common case of assigning a concrete type to a fresh variable, while `merge_group` catches mutual recursion between two type variable groups.
 
-## Integration with Expression Parsing
+### Handling Expressions
 
-### Expected-Type Propagation
-
-The expression parser (`ExprParserCursor`) carries an **expected type** (`exp_ty: TypeRef`). This is the type that the current expression is expected to produce — typically the return type of the function, the declared type of a `let` binding, or a fresh type variable when the type is unknown.
-
-When the parser resolves an expression, it calls `ti_unify!(unifier, &actual_ty, &self.exp_ty, span)` to unify the actual type with the expected type. This is how type information flows **bidirectionally**:
+**Expected-Type Propagation**: The expression parser (`ExprParserCursor`) carries an **expected type** (`exp_ty: TypeRef`). This is the type that the current expression is expected to produce — typically the return type of the function, or the declared type of a `let` binding. In case of absence this will be a fresh type variable. When the parser resolves an expression, it calls `ti_unify!(unifier, &actual_ty, &self.exp_ty, span)` to unify the actual type with the expected type. This is how type information flows **bidirectionally**:
 
 - **Top-down**: a declared type annotation constrains what sub-expressions must produce.
 - **Bottom-up**: a literal or function return type constrains the expected type variable above.
@@ -125,23 +108,13 @@ let x: Integer = Integer::add(a, b);
 let x = Integer::from(42);
 ```
 
-### Forking
-
-When parsing a sub-expression that has a different expected type, the parser **forks** itself:
+**Forking**: When parsing a sub-expression that has a different expected type, the parser **forks** itself:
 
 ```rust
 let sub_ctxt = self.fork(TypeRef::Var(unifier.mk_var()));
 ```
 
-This creates a new cursor with a fresh expected type but the same variable scope. The fork mechanism is how the parser handles expressions like `if-else` (both branches must match `exp_ty`), tuple construction (each element gets its own expected type), and field access (the base expression gets a fresh variable, then the field type is resolved).
-
-### The `ti_unify!` Macro
-
-The `ti_unify!` macro wraps a call to `unifier.unify(lhs, rhs)` with error handling:
-
-- On `Ok(Some(v))`: returns the unified type.
-- On `Ok(None)`: **refreshes** both types (resolving any variables to their current best-known types) and reports a type mismatch with a clear error message.
-- On `Err(CyclicUnification)`: reports a cyclic type error.
+This creates a new cursor with a fresh expected type but the same variable scope.
 
 ### Probing Unifiers for Overload Resolution
 
@@ -160,7 +133,7 @@ This technique ensures that a failed overload attempt does not corrupt the main 
 
 After the entire function body is parsed, the parser calls `refresh_type` on every type in the expression tree. This replaces each `TypeRef::Var` with its resolved concrete type (if known). If any variable remains unresolved after refresh, the function fails with an "incomplete type" error — meaning there was not enough information to determine all types.
 
-## Worked Example
+### Worked Example
 
 Consider:
 
@@ -192,25 +165,27 @@ fn example(v: Integer) -> Seq<Integer> {
 
 **Refresh**: all variables resolve to concrete types. The function type-checks.
 
-## Design Inspirations
+### Design Inspirations
 
-The Rusmart type unifier draws from several well-established techniques:
+The RuSmt type unifier draws from several well-established techniques:
 
-- **Hindley–Milner type inference** (Damas & Milner, 1982): the idea of assigning type variables to unannotated bindings and solving constraints via unification. Rusmart uses a simplified version without `let`-polymorphism (generalization), since DSL functions have explicitly declared type parameters.
+- **Hindley–Milner type inference** (Damas & Milner, 1982): the idea of assigning type variables to unannotated bindings and solving constraints via unification. RuSmt uses a simplified version without `let`-polymorphism (generalization), since DSL functions have explicitly declared type parameters.
 
-- **Union-find** (Tarjan, 1975): the equivalence-group structure is a union-find where `merge_group` performs the *union* operation (merging two groups) and `retrieve_type` performs the *find* operation (looking up the representative). Rusmart uses the convention that the group with the lower variable index absorbs the higher one.
+- **Union-find** (Tarjan, 1975): the equivalence-group structure is a union-find where `merge_group` performs the *union* operation (merging two groups) and `retrieve_type` performs the *find* operation (looking up the representative). RuSmt uses the convention that the group with the lower variable index absorbs the higher one.
 
-- **Bidirectional type checking** (Pierce & Turner, 2000): the `exp_ty` propagation combines *checking* (top-down, when a type annotation is known) with *synthesis* (bottom-up, when the type is inferred from the expression). This avoids the need for full constraint solving — most types are resolved immediately as expressions are parsed.
+- **Bidirectional information flow**: type information propagates both top-down (an expected type / annotation constrains sub-expressions) and bottom-up (a literal or return type constrains the expected variable above).
+### Constraints and Limitations
 
-- **Probing / speculative unification**: the clone-and-try pattern for overload resolution is common in languages with ad-hoc polymorphism (e.g., Rust's trait solver). It ensures that failed attempts leave no side effects.
+1. **No `let`-polymorphism**: a local variable like `let id = ...` cannot be used at two different type instantiations. Each use must agree on one concrete type. So the following is invalid:
 
-## Constraints and Limitations
-
-1. **No `let`-polymorphism**: a local variable like `let id = ...` cannot be used at two different type instantiations. Each use must agree on one concrete type.
+```ocaml
+ let id = fun x -> x in
+(id 3, id "hello")
+```
 
 2. **No subtyping**: `Integer` and `I32` are distinct sorts. There is no implicit widening or coercion — explicit conversion functions must be used.
 
-3. **Type parameters unify by name**: `Parameter("T")` only unifies with `Parameter("T")`, never with `Parameter("U")`. This is sound because type parameters are scoped to their declaring function or type.
+3. **Type parameters unify by name**: `Parameter("T")` only unifies with `Parameter("T")`, never with `Parameter("U")` or type parameters with other names. This is sound because type parameters are scoped to their declaring function or type.
 
 4. **No inference across function boundaries**: each function is type-checked independently with its full signature. The unifier state does not leak between functions.
 

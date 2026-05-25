@@ -1,0 +1,7 @@
+// The guard is satisfied, so the then-branch fires.
+x := 1;
+if x <= 5 then (
+  y := 100
+) else (
+  y := 200
+)

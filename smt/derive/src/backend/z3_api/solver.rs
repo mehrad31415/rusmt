@@ -1,4 +1,4 @@
-//! Solver pipeline: uses in-process Z3 via z3-sys to solve error targets.
+//! Solver pipeline: uses in-process Z3 via z3-sys to solve path-marker targets.
 
 use crate::backend::response::{BACKEND_TIMEOUT, Response};
 use crate::backend::z3::sort::resolve_type_name;
@@ -14,14 +14,22 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-/// Solve every error target in the IR. Each target gets its own fresh Z3
+/// Solve every path-marker target in the IR. Each target gets its own fresh Z3
 /// context so failures don't leak between queries.
-pub fn solve_with_api(ir: &IRContext, top_level_fn: &str, on_result: &dyn Fn(&SolveResult)) {
+///
+/// `unroll_depth == 0` preserves the recursive emission (Z3 handles fixpoints
+/// natively); `unroll_depth >= 1` unfolds each recursive SCC to that depth.
+pub fn solve_with_api(
+    ir: &IRContext,
+    top_level_fn: &str,
+    on_result: &dyn Fn(&SolveResult),
+    unroll_depth: usize,
+) {
     let top_fid = find_top_level_fn(ir, top_level_fn);
     set_global_params();
 
-    for (idx, target_ids) in ir.error_targets.iter().enumerate() {
-        let (response, elapsed_ms) = solve_single_target(ir, top_fid, target_ids);
+    for (idx, target_ids) in ir.path_targets.iter().enumerate() {
+        let (response, elapsed_ms) = solve_single_target(ir, top_fid, target_ids, unroll_depth);
 
         on_result(&SolveResult {
             target_idx: idx,
@@ -67,11 +75,12 @@ fn solve_single_target(
     ir: &IRContext,
     top_fid: UsrFunId,
     target_ids: &BTreeSet<usize>,
+    unroll_depth: usize,
 ) -> (Response, u128) {
     let timeout_ms = BACKEND_TIMEOUT.as_millis() as u32;
     let z3_ctx = Z3Context::new(timeout_ms);
     let ctx = z3_ctx.ctx;
-    let mut api = Z3ApiContext::new(ctx, ir);
+    let mut api = Z3ApiContext::new(ctx, ir, unroll_depth);
 
     unsafe {
         let solver = z3_sys::Z3_mk_solver(ctx).expect("mk_solver");
@@ -90,8 +99,8 @@ fn solve_single_target(
             z3_sys::Z3_solver_assert(ctx, solver, *axiom);
         }
 
-        // Assert the error-reachability predicate for this target.
-        let assertion = build_error_assertion(&mut api, ir, top_fid, target_ids);
+        // Assert the path-reachability predicate for this target.
+        let assertion = build_path_assertion(&mut api, ir, top_fid, target_ids);
         z3_sys::Z3_solver_assert(ctx, solver, assertion);
 
         // Backup timeout: a watchdog thread polls every 100ms and calls
@@ -169,13 +178,13 @@ fn solve_single_target(
     }
 }
 
-/// Build the error-reachability assertion for one target.
+/// Build the path-reachability assertion for one target.
 ///   1. Create fresh input constants, one per parameter of the top-level fn.
 ///   2. Build the call `top_fn(input_0, …, input_N)`.
-///   3. For each error_id in the target, build a membership assertion against
+///   3. For each path_id in the target, build a membership assertion against
 ///      the returned value.
 ///   4. If multiple IDs, AND them together.
-unsafe fn build_error_assertion(
+unsafe fn build_path_assertion(
     api: &mut Z3ApiContext,
     ir: &IRContext,
     top_fid: UsrFunId,
@@ -202,7 +211,7 @@ unsafe fn build_error_assertion(
 
         let parts: Vec<z3_sys::Z3_ast> = target_ids
             .iter()
-            .map(|&id| build_single_error_assertion(api, ir, &sig.ret_ty, call, id))
+            .map(|&id| build_single_path_assertion(api, ir, &sig.ret_ty, call, id))
             .collect();
 
         if parts.len() == 1 {
@@ -213,27 +222,27 @@ unsafe fn build_error_assertion(
     }
 }
 
-unsafe fn build_single_error_assertion(
+unsafe fn build_single_path_assertion(
     api: &mut Z3ApiContext,
     ir: &IRContext,
     ret_sort: &Sort,
     call: z3_sys::Z3_ast,
-    error_id: usize,
+    path_id: usize,
 ) -> z3_sys::Z3_ast {
     unsafe {
         let ctx = api.ctx;
         let int_sort = z3_sys::Z3_mk_int_sort(ctx).expect("int_sort");
-        let idx = z3_sys::Z3_mk_int(ctx, error_id as i32, int_sort).expect("mk_int");
+        let idx = z3_sys::Z3_mk_int(ctx, path_id as i32, int_sort).expect("mk_int");
 
         match ret_sort {
-            Sort::Error => z3_sys::Z3_mk_select(ctx, call, idx).expect("select"),
+            Sort::Path => z3_sys::Z3_mk_select(ctx, call, idx).expect("select"),
             Sort::User(sid) => {
                 let dt = ir.ty_registry.retrieve(*sid);
                 let tname = resolve_type_name(ir, *sid);
                 let variants = match dt {
                     DataType::Enum(v) => v,
                     _ => panic!(
-                        "return type is not an enum — cannot extract error assertion from {:?}",
+                        "return type is not an enum — cannot extract path assertion from {:?}",
                         ret_sort
                     ),
                 };
@@ -243,7 +252,7 @@ unsafe fn build_single_error_assertion(
                     match vdef {
                         Variant::Tuple(slots) => {
                             for (i, slot) in slots.iter().enumerate() {
-                                if *slot == Sort::Error {
+                                if *slot == Sort::Path {
                                     let tester = api.get_tester(*sid, vname);
                                     let acc = api.get_accessor(*sid, vname, i);
                                     let is_v = z3_sys::Z3_mk_app(ctx, tester, 1, [call].as_ptr())
@@ -260,7 +269,7 @@ unsafe fn build_single_error_assertion(
                         }
                         Variant::Record(fields) => {
                             for (fi, (_, fsort)) in fields.iter().enumerate() {
-                                if *fsort == Sort::Error {
+                                if *fsort == Sort::Path {
                                     let tester = api.get_tester(*sid, vname);
                                     let acc = api.get_accessor(*sid, vname, fi);
                                     let is_v = z3_sys::Z3_mk_app(ctx, tester, 1, [call].as_ptr())
@@ -280,7 +289,7 @@ unsafe fn build_single_error_assertion(
                 }
                 assert!(
                     !alts.is_empty(),
-                    "return type '{}' has no Error fields in any variant",
+                    "return type '{}' has no Path fields in any variant",
                     tname
                 );
                 if alts.len() == 1 {
@@ -290,7 +299,7 @@ unsafe fn build_single_error_assertion(
                 }
             }
             _ => panic!(
-                "return sort {:?} does not contain Error — cannot generate error query",
+                "return sort {:?} does not contain Path — cannot generate path query",
                 ret_sort
             ),
         }

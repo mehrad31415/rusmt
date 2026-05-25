@@ -1,5 +1,5 @@
 [package]
-name = "rusmart-smt-stdlib"
+name = "rusmt-smt-stdlib"
 version = "0.1.0"
 description = "Standard Rust library for SMT elements"
 readme = "README.md"

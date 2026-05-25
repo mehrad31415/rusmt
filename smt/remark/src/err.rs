@@ -14,7 +14,7 @@
 #[macro_export]
 macro_rules! fail_on {
     // The proc_macro::TokenStream is the input and return type of the top level procedural macros.
-    // We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the rusmart-smt-remark-derive crate.
+    // We know that "proc-macro is used at API level and proc-macro2 everywhere else" so the fail_on! macro will be used as the return type of procedural macros, defined in the lib.rs file of the rusmt-smt-remark-derive crate.
     // The into_compile_error method converts a syn::Error to proc_macro2::TokenStream.
     // The proc_macro::TokenStream::from is used to convert the proc_macro2::TokenStream to proc_macro::TokenStream.
     // Error has got a method named into_compile_error() which generates a compilation error from the error object.

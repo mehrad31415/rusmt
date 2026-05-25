@@ -1,0 +1,7 @@
+// The guard fails, so the else-branch fires.
+x := 10;
+if x <= 5 then (
+  y := 100
+) else (
+  y := 200
+)

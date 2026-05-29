@@ -12,7 +12,7 @@ resolver = "2"
 num_cpus = "1.17.0"
 anyhow = "1.0.102"
 command-group = "5.0.1"
-log = "0.4.29"
+log = "0.4.30"
 petgraph = "0.8.3"
 proc-macro2 = "1.0.106"
 quote = "1.0.45"
@@ -37,3 +37,4 @@ rusmt-smt-stdlib = { path = "smt/stdlib" }
 rusmt-smt-remark = { path = "smt/remark" }
 rusmt-smt-remark-derive = { path = "smt/remark/remark_derive" }
 rusmt-smt-derive = { path = "smt/derive" }
+rusmt-lang = { path = "lang" }

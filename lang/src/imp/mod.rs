@@ -8,6 +8,7 @@ use rusmt_smt_stdlib::{Array, Boolean, I64, Path, String, bitvector::BitvectorOp
 /// Abstract syntax.
 pub mod ast;
 /// Parser and pretty-printer for `.imp` source files.
+#[path = "../imp_parser.rs"]
 pub mod parser;
 
 /// The result of evaluating a [`Com`].
@@ -69,35 +70,35 @@ pub fn eval_aexp(a: Aexp, s: Array<String, I64>) -> ArithmeticResult {
         },
         Aexp::Add(l, r) => match eval_aexp(l.reveal(), s) {
             ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-            ArithmeticResult::Ok(l) => match eval_aexp(r.reveal(), s) {
+            ArithmeticResult::Ok(new_l) => match eval_aexp(r.reveal(), s) {
                 ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-                ArithmeticResult::Ok(r) => ArithmeticResult::Ok(l.bv_add(r)),
+                ArithmeticResult::Ok(new_r) => ArithmeticResult::Ok(new_l.bv_add(new_r)),
             },
         },
         Aexp::Sub(l, r) => match eval_aexp(l.reveal(), s) {
             ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-            ArithmeticResult::Ok(l) => match eval_aexp(r.reveal(), s) {
+            ArithmeticResult::Ok(new_l) => match eval_aexp(r.reveal(), s) {
                 ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-                ArithmeticResult::Ok(r) => ArithmeticResult::Ok(l.bv_sub(r)),
+                ArithmeticResult::Ok(new_r) => ArithmeticResult::Ok(new_l.bv_sub(new_r)),
             },
         },
         Aexp::Mul(l, r) => match eval_aexp(l.reveal(), s) {
             ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-            ArithmeticResult::Ok(l) => match eval_aexp(r.reveal(), s) {
+            ArithmeticResult::Ok(new_l) => match eval_aexp(r.reveal(), s) {
                 ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-                ArithmeticResult::Ok(r) => ArithmeticResult::Ok(l.bv_mul(r)),
+                ArithmeticResult::Ok(new_r) => ArithmeticResult::Ok(new_l.bv_mul(new_r)),
             },
         },
         Aexp::Div(l, r) => match eval_aexp(l.reveal(), s) {
             ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-            ArithmeticResult::Ok(l) => match eval_aexp(r.reveal(), s) {
+            ArithmeticResult::Ok(new_l) => match eval_aexp(r.reveal(), s) {
                 ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
-                ArithmeticResult::Ok(r) => {
-                    if *r.eq(I64::from(0)) {
+                ArithmeticResult::Ok(new_r) => {
+                    if *new_r.eq(I64::from(0)) {
                         // target 1: division by zero
                         ArithmeticResult::Err(Path::fresh())
                     } else {
-                        ArithmeticResult::Ok(l.bv_div(r))
+                        ArithmeticResult::Ok(new_l.bv_div(new_r))
                     }
                 }
             },
@@ -116,34 +117,34 @@ pub fn eval_bexp(b: Bexp, s: Array<String, I64>) -> BooleanResult {
         Bexp::False => BooleanResult::Ok(Boolean::from(false)),
         Bexp::Eq(l, r) => match eval_aexp(l.reveal(), s) {
             ArithmeticResult::Err(e) => BooleanResult::Err(e),
-            ArithmeticResult::Ok(l) => match eval_aexp(r.reveal(), s) {
+            ArithmeticResult::Ok(new_l) => match eval_aexp(r.reveal(), s) {
                 ArithmeticResult::Err(e) => BooleanResult::Err(e),
-                ArithmeticResult::Ok(r) => BooleanResult::Ok(l.eq(r)),
+                ArithmeticResult::Ok(new_r) => BooleanResult::Ok(new_l.eq(new_r)),
             },
         },
         Bexp::Le(l, r) => match eval_aexp(l.reveal(), s) {
             ArithmeticResult::Err(e) => BooleanResult::Err(e),
-            ArithmeticResult::Ok(l) => match eval_aexp(r.reveal(), s) {
+            ArithmeticResult::Ok(new_l) => match eval_aexp(r.reveal(), s) {
                 ArithmeticResult::Err(e) => BooleanResult::Err(e),
-                ArithmeticResult::Ok(r) => BooleanResult::Ok(l.bv_le(r)),
+                ArithmeticResult::Ok(new_r) => BooleanResult::Ok(new_l.bv_le(new_r)),
             },
         },
         Bexp::Not(b1) => match eval_bexp(b1.reveal(), s) {
             BooleanResult::Err(e) => BooleanResult::Err(e),
-            BooleanResult::Ok(b) => BooleanResult::Ok(b.not()),
+            BooleanResult::Ok(new_b) => BooleanResult::Ok(new_b.not()),
         },
         Bexp::And(l, r) => match eval_bexp(l.reveal(), s) {
             BooleanResult::Err(e) => BooleanResult::Err(e),
-            BooleanResult::Ok(l) => match eval_bexp(r.reveal(), s) {
+            BooleanResult::Ok(new_l) => match eval_bexp(r.reveal(), s) {
                 BooleanResult::Err(e) => BooleanResult::Err(e),
-                BooleanResult::Ok(r) => BooleanResult::Ok(l.and(r)),
+                BooleanResult::Ok(new_r) => BooleanResult::Ok(new_l.and(new_r)),
             },
         },
         Bexp::Or(l, r) => match eval_bexp(l.reveal(), s) {
             BooleanResult::Err(e) => BooleanResult::Err(e),
-            BooleanResult::Ok(l) => match eval_bexp(r.reveal(), s) {
+            BooleanResult::Ok(new_l) => match eval_bexp(r.reveal(), s) {
                 BooleanResult::Err(e) => BooleanResult::Err(e),
-                BooleanResult::Ok(r) => BooleanResult::Ok(l.or(r)),
+                BooleanResult::Ok(new_r) => BooleanResult::Ok(new_l.or(new_r)),
             },
         },
     }
@@ -151,37 +152,44 @@ pub fn eval_bexp(b: Bexp, s: Array<String, I64>) -> BooleanResult {
 
 /// Big-step evaluation of commands.
 #[smt_fn]
-pub fn eval_com(c: Com, s: Array<String, I64>) -> EvalResult {
+pub fn eval_com(c: Com) -> EvalResult {
+    let s = Array::new();
+    eval_com_inner(c, s)
+}
+
+/// Inner function for big-step evaluation of commands.
+#[smt_fn]
+pub fn eval_com_inner(c: Com, s: Array<String, I64>) -> EvalResult {
     match c {
         Com::Skip => EvalResult::Ok(s),
         Com::Assign(x, a) => {
             let v = eval_aexp(a.reveal(), s);
             match v {
                 ArithmeticResult::Err(e) => EvalResult::Err(e),
-                ArithmeticResult::Ok(v) => EvalResult::Ok(s.store(x, v)),
+                ArithmeticResult::Ok(new_v) => EvalResult::Ok(s.store(x, new_v)),
             }
         }
-        Com::Seq(c0, c1) => match eval_com(c0.reveal(), s) {
+        Com::Seq(c0, c1) => match eval_com_inner(c0.reveal(), s) {
             EvalResult::Err(e) => EvalResult::Err(e), // propagate error
-            EvalResult::Ok(s1) => eval_com(c1.reveal(), s1),
+            EvalResult::Ok(s1) => eval_com_inner(c1.reveal(), s1),
         },
         Com::If(b, c0, c1) => match eval_bexp(b.reveal(), s) {
             BooleanResult::Err(e) => EvalResult::Err(e),
-            BooleanResult::Ok(b) => {
-                if *b {
-                    eval_com(c0.reveal(), s)
+            BooleanResult::Ok(new_b) => {
+                if *new_b {
+                    eval_com_inner(c0.reveal(), s)
                 } else {
-                    eval_com(c1.reveal(), s)
+                    eval_com_inner(c1.reveal(), s)
                 }
             }
         },
         Com::While(b, body) => match eval_bexp(b.reveal(), s) {
             BooleanResult::Err(e) => EvalResult::Err(e),
-            BooleanResult::Ok(b) => {
-                if *b {
-                    match eval_com(body.reveal(), s) {
+            BooleanResult::Ok(new_b) => {
+                if *new_b {
+                    match eval_com_inner(body.reveal(), s) {
                         EvalResult::Err(e) => EvalResult::Err(e),
-                        EvalResult::Ok(s1) => eval_com(c, s1),
+                        EvalResult::Ok(s1) => eval_com_inner(c, s1),
                     }
                 } else {
                     EvalResult::Ok(s)

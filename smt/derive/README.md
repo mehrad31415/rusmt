@@ -32,7 +32,7 @@ unfolds every recursive SCC into `N+1` depth-indexed copies and routes
 external callers through the depth-`N` copy.
 
 Both functions skip the per-target Z3 invocation when the env var
-`RUSMART_SKIP_INVOKE=1` is set — useful when iterating on codegen.
+`RUSMT_SKIP_INVOKE=1` is set — useful when iterating on codegen.
 
 ### CLI
 

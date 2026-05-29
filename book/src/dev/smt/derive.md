@@ -63,7 +63,7 @@ cargo run -p rusmt-smt-derive -- <parser_name> <top_level_fn> [text|api|both] [k
 
 Output goes to `lang/src/synthesis/<parser_name>/{z3_chc,z3_api}/target_<N>/`.
 
-The env var `RUSMART_SKIP_INVOKE=1` makes the text backend write `.smt2`
+The env var `RUSMT_SKIP_INVOKE=1` makes the text backend write `.smt2`
 files but skip the subprocess call — useful when iterating on codegen.
 
 ### Bounded-recursion unrolling (`k=N`)

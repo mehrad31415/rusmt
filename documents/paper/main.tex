@@ -1,0 +1,890 @@
+% RuSMT: a tool/experience paper.
+% NOTE ON CLASS: The task asks for LNCS (llncs.cls). llncs.cls is not installed
+% in this build environment (TeX Live 2021, checked with kpsewhich), so per the
+% task's explicit fallback we use `article` with an LNCS-style structure.
+% To switch to true LNCS: replace the documentclass + title/author block below
+% with \documentclass{llncs}, use \institute{}/\email{}, and \bibliographystyle{splncs04}.
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.geometric,fit}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{caption}
+
+% --- LNCS-like structural niceties on top of article ---
+\theoremstyle{definition}
+\newtheorem{principle}{Principle}
+\newtheorem{definition}{Definition}
+\theoremstyle{remark}
+\newtheorem{observation}{Observation}
+
+\newcommand{\rusmt}{RuSMT}
+\newcommand{\imp}{IMP}
+\newcommand{\toml}{TOML}
+\newcommand{\code}[1]{\texttt{#1}}
+
+% Let TeX re-break paragraphs to avoid overfull lines caused by long,
+% non-hyphenatable typewriter identifiers (e.g. process_path_queries).
+\setlength{\emergencystretch}{3em}
+
+\definecolor{cmtcol}{gray}{0.4}
+\lstdefinestyle{rust}{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape\color{cmtcol},
+  stringstyle=\color{teal},
+  morekeywords={fn,let,match,if,else,enum,struct,pub,return,use,mod,as,for,in},
+  morecomment=[l]{//},
+  morestring=[b]",
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  frame=tb,
+  framerule=0.3pt,
+  xleftmargin=0.5em,
+  aboveskip=0.6em,belowskip=0.4em,
+}
+\lstdefinestyle{smt}{
+  basicstyle=\ttfamily\footnotesize,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  breaklines=true,
+  captionpos=b,
+  frame=tb,
+  framerule=0.3pt,
+  xleftmargin=0.5em,
+  aboveskip=0.6em,belowskip=0.4em,
+}
+\lstset{style=rust}
+
+\title{\bfseries \rusmt{}: One Executable Reference Semantics as Both
+Conformance Oracle and Solver-Directed Test Synthesizer}
+
+\author{Mehrad Haghshenas \quad Meng Xu \\[3pt]
+        \normalsize University of Waterloo, Waterloo, ON, Canada \\[1pt]
+        \small \texttt{m3haghsh@uwaterloo.ca} \quad \texttt{meng.xu.cs@uwaterloo.ca}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A language's prose specification, reference implementation, and test generator                                                                                  
+are three artifacts that must agree, but in practice they drift apart. We present
+\rusmt{}, a Rust-embedded DSL in which a single \emph{direct-style executable
+reference semantics} plays two roles at once: executed as ordinary Rust it is a
+concrete conformance oracle, and compiled automatically to SMT it is the source
+for solver-directed \emph{bounded synthesis} of test programs. An author writes
+the operational semantics once over a standard library of types that mirror Z3's theories,
+marks program points of interest with \code{Path::fresh()}, and \rusmt{} lifts
+the interpreter to a Z3 query whose models are inputs that reach those path targets.
+Decoded back to source, each witness is replayed through the same interpreter and
+then run against an independent commercial implementation, where a divergence is a
+conformance bug. We make the design's soundness explicit: a per-construct
+contract requires every standard-library primitive to agree with its Z3 formula,
+a guard discipline reconciles the inputs on which they would diverge, and
+synthesis soundness is enforced operationally by replay. We claim neither a new synthesis algorithm nor general completeness---only
+\emph{bounded completeness}: for every marker, every program of depth at most
+$k$ that reaches it is representable in our SMT encoding, subject to Z3
+returning a model rather than timing out.The contribution is therefore concrete: (i) a restricted Rust DSL in which a
+language designer authors a single executable reference semantics and obtains
+from that one artifact both a runnable conformance oracle and a
+solver-directed test generator; (ii) the soundness of the
+DSL$\to$IR$\to$SMT compilation pipeline, anchored on a per-construct contract
+that pins each Rust primitive to its emitted Z3 formula and documents, where
+target-language semantics diverge from Z3's, how each divergence is
+reconciled; and (iii) two case studies---an IMP/WHILE interpreter and a TOML
+1.1.0 parser---that exemplify the authoring pattern across a small canonical
+language and a real-world specification. The \imp{} loop closes end-to-end---synthesis, witness, replay---while the
+\toml{} parser reaches the solver frontier: deeply recursive queries
+combining bit-vectors, strings, arrays, and quantifiers.
+
+\medskip
+\noindent\textbf{Keywords:} executable semantics $\cdot$ conformance testing
+$\cdot$ bounded program synthesis $\cdot$ SMT $\cdot$ Z3 $\cdot$ solver-aided programming $\cdot$ Rust DSL.
+\end{abstract}
+
+% =====================================================================
+\section{Introduction}
+\label{sec:intro}
+
+A language ecosystem typically carries three artifacts that are supposed to say
+the same thing: a prose \emph{specification}, a \emph{reference implementation},
+and a \emph{test generator} for conformance. They are written and maintained
+separately, so they drift. Random fuzzing covers the bulk of the input space but tends to miss the narrow error and edge conditions a specification cares about most. On the other hand, a hand-written test suite forces its author to do two things at once: decide which conditions are interesting and craft inputs that exercise them. \rusmt{} keeps the author's judgment about what is interesting---now expressed as markers in the semantics itself---and hands input generation to the solver.
+
+\rusmt{} collapses two of these three artifacts into one. The author writes the
+reference semantics \emph{once}, in a restricted dialect of Rust embedded in the
+host language, using a standard library whose types denote Z3's mathematical
+theories. That single source is given two interpretations
+(Fig.~\ref{fig:dual}): run as ordinary Rust it is the concrete conformance
+\emph{oracle}; compiled---automatically, with no hand-written SMT-LIB---it is the
+source of a solver query that \emph{synthesizes} programs reaching designated
+points. The author marks a point of interest by writing \code{Path::fresh()};
+\rusmt{} asks Z3 for an input that drives execution to that marker, decodes the
+model back into runnable source, replays it through the same interpreter, and
+hands the witness to an independent implementation. A divergence is a conformance
+bug. The barrier this lowers is concrete: \emph{no separate relational
+interpreter, no hand-authored constrained Horn clauses or SMT-LIB, and no
+separate generator}.
+
+\paragraph{Research question.}
+\emph{Can a single direct-style executable reference semantics, written in a
+familiar host language, serve simultaneously as a concrete conformance oracle and
+as the source for solver-directed bounded synthesis of test programs---without
+rewriting the semantics as a relational program, a CHC encoding, a rewrite
+system, or a hand-staged synthesis grammar?}
+
+\paragraph{What we do \emph{not} claim.}
+The core mechanism---compile an executable interpreter to a symbolic form and
+search for inputs---is not new. Rosette~\cite{torlak2013rosette,torlak2014rosette}
+does this with Racket as host, letting one program serve as both runtime and
+symbolic IR. SemGuS~\cite{kim2021semgus} does it relationally, asking the user to
+re-author the semantics as CHCs. Futamura's projections~\cite{futamura1999partial} provide the theoretical foundation, recently operationalised for symbolic interpreters by Wei \& 
+Rompf~\cite{wei2020gensym}: a (symbolic) partial evaluator turns an interpreter into a per-program constraint system. We claim no new theorem and no novel algorithm, and we do not claim Rust-as-host is
+itself a contribution.
+
+\paragraph{Contributions.}
+We frame \rusmt{} as a tool/experience contribution:
+\begin{enumerate}[leftmargin=1.4em,itemsep=2pt]
+\item \textbf{An integrated, direct-style, Rust-native pipeline} that lifts an ordinary
+recursive interpreter to marker-directed bounded synthesis, with two
+interchangeable solver backends (an SMT-LIB text backend driving a Z3
+subprocess, and an in-process backend that builds Z3 terms via \code{z3-sys})
+that can be run together to cross-check (\S\ref{sec:pipeline}).
+\item \textbf{A documented per-construct soundness contract} for the standard
+library---every primitive must equal its Z3 formula on every input---together
+with the guard discipline that reconciles divergences, and an honest account of
+how the contract is actually validated (\S\ref{sec:soundness}).
+\item \textbf{An explicit treatment of synthesis soundness versus completeness},
+with soundness enforced operationally by replay and completeness deliberately
+\emph{not} claimed beyond a structural bound; and the
+single-free-input/fixed-context methodological principle that makes witnesses
+replayable (\S\S\ref{sec:soundness}---\ref{sec:synthesis}).
+\item \textbf{Two case studies and an empirical characterization of the solver
+frontier} (\S\S\ref{sec:cases}---\ref{sec:eval}): \imp{} closes end-to-end, while
+a full \toml{}~1.1.0 parser reaches the limits of the solver on deeply recursive,
+multi-theory, quantified queries. We present the frontier as a general finding
+about solver-aided synthesis from recursive interpreters, \emph{illustrated by}
+the case studies rather than caused by them.
+\end{enumerate}
+
+\paragraph{A motivating fragment.}
+Listing~\ref{lst:div} shows the division case of \imp{}'s arithmetic evaluator.
+The interpreter is ordinary recursive Rust. The only synthesis-specific token is
+\code{Path::fresh()}: it marks the division-by-zero branch as a point we want a
+test to reach. From this single source, \rusmt{} synthesizes the program
+\code{A := (0 / 0)} (\S\ref{sec:eval}); replayed through the very same
+\code{eval\_aexp}, it reaches the marker.
+
+\begin{lstlisting}[style=rust,caption={The division case of \imp{}'s evaluator
+(from \code{lang/src/imp/mod.rs}).},
+label={lst:div}]
+Aexp::Div(l, r) => match eval_aexp(l.reveal(), s) {
+    ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
+    ArithmeticResult::Ok(new_l) => match eval_aexp(r.reveal(), s) {
+        ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
+        ArithmeticResult::Ok(new_r) => {
+            if *new_r.eq(I64::from(0)) {
+                ArithmeticResult::Err(Path::fresh())   // marker: division by zero
+            } else {
+                ArithmeticResult::Ok(new_l.bv_div(new_r))
+            }
+        }
+    },
+},
+\end{lstlisting}
+
+\paragraph{Forward map.}
+\S\ref{sec:bg} fixes background. \S\ref{sec:dsl} describes the DSL.
+\S\ref{sec:pipeline} describes the compilation pipeline.
+\S\ref{sec:soundness} is the soundness story. \S\ref{sec:synthesis} is bounded
+synthesis. \S\ref{sec:cases} presents the two case studies and
+\S\ref{sec:eval} the evaluation. \S\ref{sec:related} positions the work,
+\S\ref{sec:limits} states limitations, and \S\ref{sec:concl} concludes.
+
+\begin{figure}[t]
+\centering
+\input{figures/dual_semantics}
+\caption{One source of truth, two interpretations. The same restricted-Rust
+semantics runs concretely (the oracle) and compiles to a Z3 query (the synthesis
+source).}
+\label{fig:dual}
+\end{figure}
+
+% =====================================================================
+\section{Background}
+\label{sec:bg}
+
+\paragraph{SMT and Z3.}
+A satisfiability-modulo-theories (SMT) solver decides logical formulas over background
+theories---booleans, integers and reals, fixed-width bit-vectors, IEEE floats,
+strings, sequences, arrays, and algebraic datatypes. We target
+Z3~\cite{demoura2008z3} through the SMT-LIB~2.6 input
+language~\cite{barrett2017smtlib}. A query is \emph{sat} (a model exists),
+\emph{unsat} (none does and a proof is found), or
+\emph{unknown}. The \emph{unknown} verdict is fundamental: SMT in full
+generality is undecidable. Decidability can be lost in any of several
+independent ways---individual theories that are themselves undecidable
+(e.g., nonlinear integer arithmetic), combinations of theories that violate
+the preconditions of standard combination procedures, quantifier alternation,
+and recursive function definitions. Z3 handles quantifiers via heuristic
+instantiation (e-matching and model-based quantifier instantiation, MBQI)
+that is necessarily incomplete; on decidable fragments, the solver may still
+return \emph{unknown} when its resource budget is exhausted.
+
+
+\paragraph{Executable semantics.}
+An interpreter that runs the language it specifies is an \emph{executable}
+semantics. Tools such as the K framework~\cite{rosu2010k}, PLT
+Redex~\cite{felleisen2009redex}, and Ott/Lem~\cite{sewell2007ott,mulligan2014lem}
+let one write semantics as rewrite or inference rules and derive interpreters,
+test oracles, and proof-assistant definitions directly from the semantics. The premise is straightforward: when all implementations share one semantic source, specification and implementation agree by 
+construction. Using this approach, \rusmt{} takes the semantics to be an \emph{ordinary recursive function} in the host language and derives one tool---marker-directed test synthesis---from it.
+
+\paragraph{Conformance testing and synthesis.}
+Conformance testing checks an implementation against a specification. Generators
+range from hand-written suites to grammar- and coverage-driven fuzzers such as
+Csmith~\cite{yang2011csmith}. Program \emph{synthesis} searches a space of
+programs for one meeting a specification; syntax-guided synthesis
+(SyGuS)~\cite{alur2013sygus} fixes a grammar and a logical spec, and
+semantics-guided synthesis (SemGuS)~\cite{kim2021semgus} adds user-supplied
+semantics as constrained Horn clauses (CHCs)~\cite{bjorner2015horn}. \rusmt{}
+synthesizes \emph{inputs} (programs in the object language) that reach a path condition in
+a \emph{given} interpreter; the interpreter is written as a function, not as CHCs
+or a grammar.
+
+% =====================================================================
+\section{The \rusmt{} DSL}
+\label{sec:dsl}
+
+A \rusmt{} specification is a Rust program written under restrictions that make
+it translatable to SMT. The restrictions are intentionally severe: programs use
+immutable \code{let} bindings, \code{if} (with a mandatory \code{else}),
+\code{struct}/\code{enum}/\code{match}, and (mutually) recursive function calls.
+There are \emph{no loops}, \emph{no mutation}, and \emph{no references}; recursion
+and quantifiers are the only iterative constructs. Two attribute macros from the
+\code{rusmt-smt-remark} crate enforce the subset. \code{\#[smt\_type]} accepts
+only \code{struct}s and \code{enum}s and injects a \code{Copy}-everything derive
+set, so every value is \code{Copy} (there are no references to alias).
+\code{\#[smt\_fn]} rejects \code{const}/\code{async}/\code{unsafe}/variadic
+functions and method receivers. The body restriction---only \code{let} and a
+trailing expression, no loop or assignment forms---is enforced when the function
+parser rejects every syntactic form it does not explicitly handle.
+
+\paragraph{Standard library: the theory vocabulary.}
+The DSL's types denote Z3 sorts: \code{Boolean} ($\to$ \code{Bool});
+\code{Integer} and \code{Real} (unbounded \code{Int} and \code{Real}, backed by
+big integers and rationals); the bit-vectors \code{I32}, \code{I64}, \code{U32},
+and \code{U64} ($\to$ \code{(\_ BitVec 32)} or \code{(\_ BitVec 64)}, the
+signed/unsigned distinction being a DSL-API interpretation of the same Z3 sort);
+\code{F32} and \code{F64} (IEEE \code{FloatingPoint}); \code{String} (the Strings
+theory); \code{Seq<T>}, \code{Set<T>}, and \code{Array<K,V>}; and two special
+types, \code{Cloak<T>} and \code{Path}, described below. Crucially, the standard
+library represents \emph{Z3's} mathematical theories---not Rust's native
+semantics and not any target language's semantics. Target-language behavior is
+encoded \emph{in the interpreter} using these primitives as building blocks
+(\S\ref{sec:soundness}).
+
+\paragraph{Self-referential ADTs via \code{Cloak<T>}.}
+Algebraic syntax trees are naturally self-referential, e.g.\ \code{Add(Aexp,
+Aexp)}, but Rust forbids infinitely sized types. \code{Cloak<T>} is a
+frontend-only wrapper (analogous to \code{Box<T>}) that lets the author write
+\code{Add(Cloak<Aexp>, Cloak<Aexp>)}; values are wrapped with
+\code{Cloak::shield} and read with \code{.reveal()}. The intermediate
+representation (IR) \emph{erases} \code{Cloak} entirely: every \code{Cloak<T>}
+field lowers to \code{T}, \code{shield}/\code{reveal} lower to identity, and the
+SMT output never mentions \code{Cloak} (Z3 supports recursive datatypes
+natively). The only proviso is well-foundedness: a \code{Cloak<T>} must co-occur
+with at least one non-recursive variant, so the lowered datatype is inhabited.
+
+\paragraph{Markers via \code{Path}.}
+\code{Path::fresh()} allocates a unique marker identifier at a program point of
+interest; \code{Path::merge} unions marker sets. A \code{Path} value is a set of
+integer ids, represented in Z3 as \code{(Array Int Bool)} (a characteristic
+function). Markers are \emph{neutral tags}: they flag where the author wants test
+coverage---error cases, edge conditions---and are not necessarily bugs. Each
+marker (or a merged, disjoint set of ids) becomes one synthesis target
+(\S\ref{sec:synthesis}).
+
+\paragraph{Quantifiers.}
+The DSL provides \code{forall!}, \code{exists!}, and \code{choose!} in a
+\emph{bounded} form over a collection: \code{forall!(x in xs => p)} and
+\code{choose!(x in xs => p)}. \code{choose!} is Hilbert choice---concretely it
+returns the first witness satisfying the predicate; in SMT it is a Skolem
+function constrained by the standard choose axiom. Soundness depends only on
+the chosen value \emph{satisfying} the predicate, never on \emph{which} value is
+chosen, so the Rust-vs-SMT difference is immaterial.
+
+% =====================================================================
+\section{The compilation pipeline}
+\label{sec:pipeline}
+
+Figure~\ref{fig:pipeline} shows the pipeline. The same annotated Rust source is
+either compiled by \code{rustc} and executed, or fed to the \code{rusmt-smt-derive}
+transpiler.
+
+\begin{figure}[t]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/pipeline}}
+\caption{The \rusmt{} pipeline. Restricted Rust passes through the
+\code{remark} macros, is lowered to a sort-checked IR (with Hindley---Milner
+unification, on-demand monomorphization, and collection of \code{path\_targets}),
+and is emitted by one of two backends to Z3. A \emph{sat} model is decoded to
+\code{.imp} source and replayed through the concrete oracle; if the marker fires,
+the witness is valid.}
+\label{fig:pipeline}
+\end{figure}
+
+\paragraph{Parser and IR.}
+The transpiler parses the restricted Rust into its own AST and lowers it to a
+sort-checked IR. Type inference is a simplified Hindley---Milner with union-find
+unification over a fixed lattice of SMT sorts: equivalence classes of type
+variables are merged on the fly, with an occurs check that rejects cyclic
+unification. It is ``simpler than full HM because it operates on a fixed set of
+SMT sorts rather than arbitrary polymorphic types.'' Generics are
+\emph{monomorphized on demand}: function and type instantiations are cached by
+their concrete sort vector, and a call site instantiates (and registers) a new
+monomorph only on a cache miss. (Z3 supports parametric \emph{types} but not
+parametric \emph{functions}, so functions must be monomorphized; types may be
+emitted once as a parametric template.) During lowering, each \code{Path::fresh()}
+is assigned a unique id and recorded in \code{IRContext::path\_targets}, a list of
+id-sets; \code{Path::merge} records the merged set. Each entry becomes one
+synthesis query.
+
+\paragraph{Two backends behind one trait.}
+Both backends consume the same IR through a shared \code{CodeGen} interface
+(\code{process} emits the base program; \code{invoke\_backend} runs the solver;
+\code{process\_path\_queries} turns one target into a complete query). Both apply
+the same Z3 configuration---\code{smt.auto\_config=false} (so the manual
+settings stick), \code{smt.mbqi=true}, \code{smt.ematching=true}---differing only
+in how they transmit it. The \emph{text} backend renders IR intrinsics to
+SMT-LIB2, writes a \code{.smt2} file (kept on disk so it is inspectable), emits
+the configuration as \code{set-option} directives at the top of the file, and
+spawns a \code{z3} subprocess; it passes Z3 a self-timeout (\code{-t:}) and
+additionally guards the subprocess with a watchdog thread, draining stdout and
+stderr on separate threads to avoid pipe deadlock, and reads the verdict as the
+first line equal to \code{sat}/\code{unsat}/\code{unknown} \emph{before}
+consulting the exit code (Z3 exits non-zero for benign reasons such as model
+generation after \code{unknown}). The \emph{API} backend builds Z3 datatypes
+and terms in memory via \code{z3-sys}, applies the same configuration via
+\code{set\_global\_param}, additionally fixes reproducible random seeds, gives
+each target a fresh context, and asserts each query through the C API. The two
+backends are independent implementations of the same semantics and can be run
+together (\code{both}) to cross-check; their model \emph{formats} differ (the
+API backend prints \code{let}-shared subterms and an \code{input\_0 -> ...}
+form), which is not a semantic distinction.
+
+% =====================================================================
+\section{Soundness}
+\label{sec:soundness}
+
+\paragraph{The trusted computing base.}
+The \rusmt{} specification \emph{is} the trusted base. We \emph{assume} it
+correct: the manual transcription of a prose specification or standard into the
+DSL is trusted and is not itself verified. Everything downstream---the SMT
+compilation, the solver, and the synthesized witnesses---is checked back against
+this trusted reference \emph{by re-execution}. In the case studies, the concrete
+parser (source $\to$ AST) and the pretty-printer (AST $\to$ source), together
+with Z3 itself, are also part of the trusted base; a bug in any of them is a bug
+in the results.
+
+\paragraph{The per-construct contract.}
+Soundness rests on a contract for every standard-library primitive:
+\begin{definition}[Per-construct soundness contract]\label{def:contract}
+For every stdlib function $f$ and every concrete input $x$,
+\[
+  \mathit{rust\_impl}(f, x) \;=\; \mathit{z3\_eval}\bigl(\mathit{z3\_formula}(f),\, x\bigr).
+\]
+\end{definition}
+That is, evaluating $f$ concretely in Rust must equal evaluating Z3's formula for
+$f$ on the encoded value. The stdlib denotes Z3's theories; bridging the stdlib
+to a given target language is the interpreter author's job.
+
+\paragraph{The guard / if-then-else pattern.}
+When a primitive matches the target language, the author uses it directly. When it
+diverges only on specific inputs, the author \emph{guards} those inputs and falls
+through to the (Z3-correct) primitive otherwise. Listing~\ref{lst:div} is exactly
+this shape: \code{bv\_div} agrees with Z3 everywhere, so the only special case is
+a zero divisor, which the guard turns into a marker. Because concrete Rust and Z3
+take the \emph{same} branch on the same input, the equality of
+Definition~\ref{def:contract} is preserved through the conditional. The same
+discipline appears inside the stdlib itself where Rust and Z3 would otherwise
+disagree---e.g.\ a bit-vector shift by $\geq$ the width returns $0$ to match Z3's
+\code{bvshl} rather than Rust's wrapping shift, and \code{is\_negative} guards
+\code{NaN} because Z3's \code{fp.isNegative} is \code{false} on all NaNs while
+Rust's \code{is\_sign\_negative} is not.
+
+\paragraph{How the contract is validated.}
+Validation is layered, and we are explicit about what each layer does and does
+not establish. (i) Each stdlib method carries a doc-comment stating the exact
+Z3 formula it must match---a \emph{public commitment} that anchors review and
+future audits. (ii) Example-based unit tests pin the Rust side to Z3's
+documented result for representative inputs (the bit-vector, string, and float
+suites alone hold dozens of such cases) and have caught real divergences during
+development. (iii) For selected error-prone intrinsics the equivalence has
+additionally been checked \emph{universally}, by asserting the negation of
+Definition~\ref{def:contract} and obtaining \code{unsat} from Z3. What does
+\emph{not} exist is a checked-in randomized differential harness that fuzzes
+$\mathit{rust\_impl}$ against $\mathit{z3\_eval}$ across all intrinsics, nor is
+the corpus of universal-equivalence proof scripts a reproducible suite in the
+tree; both are concrete future work (\S\ref{sec:limits}). The cross-backend
+\code{both} mode provides an additional, independent consistency check at the
+whole-query level---it does not establish Definition~\ref{def:contract}, but it
+catches whole-pipeline regressions in either backend.
+
+\paragraph{Single free input; fixed context.}
+A subtle but load-bearing methodological point governs \emph{which} inputs are
+free in the synthesis query.
+\begin{principle}[Free/fixed agreement]\label{prin:free}
+The set of inputs treated as free by the SMT query must coincide with the set of
+inputs left free by the concrete oracle; everything else must be fixed to the
+same value on both sides.
+\end{principle}
+The \imp{} interpreter is run from the \emph{empty} store. Its public entry point
+therefore takes only the program and fixes the store internally:
+\begin{lstlisting}[style=rust]
+#[smt_fn]
+pub fn eval_com(c: Com) -> EvalResult {
+    let s = Array::new();    // context fixed: empty initial store
+    eval_com_inner(c, s)     // c is the single free input
+}
+\end{lstlisting}
+Synthesis then declares exactly one symbolic constant, \code{input\_0 : Com}; the
+store is not a query variable. Were the store left free, Z3 could choose a
+starting state that the concrete (empty-store) run never uses, producing a
+``witness'' that does not replay---a soundness hole. \toml{}'s \code{parse\_toml}
+already takes a single input (a code-point sequence) and builds its cursor and
+context internally, so it satisfies Principle~\ref{prin:free} without a wrapper;
+the contrast makes the point.
+
+\paragraph{Synthesis soundness via replay.}
+\begin{observation}[Soundness of synthesis]
+Every witness Z3 returns, when replayed through the concrete interpreter, reaches
+the targeted marker.
+\end{observation}
+This is enforced \emph{operationally}: the decoded program is re-parsed and
+re-executed, and only a run that fires the marker is accepted. Replay is
+necessary because quantified queries can return a \emph{candidate} model---Z3
+reports \code{sat} accompanied by \code{(:reason-unknown "")}, meaning the model
+satisfied its instantiation heuristics but is not certified. The pipeline records
+such a result as \code{sat} regardless and lets replay be the arbiter. The
+soundness link holds because the program is replayed on the \emph{same} fixed
+context (Principle~\ref{prin:free}) and the stdlib primitives agree with Z3
+(Definition~\ref{def:contract}); identifier and bit-vector decoding (below) do
+not affect which marker fires.
+
+\paragraph{Completeness: not claimed.}
+We do \emph{not} claim completeness in general. Even when an input reaching a
+marker exists, Z3 may return \code{unknown} or time out: the encoded formula can
+fall outside what the solver decides within its resource limits. At best we have
+\emph{bounded} completeness---relative to a structural/fuel bound
+(\S\ref{sec:synthesis})---and even that is contingent on the solver. We state
+this plainly rather than gesture at a guarantee we do not have.
+
+% =====================================================================
+\section{Bounded synthesis}
+\label{sec:synthesis}
+
+\paragraph{Markers to queries.}
+For a target id $i$, the query declares one constant per top-level parameter
+(\code{input\_0}, \dots), applies the entry function to them, and asserts that the
+result is the error value whose carried \code{Path} set contains $i$. A
+\code{Path} is \code{(Array Int Bool)}; \code{Path::fresh($i$)} is
+\code{(store ((as const (Array Int Bool)) false) $i$ true)} and membership is a
+\code{select}. For an enum return type the assertion is guarded by the
+constructor test. Listing~\ref{lst:query} is the actual query \rusmt{} emits for
+\imp{}'s division-by-zero marker.
+
+\begin{lstlisting}[style=smt,caption={The synthesis query for one \imp{} marker
+(text backend). ``Find an \code{input\_0\,:\,Com} whose evaluation is
+\code{EvalResult::Err} carrying marker $0$.''},label={lst:query}]
+(declare-const input_0 Com)
+(assert (and (is-EvalResult_Err (eval_com input_0))
+             (select (field_EvalResult_Err_1_ (eval_com input_0)) 0)))
+(check-sat)
+(get-info :reason-unknown)
+(get-model)
+\end{lstlisting}
+
+\paragraph{Bounded recursion by unrolling.}
+A recursive interpreter is not a finite formula. \rusmt{} offers two routes,
+selected by a \code{k=N} flag. With \code{N=0} (default) recursive
+strongly-connected components (SCCs) are emitted as Z3 \code{define-funs-rec} and
+the solver handles recursion natively. With \code{N\,$\geq$\,1} every recursive SCC
+is unrolled into $N{+}1$ non-recursive, depth-indexed copies $f_0,\dots,f_N$:
+copy $f_d$ calls $f_{d-1}$ for in-SCC callees, $f_0$ is a terminator (the first
+nullary enum constructor, e.g.\ \code{NoMatch}/\code{None}, or a null sentinel),
+and external callers route through $f_N$ via an alias. SCCs are found by
+Kosaraju's algorithm on a call graph that follows \code{let}-bound calls; a
+singleton without a self-loop is treated as non-recursive. Unrolling yields a finite,
+quantifier-light query at the cost of bounding the explored depth: a \code{sat}
+model under depth-$N$ unrolling is a genuine witness reachable in $\leq N$
+recursive steps, which is exactly the sense in which our completeness is
+\emph{bounded}. Inputs whose shortest path needs more than $N$ steps return the
+terminator and are invisible at that bound.
+
+\paragraph{Model decoding and witness hygiene.}
+A \code{sat} model is decoded back into runnable source by a printer that extracts
+only \code{input\_0}, inlines Z3's \code{let}-shared subterms, and maps the
+mangled datatype constructors back to AST nodes. Two practical points: (i)
+solver-chosen identifiers can be degenerate (empty or non-identifier strings) and
+are canonicalized to fresh valid names via a stable map---sound because the marker
+that fires does not depend on the spelling of a variable; and (ii) bit-vector
+literals are decoded as two's-complement \emph{signed} integers (e.g.\
+\code{\#xffff\dots ff} $\to -1$), matching the signed \code{I64} semantics of the
+interpreter. The printer fully parenthesizes operators so the output round-trips
+through the parser.
+
+\paragraph{The loop.}
+Figure~\ref{fig:loop} shows the resulting loop for one target: build the query,
+solve (with $k$-unrolling), decode on \code{sat}, replay through the concrete
+oracle, and accept only if the marker fires. An accepted witness is then run
+against an independent implementation; a divergence in observable behaviour is a
+conformance bug.
+
+\begin{figure}[t]
+\centering
+\resizebox{\textwidth}{!}{\input{figures/synthesis_loop}}
+\caption{The synthesis/replay loop for one marker target. Replay is what
+distinguishes a genuine witness from a candidate model.}
+\label{fig:loop}
+\end{figure}
+
+% =====================================================================
+\section{Case studies}
+\label{sec:cases}
+
+\subsection{\imp{}: closing the loop end-to-end}
+\label{sec:imp}
+
+\imp{} is the canonical small imperative ``while'' language of
+Winskel~\cite{winskel1993}. Its abstract syntax fits on a page, so a reviewer can
+hold the runnable specification against the textbook rules. We add one operator
+beyond Winskel, integer division, precisely so that division by zero is a
+markable condition, and we deviate in one way: reading an uninitialized variable
+is an error rather than defaulting to $0$. These two deviations create the two
+markers. Arithmetic expressions, boolean expressions, and commands are three
+\code{\#[smt\_type]} enums with \code{Cloak<\dots>} at every recursive position;
+the store is \code{Array<String, I64>}. Big-step evaluation is three mutually
+recursive \code{\#[smt\_fn]}s (\code{eval\_aexp}, \code{eval\_bexp}, and
+\code{eval\_com\_inner}, wrapped by the store-fixing \code{eval\_com}). \imp{}
+uses no quantifiers.
+
+The loop closes (\S\ref{sec:eval}): synthesis returns witnesses for both markers,
+the printer renders them as \code{.imp} source, and replaying each through the
+concrete \code{eval\_com} fires the same marker. For the division-by-zero marker
+the synthesized program is \code{A := (0 / 0)}; for the undefined-variable marker
+it is \code{A := v0}, an assignment that reads a variable never written.
+
+\subsection{\toml{}: reaching the solver frontier}
+\label{sec:tomlcase}
+
+\toml{}~1.1.0~\cite{tomlspec} is a real-world configuration-language
+specification. The case study
+is a \emph{complete runnable specification}: every grammar rule is realized as a
+\code{\#[smt\_fn]} over a code-point sequence (\code{Seq<U32>}). The single entry
+point \code{parse\_toml(input: Seq<U32>) -> ParseResult<Value>} wraps the input
+in an internal parser state (cursor plus context bookkeeping), so, by
+Principle~\ref{prin:free}, the only free input is the document. The parser is
+large (on the order of 150 \code{\#[smt\_fn]}s, dozens directly self-recursive)
+and exercises a wide combination of theories in a \emph{single} query:
+bit-vectors at two widths (\code{U32} code points, \code{I64} integer values with
+explicit overflow guards), the Strings theory (heavy concatenation and
+code/character conversions), sequences (the input and the context's
+nested name lists), the theory of arrays (tables as \code{Array<String, Value>}),
+unbounded integers (the cursor), and one use of Hilbert choice under a universal
+quantifier (to merge table keys in canonical order). Values nest mutually:
+arrays contain values and inline tables contain key---values that contain values,
+so the value layer is one large recursive SCC. The parser places markers on the
+many parse-error and specification-violation branches.
+
+This combination is exactly what stresses the solver. We treat \toml{} not as a
+``\toml{} problem'' but as a stress case that locates a general frontier
+(\S\ref{sec:eval}).
+
+% =====================================================================
+\section{Evaluation and discussion}
+\label{sec:eval}
+
+\paragraph{Setup.}
+We measured on the development machine (Apple Silicon, macOS; Z3~4.15.4),
+synthesizing for both \imp{} markers with both backends, under two bounding
+modes: native recursion (\code{k=0}, Z3's \code{define-funs-rec}) and depth-3
+unrolling (\code{k=3}). Every reported witness is replayed through the concrete
+interpreter. The \imp{} numbers are \emph{measured} and reproducible. Aggregate
+\toml{} numbers are marked \code{[TODO: measure]}: a full sweep of the \toml{}
+targets is a multi-hour run (each target may run to a ten-minute timeout) and was
+not re-executed for this paper, so we report the qualitative outcome rather than
+quoting counts we did not reproduce here.
+
+\paragraph{\imp{}: the loop closes (native recursion).}
+Under native recursion (\code{k=0}), both backends solve both markers and every
+witness replays---re-executing the rendered program through the concrete
+\code{eval\_com} fires the targeted marker (Table~\ref{tab:imp}; the witnesses
+are committed as \code{lang/imp/input/\_wit\_*.imp}). Solve times are
+$0.4$---$4.9$\,s. Both witnesses are independently informative. The
+division-by-zero witness \code{A := (0 / 0)} reproduces the minimal path through
+the guard of Listing~\ref{lst:div}, and was assembled by the solver from the
+\code{Aexp} datatype constructors alone---no \imp{} fragment was supplied.
+The undefined-variable witness \code{A := v0} is more telling: the variable name
+\code{v0} is solver-chosen (canonicalized from a degenerate identifier returned
+in the model, see~\S\ref{sec:synthesis}), and the assignment was constructed so
+that the right-hand side reads a variable the empty store never wrote. The two
+backends search independently---the API backend returns the deeper
+\code{v0 := ((((v0 - 1) - 1) - 1) - 1)} for the same marker---and agree on every
+verdict, returning \emph{sat} for both markers.
+
+\begin{table}[t]
+\centering
+\caption{\imp{} synthesis at \code{k=0} (native recursion; measured, Z3~4.15.4).
+``Replay'' re-executes the rendered \code{.imp} through the concrete
+\code{eval\_com}; \checkmark{} means the targeted marker fires.}
+\label{tab:imp}
+\small
+\begin{tabular}{@{}llllc@{}}
+\toprule
+Marker & Backend & Witness (rendered \code{.imp}) & Time & Replay\\
+\midrule
+division by zero    & text (\code{z3\_chc}) & \code{A := (0 / 0)}                       & 409\,ms  & \checkmark\\
+division by zero    & API  (\code{z3\_api}) & \code{v0 := (0 / 0)}                      & 1625\,ms & \checkmark\\
+undefined variable  & text (\code{z3\_chc}) & \code{A := v0}                            & 834\,ms  & \checkmark\\
+undefined variable  & API  (\code{z3\_api}) & \code{v0 := ((((v0 - 1) - 1) - 1) - 1)}   & 4930\,ms & \checkmark\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Candidate models, and why replay matters (unrolling).}
+Depth bounding is a delicate knob. At \code{k=3} the API backend returned the
+\emph{same} program for both targets---\code{if false then skip else ((skip ;
+skip) ; skip)}---in two independent runs ($1.1$---$1.2$\,s each). That program
+reaches \emph{neither} marker: replaying it completes normally and fires nothing,
+so the replay check rejects it. This is the candidate-model phenomenon of
+\S\ref{sec:soundness} observed concretely---a depth-bounded unrolling can satisfy
+the marker assertion through the depth-cutoff terminator rather than through a
+genuine path, and replay is what tells a real witness from a spurious one. Here
+native recursion found genuine witnesses where na\"ive depth-3 unrolling did not,
+a reminder that the unroll depth must be chosen with care and that the replay
+safeguard is not optional.
+
+\paragraph{\toml{}: the solver frontier.}
+Lifting the \toml{} parser produces SMT that Z3 accepts without error, but the
+per-target queries frequently exceed the solving budget. The bottleneck is
+\emph{solver capability on deeply recursive queries that combine string, integer,
+bit-vector, and array reasoning}---not anything specific to \toml{}. The
+mechanisms are well known: Z3's \code{define-funs-rec} is interpreted via
+recursive function unfolding rather than as a decidable theory, and quantifier
+reasoning (where the \toml{} parser uses it for canonical-order key merging)
+relies on model-based quantifier instantiation and e-matching---both incomplete
+heuristics in the general case~\cite{demoura2008z3,barrett2017smtlib}. Two
+observations sharpen this. First, difficulty scales with recursion depth and
+theory combination, not with surface grammar size: shallow markers near the top
+of the parse are the ones most likely to be solved, while markers behind deep
+recursion over the input sequence are the ones that time out. Second, more
+unrolling does not help: it enlarges the formula without unblocking the solver,
+and fewer unrollings help less than one would hope. This is the same wall
+reported elsewhere for solver-aided reasoning over recursive, multi-theory,
+quantified formulas; \toml{} simply crosses it. We therefore present the
+frontier as a property of \emph{the method$\times$the solver}, illustrated by
+\toml{}, and we deliberately do not headline a success-rate number we did not
+re-measure here \code{[TODO: measure full \toml{} sweep]}.
+
+\paragraph{Cross-backend agreement.}
+On \imp{} the text and API backends agree on every verdict (\code{sat} for both
+markers) while exploring different witnesses, exercising the consistency check
+discussed in \S\ref{sec:soundness}. The mode is cheap and catches whole-pipeline
+regressions; it is silent on Definition~\ref{def:contract}, which is the
+contract's job.
+
+% =====================================================================
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Solver-aided host languages.}
+Rosette~\cite{torlak2013rosette,torlak2014rosette} is the closest work: a
+solver-aided host language whose symbolic virtual machine compiles a host subset
+to constraints, stripping non-compilable constructs by concrete evaluation.
+\rusmt{}'s mechanism is kindred. The distinctions are of \emph{emphasis and
+discipline}, not of kind. Rosette composes a symbolic VM on top of host-language
+operations whose agreement with their symbolic counterparts is itself the
+library author's obligation; a later mechanized account of the symbolic
+semantics~\cite{porncharoenwase2022leanette} closed the gap at the VM level but
+the per-primitive agreement remains a library-author commitment.
+\rusmt{} addresses the same obligation differently: rather than a verified VM,
+it makes the per-construct agreement (Definition~\ref{def:contract}) the
+\emph{publicly committed} contract of the standard library, documents every
+primitive's Z3 formula in its doc-comment, pins both sides with example-based
+tests, and---for selected error-prone primitives---discharges the
+universal-equivalence obligation by Z3 negation proofs. The contribution is
+\emph{the contract and its documented validation}, not a new symbolic engine.
+We do not claim Rust-as-host as a contribution.
+
+\paragraph{Semantics-guided synthesis.}
+SemGuS~\cite{kim2021semgus} synthesizes from syntax plus semantics, with
+semantics authored as constrained Horn clauses. \rusmt{}'s users write ordinary
+recursive functions instead of relational CHCs; the difference is the
+\emph{authoring surface} (direct-style vs.\ relational), not the back-end search.
+Synantic~\cite{liu2024synantic} runs in the opposite direction: it
+\emph{synthesizes} a language's semantics (as syntax-directed CHCs) from a
+black-box interpreter via CEGIS, recovering semantics from observed behaviour,
+whereas \rusmt{} compiles from the interpreter's \emph{source} structure. The
+two are complementary.
+
+\paragraph{Relational interpreters.}
+Relational interpreters in miniKanren run ``backward'' to synthesize programs from
+outputs~\cite{byrd2017unified,byrd2012quines}, but require the interpreter to be
+written relationally. \rusmt{} runs an ordinary functional interpreter forward
+under a solver and does not require a relational rewrite.
+
+\paragraph{Executable-semantics frameworks.}
+The K framework~\cite{rosu2010k}, PLT Redex~\cite{felleisen2009redex}, and
+Ott/Lem~\cite{sewell2007ott,mulligan2014lem} build semantics from rewrite or
+inference rules and derive a \emph{suite} of tools. \rusmt{} uses ordinary
+functions and derives \emph{one} tool---marker-directed synthesis---rather than a
+suite.
+
+\paragraph{Bounded model finding.}
+Alloy/Kodkod~\cite{jackson2002alloy,torlak2007kodkod} find bounded models of
+\emph{hand-written} relational formulas. \rusmt{} derives the solver query from
+the executable semantics rather than asking the author for a formula.
+
+\paragraph{Symbolic execution.}
+KLEE~\cite{cadar2008klee} and symbolic execution generally explore a program's
+paths under a solver. \rusmt{} is symbolic execution of an \emph{interpreter},
+with the object-language AST as the symbolic object; path explosion is a shared
+concern, here mitigated (and bounded) by $k$-unrolling.
+
+\paragraph{Interpreters as symbolic compilers.}
+The Futamura projections~\cite{futamura1999partial} and the
+symbolic-interpreter-as-compiler line~\cite{wei2020gensym} observe that an
+interpreter can become a (symbolic) compiler by specialization/staging. \rusmt{}
+shares this conceptual kinship: lifting the interpreter \emph{is} compiling it to
+a symbolic form. We do not stage; we translate the restricted source directly.
+
+\paragraph{CHC verifiers.}
+SeaHorn~\cite{gurfinkel2015seahorn}, RustHorn~\cite{matsushita2020rusthorn}, and
+JayHorn~\cite{kahsai2016jayhorn} translate programs to CHCs for
+\emph{verification} (the unknowns are predicates). \rusmt{} performs
+\emph{synthesis} (the unknown is a program/input). RustHorn is also Rust-facing,
+but its target and question differ.
+
+\paragraph{Conformance-test generation.}
+Coverage- and grammar-driven test generators such as
+Csmith~\cite{yang2011csmith}, and differential or fuzzing-based engine
+testers~\cite{park2021jest,ye2021comfort}, are the \emph{application domain} here,
+not the contribution. \rusmt{} derives \emph{targeted} witnesses from a formal
+executable specification rather than by coverage-driven fuzzing, and can in
+principle report \emph{bounded absence} via an \code{unsat} result.
+
+\paragraph{Summary positioning.}
+Table~\ref{tab:position} situates \rusmt{}. It occupies the integration point
+between solver-aided languages and semantics-directed synthesis, specialized to
+direct-style reference interpreters. Its value is the unified authoring surface,
+the soundness contract, and the empirical characterization of where the solver
+frontier lies---not a new theorem.
+
+\begin{table}[t]
+\centering
+\caption{Positioning. ``Authoring'' is how the semantics/spec is written;
+``derived query'' is whether the solver query is derived from that artifact;
+``unknown'' is what the search solves for.}
+\label{tab:position}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+System & Authoring & Derived query? & Search unknown\\
+\midrule
+\rusmt{}            & functional interpreter (Rust)   & yes & input/program\\
+Rosette               & host-language program           & yes & holes/inputs\\
+SemGuS                & semantics as CHCs               & yes & program (grammar)\\
+miniKanren            & relational interpreter          & yes & program\\
+K / Redex             & rewrite/inference rules         & partial & (tool suite)\\
+Alloy / Kodkod        & relational formula (by hand)    & no  & relational model\\
+KLEE                  & the program under test          & yes & path inputs\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =====================================================================
+\section{Limitations and threats to validity}
+\label{sec:limits}
+
+\paragraph{Restricted subset.}
+The DSL excludes loops, mutation, and references. Some semantics are awkward to
+express purely recursively, and the author must learn which Rust the macros
+accept. This is the price of a clean SMT translation.
+
+\paragraph{No general completeness.}
+We claim only bounded completeness, and even that is contingent on the solver
+(\S\ref{sec:soundness}). Beyond the unroll depth, a reachable marker may be
+reported unreachable; the depth is a knob, not a guarantee.
+
+\paragraph{The solver frontier.}
+The dominant limitation is solver capability on deeply recursive, multi-theory,
+quantified queries (\S\ref{sec:eval}). This is the method's frontier, not a
+case-study defect, and pushing it (better encodings, theory choices, abstraction,
+portfolio solving) is the main open problem.
+
+\paragraph{Candidate models, parser, printer.}
+Quantified and depth-unrolled queries can yield \code{sat} with
+\code{(:reason-unknown)} (\S\ref{sec:eval}). We rely on replay to reject
+spurious candidates; replay is therefore part of the trusted loop. Its absence
+would admit unsound witnesses, and so would a bug in the concrete source parser
+or the model-decoding pretty-printer---both of which are in the TCB
+(\S\ref{sec:soundness}). The pretty-printer is the bridge from Z3 syntax back
+to runnable code, and its correctness is currently established by example
+round-trip tests rather than by a verified translation.
+
+\paragraph{Soundness validation.}
+The per-construct contract is validated by documented formulas, example-based
+tests, and selected manual equivalence proofs---\emph{not} by a committed,
+exhaustive differential harness (\S\ref{sec:soundness}). A primitive whose Rust
+and Z3 sides disagree on an untested input would silently break soundness.
+Building and committing such a harness is concrete future work.
+
+\paragraph{Scope of the empirical claims.}
+The \imp{} numbers are measured on one machine and one solver version; the
+\toml{} aggregate is not re-measured here and is marked accordingly. We make no
+cross-machine or cross-solver claims.
+
+\paragraph{Future work.}
+Beyond pushing the solver frontier and committing a differential audit, we are
+interested in a bounded-completeness theorem relating unroll depth to reachable
+markers, in richer case studies, and---as a longer-term \emph{aspiration} that
+requires substantial further work, not a claim---in unifying algorithmic and
+relational specifications and supporting must/may/forbidden (nondeterministic or
+underspecified) conformance queries.
+
+% =====================================================================
+\section{Conclusion}
+\label{sec:concl}
+
+\rusmt{} lets an author write a language's reference semantics once, as an
+ordinary recursive Rust program, and have it serve simultaneously as the
+conformance oracle and---via automatic compilation to Z3 and marker-directed
+search---as a synthesizer of targeted test programs. The engineering that makes
+this trustworthy is a per-construct soundness contract, a guard discipline, a
+single-free-input methodology, and replay-checked synthesis soundness; the
+honesty is in declining to claim completeness or novelty, and in locating the
+real limit on the solver side. \imp{} shows the loop closing end-to-end; \toml{}
+shows where the frontier is. We hope the integration and the contract are useful
+templates for solver-aided conformance testing from executable semantics.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}

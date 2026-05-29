@@ -1,0 +1,29 @@
+% Fig. 2 -- the compilation pipeline. Wrap in \resizebox{\textwidth}{!}{...}.
+\begin{tikzpicture}[font=\footnotesize,>=Stealth,
+   box/.style={draw,rounded corners,align=center,minimum height=10mm,
+               inner xsep=4pt,fill=gray!6},
+   be/.style ={draw,rounded corners,align=center,minimum height=9mm,
+               inner xsep=3pt,fill=orange!12}]
+  \node[box] (rust)   at (0,0)      {Restricted\\Rust};
+  \node[box] (remark) at (2.2,0)    {\texttt{remark}\\proc-macros};
+  \node[box] (ir)     at (4.7,0)    {IR\\\scriptsize sort check, HM\\\scriptsize unify, monomorph.,\\\scriptsize \texttt{path\_targets}};
+  \node[be]  (text)   at (7.6,1.0)  {Text backend\\\scriptsize SMT-LIB2 $+$ \texttt{z3} proc.};
+  \node[be]  (api)    at (7.6,-1.0) {API backend\\\scriptsize \texttt{z3-sys}, in-process};
+  \node[box,fill=yellow!18] (z3) at (10.4,0) {Z3\\\scriptsize sat/unsat/\\\scriptsize unknown/timeout};
+  \node[box] (model)  at (12.5,0)   {model};
+  \node[box] (print)  at (14.4,0)   {printer\\\scriptsize decode};
+  \node[box,fill=blue!7] (replay) at (16.5,0) {replay\\\scriptsize re-exec\\\scriptsize (Rust oracle)};
+
+  \draw[->] (rust)--(remark);
+  \draw[->] (remark)--(ir);
+  \draw[->] (ir.east) -- (text.west);
+  \draw[->] (ir.east) -- (api.west);
+  \draw[->] (text.east) -- (z3.north west);
+  \draw[->] (api.east)  -- (z3.south west);
+  \draw[->] (z3)--(model) node[midway,above,font=\scriptsize]{sat};
+  \draw[->] (model)--(print);
+  \draw[->] (print)--(replay);
+  \draw[->,dashed] (replay.south) .. controls +(0,-1.1) and +(0,-1.1) ..
+        (print.south)
+        node[midway,below,font=\scriptsize]{marker fires $\Rightarrow$ valid witness};
+\end{tikzpicture}

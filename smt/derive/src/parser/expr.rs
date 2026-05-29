@@ -2462,7 +2462,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                 // holds the types of the collection expressions for example xs and ys in
                 // forall x in xs, y in ys => x + y == 0
                 let mut var_tys = vec![];
-                // holds the (x, xs) and (y, ys) pairs... but the difference between var_exprs and vars is that the expressions in vars are the original expressions in rust syntax and the expressions in var_exprs are the converted expressions in rusmart
+                // holds the (x, xs) and (y, ys) pairs... but the difference between var_exprs and vars is that the expressions in vars are the original expressions in rust syntax and the expressions in var_exprs are the converted expressions in rusmt
                 let mut var_exprs = vec![];
 
                 // parse collection expressions

@@ -5,7 +5,7 @@
 use clap::{Parser, Subcommand};
 use rusmt_lang::imp::{EvalResult, eval_com, parser::format_store, parser::parse_imp_source};
 use rusmt_lang::toml::{ParseResult as TomlParseResult, parse_toml};
-use rusmt_smt_stdlib::{Array, Seq, U32};
+use rusmt_smt_stdlib::{Seq, U32};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -155,8 +155,7 @@ fn process_imp_file(
     let program = parse_imp_source(&source)
         .map_err(|e| format!("Failed to parse IMP file '{}': {}", input_file.display(), e))?;
 
-    let initial_store = Array::new();
-    let final_store_text = match eval_com(program, initial_store) {
+    let final_store_text = match eval_com(program) {
         EvalResult::Ok(store) => format_store(store),
         EvalResult::Err(_path) => {
             println!("[RuSmt] Path-condition marker reached during execution.");

@@ -10,3 +10,6 @@ pub mod toml;
 /// IMP/WHILE module: the canonical small imperative language from
 /// Winskel, *The Formal Semantics of Programming Languages* (MIT Press, 1993),
 pub mod imp;
+
+/// Render synthesized Z3 models of `input_0 : Com` back into `.imp` source.
+pub mod imp_render;

@@ -3,10 +3,23 @@
 use crate::backend::codegen::solvers;
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context;
+use rusmt_lang::imp_render::render_response;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 use syn::Result;
+
+/// For the `imp` case study, a `sat` model is stored as the rendered `.imp`
+/// program (the inverse of the Z3 encoding) rather than the raw solver text; any
+/// other parser, or a non-`sat` response, is stored verbatim.
+fn response_to_store(parser_dir: &Path, raw: String) -> String {
+    let is_imp = parser_dir.file_name().and_then(|s| s.to_str()) == Some("imp");
+    if is_imp {
+        render_response(&raw).unwrap_or(raw)
+    } else {
+        raw
+    }
+}
 
 // module tree
 mod backend;
@@ -37,7 +50,7 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<IRContext> {
 /// `unroll_depth` controls bounded-recursion unrolling in the text backend
 /// (see `CodeGen::process`); pass 0 or not specified to keep the existing recursive emission.
 ///
-/// When the env var `RUSMART_SKIP_INVOKE=1` is set, the per-target Z3 invocation
+/// When the env var `RUSMT_SKIP_INVOKE=1` is set, the per-target Z3 invocation
 /// is skipped — only the SMT files are generated. Useful when iterating on the
 /// codegen and you want to inspect / spot-check a few targets manually.
 pub fn solve<P: AsRef<Path>>(
@@ -46,7 +59,7 @@ pub fn solve<P: AsRef<Path>>(
     output: P,
     unroll_depth: usize,
 ) -> Result<()> {
-    let skip_invoke = std::env::var("RUSMART_SKIP_INVOKE").ok().as_deref() == Some("1");
+    let skip_invoke = std::env::var("RUSMT_SKIP_INVOKE").ok().as_deref() == Some("1");
     for solver in solvers() {
         let name = solver.name();
 
@@ -90,8 +103,8 @@ pub fn solve<P: AsRef<Path>>(
             match solver.invoke_backend(&query_path) {
                 Ok(resp) => {
                     let elapsed_ms = start.elapsed().as_millis();
-                    fs::write(&resp_file, resp.to_string())
-                        .expect("failed to write query response");
+                    let body = response_to_store(output.as_ref(), resp.to_string());
+                    fs::write(&resp_file, body).expect("failed to write query response");
                     fs::write(&timing_file, format!("{}ms", elapsed_ms))
                         .expect("failed to write timing file");
                 }
@@ -137,8 +150,8 @@ pub fn solve_z3_api<P: AsRef<Path>>(
         fs::create_dir_all(&path_target_dir).expect("target directory created");
 
         let resp_file = path_target_dir.join("response.txt");
-        let raw_resp = result.response.to_string();
-        fs::write(&resp_file, raw_resp).expect("failed to write query response");
+        let body = response_to_store(output.as_ref(), result.response.to_string());
+        fs::write(&resp_file, body).expect("failed to write query response");
 
         let timing_file = path_target_dir.join("timing.txt");
         fs::write(&timing_file, format!("{}ms", result.elapsed_ms))

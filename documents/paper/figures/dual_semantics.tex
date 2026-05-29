@@ -1,0 +1,22 @@
+% Fig. 1 -- the dual-semantics picture: one source, two interpretations.
+\begin{tikzpicture}[font=\small,>=Stealth]
+  \node[draw,rounded corners,fill=gray!10,align=center,
+        minimum width=66mm,minimum height=12mm] (src)
+       {Direct-style reference semantics\\[1pt]
+        \emph{restricted Rust} (\texttt{\#[smt\_type]} / \texttt{\#[smt\_fn]})};
+
+  \node[draw,rounded corners,fill=blue!7,align=center,
+        minimum width=48mm,minimum height=15mm]
+       (conc) at ($(src)+(-40mm,-24mm)$)
+       {\textbf{Concrete execution}\\[1pt]ordinary Rust\\conformance \emph{oracle}};
+
+  \node[draw,rounded corners,fill=orange!12,align=center,
+        minimum width=48mm,minimum height=15mm]
+       (smt) at ($(src)+(40mm,-24mm)$)
+       {\textbf{SMT compilation}\\[1pt]auto, no hand-written SMT-LIB\\synthesis \emph{source}};
+
+  \draw[->,thick] (src.south) -- (conc.north)
+       node[pos=0.52,left,align=center,font=\footnotesize]{run on\\input $x$};
+  \draw[->,thick] (src.south) -- (smt.north)
+       node[pos=0.52,right,align=center,font=\footnotesize]{lift to\\Z3 query};
+\end{tikzpicture}

@@ -846,6 +846,8 @@ CPython~3.14.4, BurntSushi \code{toml}~v1.6.0 for Go, and \code{smol-toml}~1.7.1
 for Node. Every document in the suite is one the \rusmt{} oracle rejects, so a
 divergence is an implementation that accepts it. Table~\ref{tab:diff} gives the
 counts; there were \diffcount{} divergences over $\certcount{} \times 4$ runs.
+All four parsers agreed with the oracle on $120$ of the \certcount{} documents,
+so the divergences concentrate in $11$ markers.
 
 \begin{table}[t]
 \centering
@@ -886,8 +888,13 @@ outside the 64-bit signed range, namely \code{+9223372036854775808},
 forms. Our reference rejects them, but \toml{} only \emph{recommends} that at
 least 64-bit signed integers be accepted and handled losslessly, and requires an
 error only when an integer \emph{cannot} be represented losslessly. CPython's
-arbitrary-precision integers represent all six exactly, so on a careful reading
-CPython is within its rights and we are the strict one. The other six are the two
+arbitrary-precision integers represent all six exactly, so on that reading
+CPython is within its rights and we are the strict one. We should say that the
+opposite reading is not unreasonable: one can take a \toml{} integer simply
+\emph{to be} 64-bit, so that anything wider is invalid whatever the host can
+represent. The wording has been discussed upstream, and it is precisely because
+we cannot settle it from the text that we report these six as triage cases rather
+than filing them. The other six are the two
 markers \code{float\_exp\_only\_exp\_overflow\_i32} and
 \code{float\_exp\_only\_exp\_underflow\_i32}, on inputs such as
 \code{x=1e2147483648}, which every one of the four parsers accepts in at least
@@ -901,8 +908,8 @@ We want to dwell on that second group, because it is the outcome we did not
 design for and, on reflection, the more useful one. A divergence is a candidate
 bug \emph{in either direction}: the reference is our own formalisation and not a
 normative document, so the suite tests the reference against the standard just as
-much as it tests the implementations against the reference. Twelve of fifteen
-divergences turned out to be the former. Each arrived as a minimal document
+much as it tests the implementations against the reference. Twelve of the fifteen turned out to
+be the reference at fault rather than the parser. Each arrived as a minimal document
 labelled with the rule at issue, which is what made the triage tractable at all;
 the same twelve would be nearly invisible in a hand-written suite, because a
 person writing tests from a reference tends to encode the reference's assumptions

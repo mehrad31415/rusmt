@@ -3,7 +3,7 @@
 // top-level code generation: orchestrates type, function, and query emission
 pub mod ctxt;
 /// Converts IR expressions to SMT-LIB S-expressions (function bodies)
-mod exp;
+pub(crate) mod exp;
 /// Emits function declarations (`declare-fun`) and definitions (`define-fun`/`define-funs-rec`)
 pub(crate) mod fun;
 /// Maps each IR intrinsic operation to its Z3 SMT-LIB formula

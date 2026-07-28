@@ -16,43 +16,28 @@ Concretely, this gives:
 
 ### Synthesis status
 
-Every error/spec-violation branch is a `Path::named` marker — **186 named
+Every error/spec-violation branch is a `Path::named` marker — **182 named
 markers**, one per call site and one synthesis target each, spanning both
 *syntactic* (malformed tokens, unterminated constructs) and *semantic* (overflow,
 out-of-range date/time, redefined keys) errors.
 
 **Search** is at Z3's frontier. The TOML grammar is large and deeply recursive;
 when `rusmt-smt-derive` lifts it into SMT, the query "find an input that reaches
-target N" exceeds Z3's budget: in a full sweep of all 186 targets at a 20 s
-per-target budget, **no target produced a witness — every query times out**
-(0 `sat`, 0 `unknown`, 0 backend errors). Of the 186, **182 are
-reachable-or-hard** and **4 appear structurally unreachable** (defensive branches
-in the string-content, float-exponent, and dotted-key paths; see
-`generated-suites/toml-proposer/uncovered-markers.txt`) — a timeout on a
-suspected-dead target is *not* a scaling data point. For the 182, this is **a
-scaling-frontier finding, not a defect**: each free code point forces full
-symbolic recursion through the
-parser.
+target N" exceeds Z3's budget: in the measured Stage-1 run, **no target produced
+a witness** at affordable budgets. This is a scaling-frontier finding, not a
+defect: each free code point forces full symbolic recursion through the parser.
 
-**Validation is restored by an array-free re-encoding** (empirically
-regression-preserving — all tests and the differential corpus produce identical
-output across encodings; no formal equivalence proof). Tables were originally
-`Array<String, Value>` — an array of a *recursive* datatype — under which Z3
-returned `unknown ("incomplete (theory array)")` even for a fully concrete input.
-Re-encoding tables as an **array-free** assoc-list datatype (no observed behavior
-change — all tests and the differential corpus produce identical output; no formal
-equivalence proof) lets Z3 *validate* a determined candidate in **sub-second**
-time. This is exactly the asymmetry the
-proposer recovery route exploits: a proposer suggests a complete candidate,
-**Z3 validates** the macro-inlined query, and **replay re-certifies** — so the
-solver stays in the loop (never bypassed), recovering a named-marker conformance
-suite even though blind search is out of reach. That suite, run differentially
-against two mature TOML 1.0 parsers, exposes two genuine inter-implementation
-divergences (see `lang/tests/toml_differential_results.md`).
+Stage 2 exploits the opposite regime: Z3 can decide a determined candidate much
+more easily than it can search for a symbolic document. The model reads the
+emitted SMT-LIB excerpt and Z3 feedback, proposes a complete TOML document, and
+RuSmt pins that document by adding one equality to the original query. Only a
+`sat` result from Z3 plus replay through the concrete parser becomes a witness.
+In the reported run, this produced **131/182** witnesses; **51 markers** remain
+uncovered and are reported by name in the paper. The generated 131-input suite,
+run against four TOML parsers, exposed **15 accept/reject divergences**.
 
 For an end-to-end demo where *search itself* closes the loop, see the
-[IMP case study](../imp/overview.md) (dynamic semantics) and the
-[STLC case study](../stlc/overview.md) (static semantics, via bounded unrolling).
+[IMP case study](../imp/overview.md) (dynamic semantics and AST rendering).
 
 ### Running synthesis
 
@@ -64,6 +49,8 @@ cargo run -p rusmt-smt-derive -- toml parse_toml
 cargo run -p rusmt-smt-derive -- toml parse_toml k=3
 ```
 
-Output goes under `lang/src/synthesis/toml/z3_chc/`, with one response file per
-path-condition target: `target_<N>/response.txt` for a raw solver verdict, or
-`target_<N>/response.toml` for a recovered, replayable TOML witness.
+By default, accepted witnesses are also written as a conformance suite under
+`/tmp/rusmt-suite/toml`; pass `--suite-out <dir>` to choose another location, or
+`--no-suite` to skip suite materialization. Because TOML's top-level input is the
+document text, no separate renderer is needed: each accepted model is already the
+TOML program to run against implementations.

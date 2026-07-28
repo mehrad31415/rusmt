@@ -64,7 +64,8 @@ The env var `RUSMT_SKIP_INVOKE=1` makes the backend run codegen and write
 when the *generated text* is what you are debugging: stopping at `model`
 instead gives you an `IRContext` and no SMT-LIB at all, so it cannot show you a
 malformed `define-fun`. Skipping only the solver is what makes it cheap —
-TOML's 186 targets render in seconds instead of an hour of Z3 budget.
+TOML's 182 targets render in seconds instead of spending a solver budget on
+every marker.
 
 ### Bounded-recursion unrolling (`k=N`)
 

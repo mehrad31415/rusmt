@@ -81,9 +81,8 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 
                 // Sanity checks.
                 modifiers.require_empty()?; // No modifiers are expected
-                match default {
-                    Some((_eq, def)) => bail_on!(def, "no default value expected"),
-                    None => {}
+                if let Some((_eq, def)) = default {
+                    bail_on!(def, "no default value expected")
                 }
 
                 // ident and colon_token are None for tuple structs.
@@ -132,9 +131,8 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
 
                 // Sanity checks.
                 modifiers.require_empty()?; // No modifiers are expected
-                match default {
-                    Some((_eq, def)) => bail_on!(def, "no default value expected"),
-                    None => {}
+                if let Some((_eq, def)) = default {
+                    bail_on!(def, "no default value expected")
                 }
 
                 let name = ensure_some!(ident, field, "name");
@@ -336,9 +334,8 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
 
                     // Sanity checks.
                     modifiers.require_empty()?; // No modifiers are expected
-                    match default {
-                        Some((_eq, def)) => bail_on!(def, "no default value expected"),
-                        None => {}
+                    if let Some((_eq, def)) = default {
+                        bail_on!(def, "no default value expected")
                     }
 
                     ensure_none!(ident, "the field of a tuple struct cannot have a name");
@@ -392,9 +389,8 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
 
                     // Sanity checks.
                     modifiers.require_empty()?; // No modifiers are expected
-                    match default {
-                        Some((_eq, def)) => bail_on!(def, "no default value expected"),
-                        None => {}
+                    if let Some((_eq, def)) = default {
+                        bail_on!(def, "no default value expected")
                     }
 
                     let field_name = ensure_some!(ident, field, "name");

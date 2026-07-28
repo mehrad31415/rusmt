@@ -63,8 +63,8 @@ impl VarDecl {
 impl Display for VarDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::One(name, ty) => return write!(f, "{name}:{ty}"),
-            Self::Pack(decls) => return write!(f, "({})", decls.iter().format(",")),
+            Self::One(name, ty) => write!(f, "{name}:{ty}"),
+            Self::Pack(decls) => write!(f, "({})", decls.iter().format(",")),
         }
     }
 }
@@ -208,7 +208,7 @@ pub struct LetBinding {
 
 impl Display for LetBinding {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "let {} := {}", self.decl, self.bind);
+        write!(f, "let {} := {}", self.decl, self.bind)
     }
 }
 
@@ -258,18 +258,18 @@ pub enum Unpack {
 impl Display for Unpack {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unit => return write!(f, ""),
+            Self::Unit => write!(f, ""),
             Self::Tuple(binds) => {
                 let content = binds
                     .iter()
                     .format_with(",", |(k, v), f| f(&format_args!("{}:{}", *k, v)));
-                return write!(f, "({content})");
+                write!(f, "({content})")
             }
             Self::Record(binds) => {
                 let content = binds
                     .iter()
                     .format_with(",", |(k, v), f| f(&format_args!("{k}:{v}")));
-                return write!(f, "{{{content}}}");
+                write!(f, "{{{content}}}")
             }
         }
     }
@@ -286,7 +286,7 @@ pub struct MatchVariant {
 
 impl Display for MatchVariant {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "{}{}", self.branch, self.unpack);
+        write!(f, "{}{}", self.branch, self.unpack)
     }
 }
 
@@ -301,7 +301,7 @@ pub struct MatchCombo {
 
 impl Display for MatchCombo {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "({}) => {}", self.variants.iter().format(","), self.body);
+        write!(f, "({}) => {}", self.variants.iter().format(","), self.body)
     }
 }
 
@@ -316,7 +316,7 @@ pub struct PhiNode {
 
 impl Display for PhiNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "if {} => {}", self.cond, self.body);
+        write!(f, "if {} => {}", self.cond, self.body)
     }
 }
 
@@ -439,32 +439,32 @@ impl Display for Op {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Var(name) => name.fmt(f),
-            Self::Pack { elems } => return write!(f, "({})", elems.iter().format(",")),
+            Self::Pack { elems } => write!(f, "({})", elems.iter().format(",")),
             Self::Tuple { name, inst, slots } => {
                 if inst.is_empty() {
-                    return write!(f, "{}({})", name, slots.iter().format(","));
+                    write!(f, "{}({})", name, slots.iter().format(","))
                 } else {
-                    return write!(
+                    write!(
                         f,
                         "{}<{}>({})",
                         name,
                         inst.iter().format(","),
                         slots.iter().format(",")
-                    );
+                    )
                 }
             }
             Self::Record { name, inst, fields } => {
                 if inst.is_empty() {
-                    return write!(
+                    write!(
                         f,
                         "{}{{{}}}",
                         name,
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    );
+                    )
                 } else {
-                    return write!(
+                    write!(
                         f,
                         "{}<{}>{{{}}}",
                         name,
@@ -472,14 +472,14 @@ impl Display for Op {
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    );
+                    )
                 }
             }
             Self::EnumUnit { branch, inst } => {
                 if inst.is_empty() {
-                    return write!(f, "{branch}");
+                    write!(f, "{branch}")
                 } else {
-                    return write!(f, "{}<{}>", branch, inst.iter().format(","));
+                    write!(f, "{}<{}>", branch, inst.iter().format(","))
                 }
             }
             Self::EnumTuple {
@@ -488,15 +488,15 @@ impl Display for Op {
                 slots,
             } => {
                 if inst.is_empty() {
-                    return write!(f, "{}({})", branch, slots.iter().format(","));
+                    write!(f, "{}({})", branch, slots.iter().format(","))
                 } else {
-                    return write!(
+                    write!(
                         f,
                         "{}<{}>({})",
                         branch,
                         inst.iter().format(","),
                         slots.iter().format(",")
-                    );
+                    )
                 }
             }
             Self::EnumRecord {
@@ -505,16 +505,16 @@ impl Display for Op {
                 fields,
             } => {
                 if inst.is_empty() {
-                    return write!(
+                    write!(
                         f,
                         "{}{{{}}}",
                         branch,
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    );
+                    )
                 } else {
-                    return write!(
+                    write!(
                         f,
                         "{}<{}>{{{}}}",
                         branch,
@@ -522,17 +522,17 @@ impl Display for Op {
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    );
+                    )
                 }
             }
-            Self::AccessSlot { base, slot } => return write!(f, "{base}.{slot}"),
-            Self::AccessField { base, field } => return write!(f, "{base}.{field}"),
+            Self::AccessSlot { base, slot } => write!(f, "{base}.{slot}"),
+            Self::AccessField { base, field } => write!(f, "{base}.{field}"),
             Self::Match { heads, combo } => {
                 writeln!(f, "match ({}) {{", heads.iter().format(","))?;
                 for case in combo {
                     writeln!(f, "  case {case}")?;
                 }
-                return write!(f, "}}");
+                write!(f, "}}")
             }
             Self::Phi { nodes, default } => {
                 writeln!(f, "phi {{")?;
@@ -540,47 +540,47 @@ impl Display for Op {
                     writeln!(f, "  {node}")?;
                 }
                 writeln!(f, "  default => {default}")?;
-                return write!(f, "}}");
+                write!(f, "}}")
             }
             Self::IterForall { vars, body } => {
-                return write!(
+                write!(
                     f,
                     "forall [{}] {}",
                     vars.iter()
                         .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
-                );
+                )
             }
             Self::IterExists { vars, body } => {
-                return write!(
+                write!(
                     f,
                     "exists [{}] {}",
                     vars.iter()
                         .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
-                );
+                )
             }
             Self::IterChoose { vars, body } => {
-                return write!(
+                write!(
                     f,
                     "choose [{}] {}",
                     vars.iter()
                         .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
-                );
+                )
             }
             Self::Intrinsic(intrinsic) => intrinsic.fmt(f),
             Self::Procedure { name, inst, args } => {
                 if inst.is_empty() {
-                    return write!(f, "{}({})", name, args.iter().format(","));
+                    write!(f, "{}({})", name, args.iter().format(","))
                 } else {
-                    return write!(
+                    write!(
                         f,
                         "{}<{}>({})",
                         name,
                         inst.iter().format(","),
                         args.iter().format(",")
-                    );
+                    )
                 }
             }
         }
@@ -599,7 +599,7 @@ pub struct Inst {
 
 impl Display for Inst {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        return write!(f, "{}: {}", self.op, self.ty);
+        write!(f, "{}: {}", self.op, self.ty)
     }
 }
 
@@ -1125,7 +1125,7 @@ impl Display for Expr {
                 for binding in lets {
                     writeln!(f, "{binding};")?;
                 }
-                return write!(f, "{body}");
+                write!(f, "{body}")
             }
         }
     }

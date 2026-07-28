@@ -11,7 +11,9 @@ use crate::backend::z3::exp::format_expression;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
-use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str, mk_functions_unrolled_str};
+use crate::backend::z3::fun::{
+    mk_function_str, mk_functions_rec_str, mk_functions_unrolled_str, mk_stub_str,
+};
 use crate::backend::z3::sort::format_sort;
 use crate::backend::z3::sort::get_generic_param_count;
 use crate::backend::z3::sort::{collect_type_edges, resolve_type_name, scc_from_edges};
@@ -35,12 +37,26 @@ use std::time::Duration;
 use std::time::Instant;
 
 /// A wrapper for Z3 backends that implements the `CodeGen` trait.
-pub struct CodeGenZ3;
+#[derive(Default)]
+pub struct CodeGenZ3 {
+    /// Functions to emit as stubs rather than definitions — the marker-directed
+    /// slice (`crate::slice`). Empty means emit the whole program.
+    stub: BTreeSet<UsrFunId>,
+}
+
+impl CodeGenZ3 {
+    /// Emit `stub`'s functions as constants of their return sort instead of
+    /// their real bodies. See [`crate::slice`] for what this is for and why a
+    /// model over the result is only a candidate.
+    pub fn with_stubs(stub: BTreeSet<UsrFunId>) -> Self {
+        Self { stub }
+    }
+}
 
 impl CodeGen for CodeGenZ3 {
     /// Constructs a new `CodeGenZ3` wrapper.
     fn new() -> Self {
-        Self
+        Self::default()
     }
 
     /// Returns the name of the backend code generator, which is "z3_chc".
@@ -466,10 +482,8 @@ impl CodeGen for CodeGenZ3 {
                                     );
                                     let ne = format!("(>= (seq.len {coll_str}) 1)");
                                     if vars.len() == 1 && rets.len() == 1 {
-                                        seq_minimality = Some(seq_min_conjunct(
-                                            &var.name.to_string(),
-                                            &body_str,
-                                        ));
+                                        seq_minimality =
+                                            Some(seq_min_conjunct(var.name.as_ref(), &body_str));
                                     }
                                     (m, ne)
                                 }
@@ -541,7 +555,11 @@ impl CodeGen for CodeGenZ3 {
                 let sig = ir.fn_registry.retrieve_sig(fid);
                 let def = ir.fn_registry.retrieve_def(fid);
 
-                let function_str = mk_function_str(function_name, sig, def, ir);
+                let function_str = if self.stub.contains(&fid) {
+                    mk_stub_str(function_name, sig, ir)
+                } else {
+                    mk_function_str(function_name, sig, def, ir)
+                };
                 l!(x, "{}", function_str);
             }
 
@@ -556,7 +574,11 @@ impl CodeGen for CodeGenZ3 {
                         let function_name = resolve_function_name(ir, fid);
                         let sig = ir.fn_registry.retrieve_sig(fid);
                         let def = ir.fn_registry.retrieve_def(fid);
-                        let function_str = mk_function_str(function_name, sig, def, ir);
+                        let function_str = if self.stub.contains(&fid) {
+                            mk_stub_str(function_name, sig, ir)
+                        } else {
+                            mk_function_str(function_name, sig, def, ir)
+                        };
                         l!(x, "{}", function_str);
                         continue;
                     }
@@ -792,8 +814,8 @@ const SEQ_MIN_IDX: &str = "__min_idx";
 /// the first hit, so the stdlib's answer is the *smallest* satisfying index.
 /// Without this the axiom says only "some satisfying index", leaving Z3 free to
 /// answer with a different one — the model then validates, replay picks another
-/// index, and the candidate is rejected. Sound either way (the certifier never
-/// accepts it), but it burns proposer rounds on a witness that was never wrong.
+/// index, and the candidate is rejected. Sound either way, but it burns proposer
+/// rounds on a witness that was never wrong.
 ///
 /// # Why this is not a nested quantifier
 ///

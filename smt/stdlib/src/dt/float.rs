@@ -948,7 +948,11 @@ mod tests {
 
         // to_real — 3.5 is exactly representable in binary, so the rational is 7/2.
         // (`Real` has no float literal; see the `dt::real` module docs.)
-        assert!(*F64::from(3.5).to_real().eq(Real::from(7).div(Real::from(2))));
+        assert!(
+            *F64::from(3.5)
+                .to_real()
+                .eq(Real::from(7).div(Real::from(2)))
+        );
 
         // to_i32
         assert!(*F64::from(42.9).to_i32().eq(I32::from(42)));

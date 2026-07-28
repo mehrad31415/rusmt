@@ -40,6 +40,17 @@ enum Languages {
         #[arg(required = true)]
         path: PathBuf,
     },
+    /// Print one input's canonical observable behaviour, for differential
+    /// comparison against an independent implementation: `OK`, `ERR <marker>`,
+    /// `NOMATCH`, or `TIMEOUT`. One line per file, nothing else.
+    Observe {
+        /// Object language: `toml` or `imp`.
+        #[arg(required = true)]
+        language: String,
+        /// The input file.
+        #[arg(required = true)]
+        path: PathBuf,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,6 +74,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     eprintln!("[RuSmt] Skipping '{}': {}", file.display(), e);
                 }
             }
+        }
+        // `cargo run observe <toml|imp> <FILE>`
+        Languages::Observe { language, path } => {
+            let source = fs::read_to_string(&path)?;
+            let budget = rusmt_lang::certify::DEFAULT_BUDGET;
+            let line = match language.as_str() {
+                "toml" => rusmt_lang::certify::observe_toml(&source, budget),
+                "imp" => rusmt_lang::certify::observe_imp(&source),
+                other => return Err(format!("unknown language `{other}`").into()),
+            };
+            println!("{line}");
         }
     }
 

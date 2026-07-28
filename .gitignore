@@ -1,20 +1,28 @@
 # artifacts
-/target/
+target/
 
 # macOS
 .DS_Store
 
 # visual studio code
-*.sln
-
-# tmp files
-tmp/
+.sln
 
 # generated synthesis artifacts
 lang/src/synthesis/
 
 # z3 trace dumps
-**/*.z3-trace
+.z3-trace
 
 # claude files
 .claude/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc

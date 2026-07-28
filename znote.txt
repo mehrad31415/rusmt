@@ -1,0 +1,29 @@
+1 - I need to verify Reproducing the paper's results in the main readme.
+2 - I need to address the paper's comments and read the specops paper at the end.
+3 - Actually do a conformance test.
+4 - check all the unit tests and complete them
+5 - future feature (upstream Z3?): Z3 has no parametric FUNCTIONS -- you can't write
+    `(define-fun (par (T) ...))`, only parametric TYPES `(declare-datatypes ((F 1)) ((par (T) ...)))`.
+    That's why we must monomorphize: emit one concrete `(define-fun foo_String ...)` per
+    instantiation instead of a single generic template. If Z3 ever supported parametric
+    define-fun, we could emit one template per generic function (like we already do for types)
+    and drop the whole monomorphization-of-functions machinery.
+6 - rust analyzer is very conservative: 
+      let root = |n: &BigInt| -> BigInt {
+      match exact_nth_root(n, q) {
+          Some(root) => root,
+          None => panic!(
+              "DSL Error: Real::pow({}, {}) is not rational -- Z3 evaluates it as an \
+               algebraic number, which `Real` (a BigRational) cannot represent",
+              self.inner.as_ref(),
+              e
+          ),
+      }
+  };
+
+   let root = |n: &BigInt| -> BigInt {
+      exact_nth_root(n, q).unwrap_or_else(|| {
+          panic!(...)
+      })
+  };
+Rust Analyzer sometimes mis-infers macro-heavy panic! blocks as () instead of !, especially inside closures.

@@ -88,7 +88,7 @@ expects a string of pure hex digits — no `0x` prefix, no underscores. On inval
 - **Rust** panics (`unwrap()` on a failed parse).
 - **Z3** silently returns a wrong value (e.g., 0 for an unrecognized character).
 
-These behaviors diverge, but this does NOT break soundness because we make the assumption that the author of the the interpreter must validate inputs before calling stdlib functions. The TOML parser, for example, checks each character with `is_hex_digit` and strips prefixes/underscores before the string ever reaches `from_hex_str`. Invalid inputs are caught by the parser and produce `Path::fresh()` — they never reach the stdlib.
+These behaviors diverge, but this does NOT break soundness because we make the assumption that the author of the the interpreter must validate inputs before calling stdlib functions. The TOML parser, for example, checks each character with `is_hex_digit` and strips prefixes/underscores before the string ever reaches `from_hex_str`. Invalid inputs are caught by the parser and produce a named marker (`Path::named(String::from("..."))`) — they never reach the stdlib.
 
 **Rule for interpreter authors:** if a stdlib function can panic on certain inputs, your
 interpreter must guard against those inputs explicitly. Do not rely on the stdlib to handle
@@ -99,7 +99,7 @@ the documented preconditions. If you violate them, Rust panics and Z3 gives garb
 
 The following `Integer` methods panic on certain inputs. When writing an interpreter, we guard against these inputs before calling the method (e.g., checking divisor != 0 before calling `div`). On the unguarded path, we use the method as-is. On the guarded path, the panic is unreachable and we must replicate the behavior of the target language:
 
-- If the target language treats the operation as an error — division by zero, for instance, is a runtime error in most languages — place a Path::fresh() in the guard branch. This marks the branch as a synthesis target: Z3 will search for an input that drives the program into that error case. If you don't want Z3 to synthesize such inputs (say the error case is uninteresting for testing), just handle the branch normally — return a sentinel or default value — and omit the marker. The branch still executes correctly under concrete Rust; it simply isn't used as a synthesis goal.
+- If the target language treats the operation as an error — division by zero, for instance, is a runtime error in most languages — place a named marker `Path::named(String::from("division_by_zero"))` in the guard branch. This marks the branch as a synthesis target: Z3 will search for an input that drives the program into that error case. The marker name is a stdlib `String` (written with the DSL string-literal idiom `String::from("...")`); its stable id (`marker_id(name)`) is what lets a synthesized input be replay-certified to reach *this specific* marker. If you don't want Z3 to synthesize such inputs (say the error case is uninteresting for testing), just handle the branch normally — return a sentinel or default value — and omit the marker. The branch still executes correctly under concrete Rust; it simply isn't used as a synthesis goal.
 
 - If the target language defines specific behavior for that input (e.g., saturating, wrapping, returning a default), we implement that behavior using other stdlib operations in the guard branch.
 
@@ -144,8 +144,47 @@ In either case, the guard branch handles the diverging input before the stdlib m
 ### Real — functions that panic
 
 - `div(rhs)` — panics when `rhs == 0`
-- `pow(exp)` — panics when `exp` is too large for i32 (outside `[-2147483648, 2147483647]`)
+- `pow(exp)` — see [Real.pow vs SMT-LIB `^`](#realpow-vs-smt-lib-) below
 - `to_f32()` — panics when value is too large for f32 but is finite in f64 (roughly `1.8 * 10^308 > |value| > 3.4 * 10^38`)
+
+#### `Real.pow` vs SMT-LIB `^`
+
+SMT-LIB `^` is **real** exponentiation, not integer power: Z3 evaluates a
+fractional exponent rather than rejecting it. `Real.pow` therefore computes
+fractional exponents too, exactly, as `x^(p/q) = (x^p)^(1/q)` on the reduced
+rational.
+
+`(a/b)^(1/q)` is rational exactly when `a` and `b` are each a perfect `q`-th
+power, so representability is decided per side by `exact_nth_root`, which takes
+the integer floor of the root and squares back to check.
+
+Three cases have no `Real` to return, and all three **panic**:
+
+- **Irrational result** — `(^ 2.0 2.5)` simplifies to
+  `(root-obj (+ (^ x 2) (- 32)) 2)`, i.e. `sqrt(32)`. Z3 works over the
+  algebraic numbers; `BigRational` is not closed under roots.
+- **Negative base with an even root** — `(^ (- 2.0) 0.5)` has no real value;
+  Z3 echoes the term back unsimplified and pinning it to a number returns
+  `unknown`.
+- **`0 ^ 0`** — Z3 leaves `(^ 0.0 0.0)` uninterpreted.
+
+Every *other* member of the `0^x` family is `0` on both sides — positive or
+negative, integer or fractional:
+
+| expression | Z3 | `Real.pow` |
+|---|---|---|
+| `0 ^ 2`, `0 ^ 1`, `0 ^ 0.5`, `0 ^ (1/3)` | `0.0` | `0` |
+| `0 ^ -0.5`, `0 ^ -1`, `0 ^ -2` | `0.0` | `0` |
+
+For the negative exponents Z3 is *committed*, not merely permissive:
+`(= (^ 0.0 (- 1.0)) 0.0)` is **sat** and `(= .. 1.0)` is **unsat**. That value
+is Z3's division-by-zero convention rather than mathematics, but matching it
+keeps the two semantics in step — and it is also why `Real.pow` short-circuits
+the zero base before reaching `BigRational::pow`, which would otherwise build a
+zero denominator and panic.
+
+`p` outside `i32` or `q` outside `u32` also panics; see
+[Theoretical limitations](#theoretical-limitations-unguarded-edge-cases).
 
 ### Bitvector — functions that panic
 
@@ -174,7 +213,7 @@ Z3 does not support binary operations (such as `set.inter`, `set.union`, `set.se
 
   > Note that `union` / `intersection` / `difference` /
   `symmetric_difference`
-  > *could* be expressed in the text-based version as 
+  > *could* be expressed as 
   array operations
   > (`(_ map or)`, `(_ map and)`, and so on). The problem 
   is cardinality: Z3
@@ -200,7 +239,7 @@ Z3 does not support binary operations (such as `set.inter`, `set.union`, `set.se
 
 The following cases are not explicitly guarded in the TOML interpreter because they require pathological inputs that are impractical in real-world usage. They are documented here for completeness.
 
-- **`Real.pow(exp)` with digit-count exponent**: In the TOML float parser (`float.rs`), expressions like `Real::from(10).pow(number_of_digits(val).neg().to_real())` use the digit count of a parsed number as the exponent. `Real.pow` internally calls `exp.to_integer().to_i32().unwrap()`, which panics if the exponent exceeds i32 range. The digit count is not explicitly bounded — a TOML file containing a number with more than 2,147,483,647 digits (~2 GB of digits alone) would trigger this panic. In practice, the parser would exhaust memory long before reaching this limit. No guard is added because the input size makes this an undesirable test case in any realistic scenario.
+- **`Real.pow(exp)` with digit-count exponent**: In the TOML float parser (`float.rs`), expressions like `Real::from(10).pow(number_of_digits(val).neg().to_real())` use the digit count of a parsed number as the exponent. `Real.pow` converts the exponent's numerator to `i32` (and, for a fractional exponent, its denominator to `u32`), which panics if either exceeds range. The digit count is not explicitly bounded — a TOML file containing a number with more than 2,147,483,647 digits (~2 GB of digits alone) would trigger this panic. In practice, the parser would exhaust memory long before reaching this limit. No guard is added because the input size makes this an undesirable test case in any realistic scenario. (These exponents are always integral, coming from `Integer::to_real()`, so the fractional path is never taken here.)
 
 - **`Integer.pow(exp)` with digit-count exponent**: Similarly, `Integer::from(10).pow(number_of_digits(val))`in the float parser uses the digit count as an exponent for `Integer.pow`, which requires the exponent to fit in `u32`. A number with more than 4,294,967,295 digits (~4 GB) would be needed to trigger this. Same practical impossibility applies.
 
@@ -217,6 +256,33 @@ The stdlib `String` operations (`length`, `at`, `substr`, `index_of`, etc.) coun
 This affects all position-based operations (`at`, `substr`, `index_of`) since indices refer to different units. The soundness invariant holds only for ASCII input. Changing the Rust side to byte-based is not desirable: Z3's `str.at` can return individual bytes of multi-byte UTF-8 sequences (e.g., `(str.at "😀" 0)` returns `\xF0`), which cannot be stored in a Rust `String` (requires valid UTF-8).
 
 For interpreter authors: restrict string inputs to ASCII for soundness.
+
+#### Z3's character range stops at `0x2FFFF`
+
+Separately from the byte/code-point split above, Z3's character sort cannot
+represent every Unicode scalar value. Measured on 4.15.4:
+
+| code point | `str.to_code` | `str.len (str.from_code cp)` | Rust `String::from_code` |
+|---|---|---|---|
+| `0x1F600` | `128512` | `1` | 1 char |
+| `0x2FFFF` | `196607` | `1` | 1 char |
+| `0x30000` | `-1` | `0` | 1 char |
+| `0x10FFFF` | `-1` | `0` | 1 char |
+
+Above `0x2FFFF`, `str.from_code` yields the **empty** string while the stdlib's
+`String::from_code` (`char::from_u32(..).unwrap()`) yields a one-character
+string — so `length()` disagrees immediately. This is reachable: the TOML
+front-end feeds input code points straight into `String::from_code`.
+
+The transpiler therefore bounds `U32` / `Seq<U32>` inputs to
+`[0x0, 0xD7FF] ∪ [0xE000, 0x2FFFF]` (`backend/z3/ctxt.rs::unicode_bound_for`).
+Note the two exclusions differ in kind:
+
+- Surrogates are not scalar values at all, so no concrete `char` produces them —
+  excluding them costs nothing.
+- The `0x2FFFF` ceiling **does** cost completeness: planes 3–16 are valid
+  `char`s that will never be proposed as inputs. "No input found" for a target
+  does not rule out one that needs a code point above `0x2FFFF`.
 
 ---
 
@@ -258,7 +324,7 @@ Note that this approach of wrapping inside a struct with an `inner` field is a c
 - `Seq<T>`: SMT sequence of type `T` similar to Rust `Vec<T>`.
 - `Set<T>`: SMT set of type `T` similar to Rust `BTreeSet<T>`.
 - `Array<K, V>`: SMT array of key type `K` and value type `V`, similar to a persistent `BTreeMap<K, V>` in the interpreter.
-- `Path`: A special marker to indicate path conditions reached during execution. A path marker is created by calling `Path::fresh()`; every call yields a new marker with a unique inner id (the inner id is incremented by one each time a new marker is created). Markers can be unioned with `Path::merge(a, b)`. The Z3 representation is `(Array Int Bool)` — see `book/src/dev/smt/derive.md`.
+- `Path`: A **set-valued** marker indicating the path conditions reached during execution. A named path marker is created with `Path::named(name)`, where `name` is a stdlib `String` (written with the DSL idiom `Path::named(String::from("..."))`); its integer id is the stable hash `marker_id(name)`, identical in the transpiled SMT query and on concrete replay — which is what makes per-target replay certification sound. Markers are unioned with `Path::merge(a, b)` to accumulate multiple errors for *graceful*, non-short-circuiting error handling. Concretely a `Path` is a set of marker ids; the SMT search encodes it as a single representative id (`Int`) for decidability (see `book/src/dev/smt/derive.md`).
 
 ### Expressions
 

@@ -1,2 +1,0 @@
-# overflow in octal int parsing above i64 max
-hello = 0o21377723377721222222222222

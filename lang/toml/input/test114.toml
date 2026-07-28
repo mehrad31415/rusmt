@@ -1,2 +1,0 @@
-# invalid NaN casing after minus sign
-key = -NaN

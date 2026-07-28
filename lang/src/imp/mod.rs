@@ -18,28 +18,36 @@ pub mod parser;
 /// - when a variable is undefined but used.
 #[smt_type]
 pub enum EvalResult {
+    /// A path-condition marker fired (division by zero or undefined variable).
     Err(Path),
+    /// Normal termination with the final store.
     Ok(Array<String, I64>),
 }
 
 /// The result of reading a location from the store.
 #[smt_type]
 pub enum StoreGetResult {
+    /// The location is absent from the store (`undefined_variable`).
     Err(Path),
+    /// The value stored at the location.
     Ok(I64),
 }
 
 /// The result of arithmetic operations.
 #[smt_type]
 pub enum ArithmeticResult {
+    /// A path-condition marker fired while evaluating the expression.
     Err(Path),
+    /// The value of the expression.
     Ok(I64),
 }
 
 /// The result of boolean operations.
 #[smt_type]
 pub enum BooleanResult {
+    /// A path-condition marker fired while evaluating the expression.
     Err(Path),
+    /// The value of the expression.
     Ok(Boolean),
 }
 
@@ -49,8 +57,8 @@ pub fn store_get(s: Array<String, I64>, x: String) -> StoreGetResult {
     if *s.contains_key(x) {
         StoreGetResult::Ok(s.select(x))
     } else {
-        // target 0: undefined variable
-        StoreGetResult::Err(Path::fresh())
+        // Named marker: reading a variable absent from the store is an error.
+        StoreGetResult::Err(Path::named(String::from("undefined_variable")))
     }
 }
 
@@ -95,8 +103,8 @@ pub fn eval_aexp(a: Aexp, s: Array<String, I64>) -> ArithmeticResult {
                 ArithmeticResult::Err(e) => ArithmeticResult::Err(e),
                 ArithmeticResult::Ok(new_r) => {
                     if *new_r.eq(I64::from(0)) {
-                        // target 1: division by zero
-                        ArithmeticResult::Err(Path::fresh())
+                        // Named marker: division by a zero divisor is an error.
+                        ArithmeticResult::Err(Path::named(String::from("division_by_zero")))
                     } else {
                         ArithmeticResult::Ok(new_l.bv_div(new_r))
                     }

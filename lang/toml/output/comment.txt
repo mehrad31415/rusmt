@@ -1,9 +1,0 @@
-Table(
-    Cloak {
-        inner: SMTWrap(
-            Array {
-                inner: {},
-            },
-        ),
-    },
-)

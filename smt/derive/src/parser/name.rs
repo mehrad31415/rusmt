@@ -183,7 +183,7 @@ macro_rules! name {
         impl Display for $name {
             /// Formats the identifier for display purposes.
             fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.ident)
+                return write!(f, "{}", self.ident);
             }
         }
 
@@ -391,7 +391,7 @@ impl UsrFuncName {
             // String operations.
             | "new" | "length" | "concat" | "at" | "index_of" | "index_of_default" | "substr" | "contains" | "starts_with" | "ends_with" | "to_int" | "from_int" | "le" | "lt" | "ge" | "gt" | "is_digit" | "from_code" | "to_code" | "is_empty" | "replace" | "replace_all" 
             // Path-condition marker.
-            | "fresh" | "merge"
+            | "named" | "merge"
             // Cloak operations.
             | "shield" | "reveal"
             // Sequence operations.

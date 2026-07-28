@@ -36,6 +36,35 @@ pub trait SMT: 'static + Copy + Clone + Default + Hash + Send + Sync + Debug {
     }
 }
 
+/// A macro to implement the SMT trait for the floating-point types.
+///
+/// Floats cannot use the plain [`smt_impl`] body, because `OrderedFloat`'s
+/// ordering treats `+0.0` and `-0.0` as `Equal` while SMT-LIB's `=` — which
+/// the backend emits for [`SMT::eq`] — treats them as two distinct values of
+/// the `FloatingPoint` sort. Without this override,
+/// `F32::pos_zero().eq(F32::neg_zero())` is `true` concretely and `false` in
+/// the solver.
+///
+/// Note the NaN case is deliberately left to `OrderedFloat`, which compares
+/// all NaNs `Equal`: SMT-LIB's `FloatingPoint` sort has a *single* NaN value,
+/// so `(= NaN NaN)` is `true` regardless of payload. Comparing raw `to_bits()`
+/// would match the zeros but break NaN.
+#[macro_export]
+macro_rules! smt_float_impl {
+    ($l:ty, $prim:ty) => {
+        impl SMT for $l {
+            fn _cmp(self, rhs: Self) -> Ordering {
+                let (a, b): ($prim, $prim) = (self.inner.0, rhs.inner.0);
+                if a == 0.0 && b == 0.0 {
+                    // both zeros: order -0.0 immediately before +0.0
+                    return b.is_sign_negative().cmp(&a.is_sign_negative());
+                }
+                self.inner.cmp(&rhs.inner)
+            }
+        }
+    };
+}
+
 /// A macro to implement the SMT trait for a type.
 #[macro_export]
 macro_rules! smt_impl {

@@ -11,7 +11,7 @@
 //! * `Array<K,V>`
 
 use crate::smt::SMT;
-use crate::smt_impl;
+use crate::{smt_float_impl, smt_impl};
 use crate::wrap::SMTWrap;
 use internment::Intern;
 use num_bigint::BigInt;
@@ -132,8 +132,8 @@ smt_impl!(I32);
 smt_impl!(I64);
 smt_impl!(U32);
 smt_impl!(U64);
-smt_impl!(F32);
-smt_impl!(F64);
+smt_float_impl!(F32, f32);
+smt_float_impl!(F64, f64);
 smt_impl!(String);
 smt_impl!(Seq, T);
 smt_impl!(Set, T);
@@ -173,20 +173,22 @@ mod test {
     /// checking the implementation of the the arith_operator macro on Real types
     #[test]
     fn test_arith_operator_macro_real() {
-        let num1 = Real::from(7.5);
-        let num2 = Real::from(2.0);
+        // `Real` takes integer literals only, so non-integer values are written
+        // as exact ratios: 7.5 = 15/2, 9.5 = 19/2, 3.75 = 15/4, 5.5 = 11/2.
+        let num1 = Real::from(15).div(Real::from(2)); // 7.5
+        let num2 = Real::from(2);
 
         let res = num1.add(num2);
-        assert!(*res.eq(Real::from(9.5))); // 7.5 + 2 = 9.5
+        assert!(*res.eq(Real::from(19).div(Real::from(2)))); // 7.5 + 2 = 9.5
 
         let res = num1.div(num2);
-        assert!(*res.eq(Real::from(3.75))); // 7.5 / 2 = 3.75
+        assert!(*res.eq(Real::from(15).div(Real::from(4)))); // 7.5 / 2 = 3.75
 
         let res = num1.mul(num2);
-        assert!(*res.eq(Real::from(15.0))); // 7.5 * 2 = 15
+        assert!(*res.eq(Real::from(15))); // 7.5 * 2 = 15
 
         let res = num1.sub(num2);
-        assert!(*res.eq(Real::from(5.5))); // 7.5 - 2 = 5.5
+        assert!(*res.eq(Real::from(11).div(Real::from(2)))); // 7.5 - 2 = 5.5
     }
 
     /// testing the cmp method of the SMT trait on the Boolean type
@@ -212,7 +214,7 @@ mod test {
     /// testing the cmp method of the SMT trait on the Real type
     #[test]
     fn test_smt_impl_macro_real() {
-        let var1 = Real::from(1.75);
+        let var1 = Real::from(7).div(Real::from(4)); // 1.75
         let var2 = Real::from(3);
 
         let res = var1._cmp(var2); // 1.75 < 3
@@ -308,8 +310,8 @@ mod test {
     /// checking the implementation of the the order_operator macro on Real types
     #[test]
     fn test_order_operator_macro_real() {
-        let var1 = Real::from(1.5);
-        let var2 = Real::from(3.0);
+        let var1 = Real::from(3).div(Real::from(2)); // 1.5
+        let var2 = Real::from(3);
 
         let res1 = var1.lt(var2); // 1.5 < 3
         let res2 = var1.le(var2); // 1.5 <= 3
@@ -344,7 +346,9 @@ mod test {
         assert!(var2.inner.to_u8().expect("Failed to convert BigInt to u8") == 10);
     }
 
-    /// checking the implementation of the real_from_literal_int macro
+    /// checking the implementation of the real_from_literal macro
+    ///
+    /// Integer widths only.
     #[test]
     fn test_real_from_literal_int_macro() {
         let a = Real::from(1i8);
@@ -353,8 +357,8 @@ mod test {
         let d = Real::from(1i64);
         let e = Real::from(1i128);
         let f = Real::from(1isize);
-        let g = Real::from(1f32);
-        let h = Real::from(1f64);
+        let g = Real::from(1u64);
+        let h = Real::from(1usize);
 
         assert!(
             *a.eq(b).and(
@@ -526,26 +530,22 @@ mod test {
     /// testing the from method of Real
     #[test]
     fn test_from_real() {
-        let var1 = Real::from(1.5);
-        let var2 = Real::from(1.6);
+        let var1 = Real::from(3).div(Real::from(2)); // 1.5
+        let var2 = Real::from(8).div(Real::from(5)); // 1.6
 
         assert!(*var1.eq(Real {
-            inner: Intern::new(
-                BigRational::from_float(1.5).expect("Failed to convert float to BigRational")
-            )
+            inner: Intern::new(BigRational::new(BigInt::from(3), BigInt::from(2)))
         }));
         assert!(*var2.eq(Real {
-            inner: Intern::new(
-                BigRational::from_float(1.6).expect("Failed to convert float to BigRational")
-            )
+            inner: Intern::new(BigRational::new(BigInt::from(8), BigInt::from(5)))
         }));
     }
 
     /// testing the ne/eq/_cmp methods of real
     #[test]
     fn test_cmp_real() {
-        let var1 = Real::from(1.0);
-        let var2 = Real::from(243.3);
+        let var1 = Real::from(1);
+        let var2 = Real::from(2433).div(Real::from(10)); // 243.3
 
         assert_eq!(var1._cmp(var2), Ordering::Less);
     }
@@ -553,7 +553,7 @@ mod test {
     #[test]
     fn test_eq_real() {
         let var1 = Real::from(1);
-        let var2 = Real::from(243.3);
+        let var2 = Real::from(2433).div(Real::from(10)); // 243.3
 
         assert!(*var1.eq(var2).eq(false.into())); // equivalent to *var1.ne(var2)
     }
@@ -561,7 +561,7 @@ mod test {
     #[test]
     fn test_ne_real() {
         let var1 = Real::from(1);
-        let var2 = Real::from(243.3);
+        let var2 = Real::from(2433).div(Real::from(10)); // 243.3
 
         assert!(*var1.ne(var2));
     }
@@ -573,40 +573,6 @@ mod test {
         assert!(*var1.eq(String {
             inner: Intern::new(std::string::String::from("value"))
         }));
-    }
-
-    /// testing the new method of Path
-    #[test]
-    fn test_path() {
-        let var1 = Path::fresh();
-        let var2 = Path::fresh();
-
-        // each newly created path-marker only has one element.
-        assert_eq!(var1.inner.len(), 1);
-        assert_eq!(var2.inner.len(), 1);
-
-        // the first one is created with a value of zero and each new one is incremented by one.
-        assert_eq!(*var1.inner.iter().next().expect("Path is empty"), 0);
-        assert_eq!(*var2.inner.iter().next().expect("Path is empty"), 1);
-
-        // in merging, the elements are included in one set, thus {0,1} is inside var3.
-        let var3 = var1.merge(var2);
-        assert_eq!(var3.inner.len(), 2);
-
-        // the first element is 0 and the second element is 1.
-        assert_eq!(*var3.inner.iter().next().expect("Path is empty"), 0);
-        assert_eq!(
-            *var3
-                .inner
-                .iter()
-                .nth(1)
-                .expect("Path does not have 2 elements"),
-            1
-        );
-
-        // in merging var3 {0,1} and var1 {0} because the inner value is a set the values are not duplicated.
-        let var4 = var3.merge(var1);
-        assert_eq!(var4.inner.len(), 2);
     }
 
     /// testing the eq method for SMTWrap

@@ -1,1 +1,1 @@
-[`rusmt-smt-derive`](#) -- Rust→IR→SMT-LIB compiler with two Z3 backends (text: SMT-LIB2 + subprocess, API: in-process z3-sys)
+[`rusmt-smt-derive`](#) -- Rust→IR→SMT-LIB compiler driving Z3 over SMT-LIB2 (one-shot subprocess, or a persistent `z3 -in` session for the guided loop)

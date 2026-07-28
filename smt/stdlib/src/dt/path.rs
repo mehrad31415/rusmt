@@ -1,33 +1,57 @@
-//! Path-condition markers of the Executable semantic model.
+//! Path-condition markers of the executable semantic model.
 
-use crate::Path;
+use crate::{Path, String};
 use internment::Intern;
-use std::{
-    collections::BTreeSet,
-    sync::atomic::{self, AtomicUsize},
-};
+use std::collections::BTreeSet;
 
-/// A path counter to generate unique path-condition markers.
-static _PATH_COUNTER_: AtomicUsize = AtomicUsize::new(0);
+/// Stable, name-derived marker identifier (FNV-1a, masked to a non-negative
+/// `usize`).
+///
+/// This is the single source of truth for the integer id of a *named* marker.
+/// It is deliberately a pure function of the marker name only: the transpiler
+/// computes it from the string literal it reads in the source, and the concrete
+/// evaluator computes it from the same name at run time, so the id the SMT
+/// query asserts membership of and the id the concrete `Path` carries on replay
+/// are identical *by construction*. That coincidence is what makes per-target replay
+/// certification sound.
+pub fn marker_id(name: &str) -> usize {
+    // FNV-1a over the name's bytes.
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in name.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    // Mask the sign bit so the id is a non-negative `usize`/SMT `Int`.
+    (h & 0x7fff_ffff_ffff_ffff) as usize
+}
 
+/// The set of marker ids carried by `p`.
+pub fn marker_ids(p: Path) -> BTreeSet<usize> {
+    p.inner.as_ref().clone()
+}
+
+/// The SMT surface of `Path`. Every method here is registered as an intrinsic
+/// in `ApplyDatabase::with_intrinsics` and is callable from transpiled code.
 impl Path {
-    /// Every time the fresh() method is called, a new path-condition marker is created with a unique inner value.
-    /// The inner values are incremented by one each time a new marker is created.
-    pub fn fresh() -> Self {
-        let id = _PATH_COUNTER_.fetch_add(1, atomic::Ordering::SeqCst);
-
-        // Panic on overflow (practical limit is 2^63 markers)
-        if id == usize::MAX {
-            panic!("Path counter overflow: generated 2^64 unique path markers");
-        }
+    /// Allocate a *named* path-condition marker whose integer id is
+    /// [`marker_id`]`(name)`.
+    ///
+    /// example: `Path::named(String::from("division_by_zero"))`.
+    pub fn named(name: String) -> Self {
         let mut set = BTreeSet::new();
-        set.insert(id);
+        set.insert(marker_id(name.inner.as_ref()));
         Self {
             inner: Intern::new(set),
         }
     }
 
-    /// Merge two path markers (no duplicates)
+    /// Union two path markers into one (deduplicated).
+    ///
+    /// This is the accumulation primitive for *graceful*, non-short-circuiting
+    /// error handling: an interpreter that continues past a recoverable error
+    /// instead of bailing on the first one `merge`s each marker it raises, so
+    /// the resulting `Path` carries *every* error encountered rather than only
+    /// the first.
     pub fn merge(self, r: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.union(&r.inner).copied().collect()),

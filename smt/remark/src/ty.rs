@@ -4,9 +4,7 @@ use crate::generics::TypeParamGroup;
 use crate::{bail_on, ensure_none, ensure_some};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    Field, FieldMutability, Fields, Index, Item, ItemEnum, ItemStruct, Result, Variant, parse_quote,
-};
+use syn::{Field, Fields, Index, Item, ItemEnum, ItemStruct, Result, Variant, parse_quote};
 
 /// Derives the `SMT` trait implementation for a struct.
 fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
@@ -72,17 +70,20 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
                 //     },
                 // },
                 let Field {
-                    attrs: _,   // attributes applied to the field
-                    vis: _,     // visibility of the field
-                    mutability, // mutability of the field - Rust does not allow you to declare individual fields of a struct as mutable when defining the struct type itself. Instead, mutability in Rust is controlled at the instance level, not the type level.
-                    ident,      // name of the field
+                    attrs: _, // attributes applied to the field
+                    vis: _,   // visibility of the field
+                    ident,    // name of the field
                     colon_token,
                     ty: _,
+                    default,
+                    modifiers,
                 } = field;
 
                 // Sanity checks.
-                if !matches!(mutability, FieldMutability::None) {
-                    bail_on!(field, "unexpected field mutability declaration"); // unreachable code
+                modifiers.require_empty()?; // No modifiers are expected
+                match default {
+                    Some((_eq, def)) => bail_on!(def, "no default value expected"),
+                    None => {}
                 }
 
                 // ident and colon_token are None for tuple structs.
@@ -122,18 +123,20 @@ fn derive_for_struct(item: &mut ItemStruct) -> Result<TokenStream> {
                 let Field {
                     attrs: _,
                     vis: _,
-                    mutability,
                     ident,
                     colon_token,
                     ty: _,
+                    default,
+                    modifiers,
                 } = field;
 
                 // Sanity checks.
-                if !matches!(mutability, FieldMutability::None) {
-                    // this will always be none because there are no other options (for now)
-                    // unreachable code
-                    bail_on!(field, "unexpected field mutability declaration");
+                modifiers.require_empty()?; // No modifiers are expected
+                match default {
+                    Some((_eq, def)) => bail_on!(def, "no default value expected"),
+                    None => {}
                 }
+
                 let name = ensure_some!(ident, field, "name");
                 ensure_some!(colon_token, field, "colon");
 
@@ -324,16 +327,20 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                     let Field {
                         attrs: _,
                         vis: _,
-                        mutability,
                         ident,
                         colon_token,
                         ty: _,
+                        default,
+                        modifiers,
                     } = field;
 
                     // Sanity checks.
-                    if !matches!(mutability, FieldMutability::None) {
-                        bail_on!(field, "unexpected field mutability declaration");
+                    modifiers.require_empty()?; // No modifiers are expected
+                    match default {
+                        Some((_eq, def)) => bail_on!(def, "no default value expected"),
+                        None => {}
                     }
+
                     ensure_none!(ident, "the field of a tuple struct cannot have a name");
                     ensure_none!(
                         colon_token,
@@ -376,16 +383,20 @@ fn derive_for_enum(item: &mut ItemEnum) -> Result<TokenStream> {
                     let Field {
                         attrs: _,
                         vis: _,
-                        mutability,
                         ident,
                         colon_token,
                         ty: _,
+                        default,
+                        modifiers,
                     } = field;
 
                     // Sanity checks.
-                    if !matches!(mutability, FieldMutability::None) {
-                        bail_on!(field, "unexpected field mutability declaration");
+                    modifiers.require_empty()?; // No modifiers are expected
+                    match default {
+                        Some((_eq, def)) => bail_on!(def, "no default value expected"),
+                        None => {}
                     }
+
                     let field_name = ensure_some!(ident, field, "name");
                     ensure_some!(colon_token, field, "colon");
 

@@ -8,9 +8,9 @@ use num_bigint::BigInt;
 pub trait BitvectorOps: Sized + SMT {
     /// `(bvnot a)`
     fn bv_not(self) -> Self;
-    /// `(bvredand a)`
+    /// `(= (bvredand {}) (_ bv1 1))`
     fn bv_redand(self) -> Boolean;
-    /// `(bvredor a)`
+    /// `(= (bvredor {}) (_ bv1 1))`
     fn bv_redor(self) -> Boolean;
     /// `(bvand a b)`
     fn bv_and(self, rhs: Self) -> Self;
@@ -36,7 +36,7 @@ pub trait BitvectorOps: Sized + SMT {
     fn bv_div(self, rhs: Self) -> Self;
     /// `(bvsrem a b)` or `(bvurem a b)`
     fn bv_rem(self, rhs: Self) -> Self;
-    /// `(bvsmod a b)`
+    /// `(bvsmod a b)` or `(bvurem a b)`
     fn bv_mod(self, rhs: Self) -> Self;
     /// `(bvshl a b)`
     fn bv_shl(self, rhs: Self) -> Self;
@@ -44,9 +44,9 @@ pub trait BitvectorOps: Sized + SMT {
     fn bv_lshr(self, rhs: Self) -> Self;
     /// `(bvashr a b)`
     fn bv_ashr(self, rhs: Self) -> Self;
-    /// `(_ rotate_left self) rhs)`
+    /// `(ext_rotate_left self) rhs)`
     fn bv_rotate_left(self, rhs: Self) -> Self;
-    /// `(_ rotate_right self) rhs)`
+    /// `(ext_rotate_right self) rhs)`
     fn bv_rotate_right(self, rhs: Self) -> Self;
     /// `(bvslt a b)` or `(bvult a b)`
     fn bv_lt(self, rhs: Self) -> Boolean;

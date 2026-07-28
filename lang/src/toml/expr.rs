@@ -1,25 +1,25 @@
 //! parsing Expressions
 use crate::toml::{
     Optional, ParseResult, ParserContext, State,
-    ast::Value,
+    ast::{Table, Value, table_new, table_store},
     current_char,
     key_value::parse_key_value,
     parse_comment, parse_newline, parse_ws,
     table::{parse_array_table, parse_std_table},
 };
 use rusmt_smt_remark_derive::smt_fn;
-use rusmt_smt_stdlib::{Array, Boolean, Cloak, Integer, Path, Seq, String, smt::SMT};
+use rusmt_smt_stdlib::{Boolean, Cloak, Integer, Path, Seq, String, smt::SMT};
 
 /// `expression = ws [ comment ] / ws keyval ws [ comment ] / ws table ws [ comment ]`
 #[smt_fn]
-pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>> {
+pub(crate) fn parse_expression(state: State) -> ParseResult<Table> {
     let state_after_ws = parse_ws(state);
     // now we are at the first non-whitespace character - take a peek
     let next_char = current_char(state_after_ws);
     match next_char {
         Optional::None => {
             // covers ws and reaches eof
-            return ParseResult::Ok(Array::new(), state_after_ws);
+            return ParseResult::Ok(table_new(), state_after_ws);
         }
         Optional::Some(_x) => {
             match parse_newline(state_after_ws) {
@@ -77,7 +77,11 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         // println!(
                                                         //     "Table redefinition error using dotted keys"
                                                         // );
-                                                        return ParseResult::Err(Path::fresh());
+                                                        return ParseResult::Err(Path::named(
+                                                            String::from(
+                                                                "dotted_key_redefines_std_table",
+                                                            ),
+                                                        ));
                                                     } else {
                                                         if *has_intersection(
                                                             inline_tables,
@@ -87,7 +91,11 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                             // println!(
                                                             //     "Cannot redefine an inline table using dotted keys"
                                                             // );
-                                                            return ParseResult::Err(Path::fresh());
+                                                            return ParseResult::Err(Path::named(
+                                                                String::from(
+                                                                    "dotted_key_redefines_inline_table",
+                                                                ),
+                                                            ));
                                                         } else {
                                                             if *has_intersection(
                                                                 array_of_tables,
@@ -98,7 +106,9 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                                 //     "Cannot redefine an array table using dotted keys"
                                                                 // );
                                                                 return ParseResult::Err(
-                                                                    Path::fresh(),
+                                                                    Path::named(String::from(
+                                                                        "dotted_key_redefines_array_table",
+                                                                    )),
                                                                 );
                                                             } else {
                                                                 let new_implicit_table_names =
@@ -186,18 +196,28 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                             if *explicit_tables.contains(_table_name) {
                                                 // table redefinition error
                                                 // println!("Duplicate table definition error");
-                                                return ParseResult::Err(Path::fresh());
+                                                return ParseResult::Err(Path::named(
+                                                    String::from("std_table_duplicate"),
+                                                ));
                                             } else {
                                                 // its a std table
                                                 if *closed_tables.contains(_table_name) {
                                                     // cannot define a table that was already implicitly defined
                                                     // println!("Cannot redefine an implicitly defined table");
-                                                    return ParseResult::Err(Path::fresh());
+                                                    return ParseResult::Err(Path::named(
+                                                        String::from(
+                                                            "std_table_redefines_implicit_table",
+                                                        ),
+                                                    ));
                                                 } else {
                                                     if *array_of_tables.contains(_table_name) {
                                                         // cannot define a standard table that was already defined as an array table
                                                         // println!("Cannot redefine an array table as a standard table");
-                                                        return ParseResult::Err(Path::fresh());
+                                                        return ParseResult::Err(Path::named(
+                                                            String::from(
+                                                                "std_table_redefines_array_table",
+                                                            ),
+                                                        ));
                                                     } else {
                                                         if *has_intersection(
                                                             inline_tables,
@@ -208,10 +228,14 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                         ) {
                                                             // cannot define a table that was already defined as an inline table
                                                             // println!("Cannot redefine an inline table as a standard table");
-                                                            return ParseResult::Err(Path::fresh());
+                                                            return ParseResult::Err(Path::named(
+                                                                String::from(
+                                                                    "std_table_redefines_inline_table",
+                                                                ),
+                                                            ));
                                                         } else {
                                                             let empty_smt_table = Value::Table(
-                                                                Cloak::shield(Array::new()),
+                                                                Cloak::shield(table_new()),
                                                             );
                                                             let patch = make_nested_table(
                                                                 _table_name,
@@ -281,13 +305,17 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                     if *explicit_tables.contains(new_array_table_name) {
                                         // table redefinition error
                                         // println!("This array table was already defined as a standard table");
-                                        return ParseResult::Err(Path::fresh());
+                                        return ParseResult::Err(Path::named(String::from(
+                                            "array_table_redefines_std_table",
+                                        )));
                                     } else {
                                         // its a new array table
                                         if *closed_tables.contains(new_array_table_name) {
                                             // cannot define a table that was already closed
                                             // println!("Cannot redefine a closed table");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "array_table_redefines_closed_table",
+                                            )));
                                         } else {
                                             if *has_intersection(
                                                 inline_tables,
@@ -298,12 +326,20 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                             ) {
                                                 // cannot define a table that was already defined as an inline table
                                                 // println!("Cannot redefine an inline table as an array table");
-                                                return ParseResult::Err(Path::fresh());
+                                                return ParseResult::Err(Path::named(
+                                                    String::from(
+                                                        "array_table_redefines_inline_table",
+                                                    ),
+                                                ));
                                             } else {
                                                 if *inline_arrays.contains(new_array_table_name) {
                                                     // cannot define an array table that was already defined as an inline array
                                                     // println!("Cannot redefine an inline array as an array table");
-                                                    return ParseResult::Err(Path::fresh());
+                                                    return ParseResult::Err(Path::named(
+                                                        String::from(
+                                                            "array_table_redefines_inline_array",
+                                                        ),
+                                                    ));
                                                 } else {
                                                     let new_array_tables = array_of_tables
                                                         .append(new_array_table_name);
@@ -322,7 +358,7 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                                                     };
                                                     let arr = Value::Array(Cloak::shield(
                                                         Seq::new().append(Value::Table(
-                                                            Cloak::shield(Array::new()),
+                                                            Cloak::shield(table_new()),
                                                         )),
                                                     ));
                                                     let patch = make_nested_table(
@@ -361,12 +397,12 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
                         }
                         // its a comment
                         ParseResult::Ok(_comment, state_after_comment) => {
-                            return ParseResult::Ok(Array::new(), state_after_comment);
+                            return ParseResult::Ok(table_new(), state_after_comment);
                         }
                     }
                 }
                 ParseResult::Ok(_newline, _state_after_newline) => {
-                    return ParseResult::Ok(Array::new(), state_after_ws);
+                    return ParseResult::Ok(table_new(), state_after_ws);
                 }
             }
         }
@@ -375,17 +411,18 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Array<String, Value>
 
 /// Helper function to create nested tables from dotted keys.
 #[smt_fn]
-pub(crate) fn make_nested_table(keys: Seq<String>, value: Value) -> Array<String, Value> {
+pub(crate) fn make_nested_table(keys: Seq<String>, value: Value) -> Table {
     if *keys.length().eq(0.into()) {
-        return Array::<String, Value>::new(); // empty table name which is the root
+        return table_new(); // empty table name which is the root
     } else {
         if *keys.length().eq(1.into()) {
-            return Array::<String, Value>::new().store(keys.at(Integer::from(0)), value);
+            return table_store(table_new(), keys.at(Integer::from(0)), value);
         } else {
             let key = keys.at(Integer::from(0));
             let rest_of_keys = keys.extract(Integer::from(1), keys.length().sub(Integer::from(1)));
-            let arr = Array::<String, Value>::new();
-            let filled_arr = arr.store(
+            let arr = table_new();
+            let filled_arr = table_store(
+                arr,
                 key,
                 Value::Table(Cloak::shield(make_nested_table(rest_of_keys, value))),
             );

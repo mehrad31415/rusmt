@@ -66,7 +66,7 @@ impl Boolean {
         }
     }
 
-    /// IFF
+    /// IFF (equivalence)
     pub fn iff(self, rhs: Self) -> Self {
         Self {
             inner: self.inner == rhs.inner,

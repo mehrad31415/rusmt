@@ -13,3 +13,6 @@ pub mod imp;
 
 /// Render synthesized Z3 models of `input_0 : Com` back into `.imp` source.
 pub mod imp_render;
+
+/// Module for certifying the correctness of programs.
+pub mod certify;

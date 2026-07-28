@@ -18,7 +18,7 @@ RuSmt’s _type system_ is the set of **intrinsic SMT sorts** that the transpile
 - **Strings**
   - `String` (SMT-LIB `String`)
 - **Path-condition marker**
-  - `Path` (a synthesis-target marker — `Path::fresh()` allocates a unique id, `Path::merge` is a set of path IDs)
+  - `Path` (a synthesis-target marker — `Path::named(String::from("..."))` creates a marker whose id is a stable hash of the name; `Path::merge` unions two markers into a set of ids)
 
 ## Parametric SMT sorts
 

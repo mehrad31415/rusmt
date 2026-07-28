@@ -1,9 +1,13 @@
 //! A parser for the TOML v1.1.0 specification.
 
-use crate::toml::{ast::Value, expr::parse_expression, table::recursive_merge_tables};
+use crate::toml::{
+    ast::{Table, Value},
+    expr::parse_expression,
+    table::recursive_merge_tables,
+};
 use rusmt_smt_remark_derive::{smt_fn, smt_type};
 use rusmt_smt_stdlib::{
-    Array, Boolean, Cloak, Integer, Path, Seq, String, U32, bitvector::BitvectorOps, smt::SMT,
+    Boolean, Cloak, Integer, Path, Seq, String, U32, bitvector::BitvectorOps, smt::SMT,
 };
 
 /// array
@@ -255,7 +259,7 @@ fn parse_comment_rest(acc: String, state: State) -> ParseResult<String> {
                 } else {
                     // invalid character in comment
                     // println!("Invalid character in comment");
-                    ParseResult::Err(Path::fresh())
+                    ParseResult::Err(Path::named(String::from("comment_invalid_char")))
                 }
             }
         }
@@ -410,7 +414,7 @@ fn parse_toml_inner(state: State) -> ParseResult<Value> {
 
 /// `*( newline expression )` - helper function for `parse_toml`
 #[smt_fn]
-fn parse_toml_loop(acc: Array<String, Value>, state: State) -> ParseResult<Value> {
+fn parse_toml_loop(acc: Table, state: State) -> ParseResult<Value> {
     match current_char(state) {
         // recursion base case: end of input
         Optional::None => ParseResult::Ok(Value::Table(Cloak::shield(acc)), state),
@@ -428,7 +432,9 @@ fn parse_toml_loop(acc: Array<String, Value>, state: State) -> ParseResult<Value
                                 }
                                 Optional::None => {
                                     // println!("Error merging tables; type mismatch?");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "toml_table_merge_type_mismatch",
+                                    )));
                                 }
                             }
                         }
@@ -438,7 +444,9 @@ fn parse_toml_loop(acc: Array<String, Value>, state: State) -> ParseResult<Value
                 }
                 ParseResult::NoMatch => {
                     // println!("Expected newline but found something else");
-                    return ParseResult::Err(Path::fresh()); // expected newline but not found (for this to be invoked the expression parsing needs to terminate complete)
+                    return ParseResult::Err(Path::named(String::from(
+                        "toml_expected_newline_between_expressions",
+                    ))); // expected newline but not found (for this to be invoked the expression parsing needs to terminate complete)
                 }
                 ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
             }

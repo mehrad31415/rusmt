@@ -1,14 +1,15 @@
 //! Render a synthesized Z3 model of `input_0 : Com` back into `.imp` source.
 //!
-//! Synthesis writes a raw Z3 model to `synthesis/imp/<backend>/target_*/response.txt`.
-//! For a `sat` result the only relevant definition is `input_0` — the synthesized
-//! program.
+//! For a `sat` result the only relevant definition in the Z3 model is `input_0`
+//! — the synthesized program — which this module decodes. Synthesis stores the
+//! rendered program under `synthesis/imp/<backend>/target_*/response.imp` (a
+//! non-`sat` model has no program to render and stays `response.txt`).
 
 use crate::imp::ast::{Aexp, Bexp, Com};
 use rusmt_smt_stdlib::{Cloak, I64, String as SmtString, smt::SMT};
 use std::collections::HashMap;
 
-/// Render a whole `response.txt`: `Some(source)` for a `sat` model, `None` for
+/// Render a whole solver response: `Some(source)` for a `sat` model, `None` for
 /// `unsat`/`unknown`/`timeout`/malformed input.
 pub fn render_response(response_text: &str) -> Option<String> {
     if response_text.lines().next()?.trim() != "sat" {
@@ -32,8 +33,7 @@ pub fn com_to_source(c: &Com) -> String {
     Printer::default().com(c)
 }
 
-/// Locate the `input_0` value in either serialization: the text backend emits
-/// `(define-fun input_0 () Com <value>)`, the API backend emits `input_0 -> <value>`.
+/// Locate the `input_0` value. `(get-model)` emits
 fn extract_input_0(model: &str) -> Option<Sexp> {
     if let Some(idx) = model.find("(define-fun input_0") {
         match Reader::new(&model[idx..]).read() {

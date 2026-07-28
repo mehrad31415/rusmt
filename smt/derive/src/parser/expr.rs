@@ -63,10 +63,8 @@ impl VarDecl {
 impl Display for VarDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::One(name, ty) => write!(f, "{name}:{ty}"),
-            Self::Pack(decls) => {
-                write!(f, "({})", decls.iter().format(","))
-            }
+            Self::One(name, ty) => return write!(f, "{name}:{ty}"),
+            Self::Pack(decls) => return write!(f, "({})", decls.iter().format(",")),
         }
     }
 }
@@ -210,7 +208,7 @@ pub struct LetBinding {
 
 impl Display for LetBinding {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "let {} := {}", self.decl, self.bind)
+        return write!(f, "let {} := {}", self.decl, self.bind);
     }
 }
 
@@ -260,18 +258,18 @@ pub enum Unpack {
 impl Display for Unpack {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unit => write!(f, ""),
+            Self::Unit => return write!(f, ""),
             Self::Tuple(binds) => {
                 let content = binds
                     .iter()
                     .format_with(",", |(k, v), f| f(&format_args!("{}:{}", *k, v)));
-                write!(f, "({content})")
+                return write!(f, "({content})");
             }
             Self::Record(binds) => {
                 let content = binds
                     .iter()
                     .format_with(",", |(k, v), f| f(&format_args!("{k}:{v}")));
-                write!(f, "{{{content}}}")
+                return write!(f, "{{{content}}}");
             }
         }
     }
@@ -288,7 +286,7 @@ pub struct MatchVariant {
 
 impl Display for MatchVariant {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}{}", self.branch, self.unpack)
+        return write!(f, "{}{}", self.branch, self.unpack);
     }
 }
 
@@ -303,7 +301,7 @@ pub struct MatchCombo {
 
 impl Display for MatchCombo {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}) => {}", self.variants.iter().format(","), self.body)
+        return write!(f, "({}) => {}", self.variants.iter().format(","), self.body);
     }
 }
 
@@ -318,7 +316,7 @@ pub struct PhiNode {
 
 impl Display for PhiNode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "if {} => {}", self.cond, self.body)
+        return write!(f, "if {} => {}", self.cond, self.body);
     }
 }
 
@@ -441,34 +439,32 @@ impl Display for Op {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Var(name) => name.fmt(f),
-            Self::Pack { elems } => {
-                write!(f, "({})", elems.iter().format(","))
-            }
+            Self::Pack { elems } => return write!(f, "({})", elems.iter().format(",")),
             Self::Tuple { name, inst, slots } => {
                 if inst.is_empty() {
-                    write!(f, "{}({})", name, slots.iter().format(","))
+                    return write!(f, "{}({})", name, slots.iter().format(","));
                 } else {
-                    write!(
+                    return write!(
                         f,
                         "{}<{}>({})",
                         name,
                         inst.iter().format(","),
                         slots.iter().format(",")
-                    )
+                    );
                 }
             }
             Self::Record { name, inst, fields } => {
                 if inst.is_empty() {
-                    write!(
+                    return write!(
                         f,
                         "{}{{{}}}",
                         name,
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    )
+                    );
                 } else {
-                    write!(
+                    return write!(
                         f,
                         "{}<{}>{{{}}}",
                         name,
@@ -476,14 +472,14 @@ impl Display for Op {
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    )
+                    );
                 }
             }
             Self::EnumUnit { branch, inst } => {
                 if inst.is_empty() {
-                    write!(f, "{}", branch)
+                    return write!(f, "{branch}");
                 } else {
-                    write!(f, "{}<{}>", branch, inst.iter().format(","))
+                    return write!(f, "{}<{}>", branch, inst.iter().format(","));
                 }
             }
             Self::EnumTuple {
@@ -492,15 +488,15 @@ impl Display for Op {
                 slots,
             } => {
                 if inst.is_empty() {
-                    write!(f, "{}({})", branch, slots.iter().format(","))
+                    return write!(f, "{}({})", branch, slots.iter().format(","));
                 } else {
-                    write!(
+                    return write!(
                         f,
                         "{}<{}>({})",
                         branch,
                         inst.iter().format(","),
                         slots.iter().format(",")
-                    )
+                    );
                 }
             }
             Self::EnumRecord {
@@ -509,16 +505,16 @@ impl Display for Op {
                 fields,
             } => {
                 if inst.is_empty() {
-                    write!(
+                    return write!(
                         f,
                         "{}{{{}}}",
                         branch,
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    )
+                    );
                 } else {
-                    write!(
+                    return write!(
                         f,
                         "{}<{}>{{{}}}",
                         branch,
@@ -526,21 +522,17 @@ impl Display for Op {
                         fields
                             .iter()
                             .format_with(",", |(k, v), p| { p(&format_args!("{k}:{v}")) })
-                    )
+                    );
                 }
             }
-            Self::AccessSlot { base, slot } => {
-                write!(f, "{base}.{slot}")
-            }
-            Self::AccessField { base, field } => {
-                write!(f, "{base}.{field}")
-            }
+            Self::AccessSlot { base, slot } => return write!(f, "{base}.{slot}"),
+            Self::AccessField { base, field } => return write!(f, "{base}.{field}"),
             Self::Match { heads, combo } => {
                 writeln!(f, "match ({}) {{", heads.iter().format(","))?;
                 for case in combo {
                     writeln!(f, "  case {case}")?;
                 }
-                write!(f, "}}")
+                return write!(f, "}}");
             }
             Self::Phi { nodes, default } => {
                 writeln!(f, "phi {{")?;
@@ -548,47 +540,47 @@ impl Display for Op {
                     writeln!(f, "  {node}")?;
                 }
                 writeln!(f, "  default => {default}")?;
-                write!(f, "}}")
+                return write!(f, "}}");
             }
             Self::IterForall { vars, body } => {
-                write!(
+                return write!(
                     f,
                     "forall [{}] {}",
                     vars.iter()
                         .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
-                )
+                );
             }
             Self::IterExists { vars, body } => {
-                write!(
+                return write!(
                     f,
                     "exists [{}] {}",
                     vars.iter()
                         .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
-                )
+                );
             }
             Self::IterChoose { vars, body } => {
-                write!(
+                return write!(
                     f,
                     "choose [{}] {}",
                     vars.iter()
                         .format_with(",", |(n, h), p| p(&format_args!("{n} in {h}"))),
                     body
-                )
+                );
             }
             Self::Intrinsic(intrinsic) => intrinsic.fmt(f),
             Self::Procedure { name, inst, args } => {
                 if inst.is_empty() {
-                    write!(f, "{}({})", name, args.iter().format(","))
+                    return write!(f, "{}({})", name, args.iter().format(","));
                 } else {
-                    write!(
+                    return write!(
                         f,
                         "{}<{}>({})",
                         name,
                         inst.iter().format(","),
                         args.iter().format(",")
-                    )
+                    );
                 }
             }
         }
@@ -607,7 +599,7 @@ pub struct Inst {
 
 impl Display for Inst {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.op, self.ty)
+        return write!(f, "{}: {}", self.op, self.ty);
     }
 }
 
@@ -1092,7 +1084,7 @@ impl Expr {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
                 }
-                Intrinsic::PathFresh => (),
+                Intrinsic::PathNamed(_) => (),
                 Intrinsic::PathMerge { lhs, rhs } => {
                     lhs.visit(ty, pre, post)?;
                     rhs.visit(ty, pre, post)?;
@@ -1133,7 +1125,7 @@ impl Display for Expr {
                 for binding in lets {
                     writeln!(f, "{binding};")?;
                 }
-                write!(f, "{body}")
+                return write!(f, "{body}");
             }
         }
     }
@@ -1218,8 +1210,7 @@ impl<'ctx> ExprParserRoot<'ctx> {
                     return Err(syn::Error::new(
                         syn::spanned::Spanned::span(&stmts.last().expect("at least one statement")),
                         format!(
-                            "incomplete type: {} (some type variables could not be inferred)",
-                            refreshed
+                            "incomplete type: {refreshed} (some type variables could not be inferred)"
                         ),
                     ));
                 }
@@ -1327,10 +1318,13 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     let Local {
                         attrs: _,
                         let_token: _,
+                        modifiers,
                         pat,
                         init,
                         semi_token: _,
                     } = binding;
+
+                    modifiers.require_empty()?;
 
                     // if the init is missing, bail (the init is the right-hand side of the let-binding)
                     // for example, in let x = 5, = 5 is the init
@@ -1930,14 +1924,10 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                     let Arm {
                         attrs: _,
                         pat: case,
-                        guard,
                         fat_arrow_token: _,
                         body,
                         comma: _,
                     } = arm;
-                    // if the guard exists, bail (guards are not allowed)
-                    // for example: match x { 1 if x > 0 => 1, _ => 0 } is not allowed
-                    bail_if_exists!(guard.as_ref().map(|(_, exp)| exp.as_ref())); // bail on the expression of the if guard.
 
                     // find the bindings (patterns)
                     // elem_pats is a list of patterns in a single case_i (for example match (x, y) { (1, 2) => 1, (1, 3) => 2 }) for the first arm, elem_pats = [(1, 2)] and for the second arm, elem_pats = [(1, 3)]
@@ -2105,9 +2095,9 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                             ti_unify!(unifier, &TypeRef::Integer, &self.exp_ty, target);
                             Op::Intrinsic(Box::new(intrinsic))
                         }
-                        // Real::from()
+                        // Real::from() -- integer literals only
                         QualifiedPath::CastFromReal => {
-                            let intrinsic = Intrinsic::RealVal(Intrinsic::unpack_lit_float(args)?);
+                            let intrinsic = Intrinsic::RealVal(Intrinsic::unpack_lit_real(args)?);
                             ti_unify!(unifier, &TypeRef::Real, &self.exp_ty, target);
                             Op::Intrinsic(Box::new(intrinsic))
                         }
@@ -2115,6 +2105,13 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                         QualifiedPath::CastFromStr => {
                             let intrinsic = Intrinsic::StrVal(Intrinsic::unpack_lit_str(args)?);
                             ti_unify!(unifier, &TypeRef::String, &self.exp_ty, target);
+                            Op::Intrinsic(Box::new(intrinsic))
+                        }
+                        // Path::named("...") — named path-condition marker
+                        QualifiedPath::PathNamed => {
+                            let intrinsic =
+                                Intrinsic::PathNamed(Intrinsic::unpack_lit_str_value(args)?);
+                            ti_unify!(unifier, &TypeRef::Path, &self.exp_ty, target);
                             Op::Intrinsic(Box::new(intrinsic))
                         }
                         // U32::from()
@@ -2216,7 +2213,7 @@ impl<'r, 'ctx: 'r> ExprParserCursor<'r, 'ctx> {
                                 expr_call,
                             )?,
                         // user-defined function on a system type (i.e., intrinsic function)
-                        // Integer::add() or Path::fresh()
+                        // e.g. Integer::add() or Path::named(...)
                         QualifiedPath::UsrFuncOnSysType(ty_name, ty_inst, fn_name) => {
                             // derive type param substitutions
                             let fty =

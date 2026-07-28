@@ -15,11 +15,6 @@
 //! - `BTreeMap<K, V>` requires `K: Ord`
 //! - `HashSet<T>` requires `T: Eq + Hash`
 //!
-//! Without `SMTWrap`, we would get compiler errors like:
-//! ```text
-//! error: the trait bound `Integer: Ord` is not satisfied
-//! ```
-//!
 //! # The Solution
 //!
 //! `SMTWrap<T>` wraps an SMT type and implements Rust's standard traits by delegating to

@@ -3,7 +3,7 @@
 use crate::generics::TypeParamGroup;
 use crate::{bail_on, ensure_none};
 use proc_macro2::TokenStream;
-use syn::{FnArg, ItemFn, Result, Signature};
+use syn::{FnArg, ItemFn, Result, Safety, Signature};
 
 /// Checks the function signature.
 ///
@@ -24,7 +24,12 @@ fn check(target: &ItemFn) -> Result<()> {
         vis: _,
         sig,
         block: _,
+        modifiers,
     } = target;
+
+    // `FnModifiers` is `#[non_exhaustive]`, so we cannot destructure it to force a
+    // compile error when syn adds a new modifier (e.g. `final fn`, contracts).
+    modifiers.require_empty()?;
 
     // extern "C" const unsafe async fn example<T: Copy>(a: i32, b: i32, ...) -> Result<T, &'static str> {
     //      function body
@@ -35,7 +40,7 @@ fn check(target: &ItemFn) -> Result<()> {
     let Signature {
         constness,
         asyncness,
-        unsafety,
+        safety,
         abi,
         fn_token: _,
         ident: _,
@@ -46,10 +51,14 @@ fn check(target: &ItemFn) -> Result<()> {
         output: _,
     } = sig;
 
-    // Ensure the function is not const, async, unsafe, has an ABI, or is variadic.
+    // Ensure the function has no unsupported qualifiers, ABI, or variadic parameters.
     ensure_none!(constness, "unexpected constness in function declaration");
     ensure_none!(asyncness, "unexpected asyncness in function declaration");
-    ensure_none!(unsafety, "unexpected unsafety in function declaration");
+    match safety {
+        Safety::Default => {}
+        Safety::Safe(tok) => bail_on!(tok, "unexpected safety qualifier in function declaration"),
+        Safety::Unsafe(tok) => bail_on!(tok, "unexpected unsafety in function declaration"),
+    }
     ensure_none!(abi, "unexpected ABI in function declaration");
     ensure_none!(
         variadic,

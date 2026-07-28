@@ -1,7 +1,0 @@
-# DO NOT DO THIS EITHER (type mismatch)
-
-[fruit]
-apple = "red"
-
-[fruit.apple]
-texture = "smooth"

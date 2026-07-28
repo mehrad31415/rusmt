@@ -4,8 +4,22 @@ use lazy_static::lazy_static;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
-/// Execution timeout for the backend in seconds: by default 10 minutes (600 seconds).
-pub const BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+/// Default execution timeout for the backend in seconds: 10 minutes.
+pub const DEFAULT_BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
+
+/// Execution timeout for the backend.
+///
+/// `RUSMT_BACKEND_TIMEOUT_SECS` overrides the default and is intentionally a
+/// runtime setting so large target sweeps can be reproduced under a bounded
+/// budget without changing normal behavior.
+pub fn backend_timeout() -> Duration {
+    std::env::var("RUSMT_BACKEND_TIMEOUT_SECS")
+        .ok()
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_BACKEND_TIMEOUT)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// The response returned by the backend solver.
@@ -26,7 +40,7 @@ impl Display for Response {
         match self {
             Self::Timeout => f.write_str("timeout"),
             Self::Unknown(reason) if reason.is_empty() => f.write_str("unknown"),
-            Self::Unknown(reason) => write!(f, "unknown\nreason: {}", reason),
+            Self::Unknown(reason) => write!(f, "unknown\nreason: {reason}"),
             Self::Sat(model) => f.write_str(model),
             Self::Unsat => f.write_str("unsat"),
         }

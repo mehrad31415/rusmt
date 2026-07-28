@@ -5,8 +5,7 @@ use crate::ir::{
     index::UsrSortId,
     sort::{DataType, Sort, Variant},
 };
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::hash::Hash;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 /// Helper to resolve the SMT name of a Sort ID
 pub fn resolve_type_name(ir: &IRContext, sid: UsrSortId) -> String {
@@ -94,7 +93,7 @@ pub(crate) fn format_sort(sort: &Sort, ir: &IRContext) -> String {
         Sort::U32 => "(_ BitVec 32)".to_string(),
         Sort::U64 => "(_ BitVec 64)".to_string(),
         Sort::Uninterpreted(x) => x.to_string(),
-        Sort::Path => "(Array Int Bool)".to_string(), // Path is a set of integer IDs
+        Sort::Path => crate::backend::z3::path::sort_str(ir),
     }
 }
 
@@ -225,7 +224,7 @@ pub fn mk_enum_str(
     for (vname, vdef) in variants {
         match vdef {
             Variant::Unit => {
-                variant_strs.push(format!("({}_{})", type_name, vname));
+                variant_strs.push(format!("({type_name}_{vname})"));
             }
             Variant::Tuple(slots) => {
                 let fields: Vec<String> = slots
@@ -248,12 +247,7 @@ pub fn mk_enum_str(
                 let fields: Vec<String> = rec
                     .iter()
                     .map(|(field_key, sort)| {
-                        let field_name = format!(
-                            "record_{ty_name}_{vname}_{field}_",
-                            ty_name = type_name,
-                            vname = vname,
-                            field = field_key
-                        );
+                        let field_name = format!("record_{type_name}_{vname}_{field_key}_");
                         format!("({} {})", field_name, format_sort(sort, ir))
                     })
                     .collect();
@@ -333,9 +327,9 @@ fn visit_sort(sort: &Sort, src: UsrSortId, edges: &mut Vec<(UsrSortId, UsrSortId
 }
 
 /// Kosaraju's algorithm for finding strongly connected components in a directed graph.
-pub fn scc_from_edges<T: Copy + Eq + Hash + Ord>(edges: &[(T, T)]) -> Vec<BTreeSet<T>> {
-    let mut adj: HashMap<T, Vec<T>> = HashMap::new(); // outgoing edges
-    let mut radj: HashMap<T, Vec<T>> = HashMap::new(); // incoming edges
+pub fn scc_from_edges<T: Copy + Eq + Ord>(edges: &[(T, T)]) -> Vec<BTreeSet<T>> {
+    let mut adj: BTreeMap<T, Vec<T>> = BTreeMap::new(); // outgoing edges
+    let mut radj: BTreeMap<T, Vec<T>> = BTreeMap::new(); // incoming edges
 
     for &(u, v) in edges {
         adj.entry(u).or_default().push(v);
@@ -344,7 +338,7 @@ pub fn scc_from_edges<T: Copy + Eq + Hash + Ord>(edges: &[(T, T)]) -> Vec<BTreeS
         radj.entry(u).or_default();
     }
 
-    let mut seen = HashSet::new();
+    let mut seen = BTreeSet::new();
     let mut order = Vec::new();
     for &u in adj.keys() {
         if !seen.contains(&u) {
@@ -353,7 +347,7 @@ pub fn scc_from_edges<T: Copy + Eq + Hash + Ord>(edges: &[(T, T)]) -> Vec<BTreeS
     }
 
     let mut comps = Vec::new();
-    let mut seen2 = HashSet::new();
+    let mut seen2 = BTreeSet::new();
     while let Some(u) = order.pop() {
         if !seen2.contains(&u) {
             let mut cur = BTreeSet::new();
@@ -365,10 +359,10 @@ pub fn scc_from_edges<T: Copy + Eq + Hash + Ord>(edges: &[(T, T)]) -> Vec<BTreeS
 }
 
 /// DFS
-fn dfs<T: Copy + Eq + Hash + Ord>(
+fn dfs<T: Copy + Eq + Ord>(
     u: T,
-    g: &HashMap<T, Vec<T>>,
-    seen: &mut HashSet<T>,
+    g: &BTreeMap<T, Vec<T>>,
+    seen: &mut BTreeSet<T>,
     order: &mut Vec<T>,
 ) {
     seen.insert(u);
@@ -381,10 +375,10 @@ fn dfs<T: Copy + Eq + Hash + Ord>(
 }
 
 /// DFS reverse
-fn dfs_rev<T: Copy + Eq + Hash + Ord>(
+fn dfs_rev<T: Copy + Eq + Ord>(
     u: T,
-    g: &HashMap<T, Vec<T>>,
-    seen: &mut HashSet<T>,
+    g: &BTreeMap<T, Vec<T>>,
+    seen: &mut BTreeSet<T>,
     acc: &mut BTreeSet<T>,
 ) {
     seen.insert(u);

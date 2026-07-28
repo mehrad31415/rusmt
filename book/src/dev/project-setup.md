@@ -5,11 +5,11 @@ This page focuses on what you need to build/test the *current* repository state.
 ### Prerequisites
 
 - **Rust** (edition 2024) with the stable toolchain
-- **CMake** and a **C++ compiler** -- required to build the vendored Z3 dependency
-  - macOS: included with Xcode Command Line Tools (`xcode-select --install`)
-  - Ubuntu/Debian: `sudo apt install build-essential cmake`
+- **`z3`** on `PATH` (Z3 4.15.4)
+  - macOS: `brew install z3`
+  - Ubuntu/Debian: `sudo apt install z3`
 
-The first `cargo build` compiles Z3 from source (~5 minutes). Subsequent builds use the cached result. No system Z3 binary is required.
+The backend (and the scripts, differential, and real-Z3 tests) requires a system `z3` CLI on `PATH` (Z3 4.15.4) — `brew install z3` on macOS, `apt install z3` on Debian/Ubuntu. It is the only external dependency.
 
 ### Workspace build
 
@@ -87,7 +87,7 @@ The current workspace members are:
 - `smt/derive`
 - `lang`
 
-Z3 is included as a vendored Rust crate dependency. The vendored build compiles Z3 from source on first build (~5 minutes) and requires CMake and a C++ compiler (included with Xcode on macOS, `build-essential` + `cmake` on Ubuntu). Subsequent builds use the cached result. No system Z3 installation or `$PATH` configuration is required.
+Z3 is **not** a build dependency: nothing links against it and no C++ toolchain or CMake is needed. RuSmt talks to a **system `z3` CLI on `PATH`** (Z3 4.15.4) — one-shot (`z3 -smt2 <file>`) for independent checks, and a persistent `z3 -in` session for the guided loop. Install it with `brew install z3` (macOS) or `apt install z3` (Debian/Ubuntu); the backend, the helper scripts, and the differential / real-Z3 tests all use it.
 
 ### Cargo.lock
 

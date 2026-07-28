@@ -2,7 +2,7 @@
 //! An expression is what constitutes the body of a function or an axiom.
 
 use crate::backend::z3::fun::{format_sort_for_fn, resolve_function_name};
-use crate::backend::z3::intrinsics::{array_null_value, format_intrinsic};
+use crate::backend::z3::intrinsics::format_intrinsic;
 use crate::backend::z3::sort::resolve_type_name;
 use crate::ir::exp::{EnumSelector, Expression, VarKind, VariantCtor};
 use crate::ir::index::UsrFunId;
@@ -48,16 +48,16 @@ pub fn format_expression_renamed(
                             format!("field_{}_{}_{}_", type_name, branch, idx + 1)
                         }
                         EnumSelector::Record(field_name) => {
-                            format!("record_{}_{}_{}_", type_name, branch, field_name)
+                            format!("record_{type_name}_{branch}_{field_name}_")
                         }
                     };
-                    format!("({} {})", accessor_name, head_str)
+                    format!("({accessor_name} {head_str})")
                 }
             }
         }
         Expression::Pack { sort, elems } => {
             let type_name = resolve_type_name(ir, *sort);
-            let constructor_name = format!("mk-{}", type_name);
+            let constructor_name = format!("mk-{type_name}");
             let elem_strs: Vec<String> = elems
                 .iter()
                 .map(|e| format_expression_renamed(exp_registry, *e, ir, rename))
@@ -66,7 +66,7 @@ pub fn format_expression_renamed(
         }
         Expression::Tuple { sort, slots } => {
             let type_name = resolve_type_name(ir, *sort);
-            let constructor_name = format!("mk-{}", type_name);
+            let constructor_name = format!("mk-{type_name}");
             let slot_strs: Vec<String> = slots
                 .iter()
                 .map(|s| format_expression_renamed(exp_registry, *s, ir, rename))
@@ -75,7 +75,7 @@ pub fn format_expression_renamed(
         }
         Expression::Record { sort, fields } => {
             let type_name = resolve_type_name(ir, *sort);
-            let constructor_name = format!("mk-{}", type_name);
+            let constructor_name = format!("mk-{type_name}");
             let ordered_values: Vec<String> = fields
                 .values()
                 .map(|exp_id| format_expression_renamed(exp_registry, *exp_id, ir, rename))
@@ -89,13 +89,13 @@ pub fn format_expression_renamed(
         } => match variant {
             VariantCtor::Unit => {
                 let type_name = resolve_type_name(ir, *sort);
-                let constructor = format!("{}_{}", type_name, branch);
+                let constructor = format!("{type_name}_{branch}");
                 let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
-                format!("(as {} {})", constructor, sort_str)
+                format!("(as {constructor} {sort_str})")
             }
             VariantCtor::Tuple(elems) => {
                 let type_name = resolve_type_name(ir, *sort);
-                let constructor = format!("{}_{}", type_name, branch);
+                let constructor = format!("{type_name}_{branch}");
                 let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
                 let elem_strs: Vec<String> = elems
                     .iter()
@@ -110,7 +110,7 @@ pub fn format_expression_renamed(
             }
             VariantCtor::Record(fields) => {
                 let type_name = resolve_type_name(ir, *sort);
-                let constructor = format!("{}_{}", type_name, branch);
+                let constructor = format!("{type_name}_{branch}");
                 let sort_str = format_sort_for_fn(&Sort::User(*sort), ir);
                 let values: Vec<String> = fields
                     .values()
@@ -124,14 +124,14 @@ pub fn format_expression_renamed(
             let base_sort = exp_registry.derive_type(*base, ir);
             let type_name = resolve_type_name(ir, ExpRegistry::expect_sort_user(&base_sort));
             let accessor_name = format!("field_{}_{}_", type_name, slot + 1);
-            format!("({} {})", accessor_name, base_str)
+            format!("({accessor_name} {base_str})")
         }
         Expression::AccessField { base, field } => {
             let base_str = format_expression_renamed(exp_registry, *base, ir, rename);
             let base_sort = exp_registry.derive_type(*base, ir);
             let type_name = resolve_type_name(ir, ExpRegistry::expect_sort_user(&base_sort));
-            let accessor_name = format!("record_{}_{}_", type_name, field);
-            format!("({} {})", accessor_name, base_str)
+            let accessor_name = format!("record_{type_name}_{field}_");
+            format!("({accessor_name} {base_str})")
         }
         Expression::Phi { cases, default } => {
             // If-then-else chain: (ite condition1 body1 (ite condition2 body2 ... default))
@@ -139,7 +139,7 @@ pub fn format_expression_renamed(
             for case in cases.iter().rev() {
                 let cond_str = format_expression_renamed(exp_registry, case.cond, ir, rename);
                 let body_str = format_expression_renamed(exp_registry, case.body, ir, rename);
-                result = format!("(ite {} {} {})", cond_str, body_str, result);
+                result = format!("(ite {cond_str} {body_str} {result})");
             }
             result
         }
@@ -149,7 +149,7 @@ pub fn format_expression_renamed(
                 None => resolve_function_name(ir, *callee),
             };
             if args.is_empty() {
-                format!("{}", function_name)
+                function_name.to_string()
             } else {
                 let arg_strs: Vec<String> = args
                     .iter()
@@ -192,7 +192,7 @@ pub fn format_expression_renamed(
                     format!("(and {})", conditions.join(" "))
                 };
                 let body_str = format_expression_renamed(exp_registry, case.body, ir, rename);
-                result = format!("(ite {} {} {})", condition, body_str, result);
+                result = format!("(ite {condition} {body_str} {result})");
             }
             result
         }
@@ -201,8 +201,8 @@ pub fn format_expression_renamed(
         }
         Expression::IterForall { vars, body } => {
             let var_decls: Vec<String> = vars
-                .iter()
-                .map(|(var_id, _)| {
+                .keys()
+                .map(|var_id| {
                     let var = exp_registry.lookup_var(var_id);
                     format!("({} {})", var.name, format_sort_for_fn(&var.sort, ir))
                 })
@@ -221,12 +221,8 @@ pub fn format_expression_renamed(
                 };
                 let coll_str = format_expression_renamed(exp_registry, *coll_eid, ir, rename);
                 let guard = match &coll_sort {
-                    Sort::Array(_, val_sort) => {
-                        let null_name = array_null_value(val_sort, ir);
-                        format!(
-                            "(not (= (select (rarr-data {}) {}) {}))",
-                            coll_str, var.name, null_name
-                        )
+                    Sort::Array(_, _) => {
+                        format!("(select (rarr-pres {}) {})", coll_str, var.name)
                     }
                     Sort::Set(_) => format!("(select (rset-data {}) {})", coll_str, var.name),
                     Sort::Seq(_) => format!(
@@ -251,8 +247,8 @@ pub fn format_expression_renamed(
         }
         Expression::IterExists { vars, body } => {
             let var_decls: Vec<String> = vars
-                .iter()
-                .map(|(var_id, _)| {
+                .keys()
+                .map(|var_id| {
                     let var = exp_registry.lookup_var(var_id);
                     format!("({} {})", var.name, format_sort_for_fn(&var.sort, ir))
                 })
@@ -270,12 +266,8 @@ pub fn format_expression_renamed(
                 };
                 let coll_str = format_expression_renamed(exp_registry, *coll_eid, ir, rename);
                 let guard = match &coll_sort {
-                    Sort::Array(_, val_sort) => {
-                        let null_name = array_null_value(val_sort, ir);
-                        format!(
-                            "(not (= (select (rarr-data {}) {}) {}))",
-                            coll_str, var.name, null_name
-                        )
+                    Sort::Array(_, _) => {
+                        format!("(select (rarr-pres {}) {})", coll_str, var.name)
                     }
                     Sort::Set(_) => format!("(select (rset-data {}) {})", coll_str, var.name),
                     Sort::Seq(_) => format!(

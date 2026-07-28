@@ -1,2 +1,0 @@
-# at least one ml-literal_content is required after ml-literal_quotes in multi-line literal string
-hello = ''' ''

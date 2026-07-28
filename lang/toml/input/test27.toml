@@ -1,3 +1,0 @@
-# missing closing delimiter for multi-line basic string where newline was present
-hello = """
-salam 

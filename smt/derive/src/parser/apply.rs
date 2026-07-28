@@ -364,7 +364,7 @@ impl ApplyDatabase {
             db.builtin("fp_eq", q, fn2_cmp(ty.clone()));
         }
 
-        db.builtin("fresh", Q::Path, fn0(Path));
+        db.builtin("named", Q::Path, fn1(String, Path));
         db.builtin("merge", Q::Path, fn2_arith(Path));
 
         db

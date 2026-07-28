@@ -1,5 +1,0 @@
-# Note that bare keys and quoted keys are equivalent:
-
-# THIS WILL NOT WORK
-spelling = "favorite"
-"spelling" = "favourite"

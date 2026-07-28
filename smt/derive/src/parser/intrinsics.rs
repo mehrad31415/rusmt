@@ -1,6 +1,6 @@
 //! System types and functions of RuSmt
 
-use crate::parser::expr::Expr;
+use crate::parser::expr::{Expr, Op};
 use crate::parser::infer::TypeRef;
 use crate::parser::name::UsrFuncName;
 use crate::parser::ty::SysTypeName;
@@ -11,7 +11,7 @@ use num_rational::BigRational;
 use std::fmt::{Display, Formatter};
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::{Expr as Exp, ExprLit, ExprUnary, Lit, Result};
+use syn::{Expr as Exp, ExprCall, ExprLit, ExprPath, ExprUnary, Lit, Result};
 
 /// Intrinsic procedure
 #[derive(Clone, Debug)]
@@ -1351,8 +1351,10 @@ pub enum Intrinsic {
         /// The right operand
         rhs: Expr,
     },
-    /// `Path::fresh`
-    PathFresh,
+    /// `Path::named` — a path-condition marker whose id is a stable function of
+    /// the (string-literal) marker name, so the id is identical in the SMT query
+    /// and on concrete replay.
+    PathNamed(String),
     /// `Path::merge`
     PathMerge {
         /// The left operand
@@ -1551,13 +1553,13 @@ impl Intrinsic {
             }
             Exp::Unary(unary) => {
                 let ExprUnary { attrs: _, op, expr } = unary;
-                let val = match op {
+
+                match op {
                     syn::UnOp::Neg(_) => -Self::unpack_lit_int(&Punctuated::from_iter(vec![
                         (*expr).as_ref().clone(),
                     ]))?,
                     _ => bail_on!(op, "not a unary negation operator"),
-                };
-                val
+                }
             }
             _ => bail_on!(expr, "not a literal"),
         };
@@ -1565,7 +1567,8 @@ impl Intrinsic {
         Ok(parsed)
     }
 
-    /// Convert an argument list to a floating-point literal
+    /// Convert an argument list to a floating-point literal, for `F32::from` /
+    /// `F64::from`.
     pub fn unpack_lit_float(args: &Punctuated<Exp, Comma>) -> Result<BigRational> {
         let mut iter = args.iter();
         let expr = bail_if_missing!(iter.next(), args, "argument");
@@ -1573,13 +1576,18 @@ impl Intrinsic {
             Exp::Lit(expr_lit) => {
                 let ExprLit { attrs: _, lit } = expr_lit;
                 match lit {
-                    Lit::Float(val) => match val.token().to_string().parse() {
-                        Ok(v) => v,
-                        Err(_) => bail_on!(val, "unable to parse"),
+                    // `base10_digits` strips the type suffix, so `0.5f32` and
+                    // `0.5` both arrive here as "0.5".
+                    Lit::Float(val) => match val.base10_digits().parse::<f64>() {
+                        Ok(f) => match BigRational::from_float(f) {
+                            Some(r) => r,
+                            None => bail_on!(val, "literal float is not finite"),
+                        },
+                        Err(_) => bail_on!(val, "unable to parse literal float"),
                     },
-                    Lit::Int(val) => match val.token().to_string().parse::<BigInt>() {
+                    Lit::Int(val) => match val.base10_digits().parse::<BigInt>() {
                         Ok(v) => BigRational::from_integer(v),
-                        Err(_) => bail_on!(val, "unable to parse"),
+                        Err(_) => bail_on!(val, "unable to parse literal integer"),
                     },
                     _ => bail_on!(lit, "not a float literal"),
                 }
@@ -1588,6 +1596,23 @@ impl Intrinsic {
         };
         bail_if_exists!(iter.next());
         Ok(parsed)
+    }
+
+    /// Convert an argument list to a `Real` literal — integer literals only.
+    pub fn unpack_lit_real(args: &Punctuated<Exp, Comma>) -> Result<BigRational> {
+        if let Some(Exp::Lit(ExprLit {
+            lit: Lit::Float(val),
+            ..
+        })) = args.iter().next()
+        {
+            bail_on!(
+                val,
+                "Real takes integer literals only -- write \
+                 Real::from(n).div(Real::from(d)) for a non-integer value \
+                 (e.g. 0.2 is Real::from(1).div(Real::from(5)))"
+            );
+        }
+        Ok(BigRational::from_integer(Self::unpack_lit_int(args)?))
     }
 
     /// Convert an argument list to a string literal
@@ -1606,6 +1631,51 @@ impl Intrinsic {
         };
         bail_if_exists!(iter.next());
         Ok(parsed)
+    }
+
+    /// Convert an argument list to the *unescaped value* of a single string
+    /// literal (e.g. `"div_by_zero"` -> `div_by_zero`).
+    pub fn unpack_lit_str_value(args: &Punctuated<Exp, Comma>) -> Result<String> {
+        let mut iter = args.iter();
+        let expr = bail_if_missing!(iter.next(), args, "marker name");
+        let parsed = Self::extract_str_literal_syn(expr)?;
+        bail_if_exists!(iter.next());
+        Ok(parsed)
+    }
+
+    fn extract_str_literal_syn(expr: &Exp) -> Result<String> {
+        match expr {
+            // Bare literal: `"marker"`.
+            Exp::Lit(ExprLit {
+                lit: Lit::Str(val), ..
+            }) => Ok(val.value()),
+            // DSL string-literal idiom: `String::from("marker")`.
+            Exp::Call(ExprCall { func, args, .. }) => {
+                let is_from = matches!(
+                    func.as_ref(),
+                    Exp::Path(ExprPath { path, .. })
+                        if path.segments.last().is_some_and(|s| s.ident == "from")
+                );
+                if !is_from {
+                    bail_on!(expr, "marker name must be a string literal");
+                }
+                let inner = bail_if_missing!(args.iter().next(), args, "marker name");
+                Self::extract_str_literal_syn(inner)
+            }
+            _ => bail_on!(expr, "marker name must be a string literal"),
+        }
+    }
+
+    /// Extract a marker name from a *parsed* `Expr` argument (the `Intrinsic::new`
+    /// path), where `String::from("...")` has already become a `StrVal`.
+    fn expr_as_str_literal(expr: &Expr) -> anyhow::Result<String> {
+        if let Expr::Unit(inst) = expr
+            && let Op::Intrinsic(boxed) = inst.op.as_ref()
+            && let Intrinsic::StrVal(s) = boxed.as_ref()
+        {
+            return Ok(s.clone());
+        }
+        anyhow::bail!("marker name must be a string literal, e.g. `String::from(\"...\")`")
     }
 
     /// Convert an expression to a literal
@@ -1627,9 +1697,6 @@ impl Intrinsic {
                 Exp::Lit(ExprLit {
                     lit: Lit::Bool(_), ..
                 }) => &TypeRef::Boolean,
-                Exp::Lit(ExprLit {
-                    lit: Lit::Float(_), ..
-                }) => &TypeRef::Real,
                 _ => exp_ty,
             },
             other => other,
@@ -1704,19 +1771,16 @@ impl Intrinsic {
                             _ => bail_on!(val, "cannot convert integer literal to {}", target_ty),
                         }
                     }
-                    // Float literal → target type determined by exp_ty
                     (Lit::Float(val), target_ty) => {
                         let raw_digits = val.base10_digits();
-                        let big_rat = match raw_digits.parse::<BigRational>() {
-                            Ok(v) => v,
-                            Err(_) => match raw_digits.parse::<f64>() {
-                                Ok(f) => BigRational::from_float(f)
-                                    .unwrap_or_else(|| BigRational::from_float(0.0).unwrap()),
-                                Err(_) => bail_on!(val, "unable to parse literal float"),
+                        let big_rat = match raw_digits.parse::<f64>() {
+                            Ok(f) => match BigRational::from_float(f) {
+                                Some(r) => r,
+                                None => bail_on!(val, "literal float is not finite"),
                             },
+                            Err(_) => bail_on!(val, "unable to parse literal float"),
                         };
                         match target_ty {
-                            TypeRef::Real => (Self::RealVal(big_rat), TypeRef::Real),
                             TypeRef::F32 => (
                                 Self::FloatVal {
                                     t: TypeRef::F32,
@@ -1731,7 +1795,18 @@ impl Intrinsic {
                                 },
                                 TypeRef::F64,
                             ),
-                            _ => bail_on!(val, "unsupported float"),
+                            TypeRef::Real => bail_on!(
+                                val,
+                                "Real takes integer literals only -- write \
+                                 Real::from(n).div(Real::from(d)) for a non-integer \
+                                 value (e.g. 0.2 is Real::from(1).div(Real::from(5)))"
+                            ),
+                            _ => bail_on!(
+                                val,
+                                "cannot convert float literal to {} \
+                                 (float literals are F32 or F64)",
+                                target_ty
+                            ),
                         }
                     }
                     _ => bail_on!(
@@ -1793,7 +1868,7 @@ impl Intrinsic {
                 Q::U64 => Ok(TypeRef::U64),
                 Q::F32 => Ok(TypeRef::F32),
                 Q::F64 => Ok(TypeRef::F64),
-                _ => anyhow::bail!("Type {:?} does not have a static TypeRef", ty_name),
+                _ => anyhow::bail!("Type {ty_name:?} does not have a static TypeRef"),
             }
         };
 
@@ -1840,10 +1915,11 @@ impl Intrinsic {
                 Intrinsic::SmtNe { t, lhs, rhs }
             }
 
-            (Q::Path, "fresh") => {
+            (Q::Path, "named") => {
                 Intrinsic::unpack_ty_arg_0(ty_args)?;
-                Intrinsic::unpack_expr_0(args)?;
-                Intrinsic::PathFresh
+                let arg = Intrinsic::unpack_expr_1(args)?;
+                let name = Intrinsic::expr_as_str_literal(&arg)?;
+                Intrinsic::PathNamed(name)
             }
             (Q::Path, "merge") => mk2!(PathMerge, ty_args, args),
 
@@ -2064,7 +2140,7 @@ impl Intrinsic {
             (Q::F32 | Q::F64, "ge") => mk2_impl!(FloatGe, lhs, rhs),
             (Q::F32 | Q::F64, "fp_eq") => mk2_impl!(FloatFqEq, lhs, rhs),
 
-            _ => anyhow::bail!("unknown intrinsic: {:?}::{}", ty_name, fn_name),
+            _ => anyhow::bail!("unknown intrinsic: {ty_name:?}::{fn_name}"),
         };
 
         Ok(intrinsic)
@@ -2363,7 +2439,7 @@ impl Display for Intrinsic {
             Self::FloatTrunc { val, .. } => write!(f, "trunc({val})"),
             Self::FloatNearest { val, .. } => write!(f, "nearest({val})"),
             Self::FloatFqEq { lhs, rhs, .. } => write!(f, "({lhs} fq_eq {rhs})"),
-            Self::PathFresh => write!(f, "path_fresh"),
+            Self::PathNamed(name) => write!(f, "path_named({name})"),
             Self::PathMerge { lhs, rhs } => write!(f, "path_merge({lhs}, {rhs})"),
             Self::SmtEq { lhs, rhs, .. } => write!(f, "({lhs} == {rhs})"),
             Self::SmtNe { lhs, rhs, .. } => write!(f, "({lhs} != {rhs})"),

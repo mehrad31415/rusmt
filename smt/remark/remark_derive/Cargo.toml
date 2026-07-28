@@ -1,12 +1,13 @@
 [package]
 name = "rusmt-smt-remark-derive"
-version = "0.1.0"
-description = "Annotations for remarking Rust syntax"
-repository = "https://github.com/meng-xu-cs/rusmart.git"
-license = "GPL-3.0-or-later"
+version.workspace = true
+description = "The #[smt_type] and #[smt_fn] attribute macros for constraining Rust code destined for SMT"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
 keywords = ["smt", "annotation", "macros"]
-categories = ["compilers", "development-tools::procedural-macro-helpers", "parser-implementations"]
-edition = "2024"
+categories = ["compilers", "development-tools::procedural-macro-helpers"]
+edition.workspace = true
 
 [lib]
 proc-macro = true

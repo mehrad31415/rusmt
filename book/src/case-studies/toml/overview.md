@@ -36,6 +36,25 @@ In the reported run, this produced **131/182** witnesses; **51 markers** remain
 uncovered and are reported by name in the paper. The generated 131-input suite,
 run against four TOML parsers, exposed **15 accept/reject divergences**.
 
+Triaging those 15 against the TOML standard gave a split we did not expect:
+
+- **3 are parser bugs.** `smol-toml` accepts `[[a]` (an array-of-tables header
+  needs double brackets); BurntSushi accepts `a = { b = 1 }\na.c = 2` (inline
+  tables are self-contained, so keys cannot be added outside the braces) and
+  `a.b = 1\n[a]` (a `[table]` header cannot redefine a table a dotted key already
+  created implicitly).
+- **12 are places where *our* reference is stricter than TOML requires.** Six are
+  CPython `tomllib` accepting integers outside the 64-bit signed range: TOML only
+  *recommends* that at least 64-bit signed integers be handled losslessly and
+  requires an error only when a value *cannot* be represented losslessly, which
+  CPython's bignums can. The other six are the `float_exp_only_exp_*_i32`
+  markers — TOML leaves float precision to the implementation, so our `i32`
+  exponent bound is an artifact of `lang/src/toml/float.rs`, not a rule.
+
+A divergence is a candidate bug **in either direction**. The suite tests the
+reference against the standard just as much as it tests implementations against
+the reference.
+
 For an end-to-end demo where *search itself* closes the loop, see the
 [IMP case study](../imp/overview.md) (dynamic semantics and AST rendering).
 

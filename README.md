@@ -103,7 +103,7 @@ The following two case studies are chosen as our first demonstration of RuSmt's 
 
 | Case study  | Location | Status |
 |-------------|----------|--------|
-| **TOML v1.1.0 parser** | `lang/src/toml/` | Substantial executable parser/specification (**182 named markers**). Z3-alone search produced no witnesses at affordable budgets; the Z3-first/model-second loop generated a 131-input conformance suite and the remaining 51 markers are reported by name. Running that suite against four TOML parsers found 15 accept/reject divergences. See `book/src/case-studies/toml/`. |
+| **TOML v1.1.0 parser** | `lang/src/toml/` | Substantial executable parser/specification (**182 named markers**). Z3-alone search produced no witnesses at affordable budgets; the Z3-first/model-second loop generated a 131-input conformance suite and the remaining 51 markers are reported by name. Running that suite against four TOML parsers found 15 accept/reject divergences — 3 parser bugs, and 12 places where our own reference is stricter than TOML requires. See `book/src/case-studies/toml/`. |
 | **IMP / WHILE** | `lang/src/imp/` | Canonical small imperative language from Winskel, *The Formal Semantics of Programming Languages* (MIT Press, 1993). End-to-end synthesis works at native recursion (`k=0`): Z3 returns models for both markers, the printer renders them as `.imp` source, and replay confirms the marker fires. See `book/src/case-studies/imp/`. |
 
 ## Build

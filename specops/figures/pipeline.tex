@@ -1,28 +1,51 @@
-% Fig. 2 -- the compilation pipeline. Wrap in \resizebox{\textwidth}{!}{...}.
+% Fig. 1 -- one executable semantics, two readings, and the two-stage loop that
+% turns one named marker into one conformance test. Wrap in
+% \resizebox{\columnwidth}{!}{\input{figures/pipeline}}.
+% NB: do not name a style `out' -- pgf reserves /tikz/out for path angles.
 \begin{tikzpicture}[font=\footnotesize,>=Stealth,
-   box/.style={draw,rounded corners,align=center,minimum height=10mm,
-               inner xsep=4pt,fill=gray!6},
-   be/.style ={draw,rounded corners,align=center,minimum height=9mm,
-               inner xsep=3pt,fill=orange!12}]
-  \node[box] (rust)   at (0,0)      {Restricted\\Rust};
-  \node[box] (remark) at (2.2,0)    {\texttt{remark}\\proc-macros};
-  \node[box] (ir)     at (4.7,0)    {IR\\\scriptsize sort check, HM\\\scriptsize unify, monomorph.,\\\scriptsize \texttt{path\_targets}};
-  \node[be]  (text)   at (7.6,0)    {Backend\\\scriptsize SMT-LIB2 $+$ \texttt{z3} proc.\\\scriptsize (persistent, \texttt{push}/\texttt{pop})};
-  \node[box,fill=yellow!18] (z3) at (10.4,0) {Z3\\\scriptsize sat/unsat/\\\scriptsize unknown/timeout};
-  \node[box] (model)  at (12.5,0)   {model};
-  \node[box] (print)  at (14.4,0)   {printer\\\scriptsize decode};
-  \node[box,fill=blue!7] (replay) at (16.5,0) {replay\\\scriptsize re-exec\\\scriptsize (Rust oracle)};
+   srcbox/.style ={draw,rounded corners,align=center,minimum height=6.5mm,
+                   inner xsep=4pt,fill=gray!8},
+   z3box/.style  ={draw,rounded corners,align=center,minimum height=6.5mm,
+                   inner xsep=4pt,fill=yellow!20},
+   aibox/.style  ={draw,rounded corners,align=center,minimum height=6.5mm,
+                   inner xsep=4pt,fill=orange!16},
+   resbox/.style ={draw,rounded corners,align=center,minimum height=6.5mm,
+                   inner xsep=4pt,fill=blue!9},
+   lbl/.style    ={font=\scriptsize,inner sep=1.5pt}]
 
-  \draw[->] (rust)--(remark);
-  \draw[->] (remark)--(ir);
-  \draw[->] (ir.east) -- (text.west);
-  \draw[->] (text.east) -- (z3.west);
-  \draw[->] (z3)--(model) node[midway,above,font=\scriptsize]{sat};
-  \draw[->,dashed] (model.north) .. controls +(0,1.0) and +(0,1.0) .. (z3.north)
-        node[midway,above,font=\scriptsize]{block $\Rightarrow$ next model};
-  \draw[->] (model)--(print);
-  \draw[->] (print)--(replay);
-  \draw[->,dashed] (replay.south) .. controls +(0,-1.1) and +(0,-1.1) ..
-        (print.south)
-        node[midway,below,font=\scriptsize]{marker fires $\Rightarrow$ valid witness};
+  \node[srcbox] (spec) at (0,0)
+        {\texttt{parse\_toml} in the \rusmt{} DSL, carrying\\[-1pt]
+         \texttt{Path::named("array\_table\_missing\_close\_char")}};
+
+  \node[srcbox] (oracle) at (-3.6,-1.3) {\texttt{rustc}\\[-2pt]\emph{concrete oracle}};
+  \node[srcbox] (query)  at ( 1.5,-1.3) {transpiler\\[-2pt]marker query $Q_d$};
+
+  \node[z3box] (s1) at (1.5,-2.6)
+        {\textbf{Stage 1.} Z3 on $Q_d$, input unconstrained};
+  \node[aibox] (s2) at (1.5,-4.0)
+        {\textbf{Stage 2.} the model reads $Q_d$, $d$, and the rejected\\[-1pt]
+         history, and proposes one candidate $c$\, (here \texttt{[[a]})};
+  \node[z3box] (s3) at (1.5,-5.3)
+        {Z3 on $Q_d \wedge (\mathit{input}_0 = c)$};
+  \node[resbox] (acc) at (1.5,-6.7)
+        {decode, replay through the oracle, and write\\[-1pt]
+         \texttt{array\_table\_missing\_close\_char.toml} into the suite};
+
+  \draw[->] (spec.south) -- ++(0,-0.3) -| (oracle.north);
+  \draw[->] (spec.south) -- ++(0,-0.3) -| (query.north);
+  \draw[->] (query) -- (s1);
+  \draw[->] (s1) -- node[lbl,right] {\texttt{unknown} / timeout} (s2);
+  \draw[->] (s2) -- (s3);
+  \draw[->] (s3) -- node[lbl,right] {\texttt{sat}} (acc);
+
+  \draw[->] (s1.west) -- ++(-2.3,0) node[lbl,above,pos=0.45] {\texttt{sat}}
+        |- (acc.west);
+  \draw[->] (s1.east) -- ++(1.4,0) node[lbl,above,pos=0.5] {\texttt{unsat}}
+        node[lbl,right,pos=1] {$d$ is unreachable};
+
+  \draw[->,dashed] (s3.east) -- ++(1.4,0) node[lbl,above,pos=0.5] {\texttt{unsat}}
+        |- (s2.east);
+
+  \draw[->,dashed] (oracle.south) -- ++(0,-5.9)
+        node[lbl,left,align=right,pos=0.55] {the same marker\\must fire} -| (acc.south);
 \end{tikzpicture}

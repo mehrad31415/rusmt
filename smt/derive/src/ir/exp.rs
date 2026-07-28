@@ -353,7 +353,7 @@ impl ExpRegistry {
 
     /// Derive type of an expression
     pub fn derive_type(&self, eid: ExpId, ir: &IRContext) -> Sort {
-        let sort = match self.lookup_exp(&eid) {
+        match self.lookup_exp(&eid) {
             Expression::Var(vid) => self.lookup_var(vid).sort.clone(),
             Expression::Pack { sort, elems: _ }
             | Expression::Tuple { sort, slots: _ }
@@ -636,18 +636,17 @@ impl ExpRegistry {
                 Intrinsic::FloatToI32 { .. } => Sort::I32,
                 Intrinsic::FloatToU64 { .. } => Sort::U64,
                 Intrinsic::FloatToI64 { .. } => Sort::I64,
-                Intrinsic::FloatCeil { .. }
-                | Intrinsic::FloatFloor { .. }
-                | Intrinsic::FloatTrunc { .. }
-                | Intrinsic::FloatNearest { .. } => Sort::Integer,
-                Intrinsic::PathFresh(_) | Intrinsic::PathMerge { .. } => Sort::Path,
+                Intrinsic::FloatCeil { t, .. }
+                | Intrinsic::FloatFloor { t, .. }
+                | Intrinsic::FloatTrunc { t, .. }
+                | Intrinsic::FloatNearest { t, .. } => t.clone(),
+                Intrinsic::PathName { .. } | Intrinsic::PathMerge { .. } => Sort::Path,
                 Intrinsic::SmtEq { .. } | Intrinsic::SmtNe { .. } => Sort::Boolean,
             },
             Expression::Procedure { callee, args: _ } => {
                 ir.fn_registry.retrieve_sig(*callee).ret_ty.clone()
             }
-        };
-        sort
+        }
     }
 
     /// Utility: retrieve a struct type (tuple with a name) data type from a sort id
@@ -2287,12 +2286,20 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                             rhs: self.resolve(rhs, Some(&sort)),
                         }
                     }
-                    Native::PathFresh => {
-                        let id = self.parent.ir.path_count;
-                        self.parent.ir.path_count += 1;
-                        // Register a single-ID target: "find input reaching path site `id`"
+                    Native::PathNamed(name) => {
+                        let id = rusmt_smt_stdlib::path::marker_id(name);
+                        // Two *different* names hashing to the same id would
+                        // silently conflate two markers.
+                        if let Some(prev) = self.parent.ir.marker_names.get(&id) {
+                            assert_eq!(
+                                prev, name,
+                                "marker id collision: `{prev}` and `{name}` both hash to {id}; \
+                                 rename one of them"
+                            );
+                        }
                         self.parent.ir.path_targets.push(BTreeSet::from([id]));
-                        Intrinsic::PathFresh(id)
+                        self.parent.ir.marker_names.insert(id, name.clone());
+                        Intrinsic::PathName { name: name.clone() }
                     }
                     Native::PathMerge { lhs, rhs } => {
                         let lhs_id = self.resolve(lhs, Some(&Sort::Path));
@@ -2301,8 +2308,8 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         for eid in [&lhs_id, &rhs_id] {
                             match self.registry.lookup_exp(eid) {
                                 Expression::Intrinsic(i) => match i.as_ref() {
-                                    Intrinsic::PathFresh(id) => {
-                                        ids.insert(*id);
+                                    Intrinsic::PathName { name } => {
+                                        ids.insert(rusmt_smt_stdlib::path::marker_id(name));
                                     }
                                     Intrinsic::PathMerge { ids: existing, .. } => {
                                         ids.extend(existing.iter().copied());
@@ -2312,7 +2319,8 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                                 _ => panic!("PathMerge operand is not an intrinsic"),
                             }
                         }
-                        // Register a multi-ID target: "find input reaching all these sites together"
+                        // Register a multi-id target: "find an input reaching all
+                        // these markers together" (graceful accumulation).
                         self.parent.ir.path_targets.push(ids.clone());
                         Intrinsic::PathMerge {
                             lhs: lhs_id,

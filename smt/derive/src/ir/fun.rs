@@ -69,7 +69,7 @@ impl FunRegistry {
     /// Returns the function name associated with a given function ID.
     pub fn get_name(&self, idx: UsrFunId) -> UsrFunName {
         for (name, instantiations) in &self.lookup {
-            for (_, fn_id) in instantiations {
+            for fn_id in instantiations.values() {
                 if *fn_id == idx {
                     return name.clone();
                 }
@@ -155,7 +155,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
 
         // prepare the builder for definition processing
         // this creates a new builder with the same parser context (ASTContext) and IR context (IRContext) but the ty_inst which is BTreeMap<TypeParamName, Sort> will be from the generics and the type args which are basically just taken from the generics of the function definition (TypeRef::Parameter(TypeParamName { name: "T" })) and the converted to Sort. So they are the same thing.
-        let mut builder = self.derive(&generics, ty_args);
+        let mut builder = self.derive(generics, ty_args);
 
         // resolve type in function signatures
         let mut resolved_params = vec![];

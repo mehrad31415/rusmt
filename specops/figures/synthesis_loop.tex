@@ -1,0 +1,25 @@
+% Fig. 3 -- the synthesis/replay loop for one marker target.
+\begin{tikzpicture}[font=\footnotesize,>=Stealth,node distance=5mm,
+   b/.style ={draw,rounded corners,align=center,minimum height=9mm,inner xsep=4pt,fill=gray!6},
+   d/.style ={draw,diamond,aspect=2,align=center,inner sep=1pt,fill=yellow!18},
+   ok/.style={draw,rounded corners,align=center,minimum height=9mm,inner xsep=4pt,fill=blue!8},
+   no/.style={draw,rounded corners,align=center,minimum height=9mm,inner xsep=4pt,fill=red!7}]
+  \node[b]  (tgt)   {target id $i$\\\scriptsize (\texttt{Path::named} site)};
+  \node[b,right=8mm of tgt] (q) {build query\\\scriptsize \texttt{declare input\_0};\\\scriptsize assert result is \texttt{Err}\\\scriptsize carrying $i$};
+  \node[b,right=8mm of q] (z3) {Z3 \scriptsize($k{=}N$ unroll)};
+  \node[b,right=9mm of z3] (dec) {decode model\\\scriptsize $\rightarrow$ \texttt{.imp} witness};
+  \node[b,below=10mm of dec] (rep) {replay witness\\\scriptsize concrete \texttt{eval\_com}};
+  \node[d,left=10mm of rep] (chk) {marker $i$\\fires?};
+  \node[ok,left=9mm of chk] (acc) {sound witness\\\scriptsize $\rightarrow$ conformance\\\scriptsize test vs.\ external impl};
+  \node[no,below=8mm of z3] (none) {no witness\\\scriptsize within bound};
+
+  \draw[->] (tgt)--(q);
+  \draw[->] (q)--(z3);
+  \draw[->] (z3)--(dec) node[midway,above,font=\scriptsize]{sat};
+  \draw[->] (dec)--(rep);
+  \draw[->] (rep)--(chk);
+  \draw[->] (chk)--(acc) node[midway,above,font=\scriptsize]{yes};
+  \draw[->] (z3.south)--(none) node[midway,right,font=\scriptsize]{unsat / unknown / timeout};
+  \draw[->] (chk.south) |- ([yshift=-2mm]none.east)
+        node[pos=0.25,right,font=\scriptsize]{no: reject candidate};
+\end{tikzpicture}

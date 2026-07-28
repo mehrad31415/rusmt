@@ -47,7 +47,7 @@ pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
             let (ty_name_opt, type_args) = ir.ty_registry.reverse_lookup(*sid);
             let type_name = resolve_type_name(ir, *sid);
 
-            if let Some(_) = ty_name_opt {
+            if ty_name_opt.is_some() {
                 // If there are type arguments, format as (TypeName Arg1 Arg2 ...)
                 if type_args.is_empty() {
                     type_name
@@ -80,10 +80,9 @@ pub fn format_sort_for_fn(sort: &Sort, ir: &IRContext) -> String {
         Sort::U32 => "(_ BitVec 32)".to_string(),
         Sort::U64 => "(_ BitVec 64)".to_string(),
         Sort::Uninterpreted(x) => panic!(
-            "uninterpreted sort {} should not be used in the monomorphized version of a function",
-            x
+            "uninterpreted sort {x} should not be used in the monomorphized version of a function"
         ),
-        Sort::Path => "(Array Int Bool)".to_string(), // Path is a set of integer IDs
+        Sort::Path => crate::backend::z3::path::sort_str(ir), // Path = marker bit-set; see path.rs
     }
 }
 
@@ -144,7 +143,7 @@ pub(crate) fn collect_called_functions(
             }
         }
         Expression::Record { sort: _, fields } => {
-            for (_, f) in fields {
+            for f in fields.values() {
                 called_fns.append(&mut collect_called_functions(exp_registry, f));
             }
         }
@@ -160,7 +159,7 @@ pub(crate) fn collect_called_functions(
                 }
             }
             VariantCtor::Record(fields) => {
-                for (_, f) in fields {
+                for f in fields.values() {
                     called_fns.append(&mut collect_called_functions(exp_registry, f));
                 }
             }
@@ -187,13 +186,13 @@ pub(crate) fn collect_called_functions(
             called_fns.append(&mut collect_called_functions(exp_registry, default));
         }
         Expression::IterForall { vars, body } => {
-            for (_, e) in vars {
+            for e in vars.values() {
                 called_fns.append(&mut collect_called_functions(exp_registry, e));
             }
             called_fns.append(&mut collect_called_functions(exp_registry, body));
         }
         Expression::IterExists { vars, body } => {
-            for (_, e) in vars {
+            for e in vars.values() {
                 called_fns.append(&mut collect_called_functions(exp_registry, e));
             }
             called_fns.append(&mut collect_called_functions(exp_registry, body));
@@ -203,7 +202,7 @@ pub(crate) fn collect_called_functions(
             body,
             rets: _,
         } => {
-            for (_, e) in vars {
+            for e in vars.values() {
                 called_fns.append(&mut collect_called_functions(exp_registry, e));
             }
             called_fns.append(&mut collect_called_functions(exp_registry, body));
@@ -239,7 +238,7 @@ pub fn mk_function_str(
         .collect();
 
     let ret_type = format_sort_for_fn(&sig.ret_ty, ir);
-    let body = format_expression(&def.body, def.root_exp_id, &ir);
+    let body = format_expression(&def.body, def.root_exp_id, ir);
 
     format!(
         "(define-fun {} ({}) {} {})",
@@ -404,9 +403,10 @@ pub fn mk_functions_unrolled_str(
 ///    a meaningful "ran out of budget" sentinel — `NoMatch` for
 ///    `ParseResult`, `None` for `Optional`.
 /// 2. Otherwise (primitives, records, tuples, enums with no Unit variant)
-///    fall back to `array_null_value`, which produces the type's null
-///    sentinel (`0` for ints, `false` for bools, the declared
-///    `null_<TypeName>` constant for records/tuples, etc.).
+///    fall back to `array_null_value`, which produces an inline canonical
+///    inhabitant of the sort (`0` for ints, `false` for bools, a fully
+///    applied constructor for records/tuples, etc.) — never a declared
+///    constant.
 fn bmc_terminator(sort: &Sort, ir: &IRContext) -> String {
     if let Sort::User(sid) = sort {
         let dt = ir.ty_registry.retrieve(*sid);
@@ -420,7 +420,7 @@ fn bmc_terminator(sort: &Sort, ir: &IRContext) -> String {
             }) {
                 let type_name = resolve_type_name(ir, *sid);
                 let sort_str = crate::backend::z3::sort::format_sort(sort, ir);
-                return format!("(as {}_{} {})", type_name, vname, sort_str);
+                return format!("(as {type_name}_{vname} {sort_str})");
             }
         }
     }

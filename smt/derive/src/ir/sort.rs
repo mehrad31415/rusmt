@@ -242,7 +242,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
     /// This function “unwraps” cloaked types, ensures that no type variables remain, and
     /// registers any user-defined types with the type registry if needed.
     pub fn resolve_type(&mut self, ty: &TypeRef) -> Sort {
-        let sort = match ty {
+        match ty {
             TypeRef::Var(_) => panic!("incomplete type inference in the IR builder"), // you cannot have type variables in the IR so all types should be resolved at the parser level that is why the unification is done.
             TypeRef::Boolean => Sort::Boolean,
             TypeRef::Integer => Sort::Integer,
@@ -272,8 +272,7 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                 .get(name) // name is the type parameter from the definition (generics). This gives the corresponding type argument in the call in the Sort IR representation.
                 .unwrap_or_else(|| panic!("no such type parameter {name}"))
                 .clone(),
-        };
-        sort
+        }
     }
 
     /// Utility: resolve a vec of type refs

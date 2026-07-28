@@ -61,7 +61,7 @@ pub struct TypeVar(usize);
 
 impl Display for TypeVar {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "?{}", self.0) // the display is ?<index> where index is the usize value of the TypeVar.
+        return write!(f, "?{}", self.0); // the display is ?<index> where index is the usize value of the TypeVar.
     }
 }
 
@@ -173,32 +173,32 @@ impl Display for TypeRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Var(var) => var.fmt(f), // like TypeVar, the display is ?<index> where index is the usize value of the TypeVar.
-            Self::Boolean => write!(f, "Boolean"),
-            Self::Integer => write!(f, "Integer"),
-            Self::Real => write!(f, "Real"),
-            Self::F32 => write!(f, "F32"),
-            Self::F64 => write!(f, "F64"),
-            Self::I32 => write!(f, "I32"),
-            Self::I64 => write!(f, "I64"),
-            Self::U32 => write!(f, "U32"),
-            Self::U64 => write!(f, "U64"),
-            Self::String => write!(f, "String"),
-            Self::Cloak(sub) => write!(f, "Cloak<{sub}>"),
-            Self::Seq(sub) => write!(f, "Seq<{sub}>"),
-            Self::Set(sub) => write!(f, "Set<{sub}>"),
-            Self::Array(key, val) => write!(f, "Array<{key},{val}>"),
-            Self::Path => write!(f, "Path"),
+            Self::Boolean => return write!(f, "Boolean"),
+            Self::Integer => return write!(f, "Integer"),
+            Self::Real => return write!(f, "Real"),
+            Self::F32 => return write!(f, "F32"),
+            Self::F64 => return write!(f, "F64"),
+            Self::I32 => return write!(f, "I32"),
+            Self::I64 => return write!(f, "I64"),
+            Self::U32 => return write!(f, "U32"),
+            Self::U64 => return write!(f, "U64"),
+            Self::String => return write!(f, "String"),
+            Self::Cloak(sub) => return write!(f, "Cloak<{sub}>"),
+            Self::Seq(sub) => return write!(f, "Seq<{sub}>"),
+            Self::Set(sub) => return write!(f, "Set<{sub}>"),
+            Self::Array(key, val) => return write!(f, "Array<{key},{val}>"),
+            Self::Path => return write!(f, "Path"),
             Self::User(name, args) => {
                 if args.is_empty() {
                     name.fmt(f) // if there are no type arguments, just print the name.
                 } else {
-                    write!(f, "{}<{}>", name, args.iter().format(",")) // if there are type arguments, print the name followed by the type arguments separated by commas.
+                    return write!(f, "{}<{}>", name, args.iter().format(",")); // if there are type arguments, print the name followed by the type arguments separated by commas.
                 }
             }
             Self::Pack(elems) => {
-                write!(f, "({})", elems.iter().format(",")) // print the elements of the tuple separated by commas.
+                return write!(f, "({})", elems.iter().format(",")); // print the elements of the tuple separated by commas.
             }
-            Self::Parameter(name) => name.fmt(f), // invokes the Display trait for TypeParamName (write!(f, "{}", name)).
+            Self::Parameter(name) => name.fmt(f), // invokes the Display trait for TypeParamName (return write!(f, "{}", name)).
         }
     }
 }

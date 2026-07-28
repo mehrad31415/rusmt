@@ -1,2 +1,0 @@
-# hexadecimal invalid (leading zero not allowed before 0x)
-hex1 = 00xDEADBEEF

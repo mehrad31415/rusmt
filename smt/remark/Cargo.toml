@@ -1,16 +1,15 @@
 [package]
 name = "rusmt-smt-remark"
-version = "0.1.0"
-description = "Annotations and macros for SMT modeling in Rust"
+version.workspace = true
+description = "Constraint checking and code generation behind the #[smt_type] and #[smt_fn] attributes"
 readme = "README.md"
-repository = "https://github.com/meng-xu-cs/rusmart.git"
-license = "GPL-3.0-or-later"
+repository.workspace = true
+license.workspace = true
 keywords = ["smt", "annotation", "macros"]
-categories = ["compilers", "development-tools::procedural-macro-helpers", "parser-implementations"]
-edition = "2024"
+categories = ["compilers", "development-tools::procedural-macro-helpers"]
+edition.workspace = true
 
 [dependencies]
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }
-log = { workspace = true }

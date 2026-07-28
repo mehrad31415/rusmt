@@ -4,14 +4,17 @@
 use crate::toml::{
     Optional, ParseResult, ParserContext, State, advance,
     array::parse_ws_comment_newline,
-    ast::Value,
+    ast::{
+        Table, Value, table_contains_key, table_del, table_get, table_is_empty, table_key_min,
+        table_new, table_store,
+    },
     cp_to_str, current_char,
     expr::make_nested_table,
     key_value::{parse_key, parse_key_value},
     parse_ws,
 };
 use rusmt_smt_remark_derive::smt_fn;
-use rusmt_smt_stdlib::{Array, Cloak, Integer, Path, Seq, String, U32, choose, forall, smt::SMT};
+use rusmt_smt_stdlib::{Cloak, Integer, Path, Seq, String, U32, smt::SMT};
 
 /// `std-table = std-table-open key std-table-close`
 #[smt_fn]
@@ -21,14 +24,16 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
             match current_char(state_after_open) {
                 Optional::None => {
                     // println!("cannot have [");
-                    ParseResult::Err(Path::fresh())
+                    ParseResult::Err(Path::named(String::from("std_table_open_eof")))
                 } // cannot have [
                 Optional::Some(x) => {
                     if *x.eq(U32::from(0x5D)) {
                         // empty table name
                         {
                             // println!("cannot have empty table name");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "std_table_empty_name",
+                            )));
                         }
                     } else {
                         // non-empty table name
@@ -42,12 +47,16 @@ pub(crate) fn parse_std_table(state: State) -> ParseResult<Seq<String>> {
                                         Optional::Some(_ch) => {
                                             // found another character where ] expected
                                             // println!("found another character where ] expected");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "std_table_missing_close_char",
+                                            )));
                                         }
                                         Optional::None => {
                                             // reached end of input where ] expected
                                             // println!("reached end of input where ] expected");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "std_table_missing_close_eof",
+                                            )));
                                         }
                                     },
                                     ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
@@ -107,14 +116,16 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
             match current_char(state_after_open) {
                 Optional::None => {
                     // println!("cannot have [[");
-                    ParseResult::Err(Path::fresh())
+                    ParseResult::Err(Path::named(String::from("array_table_open_eof")))
                 } // cannot have [[
                 Optional::Some(x) => {
                     if *x.eq(U32::from(0x5D)) {
                         // empty table name
                         {
                             // println!("cannot have empty table name");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "array_table_empty_name",
+                            )));
                         }
                     } else {
                         // non-empty table name
@@ -128,12 +139,16 @@ pub(crate) fn parse_array_table(state: State) -> ParseResult<Seq<String>> {
                                         Optional::Some(_ch) => {
                                             // found another character where ]] expected
                                             // println!("found another character where ]] expected");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "array_table_missing_close_char",
+                                            )));
                                         }
                                         Optional::None => {
                                             // reached end of input where ]] expected
                                             // println!("reached end of input where ]] expected");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "array_table_missing_close_eof",
+                                            )));
                                         }
                                     },
                                     ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
@@ -208,10 +223,7 @@ fn parse_array_table_close(state: State) -> ParseResult<String> {
 
 /// `inline-table = inline-table-open [ inline-table-keyvals ] inline-table-close`
 #[smt_fn]
-pub(crate) fn parse_inline_table(
-    key: Seq<String>,
-    state: State,
-) -> ParseResult<Array<String, Value>> {
+pub(crate) fn parse_inline_table(key: Seq<String>, state: State) -> ParseResult<Table> {
     // change the inline table in the parser context
     let state_temp = state;
     let context = state_temp.context;
@@ -224,22 +236,24 @@ pub(crate) fn parse_inline_table(
     let new_key = current_table_path.concat(key);
     if *inline_tables.contains(new_key) {
         // println!("inline table already defined");
-        return ParseResult::Err(Path::fresh());
+        return ParseResult::Err(Path::named(String::from("inline_table_redefined_inline")));
     } else {
         if *closed_tables.contains(new_key) {
             // println!("inline table already closed");
-            return ParseResult::Err(Path::fresh());
+            return ParseResult::Err(Path::named(String::from("inline_table_redefined_closed")));
         } else {
             if *explicit_tables.contains(new_key) {
                 // println!("inline table already defined as explicit table");
-                return ParseResult::Err(Path::fresh());
+                return ParseResult::Err(Path::named(String::from(
+                    "inline_table_redefined_explicit",
+                )));
             } else {
                 match parse_inline_table_open(state) {
                     ParseResult::Ok(_open_brace, state_after_open) => {
                         match current_char(state_after_open) {
                             Optional::None => {
                                 // println!("cannot have {{");
-                                ParseResult::Err(Path::fresh())
+                                ParseResult::Err(Path::named(String::from("inline_table_open_eof")))
                             } // cannot have {
                             Optional::Some(_x) => {
                                 match parse_inline_table_close(state_after_open) {
@@ -269,7 +283,7 @@ pub(crate) fn parse_inline_table(
                                             cursor,
                                             context: new_context,
                                         };
-                                        ParseResult::Ok(Array::new(), new_state_after_close)
+                                        ParseResult::Ok(table_new(), new_state_after_close)
                                     }
                                     ParseResult::NoMatch => {
                                         // non-empty inline table
@@ -291,10 +305,7 @@ pub(crate) fn parse_inline_table(
 /// `inline-table-keyvals = keyval [ inline-table-sep inline-table-keyvals ]`
 /// v1.1.0: newlines (via ws-comment-newline in open/sep/close) and trailing commas are permitted.
 #[smt_fn]
-fn parse_inline_table_keyvals(
-    new_key: Seq<String>,
-    state: State,
-) -> ParseResult<Array<String, Value>> {
+fn parse_inline_table_keyvals(new_key: Seq<String>, state: State) -> ParseResult<Table> {
     match parse_key_value(state) {
         ParseResult::Ok(kv, state_after_kv) => {
             let key = kv.key;
@@ -302,7 +313,7 @@ fn parse_inline_table_keyvals(
             match current_char(state_after_kv) {
                 Optional::None => {
                     // println!("cannot have end of input here expecting }} or ,");
-                    ParseResult::Err(Path::fresh()) // cannot have end of input here expecting } or ,
+                    ParseResult::Err(Path::named(String::from("inline_table_unterminated"))) // cannot have end of input here expecting } or ,
                 }
                 Optional::Some(_ch) => {
                     match parse_inline_table_close(state_after_kv) {
@@ -369,8 +380,10 @@ fn parse_inline_table_keyvals(
                                             ParseResult::Ok(nested_table, new_state_tc)
                                         }
                                         ParseResult::NoMatch => {
-                                            // Parse the next key-value pair(s) recursively
-                                            match parse_inline_table_keyvals(key, state_after_sep) {
+                                            match parse_inline_table_keyvals(
+                                                new_key,
+                                                state_after_sep,
+                                            ) {
                                                 ParseResult::Ok(rest_kvs, final_state) => {
                                                     let nested_table = make_nested_table(key, val);
                                                     let combined = recursive_merge_tables(
@@ -419,7 +432,11 @@ fn parse_inline_table_keyvals(
                                                         // merging failed because of conflicting keys
                                                         Optional::None => {
                                                             // println!("conflicting keys in inline table");
-                                                            ParseResult::Err(Path::fresh())
+                                                            ParseResult::Err(Path::named(
+                                                                String::from(
+                                                                    "inline_table_conflicting_keys",
+                                                                ),
+                                                            ))
                                                         }
                                                     }
                                                 }
@@ -508,43 +525,34 @@ fn parse_inline_table_sep(state: State) -> ParseResult<String> {
                 } else {
                     // Another character present where comma expected
                     // println!("found another character where , expected");
-                    ParseResult::Err(Path::fresh())
+                    ParseResult::Err(Path::named(String::from("inline_table_sep_expected_comma")))
                 }
             }
             // No character present where comma expected
             Optional::None => {
                 // println!("reached end of input where , expected");
-                ParseResult::Err(Path::fresh())
+                ParseResult::Err(Path::named(String::from("inline_table_sep_eof")))
             }
         },
     }
 }
 
-/// Chooses the minimum key from a TOML table (Array<String, Value>).
-#[smt_fn]
-pub(crate) fn array_key_min(array: Array<String, Value>) -> String {
-    choose!(s in array => forall!(e in array => s.eq(e).or(s.lt(e))))
-}
-
 /// Recursively merges two TOML tables.
 #[smt_fn]
-pub(crate) fn recursive_merge_tables(
-    acc_table: Array<String, Value>,
-    new_table: Array<String, Value>,
-) -> Optional<Array<String, Value>> {
-    if *new_table.is_empty() {
+pub(crate) fn recursive_merge_tables(acc_table: Table, new_table: Table) -> Optional<Table> {
+    if *table_is_empty(new_table) {
         return Optional::Some(acc_table);
     } else {
-        if *new_table.is_empty() {
-            return Optional::Some(acc_table); // early-return, no choose!
+        if *table_is_empty(new_table) {
+            return Optional::Some(acc_table); // early-return
         } else {
-            let key_to_merge = array_key_min(new_table);
-            let new_val = new_table.select(key_to_merge);
-            let rest_of_new_table = new_table.del(key_to_merge);
-            let key_exists = acc_table.contains_key(key_to_merge);
+            let key_to_merge = table_key_min(new_table);
+            let new_val = table_get(new_table, key_to_merge);
+            let rest_of_new_table = table_del(new_table, key_to_merge);
+            let key_exists = table_contains_key(acc_table, key_to_merge);
 
             if *key_exists {
-                let acc_val = acc_table.select(key_to_merge);
+                let acc_val = table_get(acc_table, key_to_merge);
 
                 match acc_val {
                     Value::Table(_tab) => match new_val {
@@ -555,7 +563,8 @@ pub(crate) fn recursive_merge_tables(
                             // Check if the sub-merge succeeded
                             match sub_merge_result {
                                 Optional::Some(merged_sub_array) => {
-                                    let next_acc = acc_table.store(
+                                    let next_acc = table_store(
+                                        acc_table,
                                         key_to_merge,
                                         Value::Table(Cloak::shield(merged_sub_array)),
                                     );
@@ -576,8 +585,11 @@ pub(crate) fn recursive_merge_tables(
                             // Concatenate the new items to the existing array
                             let final_seq = acc_seq.concat(new_seq);
 
-                            let next_acc = acc_table
-                                .store(key_to_merge, Value::Array(Cloak::shield(final_seq)));
+                            let next_acc = table_store(
+                                acc_table,
+                                key_to_merge,
+                                Value::Array(Cloak::shield(final_seq)),
+                            );
                             return recursive_merge_tables(next_acc, rest_of_new_table);
                         }
 
@@ -606,7 +618,8 @@ pub(crate) fn recursive_merge_tables(
                                                 let new_tail: Seq<Value> =
                                                     Seq::new().append(new_last_val);
                                                 let new_seq = prefix.concat(new_tail);
-                                                let next_acc = acc_table.store(
+                                                let next_acc = table_store(
+                                                    acc_table,
                                                     key_to_merge,
                                                     Value::Array(Cloak::shield(new_seq)),
                                                 );
@@ -629,7 +642,7 @@ pub(crate) fn recursive_merge_tables(
                     }
                 }
             } else {
-                let next_acc = acc_table.store(key_to_merge, new_val);
+                let next_acc = table_store(acc_table, key_to_merge, new_val);
                 recursive_merge_tables(next_acc, rest_of_new_table)
             }
         }

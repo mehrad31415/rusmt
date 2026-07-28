@@ -1,13 +1,13 @@
 [package]
 name = "rusmt-lang"
-version = "0.1.0"
+version.workspace = true
 description = "Executable semantics of programming languages"
 readme = "README.md"
-repository = "https://github.com/meng-xu-cs/rusmart.git"
-license = "GPL-3.0-or-later"
+repository.workspace = true
+license.workspace = true
 keywords = ["executable-semantics", "programming-languages", "functional-programming"]
 categories = ["compilers", "parser-implementations"]
-edition = "2024"
+edition.workspace = true
 
 [dependencies]
 rusmt-smt-stdlib = { workspace = true }
@@ -16,3 +16,6 @@ clap = { workspace = true }
 
 [lints.clippy]
 all = "allow"
+
+[dev-dependencies]
+toml = "1.1.2"

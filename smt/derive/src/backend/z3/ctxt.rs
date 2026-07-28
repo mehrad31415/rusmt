@@ -4,7 +4,7 @@ use crate::backend::codegen::CodeGen;
 use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
 use crate::backend::error::{BackendError, BackendResult};
-use crate::backend::response::BACKEND_TIMEOUT;
+use crate::backend::response::backend_timeout;
 // use crate::backend::response::NUM_CPU_CORES;
 use crate::backend::response::Response;
 use crate::backend::z3::exp::format_expression;
@@ -12,7 +12,6 @@ use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
 use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str, mk_functions_unrolled_str};
-use crate::backend::z3::intrinsics::array_null_value;
 use crate::backend::z3::sort::format_sort;
 use crate::backend::z3::sort::get_generic_param_count;
 use crate::backend::z3::sort::{collect_type_edges, resolve_type_name, scc_from_edges};
@@ -25,8 +24,8 @@ use crate::ir::index::{UsrFunId, UsrSortId};
 use crate::ir::sort::{DataType, Sort, Variant};
 use command_group::CommandGroup;
 use log::{debug, warn};
+use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::{BTreeSet, HashSet};
 use std::io::Read;
 use std::path::Path;
 use std::process::Command;
@@ -62,8 +61,8 @@ impl CodeGen for CodeGenZ3 {
         let IRContext {
             ty_registry,
             fn_registry,
-            path_count: _,
             path_targets: _,
+            marker_names: _,
         } = ir;
 
         l!(x, "(set-option :print-success false)");
@@ -101,36 +100,31 @@ impl CodeGen for CodeGenZ3 {
         );
         l!(
             x,
-            "(declare-datatypes ((RuSmtArray 2)) ((par (K V) ((mk-rarr (rarr-data (Array K V)) (rarr-card Int))))))"
+            "(declare-datatypes ((RuSmtArray 2)) ((par (K V) ((mk-rarr (rarr-data (Array K V)) (rarr-pres (Array K Bool)) (rarr-card Int))))))"
         );
         l!(x);
 
         // write the user-defined types
         if !ty_registry.data_types().is_empty() {
             l!(x, "; Define user-defined types");
-            let edges = collect_type_edges(ty_registry.data_types());
-            // Recursive/mutually recursive types — must use declare-datatypes
-            // reverse the order so that types that are referenced by other types are declared first
-            let recursive_sccs: Vec<BTreeSet<UsrSortId>> =
-                scc_from_edges(&edges).into_iter().rev().collect();
 
-            let all_ids: BTreeSet<_> = ty_registry.data_types().keys().copied().collect();
-            let covered: BTreeSet<_> = recursive_sccs
-                .iter()
-                .flat_map(|s| s.iter().copied())
-                .collect();
-            // Isolated types are types that are not referenced by any other type or do not reference any other type.
-            let isolated: Vec<UsrSortId> = all_ids.difference(&covered).copied().collect();
+            // A generic type is declared once, as a `par` template shared by every
+            // instantiation, and that template's body mentions only its own type
+            // parameters plus the concrete types in its own definition. So the graph
+            // that governs declaration order lives on *canonical* (template) sids, not
+            // on the monomorphized ones: an instantiation-argument edge such as
+            // `ParseResult<Value> -> Value` exists in the IR but never appears in the
+            // emitted declaration, so it must not constrain the order.
+            //
+            // Building the graph on canonical sids up front means the SCCs *are* the
+            // declaration groups, already in dependency order — there is nothing to
+            // canonicalize-and-merge afterwards, which is what used to lose a group's
+            // position and could emit a type ahead of one it references.
 
-            // Deduplicate SCCs by type names to avoid declaring the same type multiple times.
-            // This happens with generic types that have multiple instantiations in the IR
-            // (e.g., ParseResult<String> and ParseResult<Value> both map to one ParseResult in Z3).
-            // We group by type name and choose the instance whose type parameters are
-            // uninterpreted sorts (the "generic" version) as the representative.
+            // Pick the representative sid per type name: the `par` template for a
+            // generic type, the type itself otherwise.
             let mut name_to_best_sid: HashMap<String, UsrSortId> = HashMap::new();
-
-            // find the best representative for each type name
-            for &sid in recursive_sccs.iter().flatten().chain(isolated.iter()) {
+            for &sid in ty_registry.data_types().keys() {
                 let type_name_z3 = resolve_type_name(ir, sid);
                 let (ty_name, type_params) = ir.ty_registry.reverse_lookup(sid);
 
@@ -142,7 +136,7 @@ impl CodeGen for CodeGenZ3 {
                                 matches!(
                                     sort,
                                     Sort::Uninterpreted(smt_name)
-                                        if smt_name.as_ref().starts_with(&format!("{}_", name))
+                                        if smt_name.as_ref().starts_with(&format!("{name}_"))
                                 )
                             })
                     }
@@ -155,64 +149,46 @@ impl CodeGen for CodeGenZ3 {
                 let prev = name_to_best_sid.insert(type_name_z3.clone(), sid);
                 assert!(
                     prev.is_none(),
-                    "duplicate canonical sid for type '{}'",
-                    type_name_z3
+                    "duplicate canonical sid for type '{type_name_z3}'"
                 );
             }
 
-            // Second pass: build deduplicated SCCs using the best representatives.
-            // Each SCC's monomorphized sids are replaced with their generic template sid.
-            // SCCs that share any sid after canonicalization are merged together.
-            //
-            // Example: if SCC-A = {Config, ParseResult<String>} and SCC-B = {ParseResult<T>},
-            // after canonicalization both contain sid for ParseResult<T>. They must be merged
-            // into one declare-datatypes block: {Config, ParseResult<T>}.
-            let mut deduplicated_sccs: Vec<BTreeSet<UsrSortId>> = Vec::new();
-
-            for scc in recursive_sccs.iter() {
-                // Map each sid to its best representative's sid
-                let canonical_scc: BTreeSet<UsrSortId> = scc
-                    .iter()
-                    .filter_map(|&sid| {
-                        let type_name = resolve_type_name(ir, sid);
-                        Some(*name_to_best_sid.get(&type_name).unwrap_or_else(|| {
-                            panic!(
-                                "no template representative for type '{}' (sid {:?})",
-                                type_name, sid
-                            )
-                        }))
-                    })
-                    .collect();
-
-                // Find existing SCCs that share any sid with this canonical SCC and merge
-                let mut merged = canonical_scc;
-                let mut i = 0;
-                while i < deduplicated_sccs.len() {
-                    if deduplicated_sccs[i].intersection(&merged).next().is_some() {
-                        // Overlap found — absorb the existing SCC into merged
-                        let existing = deduplicated_sccs.remove(i);
-                        merged.extend(existing);
-                    } else {
-                        i += 1;
-                    }
-                }
-                deduplicated_sccs.push(merged);
-            }
-
-            // Also add isolated types that weren't covered by any recursive SCC
-            for &sid in &isolated {
+            let canonical_sid = |sid: UsrSortId| -> UsrSortId {
                 let type_name = resolve_type_name(ir, sid);
-                if let Some(&best_sid) = name_to_best_sid.get(&type_name) {
-                    // Check if this type is already in a deduplicated SCC
-                    let already_covered =
-                        deduplicated_sccs.iter().any(|scc| scc.contains(&best_sid));
-                    if !already_covered {
-                        deduplicated_sccs.push(BTreeSet::from([best_sid]));
-                    }
-                }
-            }
+                *name_to_best_sid.get(&type_name).unwrap_or_else(|| {
+                    panic!("no template representative for type '{type_name}' (sid {sid:?})")
+                })
+            };
+            let canonical_sids: BTreeSet<UsrSortId> = name_to_best_sid.values().copied().collect();
 
-            for scc in deduplicated_sccs.iter() {
+            // Keep only edges *out of* a canonical body — an instantiation has no
+            // declaration of its own, so its field edges are not emission
+            // dependencies — and retarget each edge at the referenced type's
+            // representative. Self-loops are kept so a recursive type stays a vertex.
+            let edges: Vec<(UsrSortId, UsrSortId)> = collect_type_edges(ty_registry.data_types())
+                .into_iter()
+                .filter(|(src, _)| canonical_sids.contains(src))
+                .map(|(src, dst)| (src, canonical_sid(dst)))
+                .collect();
+
+            // Reverse so that types referenced by other types are declared first;
+            // an SCC with more than one member is mutually recursive and needs a
+            // single `declare-datatypes` block.
+            let sccs: Vec<BTreeSet<UsrSortId>> = scc_from_edges(&edges).into_iter().rev().collect();
+
+            // Canonical types touching no edge at all: nothing they reference and
+            // nothing that references them is declared, so their position is free.
+            let covered: BTreeSet<UsrSortId> = sccs.iter().flatten().copied().collect();
+            let decl_groups: Vec<BTreeSet<UsrSortId>> = sccs
+                .into_iter()
+                .chain(
+                    canonical_sids
+                        .difference(&covered)
+                        .map(|&sid| BTreeSet::from([sid])),
+                )
+                .collect();
+
+            for scc in decl_groups.iter() {
                 let mut decl_headers = Vec::new();
                 let mut decl_bodies = Vec::new();
 
@@ -221,7 +197,7 @@ impl CodeGen for CodeGenZ3 {
                     let type_name_str = resolve_type_name(ir, *sid);
                     let (generic_param_count, type_params) = get_generic_param_count(ir, *sid);
 
-                    decl_headers.push(format!("({} {})", type_name_str, generic_param_count));
+                    decl_headers.push(format!("({type_name_str} {generic_param_count})"));
 
                     // generate the body of the declare-datatype(s) command
                     let body_str = match dt {
@@ -264,32 +240,6 @@ impl CodeGen for CodeGenZ3 {
             }
 
             l!(x); // Empty line after types
-        }
-
-        // Null sentinel constants for array default values.
-        {
-            let mut declared_null_names: HashSet<Sort> = HashSet::new();
-            l!(x, "; Null sentinel constants for array default values");
-
-            // User-defined sorts
-            for sid in ty_registry.data_types().keys() {
-                let (_, type_args) = ty_registry.reverse_lookup(*sid);
-                if type_args
-                    .iter()
-                    .any(|s| matches!(s, Sort::Uninterpreted(_)))
-                {
-                    continue;
-                }
-
-                let v_sort = Sort::User(*sid);
-                if declared_null_names.insert(v_sort.clone()) {
-                    let const_name = array_null_value(&v_sort, ir);
-                    let sort_str = format_sort(&v_sort, ir);
-                    l!(x, "(declare-const {} {})", const_name, sort_str);
-                }
-            }
-
-            l!(x);
         }
 
         // Integer string parsing helpers (hex / octal / binary).
@@ -434,7 +384,7 @@ impl CodeGen for CodeGenZ3 {
                     let root_exp = def.body.lookup_exp(&def.root_exp_id);
                     if let Expression::IterChoose { vars, body, rets } = root_exp {
                         // Build forall parameter declarations
-                        let param_decls: Vec<String> = sig
+                        let mut param_decls: Vec<String> = sig
                             .params
                             .iter()
                             .map(|(name, sort)| {
@@ -475,6 +425,8 @@ impl CodeGen for CodeGenZ3 {
                         // Build membership + non-emptiness constraints from vars.
                         let mut membership_constraints = Vec::new();
                         let mut non_empty_preconditions: Vec<String> = Vec::new();
+                        // Set for a single-index `Seq` choose: see `SEQ_MIN_IDX`.
+                        let mut seq_minimality: Option<String> = None;
                         for (vid, coll_eid) in vars {
                             let var = def.body.lookup_var(vid);
                             let coll_exp = def.body.lookup_exp(coll_eid);
@@ -488,16 +440,12 @@ impl CodeGen for CodeGenZ3 {
                             let coll_str = format_expression(&def.body, *coll_eid, ir);
 
                             let (membership, non_empty) = match &coll_sort {
-                                Sort::Array(key_sort, val_sort) => {
-                                    let null_name = array_null_value(val_sort, ir);
+                                Sort::Array(key_sort, _) => {
                                     let key_str = format_sort(key_sort, ir);
-                                    let m = format!(
-                                        "(not (= (select (rarr-data {}) {}) {}))",
-                                        coll_str, var.name, null_name
-                                    );
+                                    let m =
+                                        format!("(select (rarr-pres {}) {})", coll_str, var.name);
                                     let ne = format!(
-                                        "(exists ((__ne_k {})) (not (= (select (rarr-data {}) __ne_k) {})))",
-                                        key_str, coll_str, null_name
+                                        "(exists ((__ne_k {key_str})) (select (rarr-pres {coll_str}) __ne_k))"
                                     );
                                     (m, ne)
                                 }
@@ -507,8 +455,7 @@ impl CodeGen for CodeGenZ3 {
                                     let m =
                                         format!("(select (rset-data {}) {})", coll_str, var.name);
                                     let ne = format!(
-                                        "(exists ((__ne_v {})) (select (rset-data {}) __ne_v))",
-                                        elem_str, coll_str
+                                        "(exists ((__ne_v {elem_str})) (select (rset-data {coll_str}) __ne_v))"
                                     );
                                     (m, ne)
                                 }
@@ -517,16 +464,28 @@ impl CodeGen for CodeGenZ3 {
                                         "(and (>= {} 0) (< {} (seq.len {})))",
                                         var.name, var.name, coll_str
                                     );
-                                    let ne = format!("(>= (seq.len {}) 1)", coll_str);
+                                    let ne = format!("(>= (seq.len {coll_str}) 1)");
+                                    if vars.len() == 1 && rets.len() == 1 {
+                                        seq_minimality = Some(seq_min_conjunct(
+                                            &var.name.to_string(),
+                                            &body_str,
+                                        ));
+                                    }
                                     (m, ne)
                                 }
                                 _ => panic!(
-                                    "choose! collection must be Array, Set, or Seq, got {:?}",
-                                    coll_sort
+                                    "choose! collection must be Array, Set, or Seq, got {coll_sort:?}"
                                 ),
                             };
                             membership_constraints.push(membership);
                             non_empty_preconditions.push(non_empty);
+                        }
+
+                        // Pin the tie-break. The extra binder joins the *existing*
+                        // `forall` block rather than opening a nested one.
+                        if let Some(min) = seq_minimality {
+                            param_decls.push(format!("({SEQ_MIN_IDX} Int)"));
+                            membership_constraints.push(min);
                         }
 
                         // Combine memberships + body into the constrained branch.
@@ -547,7 +506,7 @@ impl CodeGen for CodeGenZ3 {
                             } else {
                                 format!("(and {})", non_empty_preconditions.join(" "))
                             };
-                            format!("(=> {} {})", precond, full_condition)
+                            format!("(=> {precond} {full_condition})")
                         };
 
                         l!(
@@ -565,7 +524,7 @@ impl CodeGen for CodeGenZ3 {
             // Remaining functions: all monomorphized, non-choose functions
             let all_ids: BTreeSet<_> = mono_fids.difference(&choose_fids).copied().collect();
             // collect function call edges from the source function to the called functions inside the body
-            let edges = collect_function_call_edges(&all_ids, &fn_registry);
+            let edges = collect_function_call_edges(&all_ids, fn_registry);
 
             let recursive_sccs: Vec<BTreeSet<UsrFunId>> =
                 scc_from_edges(&edges).into_iter().rev().collect();
@@ -624,17 +583,18 @@ impl CodeGen for CodeGenZ3 {
     /// Execute the backend solver on the generated SMTLIB2 file.
     fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response> {
         // Z3 -t:N sets the timeout in milliseconds; on expiry Z3 outputs "unknown" and exits 0.
-        let timeout_ms = BACKEND_TIMEOUT.as_millis();
+        let timeout = backend_timeout();
+        let timeout_ms = timeout.as_millis();
         let mut cmd = Command::new("z3");
         cmd.arg("-smt2")
-            .arg(format!("-t:{}", timeout_ms))
-            .arg(&path_src)
+            .arg(format!("-t:{timeout_ms}"))
+            .arg(path_src)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
         // Command::new("z3") builds the command. group_spawn() launches Z3 as an OS process inside a process group. Z3's parallel solver can itself spawn worker sub-processes. A process group means child.kill() kills Z3 AND all its workers in one shot. If you used regular .spawn() + .kill(), you'd only kill the Z3 main process and leave orphaned workers running.
         let mut child = cmd.group_spawn().map_err(|e| {
-            warn!("Failed to spawn z3 process: {}", e);
+            warn!("Failed to spawn z3 process: {e}");
             BackendError
         })?;
 
@@ -654,7 +614,7 @@ impl CodeGen for CodeGenZ3 {
         let stdout_thread = thread::spawn(move || {
             let mut output = String::new();
             if let Err(e) = stdout.read_to_string(&mut output) {
-                warn!("failed to read Z3 stdout: {}", e);
+                warn!("failed to read Z3 stdout: {e}");
             }
             output
         });
@@ -663,7 +623,7 @@ impl CodeGen for CodeGenZ3 {
         let stderr_thread = thread::spawn(move || {
             let mut message = String::new();
             if let Err(e) = stderr.read_to_string(&mut message) {
-                warn!("failed to read Z3 stderr: {}", e);
+                warn!("failed to read Z3 stderr: {e}");
             }
             message
         });
@@ -677,7 +637,7 @@ impl CodeGen for CodeGenZ3 {
                 }
 
                 // check timeout
-                if start.elapsed() > BACKEND_TIMEOUT {
+                if start.elapsed() > timeout {
                     let _ = child.kill();
                     return None;
                 }
@@ -705,7 +665,7 @@ impl CodeGen for CodeGenZ3 {
         })?;
 
         if !stderr_output.is_empty() {
-            debug!("Z3 stderr: {}", stderr_output);
+            debug!("Z3 stderr: {stderr_output}");
         }
 
         // Interpret the output
@@ -713,17 +673,14 @@ impl CodeGen for CodeGenZ3 {
             None => {
                 // Rust monitor killed Z3 (backup path: Z3 didn't respect its own -t:N flag).
                 if !output.is_empty() {
-                    warn!("Output received from timeout execution: {}", output);
+                    warn!("Output received from timeout execution: {output}");
                 }
                 Response::Timeout
             }
             Some(exit_status) => {
                 if !exit_status.success() {
                     // Z3 crashed during model output (e.g. segfault in get-model).
-                    warn!(
-                        "Z3 exited with status {} (model may be incomplete)",
-                        exit_status
-                    );
+                    warn!("Z3 exited with status {exit_status} (model may be incomplete)");
                 }
 
                 let verdict = output
@@ -761,10 +718,7 @@ impl CodeGen for CodeGenZ3 {
             .iter()
             .find(|(name, _)| name.as_ref() == top_level_fn)
             .unwrap_or_else(|| {
-                panic!(
-                    "top-level function '{}' not found in function registry",
-                    top_level_fn
-                )
+                panic!("top-level function '{top_level_fn}' not found in function registry")
             })
             .1;
 
@@ -777,7 +731,7 @@ impl CodeGen for CodeGenZ3 {
             instantiations.len()
         );
         let fn_id = instantiations.values().next().unwrap();
-        let sig = ir.fn_registry.retrieve_sig(fn_id.clone());
+        let sig = ir.fn_registry.retrieve_sig(*fn_id);
 
         // Declare one fresh SMT constant per parameter of the top-level function,
         // and — for any U32 or Seq<U32> parameter — emit a Unicode-scalar-value
@@ -788,11 +742,14 @@ impl CodeGen for CodeGenZ3 {
         let mut query = base_code.to_string();
         let mut param_vars: Vec<String> = Vec::new();
         for (i, (_, param_sort)) in sig.params.iter().enumerate() {
-            let var_name = format!("input_{}", i);
+            let var_name = format!("input_{i}");
             let sort_str = format_sort_for_fn(param_sort, ir);
-            query.push_str(&format!("\n(declare-const {} {})", var_name, sort_str));
+            query.push_str(&format!("\n(declare-const {var_name} {sort_str})"));
             if let Some(bound) = unicode_bound_for(&var_name, param_sort) {
-                query.push_str(&format!("\n{}", bound));
+                query.push_str(&format!("\n{bound}"));
+            }
+            for wf in collection_wellformed(&var_name, param_sort, ir) {
+                query.push_str(&format!("\n{wf}"));
             }
             param_vars.push(var_name);
         }
@@ -804,21 +761,17 @@ impl CodeGen for CodeGenZ3 {
             format!("({} {})", top_level_fn, param_vars.join(" "))
         };
 
-        // Build assertions: for each path ID in the target, assert set membership.
-        // Single target {n}:     (select (accessor result) n)
-        // Merge target {a,b,c}:  (and (select ... a) (select ... b) (select ... c))
-        let member_assertions: Vec<String> = target_ids
-            .iter()
-            .map(|&path_id| extract_path_assertion(&sig.ret_ty, &call_expr, path_id, ir))
-            .collect();
-
-        let assertion = match member_assertions.len() {
-            1 => member_assertions.into_iter().next().unwrap(),
-            _ => format!("(and {})", member_assertions.join(" ")),
-        };
+        // One assertion for the whole target: "every marker in it fired".
+        //   single target {n}    → (= (bvand p M_n) M_n)
+        //   merge target {a,b,c} → (= (bvand p M_abc) M_abc)
+        // The target set goes in as a single mask rather than one assertion per
+        // id: over the bit-set encoding a conjunction of per-id tests would also
+        // be correct, but building the mask once keeps the emitted query small
+        // and mirrors how the set is represented.
+        let assertion = extract_path_assertion(&sig.ret_ty, &call_expr, target_ids, ir);
 
         // Append the assertion, check-sat, get-info, and get-model.
-        query.push_str(&format!("(assert {})\n", assertion));
+        query.push_str(&format!("(assert {assertion})\n"));
         query.push_str("(check-sat)\n");
         query.push_str("(get-info :reason-unknown)\n");
         query.push_str("(get-model)\n");
@@ -827,8 +780,52 @@ impl CodeGen for CodeGenZ3 {
     }
 }
 
+/// Binder for the competing index in the `choose!`-over-`Seq` tie-break. The
+/// `__` prefix is this backend's reserved namespace for generated binders, so it
+/// cannot collide with a user variable.
+const SEQ_MIN_IDX: &str = "__min_idx";
+
+/// The conjunct that pins `choose!(v in s => P(v))` to the index the concrete
+/// semantics returns.
+///
+/// `Seq::iterator()` yields `0..len` in increasing order and `choose!` breaks at
+/// the first hit, so the stdlib's answer is the *smallest* satisfying index.
+/// Without this the axiom says only "some satisfying index", leaving Z3 free to
+/// answer with a different one — the model then validates, replay picks another
+/// index, and the candidate is rejected. Sound either way (the certifier never
+/// accepts it), but it burns proposer rounds on a witness that was never wrong.
+///
+/// # Why this is not a nested quantifier
+///
+/// The obvious encoding puts `(forall ((w Int)) (=> (and (>= w 0) (< w v)) (not
+/// P(w))))` *inside* the axiom's existing `forall` over the parameters. But `v`
+/// is `(f p1 ..)` — a function of the outer binders only — and `w` occurs in no
+/// other conjunct, so the inner `forall` can be lifted into the outer binder
+/// list unchanged:
+///
+/// ```text
+///   ∀p. (memb(v) ∧ P(v) ∧ ∀w. (0 ≤ w < v → ¬P(w)))
+/// ≡ ∀p,w. (memb(v) ∧ P(v) ∧      (0 ≤ w < v → ¬P(w)))
+/// ```
+///
+/// The conjuncts that don't mention `w` are simply replicated, which is
+/// harmless. So this adds one binder to a block Z3 was already instantiating
+/// instead of creating a second instantiation site with its own pattern set.
+/// There is no quantifier alternation here at all — both are universal.
+///
+/// `P(w)` is obtained by *shadowing*: SMT-LIB `let` is lexically scoped, so
+/// wrapping the already-rendered body in `(let ((v __min_idx)) ..)` rebinds the
+/// loop variable for that subterm only. No expression rewriting needed, and the
+/// enclosing `(< __min_idx v)` still sees the outer `v`.
+fn seq_min_conjunct(var_name: &str, body_str: &str) -> String {
+    format!(
+        "(=> (and (>= {SEQ_MIN_IDX} 0) (< {SEQ_MIN_IDX} {var_name})) \
+         (not (let (({var_name} {SEQ_MIN_IDX})) {body_str})))"
+    )
+}
+
 /// Extract the reason string Z3 reported via `(get-info :reason-unknown)`.
-fn extract_reason_unknown(output: &str) -> String {
+pub(crate) fn extract_reason_unknown(output: &str) -> String {
     let marker = "(:reason-unknown";
     let after_marker = match output.find(marker) {
         Some(idx) => &output[idx + marker.len()..],
@@ -867,25 +864,92 @@ fn extract_reason_unknown(output: &str) -> String {
 }
 
 /// If `param_sort` is `U32` or `Seq<U32>`, return an SMT-LIB assertion
-/// constraining the variable's codepoints to the valid Unicode scalar value
-/// range: `[0x0, 0xD7FF] ∪ [0xE000, 0x10FFFF]`. Returns `None` for sorts
-/// that don't reach a `U32` representing a codepoint.
+/// constraining the variable's codepoints to `[0x0, 0xD7FF] ∪ [0xE000, 0x2FFFF]`.
+/// Returns `None` for sorts that don't reach a `U32` representing a codepoint.
 ///
-/// Soundness: this only narrows the search space. Every model satisfying
-/// the constraint is also a model of the unconstrained problem; only models
-/// with invalid codepoints are excluded, and those don't correspond to real
-/// `char` inputs anyway (since `char as u32` only produces valid USVs).
+/// Two separate exclusions, for two different reasons:
+///
+/// * **Surrogates `[0xD800, 0xDFFF]`** are not Unicode scalar values at all, so
+///   no concrete `char` input can produce them (`char as u32` never does). Free
+///   to exclude — nothing real is lost.
+///
+/// * **Everything above `0x2FFFF`** is excluded because that is the largest
+///   character Z3's string theory can represent. Above it `str.from_code`
+///   yields the *empty* string, while the stdlib's `String::from_code`
+///   (`char::from_u32(..).unwrap()`) yields a one-character string — so a model
+///   that picked, say, `0x30000` would have the solver and the executable
+///   semantics disagreeing on `length()` at the very first step. `toml::mod`
+///   feeds input codepoints straight into `String::from_code`, so this is
+///   reachable, not hypothetical.
+///
+///   Unlike the surrogate case this *does* cost completeness: planes 3–16 are
+///   perfectly good `char`s that we now refuse to propose as inputs. That is the
+///   right trade — a witness Z3 mis-models is worse than a witness we never
+///   offer — but it means "no input found" for a target does not rule out one
+///   that needs a codepoint above `0x2FFFF`.
+///
+/// Soundness is otherwise unchanged: this only narrows the search space, so
+/// every model satisfying the constraint still satisfies the unconstrained
+/// problem.
+///
+/// Measured on Z3 4.15.4: `(str.to_code "\u{2FFFF}")` = 196607, and both
+/// `str.to_code` and `str.from_code` fail (`-1` / `""`) from `0x30000` up.
 fn unicode_bound_for(var_expr: &str, sort: &Sort) -> Option<String> {
     match sort {
         Sort::U32 => Some(format!(
-            "(assert (or (bvule {v} #x0000D7FF) (and (bvuge {v} #x0000E000) (bvule {v} #x0010FFFF))))",
-            v = var_expr
+            "(assert (or (bvule {var_expr} #x0000D7FF) (and (bvuge {var_expr} #x0000E000) (bvule {var_expr} #x0002FFFF))))"
         )),
         Sort::Seq(inner) if matches!(**inner, Sort::U32) => Some(format!(
-            "(assert (forall ((__i Int)) (=> (and (>= __i 0) (< __i (seq.len {v}))) (let ((__c (seq.nth {v} __i))) (or (bvule __c #x0000D7FF) (and (bvuge __c #x0000E000) (bvule __c #x0010FFFF)))))))",
-            v = var_expr
+            "(assert (forall ((__i Int)) (=> (and (>= __i 0) (< __i (seq.len {var_expr}))) (let ((__c (seq.nth {var_expr} __i))) (or (bvule __c #x0000D7FF) (and (bvuge __c #x0000E000) (bvule __c #x0002FFFF)))))))"
         )),
         _ => None,
+    }
+}
+
+/// Well-formedness assertions for a *freshly declared* `RuSmtSet` / `RuSmtArray`
+/// constant.
+///
+/// The count is an ordinary `Int` field of the record: the `declare-datatypes`
+/// line ties it to nothing. Every value the transpiler *builds* keeps it in step
+/// with membership, because `mk-rset` / `mk-rarr` are only ever applied by the
+/// Set/Array intrinsics, which bump the count exactly when a presence bit flips.
+/// A `declare-const` of that sort has no such history, so Z3 is free to answer
+/// with an empty set whose `rset-card` is 7 — a value that is not the image of
+/// any concrete `Set`, and that would make `is_empty` disagree with `contains`
+/// in the very model we hand back as a witness.
+///
+/// The exact invariant `card = |{k : pres[k]}|` is not expressible (the key
+/// domain is infinite). These two are, and they close the contradictions the
+/// stdlib's own predicates can observe:
+///
+/// * `card >= 0` — `Set::length` / `Array::length` come from a `usize`;
+/// * `card = 0  <=>  membership everywhere false` — keeps `is_empty`
+///   (`(= card 0)`) consistent with `contains` / `contains_key` (`select`).
+///
+/// Scope: top-level parameters whose sort *is* a Set/Array. A collection nested
+/// inside a `Seq` or a user datatype parameter is still unconstrained — that
+/// needs a quantified assertion per nesting site, and no case study has one.
+fn collection_wellformed(var_expr: &str, sort: &Sort, ir: &IRContext) -> Vec<String> {
+    match sort {
+        Sort::Set(elem) => {
+            let es = format_sort_for_fn(elem, ir);
+            vec![
+                format!("(assert (>= (rset-card {var_expr}) 0))"),
+                format!(
+                    "(assert (= (= (rset-card {var_expr}) 0) (= (rset-data {var_expr}) ((as const (Array {es} Bool)) false))))"
+                ),
+            ]
+        }
+        Sort::Array(key, _) => {
+            let ks = format_sort_for_fn(key, ir);
+            vec![
+                format!("(assert (>= (rarr-card {var_expr}) 0))"),
+                format!(
+                    "(assert (= (= (rarr-card {var_expr}) 0) (= (rarr-pres {var_expr}) ((as const (Array {ks} Bool)) false))))"
+                ),
+            ]
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -894,10 +958,12 @@ fn unicode_bound_for(var_expr: &str, sort: &Sort) -> Option<String> {
 ///
 /// # Background
 ///
-/// Path in RuSmt is `(Set Int)` in Z3. Each `PathFresh(n)` in the interpreter
-/// becomes `(store ((as const (Array Int Bool)) false) n true)`, and `PathMerge` becomes
-/// `((_ map or) ...)`. To test whether a specific path-marker site was reached, we use array select:
-/// `(select result path_id)`.
+/// Concretely a `Path` is a *set* of marker ids, and in SMT it is a bit-set with
+/// one bit per named marker (see `z3/path.rs`). Membership of a whole target
+/// `T` is therefore one formula, `(= (bvand p M_T) M_T)` — "every bit of `T` is
+/// set in `p`" — which covers a singleton `Path::named` target and a
+/// multi-marker `Path::merge` target alike, and says nothing about the other
+/// bits, so a run that fires additional markers still satisfies it.
 ///
 /// # How it works
 ///
@@ -906,11 +972,11 @@ fn unicode_bound_for(var_expr: &str, sort: &Sort) -> Option<String> {
 /// the return sort and generates the appropriate assertion:
 ///
 /// - **`Sort::Path`** — the function returns `Path` directly.
-///   Emits: `(select (fn input_0 ...) path_id)`.
+///   Emits: `(= (fn input_0 ...) path_id)`.
 ///
 /// - **`Sort::User` (enum)** — scans each variant for fields of type `Sort::Path`.
 ///   For each such field, emits a guarded assertion:
-///   `(and (is-VariantName result) (select (accessor result) path_id))`.
+///   `(and (is-VariantName result) (= (accessor result) path_id))`.
 ///   If multiple variants carry Path fields, the assertions are OR'd together.
 ///
 /// # Limitations
@@ -933,17 +999,23 @@ fn unicode_bound_for(var_expr: &str, sort: &Sort) -> Option<String> {
 fn extract_path_assertion(
     ret_sort: &Sort,
     call_expr: &str,
-    path_id: usize,
+    path_ids: &BTreeSet<usize>,
     ir: &IRContext,
 ) -> String {
+    // "Every marker in the target fired." One mask handles both target shapes:
+    // a singleton `Path::named` target and a multi-marker `Path::merge` target.
+    // Building it once, rather than per id, is what makes the merge case work —
+    // conjoining per-id equalities over a single-value encoding was a
+    // contradiction, unsat for every input regardless of the program.
+    let member = |expr: &str| crate::backend::z3::path::contains_all(expr, path_ids, ir);
     match ret_sort {
-        // Function returns Path directly — just check membership.
-        // Example: (select (parse_toml input_0) 3)
-        Sort::Path => format!("(select {} {})", call_expr, path_id),
+        // Function returns Path directly.
+        // Example: (= (bvand (parse_toml input_0) (_ bv4 8)) (_ bv4 8))
+        Sort::Path => member(call_expr),
         // Function returns a user-defined enum — find the variant(s) that carry a Path field.
         // Example for ParseResult with Err(Path):
         //   (and (is-Err (parse_toml input_0))
-        //        (select (field_ParseResult_Err_1_ (parse_toml input_0)) 3))
+        //        (= (bvand (field_ParseResult_Err_1_ (parse_toml input_0)) M) M))
         Sort::User(sid) => {
             let dt = ir.ty_registry.retrieve(*sid);
             let type_name = resolve_type_name(ir, *sid);
@@ -955,12 +1027,13 @@ fn extract_path_assertion(
                             Variant::Tuple(slots) => {
                                 for (i, slot_sort) in slots.iter().enumerate() {
                                     if *slot_sort == Sort::Path {
-                                        let tester = format!("is-{}_{}", type_name, vname);
+                                        let tester = format!("is-{type_name}_{vname}");
                                         let accessor =
                                             format!("field_{}_{}_{}_", type_name, vname, i + 1);
+                                        let field = format!("({accessor} {call_expr})");
                                         assertions.push(format!(
-                                            "(and ({} {}) (select ({} {}) {}))",
-                                            tester, call_expr, accessor, call_expr, path_id
+                                            "(and ({tester} {call_expr}) {})",
+                                            member(&field)
                                         ));
                                     }
                                 }
@@ -968,14 +1041,13 @@ fn extract_path_assertion(
                             Variant::Record(fields) => {
                                 for (field_key, field_sort) in fields {
                                     if *field_sort == Sort::Path {
-                                        let tester = format!("is-{}_{}", type_name, vname);
-                                        let accessor = format!(
-                                            "record_{}_{}_{}_",
-                                            type_name, vname, field_key
-                                        );
+                                        let tester = format!("is-{type_name}_{vname}");
+                                        let accessor =
+                                            format!("record_{type_name}_{vname}_{field_key}_");
+                                        let field = format!("({accessor} {call_expr})");
                                         assertions.push(format!(
-                                            "(and ({} {}) (select ({} {}) {}))",
-                                            tester, call_expr, accessor, call_expr, path_id
+                                            "(and ({tester} {call_expr}) {})",
+                                            member(&field)
                                         ));
                                     }
                                 }
@@ -985,8 +1057,7 @@ fn extract_path_assertion(
                     }
                     assert!(
                         !assertions.is_empty(),
-                        "return type '{}' has no Path fields in any variant",
-                        type_name
+                        "return type '{type_name}' has no Path fields in any variant"
                     );
                     if assertions.len() == 1 {
                         assertions.remove(0)
@@ -995,14 +1066,10 @@ fn extract_path_assertion(
                     }
                 }
                 _ => panic!(
-                    "return type is not an enum — cannot extract path assertion from {:?}",
-                    ret_sort
+                    "return type is not an enum — cannot extract path assertion from {ret_sort:?}"
                 ),
             }
         }
-        _ => panic!(
-            "return sort {:?} does not contain Path — cannot generate path query",
-            ret_sort
-        ),
+        _ => panic!("return sort {ret_sort:?} does not contain Path — cannot generate path query"),
     }
 }

@@ -8,5 +8,7 @@ mod exp;
 pub(crate) mod fun;
 /// Maps each IR intrinsic operation to its Z3 SMT-LIB formula
 pub(crate) mod intrinsics;
+/// Bit-set encoding of `Path` (one bit per named marker)
+pub(crate) mod path;
 /// Converts IR type definitions to Z3 `declare-datatypes` blocks
 pub(crate) mod sort;

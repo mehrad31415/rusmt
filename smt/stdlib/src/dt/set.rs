@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 
 impl<T: SMT> Set<T> {
     /// create an new set: `Set::new()`
+    /// (mk-rset ((as const (Array T Bool)) false) 0)
     pub fn new() -> Self {
         Self {
             inner: Intern::new(BTreeSet::new()),
@@ -14,11 +15,13 @@ impl<T: SMT> Set<T> {
     }
 
     /// return the length of the set: `s.length()`
+    /// (rset-card s)
     pub fn length(self) -> Integer {
         self.inner.len().into()
     }
 
     /// a non in-place operation to insert an element into the set: `s.insert(e)`
+    /// (mk-rset (store (rset-data s) e true) (ite (select (rset-data s) e) (rset-card s) (+ (rset-card s) 1)))
     pub fn insert(self, e: T) -> Self {
         let mut new_set = (*self.inner).clone();
         new_set.insert(SMTWrap(e));
@@ -28,6 +31,7 @@ impl<T: SMT> Set<T> {
     }
 
     /// a non in-place operation to remove an element from the set: `s.remove(e)`
+    /// (mk-rset (store (rset-data s) e false) (ite (select (rset-data s) e) (- (rset-card s) 1) (rset-card s)))
     pub fn remove(self, e: T) -> Self {
         let mut new_set = (*self.inner).clone();
         new_set.remove(&SMTWrap(e));
@@ -37,6 +41,7 @@ impl<T: SMT> Set<T> {
     }
 
     /// `v.contains(e)`
+    /// (select (rset-data v) e)
     pub fn contains(self, e: T) -> Boolean {
         self.inner.contains(&SMTWrap(e)).into()
     }
@@ -49,29 +54,31 @@ impl<T: SMT> Set<T> {
     }
 
     /// checks if the set is empty: `s.is_empty()`
+    /// (= (rset-card s) 0)
     pub fn is_empty(self) -> Boolean {
         self.inner.is_empty().into()
     }
 
     /// is subset of other (self <= other)
+    /// (= ((_ map and) (rset-data self) (rset-data other)) (rset-data self))
     pub fn is_subset(self, other: Self) -> Boolean {
         self.inner.is_subset(&other.inner).into()
     }
 
     /// Checks if this is a proper subset (⊂, not ⊆)
+    /// Above plus the length check: `(and (is_subset self other) (< (rset-card self) (rset-card other)))`
     pub fn is_proper_subset(self, other: Self) -> Boolean {
-        (self
-            .is_subset(other.clone())
-            .and(self.length().lt(other.length())))
-        .into()
+        self.is_subset(other).and(self.length().lt(other.length()))
     }
 
     /// This is a concrete check. Z3's `set.has_size` is a symbolic predicate.
+    /// (= (rset-card self) k)
     pub fn has_size(self, k: Integer) -> Boolean {
         self.length().eq(k)
     }
 
     /// Checks if two sets are disjoint (no common elements)
+    /// (= ((_ map and) (rset-data self) (rset-data other)) ((as const (Array {ts} Bool)) false))
     pub fn is_disjoint(self, other: Self) -> Boolean {
         self.inner.is_disjoint(&other.inner).into()
     }

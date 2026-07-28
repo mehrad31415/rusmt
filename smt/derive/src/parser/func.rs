@@ -8,7 +8,7 @@ use crate::parser::ty::{CtxtForType, TypeTag};
 use crate::{bail_if_exists, bail_on};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
-use syn::{FnArg, Ident, PatType, Result, ReturnType, Signature};
+use syn::{FnArg, Ident, PatType, Result, ReturnType, Safety, Signature};
 
 /// Represents casting-related function names
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -204,7 +204,7 @@ impl FuncSig {
         let Signature {
             constness,
             asyncness,
-            unsafety,
+            safety,
             abi,
             fn_token: _,
             ident: _, // handled earlier (the fact that the function name is unique was handled in the ctxt.rs file in the sanity check)
@@ -218,7 +218,13 @@ impl FuncSig {
         // These features are not supported and should not appear.
         bail_if_exists!(constness);
         bail_if_exists!(asyncness);
-        bail_if_exists!(unsafety);
+        match safety {
+            Safety::Default => {}
+            Safety::Safe(tok) => {
+                bail_on!(tok, "unexpected safety qualifier in function declaration")
+            }
+            Safety::Unsafe(tok) => bail_on!(tok, "unexpected unsafety in function declaration"),
+        }
         bail_if_exists!(abi);
         bail_if_exists!(variadic);
 

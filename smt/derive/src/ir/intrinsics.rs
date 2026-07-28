@@ -1338,15 +1338,17 @@ pub enum Intrinsic {
         /// The right operand
         rhs: ExpId,
     },
-    /// `Path::fresh` - carries the globally unique path-marker ID assigned at IR-build time
-    PathFresh(usize),
+    PathName {
+        /// The name of the path
+        name: String,
+    },
     /// `Path::merge`
     PathMerge {
         /// The left operand
         lhs: ExpId,
         /// The right operand
         rhs: ExpId,
-        /// All PathFresh IDs reachable through the merge tree
+        /// All named-marker ids reachable through the merge tree
         ids: BTreeSet<usize>,
     },
     /// `<any-smt-type>::eq`

@@ -1,0 +1,607 @@
+% refs.bib for the RuSMT paper.
+% Entries verified against DBLP / publisher pages. A "% [verify] <field>" comment
+% above an entry flags a detail still to be confirmed against the primary source.
+% DOIs are included only where confirmed; none are invented.
+
+% ---- Solvers / standards ------------------------------------------------------
+
+@inproceedings{demoura2008z3,
+  author    = {Leonardo de Moura and Nikolaj Bj{\o}rner},
+  title     = {{Z3}: An Efficient {SMT} Solver},
+  booktitle = {Tools and Algorithms for the Construction and Analysis of Systems (TACAS 2008)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {4963},
+  pages     = {337--340},
+  publisher = {Springer},
+  year      = {2008},
+  doi       = {10.1007/978-3-540-78800-3_24}
+}
+
+@techreport{barrett2017smtlib,
+  author      = {Clark Barrett and Pascal Fontaine and Cesare Tinelli},
+  title       = {The {SMT-LIB} Standard: Version 2.6},
+  institution = {Department of Computer Science, The University of Iowa},
+  type        = {Technical Report},
+  year        = {2017},
+  note        = {Available at \url{https://smt-lib.org}}
+}
+
+% ---- Solver-aided languages / synthesis --------------------------------------
+
+@inproceedings{torlak2013rosette,
+  author    = {Emina Torlak and Rastislav Bod{\'i}k},
+  title     = {Growing Solver-Aided Languages with {Rosette}},
+  booktitle = {Proceedings of the 2013 ACM International Symposium on New Ideas,
+               New Paradigms, and Reflections on Programming \& Software (Onward! 2013)},
+  pages     = {135--152},
+  publisher = {ACM},
+  year      = {2013},
+  doi       = {10.1145/2509578.2509586}
+}
+
+@inproceedings{torlak2014rosette,
+  author    = {Emina Torlak and Rastislav Bod{\'i}k},
+  title     = {A Lightweight Symbolic Virtual Machine for Solver-Aided Host Languages},
+  booktitle = {Proceedings of the 35th ACM SIGPLAN Conference on Programming
+               Language Design and Implementation (PLDI 2014)},
+  pages     = {530--541},
+  publisher = {ACM},
+  year      = {2014},
+  doi       = {10.1145/2594291.2594340}
+}
+
+@article{kim2021semgus,
+  author  = {Jinwoo Kim and Qinheping Hu and Loris D'Antoni and Thomas W. Reps},
+  title   = {Semantics-Guided Synthesis},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {5},
+  number  = {POPL},
+  pages   = {1--32},
+  year    = {2021},
+  doi     = {10.1145/3434311}
+}
+
+@article{porncharoenwase2022leanette,
+  author  = {Sorawee Porncharoenwase and Luke Nelson and Xi Wang and Emina Torlak},
+  title   = {A Formal Foundation for Symbolic Evaluation with Merging},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {6},
+  number  = {POPL},
+  pages   = {1--28},
+  year    = {2022},
+  doi     = {10.1145/3498709}
+}
+
+% [verify] page range: DBLP records 1--8; some sources (incl. an author page) say 1--17.
+@inproceedings{alur2013sygus,
+  author    = {Rajeev Alur and Rastislav Bod{\'i}k and Garvit Juniwal and
+               Milo M. K. Martin and Mukund Raghothaman and Sanjit A. Seshia and
+               Rishabh Singh and Armando Solar-Lezama and Emina Torlak and
+               Abhishek Udupa},
+  title     = {Syntax-Guided Synthesis},
+  booktitle = {2013 Formal Methods in Computer-Aided Design (FMCAD 2013)},
+  pages     = {1--8},
+  publisher = {IEEE},
+  year      = {2013}
+}
+
+% [verify] Synantic is the tool's name; the paper's title is the one below.
+@article{liu2024synantic,
+  author  = {Jiangyi Liu and Charlie Murphy and Anvay Grover and
+             Keith J. C. Johnson and Thomas W. Reps and Loris D'Antoni},
+  title   = {Synthesizing Formal Semantics from Executable Interpreters},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {8},
+  number  = {OOPSLA2},
+  pages   = {362--388},
+  year    = {2024},
+  doi     = {10.1145/3689724}
+}
+
+% ---- Symbolic execution / interpreters-as-compilers --------------------------
+
+@inproceedings{cadar2008klee,
+  author    = {Cristian Cadar and Daniel Dunbar and Dawson Engler},
+  title     = {{KLEE}: Unassisted and Automatic Generation of High-Coverage Tests
+               for Complex Systems Programs},
+  booktitle = {Proceedings of the 8th USENIX Conference on Operating Systems
+               Design and Implementation (OSDI 2008)},
+  pages     = {209--224},
+  publisher = {USENIX Association},
+  year      = {2008}
+}
+
+@article{futamura1999partial,
+  author  = {Yoshihiko Futamura},
+  title   = {Partial Evaluation of Computation Process---An Approach to a Compiler-Compiler},
+  journal = {Higher-Order and Symbolic Computation},
+  volume  = {12},
+  number  = {4},
+  pages   = {381--391},
+  year    = {1999},
+  doi     = {10.1023/A:1010095604496},
+  note    = {Reprint of the 1971 original}
+}
+
+@article{wei2020gensym,
+  author    = {Guannan Wei and Oliver Bra{\v{c}}evac and Shangyin Tan and Tiark Rompf},
+  title     = {Compiling Symbolic Execution with Staging and Algebraic Effects},
+  journal   = {Proceedings of the ACM on Programming Languages},
+  volume    = {4},
+  number    = {OOPSLA},
+  pages     = {1--33},
+  year      = {2020},
+  doi       = {10.1145/3428232}
+}
+
+% ---- Executable-semantics frameworks -----------------------------------------
+
+@article{rosu2010k,
+  author  = {Grigore Ro{\c{s}}u and Traian Florin {\c{S}}erb{\u{a}}nu{\c{t}}{\u{a}}},
+  title   = {An Overview of the {K} Semantic Framework},
+  journal = {The Journal of Logic and Algebraic Programming},
+  volume  = {79},
+  number  = {6},
+  pages   = {397--434},
+  year    = {2010},
+  doi     = {10.1016/j.jlap.2010.03.012}
+}
+
+@book{felleisen2009redex,
+  author    = {Matthias Felleisen and Robert Bruce Findler and Matthew Flatt},
+  title     = {Semantics Engineering with {PLT} {Redex}},
+  publisher = {MIT Press},
+  year      = {2009},
+  isbn      = {9780262062756}
+}
+
+@inproceedings{sewell2007ott,
+  author    = {Peter Sewell and Francesco Zappa Nardelli and Scott Owens and
+               Gilles Peskine and Tom Ridge and Susmit Sarkar and Rok Strni{\v{s}}a},
+  title     = {Ott: Effective Tool Support for the Working Semanticist},
+  booktitle = {Proceedings of the 12th ACM SIGPLAN International Conference on
+               Functional Programming (ICFP 2007)},
+  pages     = {1--12},
+  publisher = {ACM},
+  year      = {2007},
+  doi       = {10.1145/1291151.1291155}
+}
+
+@inproceedings{mulligan2014lem,
+  author    = {Dominic P. Mulligan and Scott Owens and Kathryn E. Gray and
+               Tom Ridge and Peter Sewell},
+  title     = {Lem: Reusable Engineering of Real-World Semantics},
+  booktitle = {Proceedings of the 19th ACM SIGPLAN International Conference on
+               Functional Programming (ICFP 2014)},
+  pages     = {175--188},
+  publisher = {ACM},
+  year      = {2014},
+  doi       = {10.1145/2628136.2628143}
+}
+
+% ---- Bounded model finding ---------------------------------------------------
+
+@article{jackson2002alloy,
+  author  = {Daniel Jackson},
+  title   = {Alloy: A Lightweight Object Modelling Notation},
+  journal = {ACM Transactions on Software Engineering and Methodology (TOSEM)},
+  volume  = {11},
+  number  = {2},
+  pages   = {256--290},
+  year    = {2002},
+  doi     = {10.1145/505145.505149}
+}
+
+@inproceedings{torlak2007kodkod,
+  author    = {Emina Torlak and Daniel Jackson},
+  title     = {Kodkod: A Relational Model Finder},
+  booktitle = {Tools and Algorithms for the Construction and Analysis of Systems (TACAS 2007)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {4424},
+  pages     = {632--647},
+  publisher = {Springer},
+  year      = {2007},
+  doi       = {10.1007/978-3-540-71209-1_49}
+}
+
+% ---- Relational interpreters -------------------------------------------------
+
+@article{byrd2017unified,
+  author  = {William E. Byrd and Michael Ballantyne and Greg Rosenblatt and Matthew Might},
+  title   = {A Unified Approach to Solving Seven Programming Problems (Functional Pearl)},
+  journal = {Proceedings of the ACM on Programming Languages},
+  volume  = {1},
+  number  = {ICFP},
+  pages   = {1--26},
+  year    = {2017},
+  doi     = {10.1145/3110252}
+}
+
+@inproceedings{byrd2012quines,
+  author    = {William E. Byrd and Eric Holk and Daniel P. Friedman},
+  title     = {{miniKanren}, Live and Untagged: Quine Generation via Relational
+               Interpreters (Programming Pearl)},
+  booktitle = {Proceedings of the 2012 Annual Workshop on Scheme and Functional
+               Programming (Scheme '12)},
+  pages     = {8--29},
+  publisher = {ACM},
+  year      = {2012},
+  doi       = {10.1145/2661103.2661105}
+}
+
+% ---- CHC verifiers -----------------------------------------------------------
+
+@incollection{bjorner2015horn,
+  author    = {Nikolaj Bj{\o}rner and Arie Gurfinkel and Kenneth L. McMillan and
+               Andrey Rybalchenko},
+  title     = {Horn Clause Solvers for Program Verification},
+  booktitle = {Fields of Logic and Computation II},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {9300},
+  pages     = {24--51},
+  publisher = {Springer},
+  year      = {2015},
+  doi       = {10.1007/978-3-319-23534-9_2}
+}
+
+@inproceedings{gurfinkel2015seahorn,
+  author    = {Arie Gurfinkel and Temesghen Kahsai and Anvesh Komuravelli and Jorge A. Navas},
+  title     = {The {SeaHorn} Verification Framework},
+  booktitle = {Computer Aided Verification (CAV 2015)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {9206},
+  pages     = {343--361},
+  publisher = {Springer},
+  year      = {2015},
+  doi       = {10.1007/978-3-319-21690-4_20}
+}
+
+@inproceedings{matsushita2020rusthorn,
+  author    = {Yusuke Matsushita and Takeshi Tsukada and Naoki Kobayashi},
+  title     = {{RustHorn}: {CHC}-Based Verification for {Rust} Programs},
+  booktitle = {Programming Languages and Systems (ESOP 2020)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {12075},
+  pages     = {484--514},
+  publisher = {Springer},
+  year      = {2020},
+  doi       = {10.1007/978-3-030-44914-8_18}
+}
+
+@inproceedings{kahsai2016jayhorn,
+  author    = {Temesghen Kahsai and Philipp R{\"u}mmer and Huascar Sanchez and Martin Sch{\"a}f},
+  title     = {{JayHorn}: A Framework for Verifying {Java} Programs},
+  booktitle = {Computer Aided Verification (CAV 2016)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {9779},
+  pages     = {352--358},
+  publisher = {Springer},
+  year      = {2016},
+  doi       = {10.1007/978-3-319-41528-4_19}
+}
+
+% ---- Conformance-test generation / domain ------------------------------------
+
+@inproceedings{yang2011csmith,
+  author    = {Xuejun Yang and Yang Chen and Eric Eide and John Regehr},
+  title     = {Finding and Understanding Bugs in {C} Compilers},
+  booktitle = {Proceedings of the 32nd ACM SIGPLAN Conference on Programming
+               Language Design and Implementation (PLDI 2011)},
+  pages     = {283--294},
+  publisher = {ACM},
+  year      = {2011},
+  doi       = {10.1145/1993498.1993532}
+}
+
+@inproceedings{park2021jest,
+  author    = {Jihyeok Park and Seungmin An and Dongjun Youn and Gyeongwon Kim and Sukyoung Ryu},
+  title     = {{JEST}: {N+1}-version Differential Testing of Both {JavaScript}
+               Engines and Specification},
+  booktitle = {Proceedings of the 43rd IEEE/ACM International Conference on
+               Software Engineering (ICSE 2021)},
+  pages     = {13--24},
+  publisher = {IEEE},
+  year      = {2021},
+  doi       = {10.1109/ICSE43902.2021.00015}
+}
+
+@inproceedings{jha2023cegisllm,
+  author    = {Sumit Kumar Jha and Susmit Jha and Patrick Lincoln and
+               Nathaniel D. Bastian and Alvaro Velasquez and Rickard Ewetz and
+               Sandeep Neema},
+  title     = {Counterexample Guided Inductive Synthesis Using Large Language
+               Models and Satisfiability Solving},
+  booktitle = {IEEE Military Communications Conference (MILCOM 2023)},
+  publisher = {IEEE},
+  year      = {2023},
+  doi       = {10.1109/MILCOM58377.2023.10356332}
+}
+
+@inproceedings{tang2025hygenar,
+  author    = {Weizhi Tang and Yixuan Li and Chris Sypherd and
+               Elizabeth Polgreen and Vaishak Belle},
+  title     = {{HyGenar}: An {LLM}-Driven Hybrid Genetic Algorithm for
+               Few-Shot Grammar Generation},
+  booktitle = {Findings of the Association for Computational Linguistics:
+               ACL 2025},
+  year      = {2025},
+  note      = {arXiv:2505.16978}
+}
+
+@inproceedings{ye2021comfort,
+  author    = {Guixin Ye and Zhanyong Tang and Shin Hwei Tan and Songfang Huang and
+               Dingyi Fang and Xiaoyang Sun and Lizhong Bian and Haibo Wang and Zheng Wang},
+  title     = {Automated Conformance Testing for {JavaScript} Engines via Deep
+               Compiler Fuzzing},
+  booktitle = {Proceedings of the 42nd ACM SIGPLAN International Conference on
+               Programming Language Design and Implementation (PLDI 2021)},
+  pages     = {435--450},
+  publisher = {ACM},
+  year      = {2021},
+  doi       = {10.1145/3453483.3454054}
+}
+
+% ---- Object-language specification -------------------------------------------
+
+@misc{tomlspec,
+  author       = {Tom Preston-Werner and others},
+  title        = {{TOML}: Tom's Obvious, Minimal Language, Version 1.1.0},
+  year         = {2025},
+  howpublished = {\url{https://toml.io/en/v1.1.0}},
+  note         = {Language specification}
+}
+
+@book{winskel1993,
+  author    = {Glynn Winskel},
+  title     = {The Formal Semantics of Programming Languages: An Introduction},
+  series    = {Foundations of Computing},
+  publisher = {MIT Press},
+  year      = {1993},
+  isbn      = {9780262231695}
+}
+
+% ---- LLMs as proposers behind a trusted checker (verified on arXiv/DBLP) ------
+
+@inproceedings{lemieux2023codamosa,
+  author    = {Caroline Lemieux and Jeevana Priya Inala and Shuvendu K. Lahiri and Siddhartha Sen},
+  title     = {{CodaMOSA}: Escaping Coverage Plateaus in Test Generation with Pre-trained Large Language Models},
+  booktitle = {45th International Conference on Software Engineering (ICSE 2023)},
+  publisher = {IEEE},
+  year      = {2023},
+  doi       = {10.1109/ICSE48619.2023.00085}
+}
+
+@article{tu2025cottontail,
+  author    = {Haoxin Tu and Seongmin Lee and Yuxian Li and Peng Chen and Lingxiao Jiang and Marcel B{\"o}hme},
+  title     = {{Cottontail}: Large Language Model-Driven Concolic Execution for Highly Structured Test Input Generation},
+  journal   = {arXiv preprint arXiv:2504.17542},
+  year      = {2025},
+  note      = {To appear, IEEE Symposium on Security and Privacy (S\&P) 2026},
+  eprint    = {2504.17542},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{wu2024lemur,
+  author    = {Haoze Wu and Clark Barrett and Nina Narodytska},
+  title     = {{Lemur}: Integrating Large Language Models in Automated Program Verification},
+  booktitle = {International Conference on Learning Representations (ICLR 2024)},
+  year      = {2024},
+  eprint    = {2310.04870},
+  archivePrefix = {arXiv}
+}
+
+@article{romeraparedes2023funsearch,
+  author    = {Bernardino Romera-Paredes and others},
+  title     = {Mathematical Discoveries from Program Search with Large Language Models},
+  journal   = {Nature},
+  volume    = {625},
+  pages     = {468--475},
+  year      = {2024},
+  doi       = {10.1038/s41586-023-06924-6}
+}
+
+@inproceedings{li2024sygusllm,
+  author    = {Yixuan Li and Julian Parsert and Elizabeth Polgreen},
+  title     = {Guiding Enumerative Program Synthesis with Large Language Models},
+  booktitle = {Computer Aided Verification (CAV 2024)},
+  series    = {Lecture Notes in Computer Science},
+  publisher = {Springer},
+  year      = {2024},
+  eprint    = {2403.03997},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{sun2024clover,
+  author    = {Chuyue Sun and Ying Sheng and Oded Padon and Clark Barrett},
+  title     = {{Clover}: Closed-Loop Verifiable Code Generation},
+  booktitle = {AI Verification (SAIV 2024)},
+  series    = {Lecture Notes in Computer Science},
+  publisher = {Springer},
+  year      = {2024},
+  eprint    = {2310.17807},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{lv2026aquaforte,
+  author    = {Kunhang Lv and Yuhang Dong and Rui Han and Fuqi Jia and Feifei Ma and Jian Zhang},
+  title     = {{LLM}-Guided Quantified {SMT} Solving over Uninterpreted Functions},
+  booktitle = {Proc.\ 40th AAAI Conference on Artificial Intelligence},
+  year      = {2026},
+  note      = {arXiv:2601.04675}
+}
+
+@misc{wang2025pathconstraints,
+  author    = {Wenhan Wang and Kaibo Liu and Zeyu Sun and An Ran Chen and Ge Li and Gang Huang and Lei Ma},
+  title     = {Can Large Language Models Solve Path Constraints in Symbolic Execution?},
+  year      = {2025},
+  eprint    = {2511.18288},
+  archivePrefix = {arXiv}
+}
+
+@article{li2025llmse,
+  author    = {Yihe Li and Ruijie Meng and Gregory J. Duck},
+  title     = {Large Language Model Powered Symbolic Execution},
+  journal   = {Proc. ACM Program. Lang.},
+  volume    = {9},
+  number    = {OOPSLA2},
+  year      = {2025},
+  doi       = {10.1145/3763163}
+}
+
+@inproceedings{xia2024fuzz4all,
+  author    = {Chunqiu Steven Xia and Matteo Paltenghi and Jia Le Tian and Michael Pradel and Lingming Zhang},
+  title     = {{Fuzz4All}: Universal Fuzzing with Large Language Models},
+  booktitle = {Proc.\ 46th IEEE/ACM International Conference on Software Engineering (ICSE)},
+  year      = {2024},
+  doi       = {10.1145/3597503.3639121}
+}
+
+@inproceedings{ma2025specgen,
+  author    = {Lezhi Ma and Shangqing Liu and Yi Li and Xiaofei Xie and Lei Bu},
+  title     = {{SpecGen}: Automated Generation of Formal Program Specifications via Large Language Models},
+  booktitle = {Proc.\ 47th IEEE/ACM International Conference on Software Engineering (ICSE)},
+  year      = {2025},
+  doi       = {10.1109/ICSE55347.2025.00129}
+}
+
+@article{endres2024nl2postcond,
+  author    = {Madeline Endres and Sarah Fakhoury and Saikat Chakraborty and Shuvendu K. Lahiri},
+  title     = {Can Large Language Models Transform Natural Language Intent into Formal Method Postconditions?},
+  journal   = {Proc. ACM Softw. Eng. (FSE)},
+  year      = {2024},
+  doi       = {10.1145/3660791}
+}
+
+@article{misu2024dafny,
+  author    = {Md Rakib Hossain Misu and Cristina V. Lopes and Iris Ma and James Noble},
+  title     = {Towards {AI}-Assisted Synthesis of Verified {Dafny} Methods},
+  journal   = {Proc. ACM Softw. Eng. (FSE)},
+  volume    = {1},
+  year      = {2024},
+  doi       = {10.1145/3643763}
+}
+
+@misc{thimmaiah2026plsemantics,
+  author    = {Aditya Thimmaiah and Jiyang Zhang and Jayanth Srinivasa and Junyi Jessy Li and Milos Gligoric},
+  title     = {{PLSemanticsBench}: Large Language Models as Programming Language Interpreters},
+  year      = {2025},
+  eprint    = {2510.03415},
+  archivePrefix = {arXiv}
+}
+
+% ---- Empirical methodology: validity taxonomy --------------------------------
+
+@book{wohlin2012experimentation,
+  author    = {Claes Wohlin and Per Runeson and Martin H{\"o}st and
+               Magnus C. Ohlsson and Bj{\"o}rn Regnell and Anders Wessl{\'e}n},
+  title     = {Experimentation in Software Engineering},
+  publisher = {Springer},
+  year      = {2012},
+  isbn      = {9783642290435},
+  doi       = {10.1007/978-3-642-29044-2}
+}
+
+@article{runeson2009casestudy,
+  author  = {Per Runeson and Martin H{\"o}st},
+  title   = {Guidelines for Conducting and Reporting Case Study Research in
+             Software Engineering},
+  journal = {Empirical Software Engineering},
+  volume  = {14},
+  number  = {2},
+  pages   = {131--164},
+  year    = {2009},
+  doi     = {10.1007/s10664-008-9102-8}
+}
+
+% ---- Error-case / conformance motivation (verified metadata) -----------------
+
+@inproceedings{yuan2014simple,
+  author    = {Ding Yuan and Yu Luo and Xin Zhuang and Guilherme Renna Rodrigues and Xu Zhao and Yongle Zhang and Pranay U. Jain and Michael Stumm},
+  title     = {Simple Testing Can Prevent Most Critical Failures: An Analysis of Production Failures in Distributed Data-Intensive Systems},
+  booktitle = {11th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  pages     = {249--265},
+  year      = {2014},
+  publisher = {USENIX Association}
+}
+
+@inproceedings{gunawi2008eio,
+  author    = {Haryadi S. Gunawi and Cindy Rubio-Gonz{\'a}lez and Andrea C. Arpaci-Dusseau and Remzi H. Arpaci-Dusseau and Ben Liblit},
+  title     = {{EIO}: Error Handling is Occasionally Correct},
+  booktitle = {6th USENIX Conference on File and Storage Technologies (FAST)},
+  pages     = {207--222},
+  year      = {2008},
+  publisher = {USENIX Association}
+}
+
+@misc{seriot2016json,
+  author       = {Nicolas Seriot},
+  title        = {Parsing {JSON} is a Minefield},
+  year         = {2016},
+  howpublished = {\url{http://seriot.ch/parsing_json.php}},
+  note         = {Accessed 2026-06-20}
+}
+
+@article{sassaman2013langsec,
+  author  = {Len Sassaman and Meredith L. Patterson and Sergey Bratus and Michael E. Locasto},
+  title   = {Security Applications of Formal Language Theory},
+  journal = {IEEE Systems Journal},
+  volume  = {7},
+  number  = {3},
+  pages   = {489--500},
+  year    = {2013},
+  doi     = {10.1109/JSYST.2012.2222000}
+}
+
+@inproceedings{brubaker2014frankencerts,
+  author    = {Chad Brubaker and Suman Jana and Baishakhi Ray and Sarfraz Khurshid and Vitaly Shmatikov},
+  title     = {Using Frankencerts for Automated Adversarial Testing of Certificate Validation in {SSL/TLS} Implementations},
+  booktitle = {2014 IEEE Symposium on Security and Privacy (S\&P)},
+  pages     = {114--129},
+  year      = {2014},
+  publisher = {IEEE},
+  doi       = {10.1109/SP.2014.15}
+}
+
+@article{mckeeman1998differential,
+  author  = {William M. McKeeman},
+  title   = {Differential Testing for Software},
+  journal = {Digital Technical Journal},
+  volume  = {10},
+  number  = {1},
+  pages   = {100--107},
+  year    = {1998}
+}
+
+@book{aho2006compilers,
+  author    = {Alfred V. Aho and Monica S. Lam and Ravi Sethi and Jeffrey D. Ullman},
+  title     = {Compilers: Principles, Techniques, and Tools},
+  edition   = {2nd},
+  year      = {2006},
+  publisher = {Addison-Wesley}
+}
+
+@book{pierce2002tapl,
+  author    = {Benjamin C. Pierce},
+  title     = {Types and Programming Languages},
+  year      = {2002},
+  publisher = {MIT Press}
+}
+
+@misc{tc39test262,
+  author       = {{Ecma International TC39}},
+  title        = {{Test262}: {ECMAScript} Conformance Test Suite},
+  howpublished = {\url{https://github.com/tc39/test262}},
+  note         = {Accessed 2026-06-20}
+}
+
+@inproceedings{biere1999bmc,
+  author    = {Armin Biere and Alessandro Cimatti and Edmund M. Clarke and Yunshan Zhu},
+  title     = {Symbolic Model Checking without {BDDs}},
+  booktitle = {Tools and Algorithms for the Construction and Analysis of Systems (TACAS)},
+  series    = {LNCS},
+  volume    = {1579},
+  pages     = {193--207},
+  year      = {1999},
+  publisher = {Springer},
+  doi       = {10.1007/3-540-49059-0_14}
+}

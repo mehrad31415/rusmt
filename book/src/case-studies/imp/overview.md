@@ -21,7 +21,7 @@ The interpreter lives in `lang/src/imp/`:
 |------|---------|
 | `lang/src/imp/mod.rs` | Crate-public big-step evaluators `eval_aexp` / `eval_bexp` / `eval_com`, plus the `EvalResult` type and the synthesis markers. |
 | `lang/src/imp/ast.rs` | The three syntactic categories (`Aexp`, `Bexp`, `Com`) as `#[smt_type]` enums. |
-| `lang/src/imp/parser.rs` | Plain-Rust recursive-descent parser for the concrete `.imp` syntax + a `format_store` pretty-printer for final stores. |
+| `lang/src/imp_parser.rs` | Plain-Rust recursive-descent parser for the concrete `.imp` syntax + a `format_store` pretty-printer for final stores. |
 
 The state is `Array<String, I64>`. Reads from an unwritten location return
 an error, whereas in Winskel's convention _all locations initially hold 0_. 
@@ -30,10 +30,16 @@ an error, whereas in Winskel's convention _all locations initially hold 0_.
 
 ### The path-condition markers
 
-Two `Path::fresh()` calls are used:
+Two `Path::named` markers are used:
 
-- **target 0** fires when a dividion-by-zero happens.
-- **target 1** fires when a variable is undefined but used.
+- **`division_by_zero`** (target 0) fires when a division by zero happens.
+- **`undefined_variable`** (target 1) fires when a variable is read before
+  being assigned.
+
+Naming the markers gives each one a
+stable id — a fixed hash of the name, identical in the SMT query and in the
+concrete evaluator — which is what lets the pipeline certify each witness
+per-target on replay.
 
 These are the targets the synthesis pipeline chases — see
 [Synthesis loop](synthesis.md).
@@ -51,7 +57,7 @@ These are the targets the synthesis pipeline chases — see
   deviations from Winskel.
 - [AST](ast.md) — the `#[smt_type]` enums and how they map to Winskel's
   grammar.
-- [Synthesis loop](synthesis.md) — how `Path::fresh()` markers become Z3
+- [Synthesis loop](synthesis.md) — how the named markers become Z3
   path conditions, how to invoke the synthesis pipeline, and how the printer
   closes the loop.
 

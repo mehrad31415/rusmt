@@ -174,9 +174,23 @@ pub trait FloatOps: Sized + SMT {
     ///
     /// Corresponds to Z3: (fp.roundToIntegral RNE self)
     fn nearest(self) -> Self;
-    /// Equality comparison.
+    /// IEEE 754 numeric equality — what `==` means on a machine float.
     ///
     /// Corresponds to Z3: (fp.eq self rhs)
+    ///
+    /// This is *not* the same as [`SMT::eq`], which the backend emits as
+    /// SMT-LIB `(= a b)`: structural equality on the `FloatingPoint` sort,
+    /// i.e. "are these the same value?". The two answer different questions
+    /// and differ on exactly two situations — NaN vs NaN, and `+0.0` vs
+    /// `-0.0`. Everywhere else they coincide:
+    ///
+    /// |             | `eq` / `(= a b)`            | `fp_eq` / `(fp.eq a b)`   |
+    /// |-------------|-----------------------------|---------------------------|
+    /// | NaN , NaN   | `true` — one NaN value in the sort (even Nan = -Nan) | `false` — IEEE: NaN ≠ everything |
+    /// | +0.0 , -0.0 | `false` — two distinct values | `true` — IEEE: the zeros compare equal |
+    ///
+    /// Both are faithful to their SMT counterpart, so either is safe in a
+    /// spec; pick the one whose question you mean.
     fn fp_eq(self, rhs: Self) -> Boolean;
 }
 
@@ -384,7 +398,7 @@ impl FloatOps for F32 {
 
     fn trunc(self) -> Self {
         Self {
-            inner: OrderedFloat(self.inner.0.trunc().into()),
+            inner: OrderedFloat(self.inner.0.trunc()),
         }
     }
 
@@ -402,8 +416,8 @@ impl FloatOps for F32 {
     }
 
     fn fp_eq(self, rhs: Self) -> Boolean {
-        let a: f32 = self.inner.0.into();
-        let b: f32 = rhs.inner.0.into();
+        let a: f32 = self.inner.0;
+        let b: f32 = rhs.inner.0;
         (a == b).into()
     }
 }
@@ -627,8 +641,8 @@ impl FloatOps for F64 {
     }
 
     fn fp_eq(self, rhs: Self) -> Boolean {
-        let a: f64 = self.inner.0.into();
-        let b: f64 = rhs.inner.0.into();
+        let a: f64 = self.inner.0;
+        let b: f64 = rhs.inner.0;
         (a == b).into()
     }
 }
@@ -932,8 +946,9 @@ mod tests {
         assert!(*F64::from(-3.7).to_integer().eq(Integer::from(-4)));
         assert!(*F64::from(0.0).to_integer().eq(Integer::from(0)));
 
-        // to_real
-        assert!(*F64::from(3.5).to_real().eq(Real::from(3.5)));
+        // to_real — 3.5 is exactly representable in binary, so the rational is 7/2.
+        // (`Real` has no float literal; see the `dt::real` module docs.)
+        assert!(*F64::from(3.5).to_real().eq(Real::from(7).div(Real::from(2))));
 
         // to_i32
         assert!(*F64::from(42.9).to_i32().eq(I32::from(42)));
@@ -1003,5 +1018,45 @@ mod tests {
     fn test_float_to_i32_overflow() {
         use crate::{F64, float::FloatOps};
         F64::from(3e10).to_i32();
+    }
+
+    #[test]
+    // testing fp_eq
+    fn test_float_fp_eq() {
+        use crate::{F64, float::FloatOps};
+
+        let a = F64::nan();
+        let b = F64::nan().neg();
+        let c = F64::pos_zero();
+        let d = F64::neg_zero();
+
+        // (simplify (fp.eq (_ NaN 8 24) (_ NaN 8 24)))
+        // (simplify (fp.eq (_ NaN 8 24) (fp.neg (_ NaN 8 24))))
+        // (simplify (fp.eq (_ NaN 8 24) (_ +zero 8 24)))
+        // (simplify (fp.eq (_ +zero 8 24) (_ -zero 8 24)))
+        assert!(*a.fp_eq(b).not());
+        assert!(*a.fp_eq(a).not());
+        assert!(*a.fp_eq(c).not());
+        assert!(*c.fp_eq(d));
+    }
+
+    #[test]
+    // test eq
+    fn test_float_eq() {
+        use crate::{dt::F64, dt::SMT, float::FloatOps};
+
+        let a = F64::nan();
+        let b = F64::nan().neg();
+        let c = F64::pos_zero();
+        let d = F64::neg_zero();
+
+        // (simplify (= (_ NaN 8 24) (_ NaN 8 24)))
+        // (simplify (= (_ NaN 8 24) (fp.neg (_ NaN 8 24))))
+        // (simplify (= (_ NaN 8 24) (_ +zero 8 24)))
+        // (simplify (= (_ +zero 8 24) (_ -zero 8 24)))
+        assert!(*a.eq(b));
+        assert!(*a.eq(a));
+        assert!(*a.eq(c).not());
+        assert!(*c.eq(d).not());
     }
 }

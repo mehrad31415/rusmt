@@ -34,6 +34,15 @@ The IR builder registers both generic templates and monomorphized versions for t
 - During translation, functions whose type args contain `Sort::Uninterpreted` are filtered out.
 - Only monomorphized versions are emitted as `(define-fun parse_value_String ...)`.
 
+> **Caution — this filter relies on *materialization completeness*.** Dropping every
+> `Uninterpreted`-tagged entry is the correct *criterion* (those entries are dead code — no
+> concrete call site points to them). But it assumes every *concrete* instance reachable from
+> the query root was actually materialized and registered during body materialization. If a
+> needed concrete instance is missing, the emitted SMT-LIB will reference an **undefined
+> function** — and that is a bug in the **materialize pass**. So when a
+> function comes out undefined, the gap to hunt is "did we generate every concrete instance we
+> reach?".
+
 **`undef_sorts` / `declare-sort`:**
 - Since generic template functions are skipped during translation, these sorts are never referenced in the emitted SMT-LIB. No `(declare-sort parse_value_T 0)` is emitted.
 - The `undef_sorts` field was removed from `IRContext`. The `Sort::Uninterpreted` sorts still exist in the IR's `ty_inst` maps but are purely internal and can be consired legacy code. An alternative approach is that we don't register functions with generics in the IR and we just register the mono versions of them.

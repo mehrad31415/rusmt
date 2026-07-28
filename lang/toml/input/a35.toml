@@ -1,4 +1,0 @@
-x = +0
-y = -0
-z = 0
-#  Integer values -0 and +0 are valid and identical to an unprefixed zero.

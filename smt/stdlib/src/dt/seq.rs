@@ -7,9 +7,9 @@ use num_traits::cast::ToPrimitive;
 
 impl<T: SMT> Seq<T> {
     /// create a new sequence
-    /// let s: Seq<Type> = Seq::new(); traspiles to
-    /// (declare-const s (Seq Type))
-    /// (assert (= s (as seq.empty (Seq Type))))
+    ///
+    /// `Seq::<Type>::new()` transpiles to the expression
+    /// `(as seq.empty (Seq Type))`.
     pub fn new() -> Self {
         Self {
             inner: Intern::new(vec![]),
@@ -67,12 +67,14 @@ impl<T: SMT> Seq<T> {
         self.inner.contains(&SMTWrap(e)).into()
     }
 
-    /// `(seq.prefixof other self)`
+    /// `self.prefix_of(other)` -- is `self` a prefix of `other`?
+    /// Transpiles to `(seq.prefixof self other)`
     pub fn prefix_of(self, other: Self) -> Boolean {
         other.inner.starts_with(&self.inner).into()
     }
 
-    /// `(seq.suffixof other self)`
+    /// `self.suffix_of(other)` -- is `self` a suffix of `other`?
+    /// Transpiles to `(seq.suffixof self other)`
     pub fn suffix_of(self, other: Self) -> Boolean {
         other.inner.ends_with(&self.inner).into()
     }
@@ -111,6 +113,7 @@ impl<T: SMT> Seq<T> {
     /// - Panics if offset is beyond the sequence length
     /// - Panics if subsequence is not found
     pub fn index_of(self, sub: Self, offset: Integer) -> Integer {
+        let mut ret = None;
         let start_pos = offset.inner.to_usize().unwrap();
         if sub.inner.is_empty() {
             return offset;
@@ -118,24 +121,24 @@ impl<T: SMT> Seq<T> {
 
         let sub_len = sub.inner.len();
         if sub_len > self.inner.len() {
-            panic!("index_of: subsequence is longer than the sequence");
+            ret.expect("index_of: subsequence is longer than the sequence");
         }
 
         if start_pos > self.inner.len() - sub_len {
-            panic!("index_of: offset is beyond the sequence length");
+            ret.expect("index_of: offset is beyond the sequence length");
         }
 
         for i in start_pos..=(self.inner.len() - sub_len) {
             let window = &self.inner[i..i + sub_len];
             if window == &sub.inner[..] {
-                return Integer::from(i);
+                ret = Some(Integer::from(i));
+                break;
             }
         }
 
-        panic!(
-            "index_of: subsequence not found in sequence starting from offset {}",
-            start_pos
-        );
+        return ret.expect(&format!(
+            "index_of: subsequence not found in sequence starting from offset {start_pos}"
+        ));
     }
 
     /// `(seq.indexof s sub)` - convenience method with offset 0
@@ -160,7 +163,7 @@ impl<T: SMT> Seq<T> {
                 new_vec.push(SMTWrap(dst));
                 replaced = true;
             } else {
-                new_vec.push(item.clone());
+                new_vec.push(*item);
             }
         }
         Self {

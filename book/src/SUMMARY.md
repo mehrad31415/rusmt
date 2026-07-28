@@ -8,6 +8,7 @@
 - [Type system](user/typing.md)
 - [Methods](user/methods.md)
 - [Annotations](user/annotations.md)
+- [AI in the loop](user/ai.md)
 
 # Developer guide
 - [Project Setup](dev/project-setup.md)
@@ -28,3 +29,4 @@
   - [Parser](case-studies/imp/parser.md)
   - [AST](case-studies/imp/ast.md)
   - [Synthesis loop](case-studies/imp/synthesis.md)
+- [STLC type checker](case-studies/stlc/overview.md)

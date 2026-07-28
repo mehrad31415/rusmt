@@ -1,2 +1,0 @@
-# invalid escape sequence in basic string: String { inner: " " }
-hello = "\  sdsd "

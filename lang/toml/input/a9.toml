@@ -1,6 +1,0 @@
-# Dotted keys are a sequence of bare or quoted keys joined with a dot.
-
-name = "Orange"
-physical.color = "orange"
-physical.shape = "round"
-site."google.com" = true

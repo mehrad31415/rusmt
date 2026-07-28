@@ -12,8 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use syn::{
     AngleBracketedGenericArguments, GenericArgument, GenericParam, Generics as GenericsDecl,
-    ItemEnum, ItemStruct, PathArguments, Result, TraitBound, TraitBoundModifier, Type, TypeParam,
-    TypeParamBound,
+    ItemEnum, ItemStruct, PathArguments, Result, TraitBound, Type, TypeParam, TypeParamBound,
 };
 
 /// Reserved trait
@@ -50,13 +49,18 @@ impl SysTrait {
             ident,
             colon_token,
             bounds,
-            eq_token,
             default,
         } = param;
 
         // equality token and default value are not allowed
-        bail_if_exists!(eq_token);
-        bail_if_exists!(default);
+        match default {
+            None => (),
+            Some((_eq, default)) => bail_on!(
+                default,
+                "unexpected default value for type parameter {}",
+                ident
+            ),
+        };
 
         // colon token is required
         bail_if_missing!(colon_token, param, "trait bound");
@@ -73,7 +77,8 @@ impl SysTrait {
             TypeParamBound::Trait(trait_bound) => {
                 let TraitBound {
                     paren_token,
-                    modifier,
+                    modifiers,
+                    maybe,
                     lifetimes,
                     path,
                 } = trait_bound;
@@ -82,10 +87,9 @@ impl SysTrait {
                 // cannot have lifetimes like 'a
                 // cannot have a modifier like ?Sized
                 bail_if_exists!(paren_token.as_ref().map(|e| quote_spanned!(e.span=>)));
+                modifiers.require_empty()?; // No modifiers are expected
                 bail_if_exists!(lifetimes);
-                if !matches!(modifier, TraitBoundModifier::None) {
-                    bail_on!(modifier, "unexpected");
-                }
+                bail_if_exists!(maybe);
 
                 // returns an error if the path is not a reserved identifier
                 // in the case of SysTrait, the only reserved identifier is SMT
@@ -205,7 +209,7 @@ impl Display for Generics {
         if self.params.is_empty() {
             f.write_str("")
         } else {
-            write!(f, "<{}>", self.params.iter().format(","))
+            return write!(f, "<{}>", self.params.iter().format(","));
         }
     }
 }

@@ -5,8 +5,8 @@ use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use std::collections::BTreeSet;
 use syn::{
-    GenericParam, Generics, Path, PathArguments, PathSegment, Result, TraitBound,
-    TraitBoundModifier, TypeParam, TypeParamBound,
+    GenericParam, Generics, Path, PathArguments, PathSegment, Result, TraitBound, TypeParam,
+    TypeParamBound,
 };
 
 /// Represents a group of type parameters in generic definitions.
@@ -53,15 +53,16 @@ impl TypeParamGroup {
                     ident,
                     colon_token,
                     bounds,
-                    eq_token,
                     default,
                 }) => {
                     // Colon token must be present (e.g., `T: Trait`) so basically the bound is expected
                     ensure_some!(colon_token, param, ":");
 
                     // Equal token and default should not be present
-                    ensure_none!(eq_token, "no equal sign expected");
-                    ensure_none!(default, "no default value expected"); // unreachable invocation because it cannot exist if the = doesnt exist according to rust compiler
+                    match default {
+                        Some((_eq, def)) => bail_on!(def, "no default value expected"),
+                        None => {}
+                    }
 
                     // The rest check that the `SMT` trait is enforced as a bound
                     let mut iter = bounds.iter();
@@ -72,8 +73,10 @@ impl TypeParamGroup {
                     match bound {
                         TypeParamBound::Trait(TraitBound {
                             paren_token,
-                            modifier,
+                            // `TraitBoundModifiers` is `#[non_exhaustive]` and currently empty.
+                            modifiers,
                             lifetimes,
+                            maybe,
                             path:
                                 Path {
                                     leading_colon,
@@ -84,11 +87,9 @@ impl TypeParamGroup {
                                 // Parentheses are not expected in the trait bound for example T: (SMT)
                                 bail_on!(bound, "invalid bound");
                             }
-                            if !matches!(modifier, TraitBoundModifier::None) {
-                                // Modifier should be none (e.g., no `?` or `for<>`)
-                                bail_on!(modifier, "invalid modifier");
-                            }
+                            modifiers.require_empty()?; // No modifiers are expected
                             ensure_none!(lifetimes, "no lifetimes expected"); // Lifetimes are not expected for example for<'a> Foo<&'a T> Higher ranked trait bounds are not expected
+                            ensure_none!(maybe, "unexpected maybe"); // Maybe is not expected for example T: ?SMT
 
                             // HRTB are the same as lifetimes but they mean that the trait is generic over all lifetimes 'a but if we wrote Foo<&'a T> it would mean that the trait is generic over a specific lifetime 'a
                             ensure_none!(leading_colon, "no leading colon expected"); // Leading colon is not expected for example T: ::std
@@ -227,7 +228,7 @@ mod tests {
         assert!(type_param_group.is_err());
         assert_eq!(
             type_param_group.err().unwrap().to_string(),
-            "no equal sign expected"
+            "no default value expected"
         );
     }
 
@@ -298,7 +299,7 @@ mod tests {
         assert!(type_param_group.is_err());
         assert_eq!(
             type_param_group.err().unwrap().to_string(),
-            "invalid modifier"
+            "unexpected maybe"
         );
     }
 

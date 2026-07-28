@@ -132,6 +132,7 @@ impl Context {
     pub fn process_syntax(&mut self, file: File) -> Result<()> {
         // ignore the sheband and inner attributes (e.g., #![allow(unused_imports)])
         let File {
+            frontmatter: _,
             shebang: _,
             attrs: _,
             items,
@@ -366,6 +367,7 @@ impl ContextWithType {
         for (name, marked) in &self.funcs {
             let ItemFn {
                 attrs: _,
+                modifiers: _,
                 vis: _,
                 sig,
                 block: _, // handled later

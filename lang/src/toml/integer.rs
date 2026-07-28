@@ -10,7 +10,7 @@ use rusmt_smt_stdlib::{
 
 /// `hex prefix = "0x"`
 #[smt_fn]
-fn is_hex_prefix(input: State) -> Boolean {
+pub(crate) fn is_hex_prefix(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
@@ -40,7 +40,7 @@ fn is_hex_prefix_upper(input: State) -> Boolean {
 
 /// `oct prefix = "0o"`
 #[smt_fn]
-fn is_oct_prefix(input: State) -> Boolean {
+pub(crate) fn is_oct_prefix(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
@@ -70,7 +70,7 @@ fn is_oct_prefix_upper(input: State) -> Boolean {
 
 /// `bin prefix = "0b"`
 #[smt_fn]
-fn is_bin_prefix(input: State) -> Boolean {
+pub(crate) fn is_bin_prefix(input: State) -> Boolean {
     match current_char(input) {
         Optional::Some(c1) => {
             let peek = peek(input, 1.into());
@@ -147,15 +147,21 @@ pub(crate) fn parse_integer(input: State) -> ParseResult<I64> {
                 let new_state = advance(input);
                 if *is_bin_prefix(new_state) {
                     // println!("bin prefix");
-                    return ParseResult::Err(Path::fresh());
+                    return ParseResult::Err(Path::named(String::from(
+                        "integer_signed_bin_prefix",
+                    )));
                 } else {
                     if *is_oct_prefix(new_state) {
                         // println!("oct prefix");
-                        return ParseResult::Err(Path::fresh());
+                        return ParseResult::Err(Path::named(String::from(
+                            "integer_signed_oct_prefix",
+                        )));
                     } else {
                         if *is_hex_prefix(new_state) {
                             // println!("hex prefix");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_signed_hex_prefix",
+                            )));
                         } else {
                             return parse_dec_int(Optional::Some(c), new_state);
                         }
@@ -173,15 +179,21 @@ pub(crate) fn parse_integer(input: State) -> ParseResult<I64> {
                         } else {
                             if *is_bin_prefix_upper(input) {
                                 // println!("0B is invalid");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_bin_prefix_uppercase",
+                                )));
                             } else {
                                 if *is_oct_prefix_upper(input) {
                                     // println!("0O is invalid");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "integer_oct_prefix_uppercase",
+                                    )));
                                 } else {
                                     if *is_hex_prefix_upper(input) {
                                         // println!("0X is invalid");
-                                        return ParseResult::Err(Path::fresh());
+                                        return ParseResult::Err(Path::named(String::from(
+                                            "integer_hex_prefix_uppercase",
+                                        )));
                                     } else {
                                         return parse_dec_int(Optional::None, input);
                                     }
@@ -205,7 +217,9 @@ pub(crate) fn parse_dec_int(sign: Optional<U32>, input: State) -> ParseResult<I6
                     // check for overflow?
                     if *integer.is_gt_i64_max() {
                         // println!("overflow in dec int parsing absence of sign and above i64 max");
-                        return ParseResult::Err(Path::fresh());
+                        return ParseResult::Err(Path::named(String::from(
+                            "integer_dec_overflow_unsigned",
+                        )));
                     } else {
                         return ParseResult::Ok(integer.to_i64(), remaining_input);
                     }
@@ -222,7 +236,9 @@ pub(crate) fn parse_dec_int(sign: Optional<U32>, input: State) -> ParseResult<I6
                         // check for overflow?
                         if *integer.is_gt_i64_max() {
                             // println!("overflow in dec int parsing presence of plus sign and above i64 max");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_dec_overflow_plus_sign",
+                            )));
                         } else {
                             return ParseResult::Ok(integer.to_i64(), remaining_input);
                         }
@@ -231,11 +247,15 @@ pub(crate) fn parse_dec_int(sign: Optional<U32>, input: State) -> ParseResult<I6
                         match current_char(input) {
                             Optional::None => {
                                 // println!("sign without digits and no more input");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_dec_plus_sign_no_digits_eof",
+                                )));
                             }
                             Optional::Some(_) => {
                                 // println!("sign without digits and something else found");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_dec_plus_sign_no_digits_other",
+                                )));
                             }
                         }
                     }
@@ -247,7 +267,9 @@ pub(crate) fn parse_dec_int(sign: Optional<U32>, input: State) -> ParseResult<I6
                         // check for overflow?
                         if *integer.neg().is_lt_i64_min() {
                             // println!("overflow in dec int parsing presence of minus sign and below i64 min");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_dec_underflow_minus_sign",
+                            )));
                         } else {
                             return ParseResult::Ok(integer.neg().to_i64(), remaining_input);
                         }
@@ -256,11 +278,15 @@ pub(crate) fn parse_dec_int(sign: Optional<U32>, input: State) -> ParseResult<I6
                         match current_char(input) {
                             Optional::None => {
                                 // println!("minus sign without digits and no more input");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_dec_minus_sign_no_digits_eof",
+                                )));
                             }
                             Optional::Some(_) => {
                                 // println!("minus sign without digits and something else found");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_dec_minus_sign_no_digits_other",
+                                )));
                             }
                         }
                     }
@@ -295,15 +321,21 @@ fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
                         Optional::Some(next_char) => {
                             if *is_dec_digit(next_char) {
                                 // println!("leading zero error due to digit after zero");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_dec_leading_zero_digit",
+                                )));
                             } else {
                                 if *is_underscore(next_char) {
                                     // println!("leading zero error due to underscore after zero");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "integer_dec_leading_zero_underscore",
+                                    )));
                                 } else {
                                     if *is_alpha(next_char) {
                                         // println!("invalid character after zero");
-                                        return ParseResult::Err(Path::fresh());
+                                        return ParseResult::Err(Path::named(String::from(
+                                            "integer_dec_invalid_char_after_zero",
+                                        )));
                                     } else {
                                         return ParseResult::Ok(Integer::from(0), next_input);
                                     }
@@ -354,7 +386,9 @@ fn parse_unsigned_dec_rest_int(input: State, acc: String) -> ParseResult<String>
                             match current_char(after_underscore) {
                                 Optional::None => {
                                     // println!("underscore at end of input");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "integer_dec_underscore_at_end",
+                                    )));
                                 }
                                 Optional::Some(next_c) => {
                                     if *is_dec_digit(next_c) {
@@ -368,14 +402,24 @@ fn parse_unsigned_dec_rest_int(input: State, acc: String) -> ParseResult<String>
                                         if *is_underscore(next_c) {
                                             // double underscore error
                                             // println!("double underscore error");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "integer_dec_double_underscore",
+                                            )));
                                         } else {
                                             if *is_hex_digit(next_c) {
                                                 // println!("invalid hex character after underscore");
-                                                return ParseResult::Err(Path::fresh());
+                                                return ParseResult::Err(Path::named(
+                                                    String::from(
+                                                        "integer_dec_hex_char_after_underscore",
+                                                    ),
+                                                ));
                                             } else {
                                                 // println!("invalid character after underscore");
-                                                return ParseResult::Err(Path::fresh());
+                                                return ParseResult::Err(Path::named(
+                                                    String::from(
+                                                        "integer_dec_invalid_char_after_underscore",
+                                                    ),
+                                                ));
                                             }
                                         }
                                     }
@@ -384,7 +428,9 @@ fn parse_unsigned_dec_rest_int(input: State, acc: String) -> ParseResult<String>
                         } else {
                             if *is_hex_digit(c) {
                                 // println!("invalid hex character in decimal integer");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_dec_hex_char_in_body",
+                                )));
                             } else {
                                 return ParseResult::Ok(acc, input);
                             }
@@ -410,7 +456,9 @@ fn parse_hex_int(input: State) -> ParseResult<I64> {
                         // check for overflow?
                         if *Integer::from_hex_str(s).is_gt_i64_max() {
                             // println!("overflow in hex int parsing above i64 max");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_hex_overflow",
+                            )));
                         } else {
                             return ParseResult::Ok(Integer::from_hex_str(s).to_i64(), i);
                         }
@@ -421,16 +469,22 @@ fn parse_hex_int(input: State) -> ParseResult<I64> {
             } else {
                 if *is_underscore(c) {
                     // println!("underscore immediately after hex prefix");
-                    return ParseResult::Err(Path::fresh());
+                    return ParseResult::Err(Path::named(String::from(
+                        "integer_hex_underscore_after_prefix",
+                    )));
                 } else {
                     // println!("invalid character after hex prefix");
-                    return ParseResult::Err(Path::fresh());
+                    return ParseResult::Err(Path::named(String::from(
+                        "integer_hex_invalid_char_after_prefix",
+                    )));
                 }
             }
         }
         Optional::None => {
             // println!("no digits after hex prefix");
-            return ParseResult::Err(Path::fresh());
+            return ParseResult::Err(Path::named(String::from(
+                "integer_hex_no_digits_after_prefix",
+            )));
         } // no digits after prefix
     }
 }
@@ -454,16 +508,22 @@ fn parse_hex_rest(input: State, acc: String) -> ParseResult<String> {
                             } else {
                                 if *is_underscore(next_c) {
                                     // println!("double underscore error in hex int");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "integer_hex_double_underscore",
+                                    )));
                                 } else {
                                     // println!("invalid character after underscore in hex int");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "integer_hex_invalid_char_after_underscore",
+                                    )));
                                 }
                             }
                         }
                         Optional::None => {
                             // println!("underscore at end of input in hex int");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_hex_underscore_at_end",
+                            )));
                         }
                     }
                 } else {
@@ -492,7 +552,9 @@ fn parse_oct_int(input: State) -> ParseResult<I64> {
                         // check for overflow?
                         if *Integer::from_oct_str(s).is_gt_i64_max() {
                             // println!("overflow in octal int parsing above i64 max");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_oct_overflow",
+                            )));
                         } else {
                             return ParseResult::Ok(Integer::from_oct_str(s).to_i64(), i);
                         }
@@ -503,18 +565,26 @@ fn parse_oct_int(input: State) -> ParseResult<I64> {
             } else {
                 if *is_underscore(c) {
                     // println!("underscore immediately after octal prefix");
-                    return ParseResult::Err(Path::fresh());
+                    return ParseResult::Err(Path::named(String::from(
+                        "integer_oct_underscore_after_prefix",
+                    )));
                 } else {
                     if *is_dec_digit(c) {
                         // println!("invalid decimal digit after octal prefix");
-                        return ParseResult::Err(Path::fresh());
+                        return ParseResult::Err(Path::named(String::from(
+                            "integer_oct_dec_digit_after_prefix",
+                        )));
                     } else {
                         if *is_hex_digit(c) {
                             // println!("invalid hex digit after octal prefix");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_oct_hex_digit_after_prefix",
+                            )));
                         } else {
                             // println!("invalid character after octal prefix");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_oct_invalid_char_after_prefix",
+                            )));
                         }
                     }
                 }
@@ -522,7 +592,9 @@ fn parse_oct_int(input: State) -> ParseResult<I64> {
         }
         Optional::None => {
             // println!("no digits after octal prefix");
-            return ParseResult::Err(Path::fresh());
+            return ParseResult::Err(Path::named(String::from(
+                "integer_oct_no_digits_after_prefix",
+            )));
         } // no digits after prefix
     }
 }
@@ -546,18 +618,26 @@ fn parse_oct_rest(input: State, acc: String) -> ParseResult<String> {
                             } else {
                                 if *is_underscore(next_c) {
                                     // println!("double underscore error in octal int");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "integer_oct_double_underscore",
+                                    )));
                                 } else {
                                     if *is_dec_digit(next_c) {
                                         // println!("invalid decimal digit after underscore in octal int");
-                                        return ParseResult::Err(Path::fresh());
+                                        return ParseResult::Err(Path::named(String::from(
+                                            "integer_oct_dec_digit_after_underscore",
+                                        )));
                                     } else {
                                         if *is_hex_digit(next_c) {
                                             // println!("invalid hex digit after underscore in octal int");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "integer_oct_hex_digit_after_underscore",
+                                            )));
                                         } else {
                                             // println!("invalid character after underscore in octal int");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "integer_oct_invalid_char_after_underscore",
+                                            )));
                                         }
                                     }
                                 }
@@ -565,17 +645,23 @@ fn parse_oct_rest(input: State, acc: String) -> ParseResult<String> {
                         }
                         Optional::None => {
                             // println!("underscore at end of input in octal int");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_oct_underscore_at_end",
+                            )));
                         }
                     }
                 } else {
                     if *is_dec_digit(c) {
                         // println!("invalid decimal digit in octal int");
-                        return ParseResult::Err(Path::fresh());
+                        return ParseResult::Err(Path::named(String::from(
+                            "integer_oct_dec_digit_in_body",
+                        )));
                     } else {
                         if *is_hex_digit(c) {
                             // println!("invalid hex digit in octal int");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_oct_hex_digit_in_body",
+                            )));
                         } else {
                             return ParseResult::Ok(acc, input);
                         }
@@ -604,7 +690,9 @@ fn parse_bin_int(input: State) -> ParseResult<I64> {
                         // check for overflow?
                         if *Integer::from_bin_str(s).is_gt_i64_max() {
                             // println!("overflow in binary int parsing above i64 max");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_bin_overflow",
+                            )));
                         } else {
                             return ParseResult::Ok(Integer::from_bin_str(s).to_i64(), i);
                         }
@@ -615,22 +703,32 @@ fn parse_bin_int(input: State) -> ParseResult<I64> {
             } else {
                 if *is_underscore(c) {
                     // println!("underscore immediately after binary prefix");
-                    return ParseResult::Err(Path::fresh());
+                    return ParseResult::Err(Path::named(String::from(
+                        "integer_bin_underscore_after_prefix",
+                    )));
                 } else {
                     if *is_oct_digit(c) {
                         // println!("invalid octal digit after prefix");
-                        return ParseResult::Err(Path::fresh());
+                        return ParseResult::Err(Path::named(String::from(
+                            "integer_bin_oct_digit_after_prefix",
+                        )));
                     } else {
                         if *is_dec_digit(c) {
                             // println!("invalid decimal digit after binary prefix");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_bin_dec_digit_after_prefix",
+                            )));
                         } else {
                             if *is_hex_digit(c) {
                                 // println!("invalid hex digit after binary prefix");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_bin_hex_digit_after_prefix",
+                                )));
                             } else {
                                 // println!("invalid character after binary prefix");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_bin_invalid_char_after_prefix",
+                                )));
                             }
                         }
                     }
@@ -639,7 +737,9 @@ fn parse_bin_int(input: State) -> ParseResult<I64> {
         }
         Optional::None => {
             // println!("no digits after binary prefix");
-            return ParseResult::Err(Path::fresh());
+            return ParseResult::Err(Path::named(String::from(
+                "integer_bin_no_digits_after_prefix",
+            )));
         } // no digits after prefix
     }
 }
@@ -663,22 +763,36 @@ fn parse_bin_rest(input: State, acc: String) -> ParseResult<String> {
                             } else {
                                 if *is_underscore(next_c) {
                                     // println!("double underscore error in binary int");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "integer_bin_double_underscore",
+                                    )));
                                 } else {
                                     if *is_oct_digit(next_c) {
                                         // println!("invalid octal digit after underscore in binary int");
-                                        return ParseResult::Err(Path::fresh());
+                                        return ParseResult::Err(Path::named(String::from(
+                                            "integer_bin_oct_digit_after_underscore",
+                                        )));
                                     } else {
                                         if *is_dec_digit(next_c) {
                                             // println!("invalid decimal digit after underscore in binary int");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "integer_bin_dec_digit_after_underscore",
+                                            )));
                                         } else {
                                             if *is_hex_digit(next_c) {
                                                 // println!("invalid hex digit after underscore in binary int");
-                                                return ParseResult::Err(Path::fresh());
+                                                return ParseResult::Err(Path::named(
+                                                    String::from(
+                                                        "integer_bin_hex_digit_after_underscore",
+                                                    ),
+                                                ));
                                             } else {
                                                 // println!("invalid character after underscore in binary int");
-                                                return ParseResult::Err(Path::fresh());
+                                                return ParseResult::Err(Path::named(
+                                                    String::from(
+                                                        "integer_bin_invalid_char_after_underscore",
+                                                    ),
+                                                ));
                                             }
                                         }
                                     }
@@ -687,21 +801,29 @@ fn parse_bin_rest(input: State, acc: String) -> ParseResult<String> {
                         }
                         Optional::None => {
                             // println!("underscore at end of input in binary int");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_bin_underscore_at_end",
+                            )));
                         }
                     }
                 } else {
                     if *is_oct_digit(c) {
                         // println!("invalid octal digit in binary int");
-                        return ParseResult::Err(Path::fresh());
+                        return ParseResult::Err(Path::named(String::from(
+                            "integer_bin_oct_digit_in_body",
+                        )));
                     } else {
                         if *is_dec_digit(c) {
                             // println!("invalid decimal digit in binary int");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "integer_bin_dec_digit_in_body",
+                            )));
                         } else {
                             if *is_hex_digit(c) {
                                 // println!("invalid hex digit in binary int");
-                                return ParseResult::Err(Path::fresh());
+                                return ParseResult::Err(Path::named(String::from(
+                                    "integer_bin_hex_digit_in_body",
+                                )));
                             } else {
                                 return ParseResult::Ok(acc, input);
                             }

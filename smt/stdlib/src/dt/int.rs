@@ -103,7 +103,9 @@ impl Integer {
 
     /// Checks if self divides rhs (i.e., `rhs mod self == 0`).
     /// (= (mod rhs self) 0)
-    /// Returns false if self is zero.
+    ///
+    /// # Panics
+    /// Panics when `self` is zero so guard the call.
     pub fn divides(self, rhs: Self) -> Boolean {
         (rhs.inner.as_ref() % self.inner.as_ref() == BigInt::from(0)).into()
     }
@@ -346,3 +348,70 @@ macro_rules! integer_from_literal {
 
 integer_from_literal!(i8, i16, i32, i64, i128, isize);
 integer_from_literal!(u8, u16, u32, u64, u128, usize);
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_div() {
+        let a1 = super::Integer::from(-7);
+        let a2 = super::Integer::from(7);
+        let b1 = super::Integer::from(3);
+        let b2 = super::Integer::from(-3);
+        let c1 = a1.div(b1);
+        let c2 = a1.div(b2);
+        let c3 = a2.div(b1);
+        let c4 = a2.div(b2);
+        assert_eq!(c1.inner.as_ref(), &num_bigint::BigInt::from(-3));
+        assert_eq!(c2.inner.as_ref(), &num_bigint::BigInt::from(3));
+        assert_eq!(c3.inner.as_ref(), &num_bigint::BigInt::from(2));
+        assert_eq!(c4.inner.as_ref(), &num_bigint::BigInt::from(-2));
+    }
+
+    #[test]
+    fn test_div_trunc() {
+        let a1 = super::Integer::from(-7);
+        let a2 = super::Integer::from(7);
+        let b1 = super::Integer::from(3);
+        let b2 = super::Integer::from(-3);
+        let c1 = a1.div_trunc(b1);
+        let c2 = a1.div_trunc(b2);
+        let c3 = a2.div_trunc(b1);
+        let c4 = a2.div_trunc(b2);
+        assert_eq!(c1.inner.as_ref(), &num_bigint::BigInt::from(-2));
+        assert_eq!(c2.inner.as_ref(), &num_bigint::BigInt::from(2));
+        assert_eq!(c3.inner.as_ref(), &num_bigint::BigInt::from(2));
+        assert_eq!(c4.inner.as_ref(), &num_bigint::BigInt::from(-2));
+    }
+
+    #[test]
+    fn test_modulo() {
+        let a1 = super::Integer::from(-7);
+        let a2 = super::Integer::from(7);
+        let b1 = super::Integer::from(3);
+        let b2 = super::Integer::from(-3);
+        let c1 = a1.modulo(b1);
+        let c2 = a1.modulo(b2);
+        let c3 = a2.modulo(b1);
+        let c4 = a2.modulo(b2);
+        assert_eq!(c1.inner.as_ref(), &num_bigint::BigInt::from(2));
+        assert_eq!(c2.inner.as_ref(), &num_bigint::BigInt::from(2));
+        assert_eq!(c3.inner.as_ref(), &num_bigint::BigInt::from(1));
+        assert_eq!(c4.inner.as_ref(), &num_bigint::BigInt::from(1));
+    }
+
+    #[test]
+    fn test_rem() {
+        let a1 = super::Integer::from(-7);
+        let a2 = super::Integer::from(7);
+        let b1 = super::Integer::from(3);
+        let b2 = super::Integer::from(-3);
+        let c1 = a1.rem(b1);
+        let c2 = a1.rem(b2);
+        let c3 = a2.rem(b1);
+        let c4 = a2.rem(b2);
+        assert_eq!(c1.inner.as_ref(), &num_bigint::BigInt::from(-1));
+        assert_eq!(c2.inner.as_ref(), &num_bigint::BigInt::from(-1));
+        assert_eq!(c3.inner.as_ref(), &num_bigint::BigInt::from(1));
+        assert_eq!(c4.inner.as_ref(), &num_bigint::BigInt::from(1));
+    }
+}

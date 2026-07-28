@@ -1,16 +1,268 @@
 //! This is the main entry point for the derive crate.
-//! usage: cargo run -- <parser_name> <top_level_fn> [text|api|both] [k=<N>]
+//! usage: cargo run -- <parser_name> <top_level_fn> [k=<N>]
+//!    or: cargo run -- author <spec_file> <out_file> [rounds=<N>] [--examples <path>]
 //!
-//! `k=<N>` enables bounded-recursion unrolling in the text and API backends:
+//! `k=<N>` enables bounded-recursion unrolling:
 //!   k=0 (or omitted) -> recursive define-funs-rec.
 //!   k=N (N≥1)        -> every recursive SCC is unrolled to depth N.
+//!
+//! `author` runs the gated AI-authoring loop: the proposer configured by
+//! `RUSMT_LLM_CMD` drafts a reference semantics in the DSL for the prose
+//! specification in `<spec_file>`; each draft must pass the mechanical gates
+//! (DSL front end, SMT emission, named markers) AND the behavioral gates
+//! (solver-proved marker reachability; conformance to the optional
+//! `--examples` file of `INPUT<TAB>EXPECT` lines, EXPECT = ok | err:<marker>
+//! | nomatch). The admitted draft is written to `<out_file>` for human
+//! review. Per-gate Z3 budget: `RUSMT_AUTHOR_Z3_SECS` (default 20).
 
-use rusmt_smt_derive::{model, solve, solve_z3_api};
+use rusmt_smt_derive::guidance::{self, Response};
+use rusmt_smt_derive::proposer::{CommandProposer, Proposer as _};
+use rusmt_smt_derive::{authoring, model, solve};
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
+/// Run the gated authoring loop (the `author` CLI mode).
+fn run_author(args: &[String]) -> Result<(), Box<dyn Error>> {
+    let [spec_file, out_file, rest @ ..] = args else {
+        return Err(
+            "Usage: cargo run -- author <spec_file> <out_file> [rounds=<N>] [--examples <path>]"
+                .into(),
+        );
+    };
+    let mut rounds = authoring::DEFAULT_MAX_ROUNDS;
+    let mut examples: Vec<authoring::Example> = Vec::new();
+    let mut rest_it = rest.iter();
+    while let Some(extra) = rest_it.next() {
+        if let Some(n) = extra.strip_prefix("rounds=") {
+            rounds = n
+                .parse()
+                .map_err(|_| format!("rounds= must be a positive integer, got '{n}'"))?;
+            if rounds == 0 {
+                return Err("rounds= must be at least 1".into());
+            }
+        } else if extra == "--examples" {
+            let path = rest_it
+                .next()
+                .ok_or("--examples needs a file path argument")?;
+            let text = fs::read_to_string(path)
+                .map_err(|e| format!("cannot read examples file '{path}': {e}"))?;
+            examples = authoring::parse_examples(&text)
+                .map_err(|e| format!("examples file '{path}': {e}"))?;
+        } else {
+            return Err(format!("unrecognized argument: '{extra}'").into());
+        }
+    }
+    let spec = fs::read_to_string(spec_file)
+        .map_err(|e| format!("cannot read spec file '{spec_file}': {e}"))?;
+    let mut proposer = CommandProposer::from_env().ok_or(
+        "the author mode needs a proposer: set RUSMT_LLM_CMD to a command that \
+         reads a prompt on stdin and writes a draft on stdout (e.g. `claude -p`)",
+    )?;
+    println!("[authoring] proposer: {}", proposer.describe());
+    if !examples.is_empty() {
+        println!("[authoring] spec examples: {}", examples.len());
+    }
+
+    // The behavioral gates' solver seam: each gate query goes to a real Z3
+    // run under a short budget (a missing z3 binary folds into `unknown`,
+    // which the gates treat as a warning, not a failure).
+    let budget = authoring::author_z3_budget_from_env();
+    let gate_dir = tempfile::tempdir().map_err(|e| format!("cannot create temp dir: {e}"))?;
+    let mut gate_no = 0usize;
+    let mut solve_gate = |label: &str, query: &str| -> Response {
+        gate_no += 1;
+        let path = gate_dir.path().join(format!("gate_{gate_no:03}.smt2"));
+        if let Err(e) = fs::write(&path, query) {
+            return Response::Unknown(format!("cannot write gate query: {e}"));
+        }
+        println!("[authoring]   z3 gate {label}");
+        guidance::run_z3_file(&path, budget)
+    };
+
+    let outcome = authoring::author_semantics_validated(
+        &spec,
+        &examples,
+        &mut proposer,
+        &mut solve_gate,
+        rounds,
+    );
+    for (i, round) in outcome.rounds.iter().enumerate() {
+        if round.failures.is_empty() {
+            println!("[authoring] round {}: admitted by all gates", i + 1);
+        } else {
+            println!("[authoring] round {}: rejected", i + 1);
+            for f in &round.failures {
+                println!("[authoring]   gate: {f}");
+            }
+        }
+        for n in &round.notes {
+            println!("[authoring]   note: {n}");
+        }
+    }
+
+    // Persist the full session transcript next to the output, so a rejected
+    // session (every draft, gate failure, and solver observation) can be
+    // inspected — mirroring the synthesis pipeline's fallback.txt/guidance.txt.
+    let transcript_path = format!("{out_file}.authoring.txt");
+    let transcript = authoring::render_transcript(spec_file, &examples, &outcome);
+    if let Err(e) = fs::write(&transcript_path, &transcript) {
+        eprintln!("[authoring] warning: cannot write transcript to '{transcript_path}': {e}");
+    } else {
+        println!("[authoring] session transcript written to {transcript_path}");
+    }
+
+    match outcome.accepted {
+        Some(draft) => {
+            fs::write(out_file, &draft)
+                .map_err(|e| format!("cannot write draft to '{out_file}': {e}"))?;
+            println!(
+                "[authoring] draft written to {out_file} (named markers: {}).",
+                outcome.markers.join(", ")
+            );
+            println!(
+                "[authoring] the draft is mechanically admissible, NOT trusted: \
+                 review it, then run synthesis against its markers."
+            );
+            Ok(())
+        }
+        None => Err(format!(
+            "no draft passed the gates within the round budget; see {transcript_path}"
+        )
+        .into()),
+    }
+}
+
+/// Run the embedded AI⇄Z3 guided-synthesis loop for one named marker
+/// (the `recover` CLI mode). Z3 stays the model producer: it is tried alone
+/// first, then the `RUSMT_LLM_CMD` proposer strengthens the query and Z3
+/// solves/validates each round; a found input is replay-certified.
+fn run_recover(lang_src_dir: &std::path::Path, args: &[String]) -> Result<(), Box<dyn Error>> {
+    let [parser_name, top_level_fn, marker_name, rest @ ..] = args else {
+        return Err(
+            "Usage: cargo run -- recover <parser> <top_level_fn> <marker_name> [z3_secs=<N>]\n\
+             Example: RUSMT_LLM_CMD='claude -p' RUSMT_LLM_MODE=guided \\\n\
+             \x20 cargo run -- recover toml parse_toml date_invalid_month"
+                .into(),
+        );
+    };
+    let mut z3_secs: u64 = 15;
+    let mut unroll_depth: usize = 0;
+    for extra in rest {
+        if let Some(n) = extra.strip_prefix("z3_secs=") {
+            z3_secs = n
+                .parse()
+                .map_err(|_| format!("z3_secs= must be an integer, got '{n}'"))?;
+        } else if let Some(n) = extra.strip_prefix("k=") {
+            unroll_depth = n
+                .parse()
+                .map_err(|_| format!("k= must be a non-negative integer, got '{n}'"))?;
+        } else {
+            return Err(format!("unrecognized argument: '{extra}'").into());
+        }
+    }
+    let parser_dir = lang_src_dir.join(parser_name);
+    if !parser_dir.exists() {
+        return Err(format!("Parser '{parser_name}' not found at {parser_dir:?}").into());
+    }
+    let model = model(&parser_dir)?;
+    let out_dir = lang_src_dir
+        .join("synthesis")
+        .join(parser_name)
+        .join("recover")
+        .join(marker_name);
+
+    println!("[recover] target named marker : {marker_name}");
+    println!("[recover] step 1 — Z3 alone on the unconstrained query ({z3_secs}s budget)");
+    let report = rusmt_smt_derive::recover_named_marker(
+        &model,
+        parser_name,
+        top_level_fn,
+        marker_name,
+        unroll_depth,
+        std::time::Duration::from_secs(z3_secs),
+        &out_dir,
+    )
+    .map_err(|e| -> Box<dyn Error> { e.into() })?;
+
+    println!("[recover] Z3 alone verdict   : {}", report.z3_alone);
+    if let Some(w) = &report.z3_alone_witness {
+        println!("[recover] Z3 SOLVED it unaided: {w:?}");
+        return Ok(());
+    }
+    if let Some(d) = &report.direct {
+        println!(
+            "[recover] step 2 (direct) — proposer suggests, Z3 validates the \
+             macro-inlined candidate, replay re-certifies (proposer: {})",
+            report.proposer.as_deref().unwrap_or("?")
+        );
+        for (i, (cand, verdict)) in d.attempts.iter().enumerate() {
+            println!("[recover]   attempt {}: {cand:?}", i + 1);
+            println!("[recover]   attempt {} verdict: {verdict}", i + 1);
+        }
+        match &d.witness {
+            Some(w) => {
+                println!(
+                    "[recover] RESULT: direct route recovered a Z3-validated, replay-certified witness: {w:?}"
+                );
+                println!(
+                    "[recover] transcript: {}",
+                    out_dir.join("fallback.txt").display()
+                );
+                return Ok(());
+            }
+            None => println!("[recover] direct route found no certified witness; continuing"),
+        }
+    }
+    match &report.guided {
+        None => {
+            println!(
+                "[recover] Z3 alone did not solve it. RUSMT_LLM_CMD is unset, so no AI⇄Z3 \
+                 loop ran.\n[recover] Set it (e.g. RUSMT_LLM_CMD='claude -p') to run the \
+                 collaboration."
+            );
+        }
+        Some(g) => {
+            println!(
+                "[recover] step 2 — AI⇄Z3 loop (proposer: {})",
+                report.proposer.as_deref().unwrap_or("?")
+            );
+            for (i, r) in g.rounds.iter().enumerate() {
+                println!(
+                    "[recover]   round {} scaffold: {}",
+                    i + 1,
+                    r.scaffold.replace('\n', " ⏎ ")
+                );
+                for (j, c) in r.candidates.iter().enumerate() {
+                    println!(
+                        "[recover]   round {} Z3 model {}/{}: {c:?}",
+                        i + 1,
+                        j + 1,
+                        r.candidates.len()
+                    );
+                }
+                println!("[recover]   round {} verdict: {}", i + 1, r.feedback);
+            }
+            match &g.witness {
+                Some(w) => {
+                    println!("[recover] RESULT: AI⇄Z3 recovered a replay-certified witness: {w:?}")
+                }
+                None => println!("[recover] RESULT: no certified witness within the round budget"),
+            }
+            println!(
+                "[recover] transcript: {}",
+                out_dir.join("guidance.txt").display()
+            );
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    // Isolated-replay hook: when this process was re-spawned as a replay child
+    // (by `certify_isolated`), certify the candidate on stdin and exit.
+    rusmt_lang::certify::maybe_subprocess_entry();
+
     let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = root_crate_dir
         .parent()
@@ -21,43 +273,45 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Path to lang/src which contains the parsers/interpreters
     let lang_src_dir = workspace_root.join("lang").join("src");
     if !lang_src_dir.exists() {
-        return Err(format!("Lang source directory not found at {:?}", lang_src_dir).into());
+        return Err(format!("Lang source directory not found at {lang_src_dir:?}").into());
     }
     // Path to lang/synthesis which contains the synthesis outputs
     let synthesis_base = lang_src_dir.join("synthesis");
 
     let args: Vec<String> = std::env::args().collect();
 
+    // `author` mode: gated AI drafting of a reference semantics in the DSL.
+    if args.len() >= 2 && args[1] == "author" {
+        return run_author(&args[2..]);
+    }
+
+    // `recover` mode: the embedded AI⇄Z3 guided loop for one named marker.
+    if args.len() >= 2 && args[1] == "recover" {
+        return run_recover(&lang_src_dir, &args[2..]);
+    }
+
     if args.len() >= 3 {
         let parser_name = &args[1];
         let top_level_fn = &args[2];
         let parser_dir = lang_src_dir.join(parser_name);
         if !parser_dir.exists() {
-            return Err(format!("Parser '{}' not found at {:?}", parser_name, parser_dir).into());
+            return Err(format!("Parser '{parser_name}' not found at {parser_dir:?}").into());
         }
         let output_dir = synthesis_base.join(parser_name);
 
-        let mut backend: &str = "text";
         let mut unroll_depth: usize = 0;
         let mut k_set = false;
-        let mut backend_set = false;
         for extra in args.iter().skip(3) {
             if let Some(n_str) = extra.strip_prefix("k=") {
                 if k_set {
-                    return Err(format!("k= specified more than once").into());
+                    return Err("k= specified more than once".to_string().into());
                 }
                 unroll_depth = n_str
                     .parse::<usize>()
-                    .map_err(|_| format!("k= must be a non-negative integer, got '{}'", n_str))?;
+                    .map_err(|_| format!("k= must be a non-negative integer, got '{n_str}'"))?;
                 k_set = true;
-            } else if matches!(extra.as_str(), "api" | "text" | "both") {
-                if backend_set {
-                    return Err(format!("backend specified more than once").into());
-                }
-                backend = extra.as_str();
-                backend_set = true;
             } else {
-                return Err(format!("unrecognized argument: '{}'", extra).into());
+                return Err(format!("unrecognized argument: '{extra}'").into());
             }
         }
 
@@ -68,47 +322,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let model = model(&parser_dir)?;
 
-        match backend {
-            "api" => {
-                // Z3 API backend only
-                solve_z3_api(
-                    &model,
-                    Some(top_level_fn.as_str()),
-                    &output_dir,
-                    unroll_depth,
-                )?;
-            }
-            "text" => {
-                // Run the text backend only
-                solve(
-                    &model,
-                    Some(top_level_fn.as_str()),
-                    &output_dir,
-                    unroll_depth,
-                )?;
-            }
-            "both" => {
-                // Run both backends for comparison
-                solve(
-                    &model,
-                    Some(top_level_fn.as_str()),
-                    &output_dir,
-                    unroll_depth,
-                )?;
-                solve_z3_api(
-                    &model,
-                    Some(top_level_fn.as_str()),
-                    &output_dir,
-                    unroll_depth,
-                )?;
-            }
-            _ => {
-                return Err(format!("Invalid backend: {}", backend).into());
-            }
-        }
+        solve(
+            &model,
+            Some(top_level_fn.as_str()),
+            &output_dir,
+            unroll_depth,
+        )?;
     } else {
         return Err(
-            "Usage: cargo run -- <parser_name> <top_level_fn> [text|api|both] [k=<N>]\nExample: cargo run -- toml parse_toml k=3".into()
+            "Usage: cargo run -- <parser_name> <top_level_fn> [k=<N>]\nExample: cargo run -- toml parse_toml k=3".into()
         );
     }
 

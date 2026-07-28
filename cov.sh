@@ -1,13 +1,9 @@
 #!/bin/bash
-
-cargo clean
+set -euo pipefail
 
 cargo tarpaulin \
     --engine llvm \
-    --packages "rusmt-smt-stdlib" \
-    --packages "rusmt-smt-remark" \
-    --packages "rusmt-smt-remark-derive" \
-    --packages "rusmt-smt-derive" \
+    --exclude-files 'lang/**' \
     --out Lcov \
     --out html \
     --output-dir target/tarpaulin

@@ -29,6 +29,31 @@ This list is the stdlib API, i.e., the list of available methods per intrinsic t
 - **Comparisons**: `lt/le/gt/ge(Real)`
 - **Conversions**: `to_int()`, `to_f32()`, `to_f64()`
 
+`Real::from` takes **integer literals only** — `Real::from(0.2)` is a compile
+error. Write a non-integer value as an exact ratio:
+
+```rust
+Real::from(1).div(Real::from(5))       // 0.2
+Real::from(15).div(Real::from(2))      // 7.5
+Real::from(2433).div(Real::from(10))   // 243.3
+```
+
+`Real` models SMT-LIB's `Real` sort: exact rationals of unbounded precision. A
+float literal cannot name one faithfully, because the transpiler reads the source
+text `0.2` while the concrete evaluator only ever sees the `f64` that `rustc`
+rounded it to — `3602879701896397/2^54`, not `1/5`. (Binary fractions can only
+represent rationals whose reduced denominator is a power of two, so `0.25` is
+exact but `0.2` is not.) Rather than have the two semantics disagree about the
+same literal, the notation is rejected.
+
+Ratios are also what SMT-LIB means: `Real::from(1).div(Real::from(5))` transpiles
+to `(/ 1 5)`, and `(= (/ 1.0 5.0) 0.2)` is `true` in Z3 — so the concrete
+evaluator, the transpiled query, and hand-written SMT-LIB all agree.
+
+To start from a machine float instead, use `Integer::to_real()` or
+`F32`/`F64`'s `to_real()`. `F32`/`F64` model `FloatingPoint`, where a literal
+*should* denote the nearest double, so they keep their float literals.
+
 ### `String`
 
 - **Core**: `new()`, `length()`, `concat(String)`, `at(Integer)`, `substr(Integer, Integer)`, `is_empty()`
@@ -90,7 +115,7 @@ These are exposed via the `FloatOps` trait (receiver is `F32` or `F64`):
 
 ### `Path`
 
-- `fresh() -> Path`
+- `named(String) -> Path` — marker id is a stable hash of the name
 - `merge(Path) -> Path`
 
 ## Expression intrinsics

@@ -2,18 +2,44 @@
 
 use crate::backend::z3::exp::format_expression_renamed;
 use crate::backend::z3::fun::{collect_called_functions, format_sort_for_fn};
-use crate::backend::z3::sort::format_sort;
+use crate::backend::z3::sort::{format_sort, get_generic_param_count, resolve_type_name};
 use crate::ir::ctxt::IRContext;
 use crate::ir::exp::ExpRegistry;
-use crate::ir::index::UsrFunId;
+use crate::ir::index::{UsrFunId, UsrSortId};
 use crate::ir::intrinsics::Intrinsic;
-use crate::ir::sort::Sort;
+use crate::ir::sort::{DataType, Sort, Variant};
 use num_bigint::BigInt;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-/// Generate an SMT-LIB value for the "null" (absent) sentinel of an array value sort.
+/// Generate an SMT-LIB term for the "null" (don't-care) default of an array value sort.
+///
+/// Membership lives in `rarr-pres`, so this value is never observed at an absent key:
+/// any closed, well-sorted term is correct.
+///
+/// Panics if the sort has no writable finite inhabitant — that means a non-well-founded
+/// datatype, which Z3 would reject at `declare-datatype` anyway.
 pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
-    match sort {
+    canonical_value(sort, ir, &mut BTreeSet::new()).unwrap_or_else(|| {
+        panic!(
+            "no finite canonical inhabitant for sort `{}`: the datatype is not \
+             well-founded, so Z3 cannot declare it either",
+            format_sort(sort, ir)
+        )
+    })
+}
+
+/// Recursively build a canonical inhabitant term of `sort`, or `None` if it cannot be
+/// built.
+///
+/// `in_progress` holds the user sorts currently being built; re-entering one is a
+/// recursive cycle and returns `None`, so an enum's variant search backtracks to a base
+/// variant (well-foundedness guarantees one exists).
+fn canonical_value(
+    sort: &Sort,
+    ir: &IRContext,
+    in_progress: &mut BTreeSet<UsrSortId>,
+) -> Option<String> {
+    let term = match sort {
         Sort::Boolean => "false".to_string(),
         Sort::Integer => "0".to_string(),
         Sort::Real => "0.0".to_string(),
@@ -22,24 +48,164 @@ pub fn array_null_value(sort: &Sort, ir: &IRContext) -> String {
         Sort::I64 | Sort::U64 => "(_ bv0 64)".to_string(),
         Sort::F32 => "((_ to_fp 8 24) RNE 0.0)".to_string(),
         Sort::F64 => "((_ to_fp 11 53) RNE 0.0)".to_string(),
+        Sort::Path => crate::backend::z3::path::empty_literal(ir), // no marker fired
         Sort::Seq(_) => format!("(as seq.empty {})", format_sort(sort, ir)),
         Sort::Set(inner) => format!(
             "(mk-rset ((as const (Array {} Bool)) false) 0)",
             format_sort(inner, ir)
         ),
-        Sort::Path => "((as const (Array Int Bool)) false)".to_string(),
         Sort::Array(k, v) => {
             let ks = format_sort(k, ir);
             let vs = format_sort(v, ir);
-            let null = array_null_value(v, ir);
-            format!("(mk-rarr ((as const (Array {} {})) {}) 0)", ks, vs, null)
+            let vd = canonical_value(v, ir, in_progress)?;
+            format!(
+                "(mk-rarr ((as const (Array {ks} {vs})) {vd}) ((as const (Array {ks} Bool)) false) 0)"
+            )
         }
-        Sort::User(_) => {
-            let vs = format_sort(sort, ir);
-            let safe = vs.replace(' ', "_").replace('(', "").replace(')', "");
-            format!("null_{}", safe)
+        Sort::User(sid) => {
+            if in_progress.contains(sid) {
+                return None; // recursive cycle — let the caller backtrack
+            }
+            in_progress.insert(*sid);
+            let built = build_user_value(*sid, ir, in_progress);
+            in_progress.remove(sid);
+            return built;
         }
-        Sort::Uninterpreted(_) => panic!("no null value for uninterpreted sort"),
+        Sort::Uninterpreted(_) => {
+            panic!(
+                "this can't happen: Uninterpreted sorts are monomorphized away before Z3 backend"
+            )
+        }
+    };
+    Some(term)
+}
+
+/// Build a canonical value for a user sort.
+///
+/// A `par`-declared datatype shares one constructor symbol across every
+/// instantiation, so each use must be qualified with the target sort:
+/// `(as Ctor (T A ..))`, or `((as Ctor (T A ..)) f1 ..)` when applied. The datatype's
+/// declared arity is exactly `get_generic_param_count(..).0`, which is `0` for
+/// non-generic named types *and* for fully concrete unnamed tuples (whose sort name
+/// already carries the element types, e.g. `Tuple_Int_Bool`).
+fn build_user_value(
+    sid: UsrSortId,
+    ir: &IRContext,
+    in_progress: &mut BTreeSet<UsrSortId>,
+) -> Option<String> {
+    let name = resolve_type_name(ir, sid);
+    let qual = (get_generic_param_count(ir, sid).0 > 0).then(|| format_sort(&Sort::User(sid), ir));
+    let qual = qual.as_deref();
+
+    match ir.ty_registry.retrieve(sid) {
+        DataType::Tuple(elems) => build_ctor(&format!("mk-{name}"), qual, elems, ir, in_progress),
+        DataType::Record(fields) => {
+            let sorts: Vec<Sort> = fields.values().cloned().collect();
+            build_ctor(&format!("mk-{name}"), qual, &sorts, ir, in_progress)
+        }
+        DataType::Enum(variants) => {
+            // Prefer a unit variant: smallest possible term, always buildable, and it
+            // can never re-enter the recursion. Falls back to the first variant, in
+            // `BTreeMap` name order, all of whose fields are buildable.
+            if let Some((vname, _)) = variants.iter().find(|(_, v)| matches!(v, Variant::Unit)) {
+                return Some(apply_ctor(&format!("{name}_{vname}"), qual, &[]));
+            }
+            for (vname, vdef) in variants {
+                let ctor = format!("{name}_{vname}");
+                let built = match vdef {
+                    Variant::Unit => unreachable!("unit variants handled above"),
+                    Variant::Tuple(slots) => build_ctor(&ctor, qual, slots, ir, in_progress),
+                    Variant::Record(rec) => {
+                        let sorts: Vec<Sort> = rec.values().cloned().collect();
+                        build_ctor(&ctor, qual, &sorts, ir, in_progress)
+                    }
+                };
+                if built.is_some() {
+                    return built;
+                }
+            }
+            None
+        }
+    }
+}
+
+/// `Ctor` / `(as Ctor S)` / `(Ctor a b)` / `((as Ctor S) a b)`.
+fn apply_ctor(ctor: &str, qual: Option<&str>, args: &[String]) -> String {
+    let head = match qual {
+        Some(s) => format!("(as {ctor} {s})"),
+        None => ctor.to_string(),
+    };
+    if args.is_empty() {
+        head
+    } else {
+        format!("({head} {})", args.join(" "))
+    }
+}
+
+/// Apply a constructor to canonical values of its field sorts; `None` if any field
+/// cannot be built (propagates a cycle up to the enum's backtrack).
+fn build_ctor(
+    ctor: &str,
+    qual: Option<&str>,
+    field_sorts: &[Sort],
+    ir: &IRContext,
+    in_progress: &mut BTreeSet<UsrSortId>,
+) -> Option<String> {
+    let mut args = Vec::with_capacity(field_sorts.len());
+    for s in field_sorts {
+        args.push(canonical_value(s, ir, in_progress)?);
+    }
+    Some(apply_ctor(ctor, qual, &args))
+}
+
+/// Accumulates `let` bindings that share a sub-term used more than once in an
+/// intrinsic's expansion.
+///
+/// Several intrinsics mention an operand many times — `ArrayStore` reads the array
+/// five times (`rarr-data`, two `rarr-pres`, two `rarr-card`). Because `fmt` renders
+/// operands *inline*, an `n`-deep chain of stores would otherwise emit the base array
+/// `5^n` times. Binding the operand once keeps the emitted text linear in the
+/// expression depth. Z3 hash-conses either way, so the resulting AST — and therefore
+/// the semantics — is identical; what shrinks is the text we generate and Z3 parses.
+///
+/// Binder names are `__`-prefixed, the convention this backend already reserves for
+/// generated binders (see `ctxt.rs`), so they can never collide with a user variable.
+/// Nesting is safe without unique suffixes: a nested expansion's `let` sits either in
+/// a binding *value* (evaluated in the enclosing scope, since SMT-LIB `let` is
+/// non-recursive) or wholly inside its own body, and no rendering ever emits a `__`
+/// name free. So an inner binder can only shadow itself.
+struct LetScope {
+    bindings: Vec<String>,
+}
+
+impl LetScope {
+    fn new() -> Self {
+        Self {
+            bindings: Vec::new(),
+        }
+    }
+
+    /// Register an operand that the body mentions more than once, returning the token
+    /// to use in its place. Single-token operands (a bare parameter name or literal)
+    /// are returned verbatim — binding those would only add bytes.
+    fn share(&mut self, name: &str, term: String) -> String {
+        if !term.starts_with('(') {
+            return term;
+        }
+        let binder = format!("__{name}");
+        self.bindings.push(format!("({binder} {term})"));
+        binder
+    }
+
+    /// Wrap `body` in the accumulated bindings, or return it unchanged if nothing was
+    /// worth sharing. The `let` lands exactly where the term sat, so any enclosing
+    /// quantifier or `let` still scopes over the operands.
+    fn wrap(self, body: String) -> String {
+        if self.bindings.is_empty() {
+            body
+        } else {
+            format!("(let ({}) {})", self.bindings.join(" "), body)
+        }
     }
 }
 
@@ -66,7 +232,7 @@ pub(crate) fn collect_fn_from_intrinsic(
         | Intrinsic::FloatNegInf { .. }
         | Intrinsic::FloatPosZero { .. }
         | Intrinsic::FloatNegZero { .. }
-        | Intrinsic::PathFresh(_) => {}
+        | Intrinsic::PathName { .. } => {}
         Intrinsic::BoolNot { val }
         | Intrinsic::IntNeg { val }
         | Intrinsic::IntAbs { val }
@@ -283,8 +449,8 @@ pub(crate) fn collect_fn_from_intrinsic(
         | Intrinsic::PathMerge { lhs, rhs, .. }
         | Intrinsic::SmtEq { lhs, rhs, .. }
         | Intrinsic::SmtNe { lhs, rhs, .. } => {
-            called_fns.append(&mut collect_called_functions(exp_registry, &lhs));
-            called_fns.append(&mut collect_called_functions(exp_registry, &rhs));
+            called_fns.append(&mut collect_called_functions(exp_registry, lhs));
+            called_fns.append(&mut collect_called_functions(exp_registry, rhs));
         }
         Intrinsic::BoolIte { cond, then, else_ } => {
             called_fns.append(&mut collect_called_functions(exp_registry, cond));
@@ -362,22 +528,28 @@ pub fn format_intrinsic(
         Intrinsic::IntMul { lhs, rhs } => format!("(* {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::IntDiv { lhs, rhs } => format!("(div {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::IntDivTrunc { lhs, rhs } => {
-            let l = fmt(*lhs);
-            let r = fmt(*rhs);
-            format!("(ite (>= {l} 0) (div {l} {r}) (- (div (- {l}) {r})))")
+            let mut lets = LetScope::new();
+            let l = lets.share("l", fmt(*lhs));
+            let r = lets.share("r", fmt(*rhs));
+            lets.wrap(format!(
+                "(ite (>= {l} 0) (div {l} {r}) (- (div (- {l}) {r})))"
+            ))
         }
         Intrinsic::IntMod { lhs, rhs } => format!("(mod {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::IntRem { lhs, rhs } => {
-            let l = fmt(*lhs);
-            let r = fmt(*rhs);
-            format!("(- {l} (* {r} (ite (>= {l} 0) (div {l} {r}) (- (div (- {l}) {r})))))")
+            let mut lets = LetScope::new();
+            let l = lets.share("l", fmt(*lhs));
+            let r = lets.share("r", fmt(*rhs));
+            lets.wrap(format!(
+                "(- {l} (* {r} (ite (>= {l} 0) (div {l} {r}) (- (div (- {l}) {r})))))"
+            ))
         }
         Intrinsic::IntPow { base, exp } => format!("(^ {} {})", fmt(*base), fmt(*exp)),
         Intrinsic::IntAbs { val } => format!("(abs {})", fmt(*val)),
         Intrinsic::IntDivides { lhs, rhs } => {
             let l = fmt(*lhs);
             let r = fmt(*rhs);
-            format!("(= (mod {} {}) 0)", r, l)
+            format!("(= (mod {r} {l}) 0)")
         }
         Intrinsic::IntLt { lhs, rhs } => format!("(< {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::IntLe { lhs, rhs } => format!("(<= {} {})", fmt(*lhs), fmt(*rhs)),
@@ -464,58 +636,11 @@ pub fn format_intrinsic(
         ),
         Intrinsic::StrFromCode { val } => format!("(str.from_code {})", fmt(*val)),
         Intrinsic::StrToCode { val } => format!("(str.to_code {})", fmt(*val)),
-        Intrinsic::PathFresh(id) => {
-            format!("(store ((as const (Array Int Bool)) false) {} true)", id)
-        }
-        Intrinsic::PathMerge { lhs, rhs, .. } => {
-            format!("((_ map or) {} {})", fmt(*lhs), fmt(*rhs))
-        }
-        Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),
-
-        Intrinsic::SeqEmpty { t } => format!("(as seq.empty (Seq {}))", format_sort_for_fn(t, ir)),
-        Intrinsic::SeqUnit { val, .. } => format!("(seq.unit {})", fmt(*val)),
-        Intrinsic::SeqLen { seq, .. } => format!("(seq.len {})", fmt(*seq)),
-        Intrinsic::SeqPush { seq, item, .. } => {
-            format!("(seq.++ {} (seq.unit {}))", fmt(*seq), fmt(*item))
-        }
-        Intrinsic::SeqConcat { lhs, rhs, .. } => format!("(seq.++ {} {})", fmt(*lhs), fmt(*rhs)),
-        Intrinsic::SeqNth { seq, idx, .. } => format!("(seq.nth {} {})", fmt(*seq), fmt(*idx)),
-        Intrinsic::SeqAtSeq { seq, idx, .. } => {
-            format!("(seq.extract {} {} 1)", fmt(*seq), fmt(*idx))
-        }
-        Intrinsic::SeqContains { seq, item, .. } => {
-            format!("(seq.contains {} (seq.unit {}))", fmt(*seq), fmt(*item))
-        }
-        Intrinsic::SeqPrefixOf { lhs, rhs, .. } => {
-            format!("(seq.prefixof {} {})", fmt(*lhs), fmt(*rhs))
-        }
-        Intrinsic::SeqSuffixOf { lhs, rhs, .. } => {
-            format!("(seq.suffixof {} {})", fmt(*lhs), fmt(*rhs))
-        }
-        Intrinsic::SeqIsEmpty { seq, .. } => format!("(= (seq.len {}) 0)", fmt(*seq)),
-        Intrinsic::SeqExtract {
-            seq, offset, len, ..
-        } => format!("(seq.extract {} {} {})", fmt(*seq), fmt(*offset), fmt(*len)),
-        Intrinsic::SeqIndexOf {
-            seq, sub, offset, ..
-        } => format!("(seq.indexof {} {} {})", fmt(*seq), fmt(*sub), fmt(*offset)),
-        Intrinsic::SeqIndexOfDefault { seq, sub, .. } => {
-            format!("(seq.indexof {} {})", fmt(*seq), fmt(*sub))
-        }
-        Intrinsic::SeqReplace { seq, src, dst, .. } => {
-            format!(
-                "(seq.replace {} (seq.unit {}) (seq.unit {}))",
-                fmt(*seq),
-                fmt(*src),
-                fmt(*dst)
-            )
-        }
         Intrinsic::BvVal { t, val } => {
             let width: u32 = match t {
                 Sort::I32 | Sort::U32 => 32,
                 Sort::I64 | Sort::U64 => 64,
-                _ => panic!("BvVal: Unsupported bitvector type: {:?}", t),
+                _ => panic!("BvVal: Unsupported bitvector type: {t:?}"),
             };
             // SMT-LIB2 requires non-negative value in (_ bvN w).
             // Negative values (e.g. I32::from(-1)) must be converted to their
@@ -526,7 +651,7 @@ pub fn format_intrinsic(
             } else {
                 val.clone()
             };
-            format!("(_ bv{} {})", unsigned_val, width)
+            format!("(_ bv{unsigned_val} {width})")
         }
         Intrinsic::BvNot { val, .. } => format!("(bvnot {})", fmt(*val)),
         Intrinsic::BvRedAnd { val, .. } => format!("(= (bvredand {}) (_ bv1 1))", fmt(*val)),
@@ -581,18 +706,20 @@ pub fn format_intrinsic(
             _ => format!("(bvuge {} {})", fmt(*lhs), fmt(*rhs)),
         },
         Intrinsic::BvToInt { t, val } => match t {
-            Sort::I32 => format!(
-                "(ite (bvslt {} (_ bv0 32)) (- (bv2int {}) 4294967296) (bv2int {}))",
-                fmt(*val),
-                fmt(*val),
-                fmt(*val)
-            ),
-            Sort::I64 => format!(
-                "(ite (bvslt {} (_ bv0 64)) (- (bv2int {}) 18446744073709551616) (bv2int {}))",
-                fmt(*val),
-                fmt(*val),
-                fmt(*val)
-            ),
+            Sort::I32 => {
+                let mut lets = LetScope::new();
+                let v = lets.share("v", fmt(*val));
+                lets.wrap(format!(
+                    "(ite (bvslt {v} (_ bv0 32)) (- (bv2int {v}) 4294967296) (bv2int {v}))"
+                ))
+            }
+            Sort::I64 => {
+                let mut lets = LetScope::new();
+                let v = lets.share("v", fmt(*val));
+                lets.wrap(format!(
+                    "(ite (bvslt {v} (_ bv0 64)) (- (bv2int {v}) 18446744073709551616) (bv2int {v}))"
+                ))
+            }
             _ => format!("(bv2int {})", fmt(*val)),
         },
         Intrinsic::FloatVal { t, val } => {
@@ -675,41 +802,85 @@ pub fn format_intrinsic(
         Intrinsic::FloatToI32 { val, .. } => format!("((_ fp.to_sbv 32) RTZ {})", fmt(*val)),
         Intrinsic::FloatToU64 { val, .. } => format!("((_ fp.to_ubv 64) RTZ {})", fmt(*val)),
         Intrinsic::FloatToI64 { val, .. } => format!("((_ fp.to_sbv 64) RTZ {})", fmt(*val)),
-
+        Intrinsic::SeqEmpty { t } => format!("(as seq.empty (Seq {}))", format_sort_for_fn(t, ir)),
+        Intrinsic::SeqUnit { val, .. } => format!("(seq.unit {})", fmt(*val)),
+        Intrinsic::SeqLen { seq, .. } => format!("(seq.len {})", fmt(*seq)),
+        Intrinsic::SeqPush { seq, item, .. } => {
+            format!("(seq.++ {} (seq.unit {}))", fmt(*seq), fmt(*item))
+        }
+        Intrinsic::SeqConcat { lhs, rhs, .. } => format!("(seq.++ {} {})", fmt(*lhs), fmt(*rhs)),
+        Intrinsic::SeqNth { seq, idx, .. } => format!("(seq.nth {} {})", fmt(*seq), fmt(*idx)),
+        Intrinsic::SeqAtSeq { seq, idx, .. } => {
+            format!("(seq.extract {} {} 1)", fmt(*seq), fmt(*idx))
+        }
+        Intrinsic::SeqContains { seq, item, .. } => {
+            format!("(seq.contains {} (seq.unit {}))", fmt(*seq), fmt(*item))
+        }
+        Intrinsic::SeqPrefixOf { lhs, rhs, .. } => {
+            format!("(seq.prefixof {} {})", fmt(*lhs), fmt(*rhs))
+        }
+        Intrinsic::SeqSuffixOf { lhs, rhs, .. } => {
+            format!("(seq.suffixof {} {})", fmt(*lhs), fmt(*rhs))
+        }
+        Intrinsic::SeqIsEmpty { seq, .. } => format!("(= (seq.len {}) 0)", fmt(*seq)),
+        Intrinsic::SeqExtract {
+            seq, offset, len, ..
+        } => format!("(seq.extract {} {} {})", fmt(*seq), fmt(*offset), fmt(*len)),
+        Intrinsic::SeqIndexOf {
+            seq, sub, offset, ..
+        } => format!("(seq.indexof {} {} {})", fmt(*seq), fmt(*sub), fmt(*offset)),
+        Intrinsic::SeqIndexOfDefault { seq, sub, .. } => {
+            format!("(seq.indexof {} {})", fmt(*seq), fmt(*sub))
+        }
+        Intrinsic::SeqReplace { seq, src, dst, .. } => {
+            format!(
+                "(seq.replace {} (seq.unit {}) (seq.unit {}))",
+                fmt(*seq),
+                fmt(*src),
+                fmt(*dst)
+            )
+        }
         Intrinsic::SetEmpty { t } => {
             let ts = format_sort_for_fn(t, ir);
-            format!("(mk-rset ((as const (Array {} Bool)) false) 0)", ts)
+            format!("(mk-rset ((as const (Array {ts} Bool)) false) 0)")
         }
         Intrinsic::SetLen { set, .. } => format!("(rset-card {})", fmt(*set)),
         Intrinsic::SetInsert { set, item, .. } => {
-            let s = fmt(*set);
-            let x = fmt(*item);
-            format!(
+            let mut lets = LetScope::new();
+            let s = lets.share("s", fmt(*set));
+            let x = lets.share("x", fmt(*item));
+            lets.wrap(format!(
                 "(mk-rset (store (rset-data {s}) {x} true) (ite (select (rset-data {s}) {x}) (rset-card {s}) (+ (rset-card {s}) 1)))"
-            )
+            ))
         }
         Intrinsic::SetRemove { set, item, .. } => {
-            let s = fmt(*set);
-            let x = fmt(*item);
-            format!(
+            let mut lets = LetScope::new();
+            let s = lets.share("s", fmt(*set));
+            let x = lets.share("x", fmt(*item));
+            lets.wrap(format!(
                 "(mk-rset (store (rset-data {s}) {x} false) (ite (select (rset-data {s}) {x}) (- (rset-card {s}) 1) (rset-card {s})))"
-            )
+            ))
         }
         Intrinsic::SetContains { set, item, .. } => {
             format!("(select (rset-data {}) {})", fmt(*set), fmt(*item))
         }
         Intrinsic::SetIsEmpty { set, .. } => format!("(= (rset-card {}) 0)", fmt(*set)),
         Intrinsic::SetIsSubset { lhs, rhs, .. } => {
-            let l = fmt(*lhs);
+            // `rhs` is mentioned once, so only `lhs` is worth binding.
+            let mut lets = LetScope::new();
+            let l = lets.share("l", fmt(*lhs));
             let r = fmt(*rhs);
-            format!("(= ((_ map and) (rset-data {l}) (rset-data {r})) (rset-data {l}))")
+            lets.wrap(format!(
+                "(= ((_ map and) (rset-data {l}) (rset-data {r})) (rset-data {l}))"
+            ))
         }
         Intrinsic::SetIsProperSubset { lhs, rhs, .. } => {
-            let l = fmt(*lhs);
-            let r = fmt(*rhs);
-            format!(
+            let mut lets = LetScope::new();
+            let l = lets.share("l", fmt(*lhs));
+            let r = lets.share("r", fmt(*rhs));
+            lets.wrap(format!(
                 "(and (= ((_ map and) (rset-data {l}) (rset-data {r})) (rset-data {l})) (< (rset-card {l}) (rset-card {r})))"
-            )
+            ))
         }
         Intrinsic::SetIsDisjoint { t, lhs, rhs } => {
             let ts = format_sort_for_fn(t, ir);
@@ -725,44 +896,56 @@ pub fn format_intrinsic(
         Intrinsic::ArrayEmpty { k, v } => {
             let (ks, vs) = (format_sort_for_fn(k, ir), format_sort_for_fn(v, ir));
             let null = array_null_value(v, ir);
-            format!("(mk-rarr ((as const (Array {ks} {vs})) {null}) 0)")
-        }
-        Intrinsic::ArrayLen { arr, .. } => {
-            format!("(rarr-card {})", fmt(*arr))
-        }
-        Intrinsic::ArrayStore {
-            arr, key, val, v, ..
-        } => {
-            let a = fmt(*arr);
-            let k = fmt(*key);
-            let vl = fmt(*val);
-            let null = array_null_value(v, ir);
             format!(
-                "(mk-rarr (store (rarr-data {a}) {k} {vl}) (ite (= (select (rarr-data {a}) {k}) {null}) (+ (rarr-card {a}) 1) (rarr-card {a})))"
+                "(mk-rarr ((as const (Array {ks} {vs})) {null}) ((as const (Array {ks} Bool)) false) 0)"
             )
+        }
+        Intrinsic::ArrayStore { arr, key, val, .. } => {
+            let mut lets = LetScope::new();
+            let a = lets.share("a", fmt(*arr));
+            let k = lets.share("k", fmt(*key));
+            let vl = fmt(*val);
+            lets.wrap(format!(
+                "(mk-rarr (store (rarr-data {a}) {k} {vl}) (store (rarr-pres {a}) {k} true) (ite (select (rarr-pres {a}) {k}) (rarr-card {a}) (+ (rarr-card {a}) 1)))"
+            ))
+        }
+        Intrinsic::ArrayRemove { arr, key, v, .. } => {
+            let mut lets = LetScope::new();
+            let a = lets.share("a", fmt(*arr));
+            let k = lets.share("k", fmt(*key));
+            let null = array_null_value(v, ir);
+            lets.wrap(format!(
+                "(mk-rarr (store (rarr-data {a}) {k} {null}) (store (rarr-pres {a}) {k} false) (ite (select (rarr-pres {a}) {k}) (- (rarr-card {a}) 1) (rarr-card {a})))"
+            ))
         }
         Intrinsic::ArraySelect { arr, key, .. } => {
             format!("(select (rarr-data {}) {})", fmt(*arr), fmt(*key))
         }
-        Intrinsic::ArrayRemove { arr, key, v, .. } => {
-            let a = fmt(*arr);
-            let k = fmt(*key);
-            let null = array_null_value(v, ir);
-            format!(
-                "(mk-rarr (store (rarr-data {a}) {k} {null}) (ite (= (select (rarr-data {a}) {k}) {null}) (rarr-card {a}) (- (rarr-card {a}) 1)))"
-            )
+        Intrinsic::ArrayContainsKey { arr, key, .. } => {
+            format!("(select (rarr-pres {}) {})", fmt(*arr), fmt(*key))
         }
-        Intrinsic::ArrayContainsKey { arr, key, v, .. } => {
-            let null = array_null_value(v, ir);
-            format!(
-                "(not (= (select (rarr-data {}) {}) {}))",
-                fmt(*arr),
-                fmt(*key),
-                null
-            )
+        Intrinsic::ArrayLen { arr, .. } => {
+            format!("(rarr-card {})", fmt(*arr))
         }
         Intrinsic::ArrayIsEmpty { arr, .. } => {
             format!("(= (rarr-card {}) 0)", fmt(*arr))
         }
+        // A `Path` is a set of marker ids, encoded as a bit-set with one bit per
+        // named marker (see `path.rs`). A named marker is the one-hot literal
+        // for its bit.
+        Intrinsic::PathName { name } => crate::backend::z3::path::marker_literal(
+            ir,
+            rusmt_smt_stdlib::path::marker_id(name),
+        ),
+        // `Path::merge` is set union in the concrete semantics (graceful, non-
+        // short-circuiting error accumulation), and `bvor` is exactly that on
+        // the bit-set — both operands survive. Nothing here is approximate, so a
+        // multi-marker target ("reach all of these on one run") is a satisfiable
+        // query about the program rather than an artefact of the encoding.
+        Intrinsic::PathMerge { lhs, rhs, .. } => {
+            crate::backend::z3::path::merge_expr(&fmt(*lhs), &fmt(*rhs))
+        }
+        Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
+        Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),
     }
 }

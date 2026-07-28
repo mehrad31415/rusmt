@@ -45,16 +45,16 @@ macro_rules! exists {
 /// Equivalent to (exists ((x T)) (P x)) ... (get-model) ...
 #[macro_export]
 macro_rules! choose {
-    ($v0:ident in $c0:expr $(, $vn:ident in $cn:expr)* => $constraint:expr) => {
-        (|| {
-            for ($v0, $($vn, )*) in $crate::iproduct!($c0.iterator() $(, $cn.iterator())*) {
-                if *$constraint {
-                    return ($v0 $(, $vn)*);
-                }
+    ($v0:ident in $c0:expr $(, $vn:ident in $cn:expr)* => $constraint:expr) => {{
+        let mut result = None;
+        for ($v0, $($vn, )*) in $crate::iproduct!($c0.iterator() $(, $cn.iterator())*) {
+            if *$constraint {
+                result = Some(($v0 $(, $vn)*));
+                break;
             }
-            panic!("no valid choice");
-        }) ()
-    };
+        }
+        result.expect("no valid choice")
+    }};
 }
 
 #[cfg(test)]

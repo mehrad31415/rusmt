@@ -270,6 +270,9 @@ pub enum QualifiedPath {
     CastFromF32,
     /// `F64::from(<literal>)`
     CastFromF64,
+    /// `Path::named(<string-literal>)` — a named path-condition marker whose id
+    /// is a stable function of the literal name.
+    PathNamed,
     /// `<sys-type>::[type-inst]::<sys-func>(<args>)`
     SysFuncOnSysType(SysTypeName, GenericsInstPartial, SysFuncName),
     /// `<usr-type>::[type-inst]::<sys-func>(<args>)`
@@ -308,6 +311,15 @@ impl QualifiedPath {
 
         // func
         let PathSegment { ident, arguments } = bail_if_missing!(iter.next(), path, "type name");
+
+        if matches!(&ty_name, TypeName::Sys(SysTypeName::Path)) && ident == "named" {
+            if !matches!(arguments, PathArguments::None) {
+                bail_on!(arguments, "unexpected type arguments on Path::named");
+            }
+            bail_if_exists!(iter.next());
+            return Ok(Self::PathNamed);
+        }
+
         let fn_name = FuncName::try_from(ident)?;
         let converted = match &fn_name {
             // into is not allowed

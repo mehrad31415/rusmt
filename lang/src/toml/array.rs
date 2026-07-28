@@ -17,7 +17,7 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                 match current_char(after_open) {
                     Optional::None => {
                         // println!("expect array-close after array-open found nothing");
-                        ParseResult::Err(Path::fresh())
+                        ParseResult::Err(Path::named(String::from("array_open_eof")))
                     } // expect array-close
                     Optional::Some(_next_c) => {
                         match parse_ws_comment_newline(after_open) {
@@ -27,7 +27,9 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                                 match current_char(after_ws) {
                                     Optional::None => {
                                         // println!("expect array-close after array-open found nothing");
-                                        ParseResult::Err(Path::fresh())
+                                        ParseResult::Err(Path::named(String::from(
+                                            "array_open_after_ws_eof",
+                                        )))
                                     }
                                     Optional::Some(x) => {
                                         if *is_array_close(x) {
@@ -47,7 +49,9 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                                             let array_of_tables = context_temp.array_of_tables;
                                             if *array_of_tables.contains(key) {
                                                 // println!("arrays of tables cannot contain inline arrays");
-                                                return ParseResult::Err(Path::fresh()); // arrays of tables cannot contain inline arrays
+                                                return ParseResult::Err(Path::named(
+                                                    String::from("array_of_tables_inline_array"),
+                                                )); // arrays of tables cannot contain inline arrays
                                             } else {
                                                 // update the inline_arrays in the context
                                                 let new_inline_arrays = inline_arrays.append(key);
@@ -111,7 +115,7 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
         ParseResult::Err(e) => return ParseResult::Err(e),
         ParseResult::NoMatch => {
             // println!("expected a value but none matched");
-            ParseResult::Err(Path::fresh())
+            ParseResult::Err(Path::named(String::from("array_values_expected_value")))
         } // expected a value but none matched
         ParseResult::Ok(val, after_val) => {
             match parse_ws_comment_newline(after_val) {
@@ -123,7 +127,9 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
                             // println!(
                             //     "expect array-close or separator after array value found nothing"
                             // );
-                            ParseResult::Err(Path::fresh()) // expect array-close or separator
+                            ParseResult::Err(Path::named(String::from(
+                                "array_value_eof_after_value",
+                            ))) // expect array-close or separator
                         }
                         Optional::Some(next_c) => {
                             if *is_array_sep(next_c) {
@@ -137,7 +143,9 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
                                                 // println!(
                                                 //     "expect array value after separator found nothing"
                                                 // );
-                                                ParseResult::Err(Path::fresh())
+                                                ParseResult::Err(Path::named(String::from(
+                                                    "array_sep_eof_after_comma",
+                                                )))
                                             } // expect array value
                                             Optional::Some(newnew) => {
                                                 if *is_array_close(newnew) {
@@ -177,7 +185,9 @@ pub(crate) fn parse_array_values(key: Seq<String>, input: State) -> ParseResult<
                                     // println!(
                                     //     "expect array-close or separator after array value"
                                     // );
-                                    return ParseResult::Err(Path::fresh()); // expect array-close or separator
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "array_value_invalid_separator",
+                                    ))); // expect array-close or separator
                                 }
                             }
                         }
@@ -215,7 +225,7 @@ pub(crate) fn parse_ws_comment_newline(input: State) -> ParseResult<String> {
                     ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => {
                         // println!("expected newline after comment in ws-comment-newline");
-                        ParseResult::Err(Path::fresh())
+                        ParseResult::Err(Path::named(String::from("array_comment_missing_newline")))
                     } // need newline after comment
                     ParseResult::Ok(newline, after_newline) => {
                         match parse_ws_comment_newline(after_newline) {

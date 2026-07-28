@@ -41,13 +41,17 @@ pub fn parse_key_value(state: State) -> ParseResult<KeyVal> {
                                 ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     // println!("expected a value but none matched");
-                                    return ParseResult::Err(Path::fresh());
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "key_value_missing_value_nomatch",
+                                    )));
                                 } // expected a value but none matched
                             }
                         }
                         Optional::None => {
                             // println!("expected a value but found end of input");
-                            return ParseResult::Err(Path::fresh());
+                            return ParseResult::Err(Path::named(String::from(
+                                "key_value_missing_value_eof",
+                            )));
                         } // expected a value but found end of input
                     }
                 }
@@ -99,13 +103,13 @@ fn parse_keyval_sep(state: State) -> ParseResult<String> {
             } else {
                 // expected '=' but found something else
                 // println!("expected '=' but found another character {:?}", ch);
-                ParseResult::Err(Path::fresh())
+                ParseResult::Err(Path::named(String::from("key_value_missing_equals_char")))
             }
         }
         // expected '=' but found end of input
         Optional::None => {
             // println!("expected '=' but found end of input");
-            ParseResult::Err(Path::fresh())
+            ParseResult::Err(Path::named(String::from("key_value_missing_equals_eof")))
         }
     }
 }
@@ -123,7 +127,7 @@ fn parse_dotted_key_loop(acc: Seq<String>, state: State) -> ParseResult<Seq<Stri
             // there were no more keys after dot
             ParseResult::NoMatch => {
                 // println!("expected a key after '.' but none found");
-                return ParseResult::Err(Path::fresh());
+                return ParseResult::Err(Path::named(String::from("dotted_key_missing_segment")));
             }
         },
         ParseResult::Err(e) => return ParseResult::Err(e),
@@ -178,7 +182,7 @@ fn parse_unquoted_key(state: State) -> ParseResult<String> {
                             parse_rest_of_unquoted_key(advance(state), cp_to_str(first_char))
                         } else {
                             // println!("invalid first character for unquoted key {:?}", first_char);
-                            ParseResult::Err(Path::fresh()) // invalid first character for unquoted key
+                            ParseResult::Err(Path::named(String::from("bare_key_invalid_start"))) // invalid first character for unquoted key
                         }
                     }
                 }
@@ -236,7 +240,9 @@ fn parse_quoted_key(state: State) -> ParseResult<String> {
                                     if *is_quotation_mark(c3) {
                                         // multiline quoted key is not allowed
                                         // println!("multiline quoted key is not allowed");
-                                        return ParseResult::Err(Path::fresh());
+                                        return ParseResult::Err(Path::named(String::from(
+                                            "quoted_key_multiline_basic",
+                                        )));
                                     } else {
                                         parse_basic_string(state)
                                     }
@@ -260,7 +266,9 @@ fn parse_quoted_key(state: State) -> ParseResult<String> {
                                         if *is_apostrophe(c3) {
                                             // multiline quoted key is not allowed
                                             // println!("multiline quoted key is not allowed");
-                                            return ParseResult::Err(Path::fresh());
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "quoted_key_multiline_literal",
+                                            )));
                                         } else {
                                             parse_literal_string(state)
                                         }

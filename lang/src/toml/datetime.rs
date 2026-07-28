@@ -37,8 +37,17 @@ pub(crate) fn parse_datetime(state: State) -> ParseResult<DateTime> {
                 ParseResult::Ok(_time_delim, state_after_time_delim) => {
                     match partial_time(state_after_time_delim) {
                         ParseResult::NoMatch => {
-                            // println!("expect partial-time after full-date and time-delim");
-                            ParseResult::Err(Path::fresh()) // expect partial-time
+                            if *_time_delim.eq(String::from(" ")) {
+                                ParseResult::Ok(
+                                    DateTime::LocalDate(full_date_str),
+                                    state_after_full_date,
+                                )
+                            } else {
+                                // println!("expect partial-time after full-date and time-delim");
+                                ParseResult::Err(Path::named(String::from(
+                                    "datetime_expect_partial_time_after_delim",
+                                ))) // expect partial-time
+                            }
                         }
                         ParseResult::Err(e) => return ParseResult::Err(e),
                         ParseResult::Ok(partial_time_str, state_after_partial_time) => {
@@ -55,13 +64,12 @@ pub(crate) fn parse_datetime(state: State) -> ParseResult<DateTime> {
                                     )
                                 }
                                 Optional::Some(c) => {
-                                    // c == 'Z'
-                                    if *c.eq(U32::from(0x5A)) {
+                                    if *c.eq(U32::from(0x5A)).or(c.eq(U32::from(0x7A))) {
                                         let after_z = advance(state_after_partial_time);
                                         let datetime_str = full_date_str
                                             .concat(_time_delim)
                                             .concat(partial_time_str)
-                                            .concat(String::from("Z"));
+                                            .concat(cp_to_str(c));
                                         ParseResult::Ok(
                                             DateTime::OffsetDateTime(datetime_str),
                                             after_z,
@@ -114,7 +122,9 @@ fn parse_time_hour(input: State) -> ParseResult<String> {
         Optional::Some(c1) => {
             if *is_dec_digit(c1).not() {
                 // println!("first char not digit");
-                return ParseResult::Err(Path::fresh()); // first char not digit
+                return ParseResult::Err(Path::named(String::from(
+                    "time_hour_first_char_not_digit",
+                ))); // first char not digit
             } else {
                 let after_c1 = advance(input);
                 match current_char(after_c1) {
@@ -122,7 +132,9 @@ fn parse_time_hour(input: State) -> ParseResult<String> {
                     Optional::Some(c2) => {
                         if *is_dec_digit(c2).not() {
                             // println!("second char not digit");
-                            return ParseResult::Err(Path::fresh()); // second char not digit
+                            return ParseResult::Err(Path::named(String::from(
+                                "time_hour_second_char_not_digit",
+                            ))); // second char not digit
                         } else {
                             let hour_str = cp_to_str(c1).concat(cp_to_str(c2));
                             if *hour_str
@@ -130,7 +142,9 @@ fn parse_time_hour(input: State) -> ParseResult<String> {
                                 .or(hour_str.gt(String::from("23")))
                             {
                                 // println!("invalid hour range");
-                                return ParseResult::Err(Path::fresh()); // invalid hour range
+                                return ParseResult::Err(Path::named(String::from(
+                                    "time_hour_out_of_range",
+                                ))); // invalid hour range
                             } else {
                                 let after_c2 = advance(after_c1);
                                 ParseResult::Ok(hour_str, after_c2)
@@ -151,7 +165,9 @@ fn parse_time_minute(input: State) -> ParseResult<String> {
         Optional::Some(c1) => {
             if *is_dec_digit(c1).not() {
                 // println!("first char in minute not digit");
-                return ParseResult::Err(Path::fresh()); // first char not digit
+                return ParseResult::Err(Path::named(String::from(
+                    "time_minute_first_char_not_digit",
+                ))); // first char not digit
             } else {
                 let after_c1 = advance(input);
                 match current_char(after_c1) {
@@ -159,7 +175,9 @@ fn parse_time_minute(input: State) -> ParseResult<String> {
                     Optional::Some(c2) => {
                         if *is_dec_digit(c2).not() {
                             // println!("second char in minute not digit");
-                            return ParseResult::Err(Path::fresh()); // second char not digit
+                            return ParseResult::Err(Path::named(String::from(
+                                "time_minute_second_char_not_digit",
+                            ))); // second char not digit
                         } else {
                             let minute_str = cp_to_str(c1).concat(cp_to_str(c2));
                             if *minute_str
@@ -167,7 +185,9 @@ fn parse_time_minute(input: State) -> ParseResult<String> {
                                 .or(minute_str.gt(String::from("59")))
                             {
                                 // println!("invalid minute range");
-                                return ParseResult::Err(Path::fresh()); // invalid minute range
+                                return ParseResult::Err(Path::named(String::from(
+                                    "time_minute_out_of_range",
+                                ))); // invalid minute range
                             } else {
                                 let after_c2 = advance(after_c1);
                                 ParseResult::Ok(minute_str, after_c2)
@@ -188,7 +208,9 @@ fn parse_time_second(input: State) -> ParseResult<String> {
         Optional::Some(c1) => {
             if *is_dec_digit(c1).not() {
                 // println!("first char in second not digit");
-                return ParseResult::Err(Path::fresh()); // first char not digit
+                return ParseResult::Err(Path::named(String::from(
+                    "time_second_first_char_not_digit",
+                ))); // first char not digit
             } else {
                 let after_c1 = advance(input);
                 match current_char(after_c1) {
@@ -196,7 +218,9 @@ fn parse_time_second(input: State) -> ParseResult<String> {
                     Optional::Some(c2) => {
                         if *is_dec_digit(c2).not() {
                             // println!("second char in second not digit");
-                            return ParseResult::Err(Path::fresh()); // second char not digit
+                            return ParseResult::Err(Path::named(String::from(
+                                "time_second_second_char_not_digit",
+                            ))); // second char not digit
                         } else {
                             let second_str = cp_to_str(c1).concat(cp_to_str(c2));
                             if *second_str
@@ -204,7 +228,9 @@ fn parse_time_second(input: State) -> ParseResult<String> {
                                 .or(second_str.gt(String::from("60")))
                             {
                                 // println!("invalid second range");
-                                return ParseResult::Err(Path::fresh()); // invalid second range
+                                return ParseResult::Err(Path::named(String::from(
+                                    "time_second_out_of_range",
+                                ))); // invalid second range
                             } else {
                                 let after_c2 = advance(after_c1);
                                 ParseResult::Ok(second_str, after_c2)
@@ -228,12 +254,16 @@ fn parse_time_secfrac(input: State) -> ParseResult<String> {
                 match current_char(after_dot) {
                     Optional::None => {
                         // println!("must have at least one digit after '.' found nothing");
-                        ParseResult::Err(Path::fresh())
+                        ParseResult::Err(Path::named(String::from(
+                            "time_secfrac_no_digit_after_dot_eof",
+                        )))
                     } // must have at least one digit after '.'
                     Optional::Some(c1) => {
                         if *is_dec_digit(c1).not() {
                             // println!("must have at least one digit after '.' found something else");
-                            return ParseResult::Err(Path::fresh()); // must have at least one digit after '.'
+                            return ParseResult::Err(Path::named(String::from(
+                                "time_secfrac_no_digit_after_dot_nondigit",
+                            ))); // must have at least one digit after '.'
                         } else {
                             parse_digit_sequence_rest(
                                 advance(input),
@@ -266,87 +296,48 @@ fn parse_digit_sequence_rest(input: State, acc: String) -> ParseResult<String> {
     }
 }
 
-/// partial-time = time-hour ":" time-minute ":" time-second [ time-secfrac ]
+/// partial-time = time-hour ":" time-minute [ ":" time-second [ time-secfrac ] ]
+///
+/// Per TOML v1.1.0 the seconds field is optional: when it is omitted `:00` is
+/// assumed, and a fractional-seconds part is only permitted when the seconds
+/// field is present.
+/// `HH:MM` at end-of-input is accepted and `HH:MM.frac` (a fractional minute) is rejected.
 #[smt_fn]
 fn partial_time(input: State) -> ParseResult<String> {
-    // peek to see if this is partial time or an float
     let first_colon = peek(input, 2.into());
-    let second_colon = peek(input, 5.into());
     match first_colon {
         Optional::None => ParseResult::NoMatch,
         Optional::Some(c1) => {
             if *c1.eq(U32::from(0x3A)) {
-                match second_colon {
-                    Optional::None => {
-                        // println!("second colon not found non existent when the first colon is found");
-                        ParseResult::Err(Path::fresh())
-                    } // invalid partial-time
-                    Optional::Some(c2) => {
-                        if *c2.eq(U32::from(0x3A)).not() {
-                            // it doesnt have second only minutes and time and seconds is assumed to be 00
-                            match parse_time_hour(input) {
-                                ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
-                                ParseResult::Err(e) => return ParseResult::Err(e),
-                                ParseResult::Ok(time_hour, state_after_time_hour) => {
-                                    let after_colon = advance(state_after_time_hour);
-                                    match parse_time_minute(after_colon) {
-                                        ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
-                                        ParseResult::Err(e) => return ParseResult::Err(e),
-                                        ParseResult::Ok(time_minute, state_after_time_minute) => {
-                                            // it can still have time-secfrac
-                                            match parse_time_secfrac(state_after_time_minute) {
-                                                ParseResult::Ok(
-                                                    time_secfrac,
-                                                    state_after_secfrac,
-                                                ) => {
-                                                    let time_str = time_hour
-                                                        .concat(String::from(":"))
-                                                        .concat(time_minute)
-                                                        .concat(String::from(":"))
-                                                        .concat(String::from("00"))
-                                                        .concat(time_secfrac);
-                                                    ParseResult::Ok(time_str, state_after_secfrac)
-                                                }
-                                                ParseResult::Err(e) => return ParseResult::Err(e),
-                                                ParseResult::NoMatch => {
-                                                    let time_str = time_hour
-                                                        .concat(String::from(":"))
-                                                        .concat(time_minute)
-                                                        .concat(String::from(":"))
-                                                        .concat(String::from("00"));
-                                                    ParseResult::Ok(
-                                                        time_str,
-                                                        state_after_time_minute,
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // it's partial time
-                            match parse_time_hour(input) {
-                                ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
-                                ParseResult::Err(e) => return ParseResult::Err(e),
-                                ParseResult::Ok(time_hour, state_after_time_hour) => {
-                                    let after_colon = advance(state_after_time_hour);
-                                    match parse_time_minute(after_colon) {
-                                        ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
-                                        ParseResult::Err(e) => return ParseResult::Err(e),
-                                        ParseResult::Ok(time_minute, state_after_time_minute) => {
+                match parse_time_hour(input) {
+                    ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                    ParseResult::Err(e) => return ParseResult::Err(e),
+                    ParseResult::Ok(time_hour, state_after_time_hour) => {
+                        let after_colon = advance(state_after_time_hour);
+                        match parse_time_minute(after_colon) {
+                            ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
+                            ParseResult::Err(e) => return ParseResult::Err(e),
+                            ParseResult::Ok(time_minute, state_after_time_minute) => {
+                                // Optional [ ":" time-second [ time-secfrac ] ]: decide on the
+                                // character right after the minutes.
+                                match current_char(state_after_time_minute) {
+                                    Optional::Some(sep) => {
+                                        if *sep.eq(U32::from(0x3A)) {
+                                            // seconds present
                                             let after_colon2 = advance(state_after_time_minute);
                                             match parse_time_second(after_colon2) {
                                                 ParseResult::NoMatch => {
-                                                    // println!("expect time-second after time-hour and time-minute");
-                                                    ParseResult::Err(Path::fresh())
-                                                } // can happen because we only peeked until minutes
+                                                    // println!("expect time-second after ':'");
+                                                    ParseResult::Err(Path::named(String::from(
+                                                        "partial_time_expect_second_after_minute",
+                                                    )))
+                                                }
                                                 ParseResult::Err(e) => return ParseResult::Err(e),
                                                 ParseResult::Ok(
                                                     time_second,
                                                     state_after_time_second,
                                                 ) => {
-                                                    // Check for optional time-secfrac
+                                                    // time-secfrac is only valid once seconds exist
                                                     match parse_time_secfrac(
                                                         state_after_time_second,
                                                     ) {
@@ -382,7 +373,24 @@ fn partial_time(input: State) -> ParseResult<String> {
                                                     }
                                                 }
                                             }
+                                        } else {
+                                            // seconds omitted -> ":00" assumed; no secfrac permitted
+                                            let time_str = time_hour
+                                                .concat(String::from(":"))
+                                                .concat(time_minute)
+                                                .concat(String::from(":"))
+                                                .concat(String::from("00"));
+                                            ParseResult::Ok(time_str, state_after_time_minute)
                                         }
+                                    }
+                                    Optional::None => {
+                                        // end of input right after the minutes -> seconds omitted
+                                        let time_str = time_hour
+                                            .concat(String::from(":"))
+                                            .concat(time_minute)
+                                            .concat(String::from(":"))
+                                            .concat(String::from("00"));
+                                        ParseResult::Ok(time_str, state_after_time_minute)
                                     }
                                 }
                             }
@@ -390,12 +398,15 @@ fn partial_time(input: State) -> ParseResult<String> {
                     }
                 }
             } else {
+                let second_colon = peek(input, 5.into());
                 match second_colon {
                     Optional::None => ParseResult::NoMatch,
                     Optional::Some(c2) => {
                         if *c2.eq(U32::from(0x3A)) {
                             // println!("first char not colon found when the second colon is found");
-                            return ParseResult::Err(Path::fresh()); // invalid partial-time
+                            return ParseResult::Err(Path::named(String::from(
+                                "partial_time_second_colon_without_first",
+                            ))); // invalid partial-time
                         } else {
                             return ParseResult::NoMatch;
                         }
@@ -426,7 +437,9 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                             ParseResult::Err(e) => return ParseResult::Err(e),
                             ParseResult::NoMatch => {
                                 // println!("second dash not found non existent when the first dash is found");
-                                ParseResult::Err(Path::fresh())
+                                ParseResult::Err(Path::named(String::from(
+                                    "full_date_first_dash_without_second",
+                                )))
                             }
                         }
                     } // invalid full-date
@@ -446,7 +459,9 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                             match parse_date_mday(after_dash2) {
                                                 ParseResult::NoMatch => {
                                                     // println!("expect date-mday after date-month and year");
-                                                    ParseResult::Err(Path::fresh())
+                                                    ParseResult::Err(Path::named(String::from(
+                                                        "full_date_expect_mday_after_month",
+                                                    )))
                                                 } // can happen because we only peeked until month
                                                 ParseResult::Err(e) => return ParseResult::Err(e),
                                                 ParseResult::Ok(day_str, state_after_day) => {
@@ -460,7 +475,9 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                                             .or(month_str.gt(String::from("12")))
                                                         {
                                                             // println!("invalid month range");
-                                                            return ParseResult::Err(Path::fresh()); // invalid month
+                                                            return ParseResult::Err(Path::named(
+                                                                String::from("date_invalid_month"),
+                                                            )); // invalid month
                                                         } else {
                                                             let date_str = year_str
                                                                 .concat(String::from("-"))
@@ -474,7 +491,9 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                                         }
                                                     } else {
                                                         // println!("invalid day for month/year");
-                                                        ParseResult::Err(Path::fresh()) // invalid day for month/year
+                                                        ParseResult::Err(Path::named(String::from(
+                                                            "date_invalid_day",
+                                                        ))) // invalid day for month/year
                                                     }
                                                 }
                                             }
@@ -490,7 +509,9 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                 ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     // println!("another char found instead of second dash when the first dash is found");
-                                    return ParseResult::Err(Path::fresh()); // invalid full-date
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "full_date_second_dash_wrong_char",
+                                    ))); // invalid full-date
                                 }
                             }
                         }
@@ -508,7 +529,9 @@ fn parse_full_date(input: State) -> ParseResult<String> {
                                 ParseResult::Err(e) => return ParseResult::Err(e),
                                 ParseResult::NoMatch => {
                                     // println!("another char found instead of first dash when the second dash is found");
-                                    return ParseResult::Err(Path::fresh()); // invalid full-date
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "full_date_first_dash_wrong_char",
+                                    ))); // invalid full-date
                                 }
                             }
                         } else {
@@ -529,7 +552,9 @@ fn parse_date_fullyear(input: State) -> ParseResult<String> {
         Optional::Some(c1) => {
             if *is_dec_digit(c1).not() {
                 // println!("first char not digit");
-                return ParseResult::Err(Path::fresh()); // first char not digit
+                return ParseResult::Err(Path::named(String::from(
+                    "date_year_first_char_not_digit",
+                ))); // first char not digit
             } else {
                 let after_c1 = advance(input);
                 match current_char(after_c1) {
@@ -537,7 +562,9 @@ fn parse_date_fullyear(input: State) -> ParseResult<String> {
                     Optional::Some(c2) => {
                         if *is_dec_digit(c2).not() {
                             // println!("second char not digit");
-                            return ParseResult::Err(Path::fresh()); // second char not digit
+                            return ParseResult::Err(Path::named(String::from(
+                                "date_year_second_char_not_digit",
+                            ))); // second char not digit
                         } else {
                             let after_c2 = advance(after_c1);
                             match current_char(after_c2) {
@@ -545,7 +572,9 @@ fn parse_date_fullyear(input: State) -> ParseResult<String> {
                                 Optional::Some(c3) => {
                                     if *is_dec_digit(c3).not() {
                                         // println!("third char not digit");
-                                        return ParseResult::Err(Path::fresh()); // third char not digit
+                                        return ParseResult::Err(Path::named(String::from(
+                                            "date_year_third_char_not_digit",
+                                        ))); // third char not digit
                                     } else {
                                         let after_c3 = advance(after_c2);
                                         match current_char(after_c3) {
@@ -553,7 +582,11 @@ fn parse_date_fullyear(input: State) -> ParseResult<String> {
                                             Optional::Some(c4) => {
                                                 if *is_dec_digit(c4).not() {
                                                     // println!("fourth char not digit");
-                                                    return ParseResult::Err(Path::fresh()); // fourth char not digit
+                                                    return ParseResult::Err(Path::named(
+                                                        String::from(
+                                                            "date_year_fourth_char_not_digit",
+                                                        ),
+                                                    )); // fourth char not digit
                                                 } else {
                                                     let year_str = cp_to_str(c1)
                                                         .concat(cp_to_str(c2))
@@ -583,7 +616,9 @@ fn parse_date_month(input: State) -> ParseResult<String> {
         Optional::Some(c1) => {
             if *is_dec_digit(c1).not() {
                 // println!("first char not digit in month");
-                return ParseResult::Err(Path::fresh()); // first char not digit
+                return ParseResult::Err(Path::named(String::from(
+                    "date_month_first_char_not_digit",
+                ))); // first char not digit
             } else {
                 let after_c1 = advance(input);
                 match current_char(after_c1) {
@@ -591,7 +626,9 @@ fn parse_date_month(input: State) -> ParseResult<String> {
                     Optional::Some(c2) => {
                         if *is_dec_digit(c2).not() {
                             // println!("second char not digit in month");
-                            return ParseResult::Err(Path::fresh()); // second char not digit
+                            return ParseResult::Err(Path::named(String::from(
+                                "date_month_second_char_not_digit",
+                            ))); // second char not digit
                         } else {
                             let month_str = cp_to_str(c1).concat(cp_to_str(c2));
                             let after_c2 = advance(after_c1);
@@ -612,7 +649,9 @@ fn parse_date_mday(input: State) -> ParseResult<String> {
         Optional::Some(c1) => {
             if *is_dec_digit(c1).not() {
                 // println!("first char not digit in day");
-                return ParseResult::Err(Path::fresh()); // first char not digit
+                return ParseResult::Err(Path::named(String::from(
+                    "date_mday_first_char_not_digit",
+                ))); // first char not digit
             } else {
                 let after_c1 = advance(input);
                 match current_char(after_c1) {
@@ -620,7 +659,9 @@ fn parse_date_mday(input: State) -> ParseResult<String> {
                     Optional::Some(c2) => {
                         if *is_dec_digit(c2).not() {
                             // println!("second char not digit in day");
-                            return ParseResult::Err(Path::fresh()); // second char not digit
+                            return ParseResult::Err(Path::named(String::from(
+                                "date_mday_second_char_not_digit",
+                            ))); // second char not digit
                         } else {
                             let mday_str = cp_to_str(c1).concat(cp_to_str(c2));
                             let after_c2 = advance(after_c1);
@@ -709,7 +750,9 @@ fn parse_time_numoffset(input: State) -> ParseResult<String> {
                     ParseResult::Ok(hour_str, after_hour) => match current_char(after_hour) {
                         Optional::None => {
                             // println!("expect colon after time-hour in time-numoffset");
-                            ParseResult::Err(Path::fresh())
+                            ParseResult::Err(Path::named(String::from(
+                                "numoffset_expect_colon_eof",
+                            )))
                         } // expect colon
                         Optional::Some(colon) => {
                             if *colon.eq(U32::from(0x3A)) {
@@ -725,19 +768,25 @@ fn parse_time_numoffset(input: State) -> ParseResult<String> {
                                     ParseResult::Err(e) => return ParseResult::Err(e),
                                     ParseResult::NoMatch => {
                                         // println!("expect time-minute after time-hour and colon; found nothing");
-                                        ParseResult::Err(Path::fresh())
+                                        ParseResult::Err(Path::named(String::from(
+                                            "numoffset_expect_minute_after_colon",
+                                        )))
                                     } // expect time-minute
                                 }
                             } else {
                                 // println!("expect colon after time-hour in time-numoffset");
-                                ParseResult::Err(Path::fresh()) // expect colon
+                                ParseResult::Err(Path::named(String::from(
+                                    "numoffset_expect_colon_wrong_char",
+                                ))) // expect colon
                             }
                         }
                     },
                     ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => {
                         // println!("expect time-hour after sign in time-numoffset; found nothing");
-                        ParseResult::Err(Path::fresh())
+                        ParseResult::Err(Path::named(String::from(
+                            "numoffset_expect_hour_after_sign",
+                        )))
                     } // expect time-hour
                 }
             } else {

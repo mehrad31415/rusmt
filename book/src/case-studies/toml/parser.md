@@ -41,7 +41,7 @@ TOML has _semantic constraints_ beyond pure syntax, e.g. redefinition rules for 
 
 `Path::merge(e1, e2)` is defined but intentionally not used in this parser.
 
-**Why fail-fast is correct here:** Each `Path::fresh()` is a unique symbolic path marker. The SMT solver synthesizes one concrete input per target — e.g., "find a TOML document that reaches path #37". These are independent synthesis goals.
+**Why fail-fast is correct here:** Each `Path::named(...)` is a unique symbolic path marker with a stable replay id. The SMT solver synthesizes one concrete input per target — e.g., "find a TOML document that reaches `date_invalid_month`". These are independent synthesis goals.
 
 Using `Path::merge(e1, e2)` would create a *combined* target asking Z3 to find a single input that simultaneously reaches *both* path-condition markers. For a sequential parser this is rarely satisfiable: the parser stops at the first failure, so a second marker on the same document is not reachable in the same parse trace.
 

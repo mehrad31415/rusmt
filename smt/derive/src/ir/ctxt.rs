@@ -17,24 +17,24 @@ pub struct IRContext {
     /// function registry (lookup, signature, definition). The lookup is a map from user-defined functions to a map from list of parameter types to function id.
     /// The signature is a map from function id to function signature. The definition is a map from function id to function body.
     pub fn_registry: FunRegistry,
-    /// Counter for assigning unique IDs to `PathFresh` during IR building. Not used after build.
-    pub(crate) path_count: usize,
-    /// Path-marker targets for synthesis queries. Each target is a set of path IDs to assert
-    /// simultaneously. Example: `[{0}, {1}, {0,1}, {2}]` means 3 fresh sites and 1 merge.
-    /// - `PathFresh(n)` adds `{n}` — "find input reaching path site n"
-    /// - `PathMerge` adds the full merged ID set — "find input reaching all these sites together"
+    /// Path-marker targets for synthesis queries. Each target is a set of marker
+    /// ids to assert simultaneously.
     pub path_targets: Vec<BTreeSet<usize>>,
+    /// Targets whose single id is
+    /// in this map can be certified per-target by concrete replay, which is
+    /// what makes them eligible for the proposer-fallback loop.
+    pub marker_names: BTreeMap<usize, String>,
 }
 
 impl IRContext {
     /// Create an empty context
     /// The only place this is called is in the first line of the `IRBuilder::build` function
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             ty_registry: TypeRegistry::new(),
             fn_registry: FunRegistry::new(),
-            path_count: 0,
             path_targets: Vec::new(),
+            marker_names: BTreeMap::new(),
         }
     }
 }

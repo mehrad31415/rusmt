@@ -1,2 +1,0 @@
-# leading zero error due to underscore after zero
-hello = 0_12

@@ -1,6 +1,6 @@
 ## IMP concrete syntax and parser
 
-The plain-Rust recursive-descent parser lives in `lang/src/imp/parser.rs`.
+The plain-Rust recursive-descent parser lives in `lang/src/imp_parser.rs`.
 Its public entry point is `parse_imp_source(&str) -> Result<Com, String>`.
 
 ### Concrete grammar
@@ -43,7 +43,7 @@ mojibake in identifiers).
 - **Comments.** `// ...` line comments are accepted, but **only at the very
   top of the file** — `parse_line_comments` runs once before `parse_com`.
   Mid-program comments are not supported. This is a deliberate concrete-
-  syntax extension: it keeps the printer-emitted `response.txt` files
+  syntax extension: it keeps the printer-emitted `response.imp` witnesses
   parseable while preserving Winskel's grammar exactly inside any actual
   source code.
 - **No `{ ... }` blocks.** Grouping uses `( ... )` only — see `parse_block`.
@@ -59,7 +59,7 @@ mojibake in identifiers).
   - We add a division operator so that division-by-zero can be marked as a path condition.
   - Undefined variables do not default to 0 in the  store; reading an uninitialized variable is itself a flagged condition.
 
-The grammar comment at the top of `lang/src/imp/parser.rs` is authoritative
+The grammar comment at the top of `lang/src/imp_parser.rs` is authoritative
 if these notes ever drift.
 
 ### Parenthesised-bexp disambiguation

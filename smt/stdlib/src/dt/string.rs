@@ -1,5 +1,5 @@
-//! String datatype and operations
-//! These operations are ASCII-only sound. This is because Z3's string theory counts UTF-8 bytes, while Rust's string operations count Unicode code points.
+//! String datatype and operations (these operations are ASCII-only sound).
+//! Z3's string theory counts UTF-8 bytes, while Rust's string operations count Unicode code points.
 
 use crate::{Boolean, Integer, String, smt::SMT};
 use internment::Intern;
@@ -202,6 +202,9 @@ impl String {
 
     /// `(str.replace_all s src dst)`
     pub fn replace_all(self, src: Self, dst: Self) -> Self {
+        if src.inner.as_ref().is_empty() {
+            return self;
+        }
         let replaced = self.inner.replace(src.inner.as_ref(), dst.inner.as_ref());
         Self::from(replaced)
     }
@@ -528,7 +531,7 @@ mod tests {
         assert!(
             *String::from("Hello")
                 .replace_all(String::from(""), String::from("X"))
-                .eq(String::from("XHXeXlXlXoX"))
+                .eq(String::from("Hello"))
         );
         assert!(
             *String::from("Hello")

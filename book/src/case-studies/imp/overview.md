@@ -38,8 +38,7 @@ Two `Path::named` markers are used:
 
 Naming the markers gives each one a
 stable id — a fixed hash of the name, identical in the SMT query and in the
-concrete evaluator — which is what lets the pipeline certify each witness
-per-target on replay.
+concrete evaluator — which is what lets replay check each witness per target.
 
 These are the targets the synthesis pipeline chases — see
 [Synthesis loop](synthesis.md).

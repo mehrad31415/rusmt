@@ -1,31 +1,30 @@
-//! Replay-based certifier for synthesized / proposed IMP programs.
+//! Replay checks for synthesized / proposed object-language programs.
 //!
-//! This module is the **trusted arbiter** of the synthesis pipeline. A
-//! candidate object-language program may come from *any* untrusted proposer —
-//! a satisfying model decoded from Z3, a program emitted by a language model,
-//! or a bounded enumerator. None of these are trusted. A candidate is accepted
-//! only if, when re-executed through the concrete reference semantics
-//! ([`eval_com`]), it reaches the *targeted* marker.
+//! A candidate object-language program may come from Z3, a program emitted by a
+//! language model, or a bounded enumerator. A candidate is accepted only if Z3
+//! has decided the marker query for it and, when re-executed through the concrete
+//! reference semantics, it reaches the *targeted* marker.
 //!
 //! Soundness rests on two facts:
 //!
-//!  1. Acceptance is decided by concrete execution of the reference semantics,
-//!     never by whatever produced the candidate; a hallucinated or otherwise
-//!     wrong proposal is simply rejected, so the proposer is never part of the
-//!     trusted base.
-//!  2. A *named* marker's integer id is [`marker_id`]`(name)` on both the SMT
+//!  1. Z3 acceptance is monotone: pinning a candidate input only strengthens the
+//!     original marker query, so a `sat` pinned query is still a model of the
+//!     original query.
+//!  2. Replay checks that the SMT lift and concrete oracle agree on the
+//!     candidate. A hallucinated or otherwise wrong proposal is rejected.
+//!  3. A *named* marker's integer id is [`marker_id`]`(name)` on both the SMT
 //!     side (the id the synthesis query asserts membership of) and here (the id
 //!     the concrete `Path::named` carries). Hence "reached the targeted marker"
 //!     is decided soundly by membership of `marker_id(target)` in the fired
 //!     `Path` set — not merely "reached *some* marker".
 //!
 //! A target may name several markers at once (a `Path::merge` target, written
-//! comma-separated); the candidate is then certified only if *every* one of
+//! comma-separated); the candidate is accepted only if *every* one of
 //! them fired on the same run, mirroring the SMT query's simultaneous
 //! assertion of all their ids. See [`TARGET_SEP`].
 //!
 //! Replay runs under a wall-clock budget so that a non-terminating candidate
-//! (IMP has `while`) is rejected as a timeout rather than hanging the arbiter.
+//! (IMP has `while`) is rejected as a timeout rather than hanging the run.
 
 use crate::imp::{EvalResult, eval_com, parser::format_store, parser::parse_imp_source};
 use crate::toml::{ParseResult as TomlParseResult, parse_toml};
@@ -442,13 +441,10 @@ pub fn toml_markers_fired(source: &str, budget: Duration) -> Result<Option<BTree
     }
 }
 
-/// Certify that `source`, parsed by the trusted TOML reference parser, reaches
-/// the marker(s) named by `target` — the same proposer-agnostic arbiter as
-/// [`certify_imp`], with `parse_toml` as the cheap concrete checker. This is
-/// what the solver-first, proposer-fallback pipeline relies on: where the
-/// *solver* cannot synthesize an input for a marker, an untrusted proposer
-/// (e.g. an LLM) suggests a candidate document and this concrete check
-/// certifies (or rejects) it soundly, in milliseconds.
+/// Check that `source`, parsed by the TOML reference parser, reaches the
+/// marker(s) named by `target`. The solver-first/model-second pipeline relies
+/// on this after Z3 has accepted a pinned candidate: replay checks that the
+/// concrete parser fires the same marker as the SMT query.
 pub fn certify_toml(source: &str, target: &str, budget: Duration) -> Verdict {
     match toml_markers_fired(source, budget) {
         Ok(Some(ids)) => verdict_for(target, ids),
@@ -494,16 +490,16 @@ pub fn observe_toml(source: &str, budget: Duration) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Language registry: everything the proposer-fallback loop needs per language.
+// Language registry: everything the model fallback loop needs per language.
 // ---------------------------------------------------------------------------
 
 /// A language registered with the synthesis pipeline.
 ///
 /// The pipeline is language-agnostic: given a parser directory name it looks up
 /// the language's oracle here and uses it to (a) describe the object language
-/// to an untrusted proposer and (b) certify candidates by concrete replay
-/// through the reference semantics. Registering a language here is what makes
-/// it eligible for the solver-first, proposer-fallback synthesis loop in
+/// to the proposer and (b) replay candidates through the reference semantics.
+/// Registering a language here is what makes it eligible for the
+/// solver-first/model-second synthesis loop in
 /// `rusmt-smt-derive`.
 pub struct LanguageOracle {
     /// Language name; equals the parser directory under `lang/src/`.
@@ -512,10 +508,10 @@ pub struct LanguageOracle {
     pub ext: &'static str,
     /// A short object-language description included in proposer prompts.
     pub brief: &'static str,
-    /// Replay certifier: `(candidate source, target marker name(s), budget)`.
+    /// Replay check: `(candidate source, target marker name(s), budget)`.
     /// The target is one marker name, or several separated by [`TARGET_SEP`]
     /// (a `Path::merge` target), in which case all of them must fire on the
-    /// same run. This is the trusted arbiter; the proposer never is.
+    /// same run.
     pub certify: fn(&str, &str, Duration) -> Verdict,
 }
 
@@ -562,13 +558,13 @@ pub fn oracle_for(name: &str) -> Option<&'static LanguageOracle> {
 // ---------------------------------------------------------------------------
 // Process-isolated replay.
 //
-// The in-process certifiers above bound *time* (a worker thread plus
+// The in-process replay checks above bound *time* (a worker thread plus
 // `recv_timeout`), but they cannot bound *stack*: a candidate like
 // `while true do skip` drives the recursive reference evaluator into a stack
 // overflow, which aborts the whole process — a thread cannot survive it. An
-// untrusted proposer (a solver model under depth-bounded unrolling, or a
-// language model) can produce exactly such candidates, so the pipeline replays
-// every candidate in a separate process: a crash there is reported as
+// external proposer or a solver model under depth-bounded unrolling can produce
+// exactly such candidates, so the pipeline replays every candidate in a separate
+// process: a crash there is reported as
 // `Verdict::Crashed` and rejects the candidate instead of killing the run.
 // ---------------------------------------------------------------------------
 
@@ -752,10 +748,10 @@ mod tests {
 
     /// One model-free proposed document per named TOML target. These are the
     /// witnesses the *solver* could not synthesize within budget (TOML sweep:
-    /// 0/186); each is certified here, in milliseconds, by concrete replay
+    /// 0/182); each is checked here, in milliseconds, by concrete replay
     /// through the reference parser — the asymmetry the paper's evaluation
     /// reports (solving is out of budget; checking a determined candidate is a
-    /// concrete parse). Together they are a small, replay-certified conformance
+    /// concrete parse). Together they are a small, replay-checked conformance
     /// suite for these ten specification violations.
     const TOML_DIRECT_WITNESSES: [(&str, &str); 10] = [
         ("boolean_invalid", "a = FALSE"),

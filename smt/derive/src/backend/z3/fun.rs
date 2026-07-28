@@ -249,6 +249,29 @@ pub fn mk_function_str(
     )
 }
 
+/// Convert a function definition into a *stub*: same signature, body replaced
+/// by a constant of the return sort (see [`bmc_terminator`]).
+///
+/// Used by marker-directed slicing (`crate::slice`) to remove definitions that
+/// cannot contribute to a target. Parameters are renamed to `a0..` because the
+/// body no longer mentions them, and an unused original name could shadow a
+/// global.
+pub fn mk_stub_str(function_name: String, sig: &FunSig, ir: &IRContext) -> String {
+    let param_list: Vec<String> = sig
+        .params
+        .iter()
+        .enumerate()
+        .map(|(i, (_, sort))| format!("(a{} {})", i, format_sort_for_fn(sort, ir)))
+        .collect();
+    format!(
+        "(define-fun {} ({}) {} {})",
+        function_name,
+        param_list.join(" "),
+        format_sort_for_fn(&sig.ret_ty, ir),
+        bmc_terminator(&sig.ret_ty, ir)
+    )
+}
+
 /// Helper to format a single function signature.
 /// Returns: (function_name ((param1 Type1) (param2 Type2)) ReturnType)
 fn format_function_signature(function_name: String, sig: &FunSig, ir: &IRContext) -> String {
@@ -407,7 +430,7 @@ pub fn mk_functions_unrolled_str(
 ///    inhabitant of the sort (`0` for ints, `false` for bools, a fully
 ///    applied constructor for records/tuples, etc.) — never a declared
 ///    constant.
-fn bmc_terminator(sort: &Sort, ir: &IRContext) -> String {
+pub(crate) fn bmc_terminator(sort: &Sort, ir: &IRContext) -> String {
     if let Sort::User(sid) = sort {
         let dt = ir.ty_registry.retrieve(*sid);
         if let DataType::Enum(variants) = dt {

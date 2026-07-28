@@ -37,8 +37,8 @@ path-condition tags  ───────────────────�
 Each marker carries an integer id. `Path::named("d")` derives the id as a
 fixed hash of the name `d` — the same pure function runs in the transpiler
 and in the concrete evaluator, so the id a query targets and the id a
-replayed witness carries coincide; this is what makes per-target replay
-certification possible (see [AI in the loop](../../user/ai.md)).
+replayed witness carries coincide; this is what makes per-target replay checking
+possible (see [AI in the loop](../../user/ai.md)).
 `rusmt-smt-derive` collects the ids into
 `IRContext::path_targets` and issues one Z3 query per target asking: *find a
 program `c` such that `eval_com(c)` returns `EvalResult::Err(e)` with the
@@ -60,7 +60,7 @@ cargo run -p rusmt-smt-derive -- imp eval_com k=3
 ```
 
 Bounding cuts both ways, and IMP shows both. At `k=1`, `target_0` returns
-`unsat` — yet that same marker is `sat` with a replay-certified witness at
+`unsat` — yet that same marker is `sat` with a replay-accepted witness at
 `k=0`. A bounded `unsat` therefore means only "no witness within depth `k`",
 never unreachability, which is why the pipeline treats `unsat` as a genuine
 verdict only at `k=0`. In the other direction, unrolling can satisfy a marker

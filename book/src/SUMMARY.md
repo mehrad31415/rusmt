@@ -29,4 +29,3 @@
   - [Parser](case-studies/imp/parser.md)
   - [AST](case-studies/imp/ast.md)
   - [Synthesis loop](case-studies/imp/synthesis.md)
-- [STLC type checker](case-studies/stlc/overview.md)

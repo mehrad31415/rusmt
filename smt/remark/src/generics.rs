@@ -59,9 +59,8 @@ impl TypeParamGroup {
                     ensure_some!(colon_token, param, ":");
 
                     // Equal token and default should not be present
-                    match default {
-                        Some((_eq, def)) => bail_on!(def, "no default value expected"),
-                        None => {}
+                    if let Some((_eq, def)) = default {
+                        bail_on!(def, "no default value expected")
                     }
 
                     // The rest check that the `SMT` trait is enforced as a bound

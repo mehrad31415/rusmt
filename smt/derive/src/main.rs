@@ -1,10 +1,14 @@
 //! This is the main entry point for the derive crate.
-//! usage: cargo run -- <parser_name> <top_level_fn> [k=<N>]
+//! usage: cargo run -- <parser_name> <top_level_fn> [k=<N>] [--suite-out <dir>]
 //!    or: cargo run -- author <spec_file> <out_file> [rounds=<N>] [--examples <path>]
 //!
 //! `k=<N>` enables bounded-recursion unrolling:
 //!   k=0 (or omitted) -> recursive define-funs-rec.
 //!   k=N (N≥1)        -> every recursive SCC is unrolled to depth N.
+//!
+//! The parser command emits one query per marker, runs Z3 first, escalates to
+//! the AI-to-Z3 certification loop when needed, and writes the accepted
+//! witnesses as a conformance suite. `RUSMT_LLM_CMD` names the model transport.
 //!
 //! `author` runs the gated AI-authoring loop: the proposer configured by
 //! `RUSMT_LLM_CMD` drafts a reference semantics in the DSL for the prose
@@ -133,27 +137,21 @@ fn run_author(args: &[String]) -> Result<(), Box<dyn Error>> {
     }
 }
 
-/// Run the embedded AI⇄Z3 guided-synthesis loop for one named marker
-/// (the `recover` CLI mode). Z3 stays the model producer: it is tried alone
-/// first, then the `RUSMT_LLM_CMD` proposer strengthens the query and Z3
-/// solves/validates each round; a found input is replay-certified.
+/// Run Stage 1 then the AI⇄Z3 co-solving loop for one named marker (the
+/// `recover` CLI mode). Z3 produces every model; the proposer only restores
+/// sliced-away definitions and constrains the input.
 fn run_recover(lang_src_dir: &std::path::Path, args: &[String]) -> Result<(), Box<dyn Error>> {
     let [parser_name, top_level_fn, marker_name, rest @ ..] = args else {
         return Err(
-            "Usage: cargo run -- recover <parser> <top_level_fn> <marker_name> [z3_secs=<N>]\n\
-             Example: RUSMT_LLM_CMD='claude -p' RUSMT_LLM_MODE=guided \\\n\
-             \x20 cargo run -- recover toml parse_toml date_invalid_month"
+            "Usage: cargo run -- recover <parser> <top_level_fn> <marker_name> [k=<N>]\n\
+             Example: RUSMT_LLM_CMD='claude -p' \\\n\
+             \x20 cargo run -- recover toml parse_toml comment_invalid_char"
                 .into(),
         );
     };
-    let mut z3_secs: u64 = 15;
     let mut unroll_depth: usize = 0;
     for extra in rest {
-        if let Some(n) = extra.strip_prefix("z3_secs=") {
-            z3_secs = n
-                .parse()
-                .map_err(|_| format!("z3_secs= must be an integer, got '{n}'"))?;
-        } else if let Some(n) = extra.strip_prefix("k=") {
+        if let Some(n) = extra.strip_prefix("k=") {
             unroll_depth = n
                 .parse()
                 .map_err(|_| format!("k= must be a non-negative integer, got '{n}'"))?;
@@ -172,89 +170,44 @@ fn run_recover(lang_src_dir: &std::path::Path, args: &[String]) -> Result<(), Bo
         .join("recover")
         .join(marker_name);
 
-    println!("[recover] target named marker : {marker_name}");
-    println!("[recover] step 1 — Z3 alone on the unconstrained query ({z3_secs}s budget)");
-    let report = rusmt_smt_derive::recover_named_marker(
+    println!("[recover] marker  : {marker_name}");
+    println!("[recover] stage 1 : Z3 on the unmodified query");
+    let outcome = rusmt_smt_derive::recover_marker(
         &model,
         parser_name,
         top_level_fn,
         marker_name,
         unroll_depth,
-        std::time::Duration::from_secs(z3_secs),
         &out_dir,
     )
     .map_err(|e| -> Box<dyn Error> { e.into() })?;
 
-    println!("[recover] Z3 alone verdict   : {}", report.z3_alone);
-    if let Some(w) = &report.z3_alone_witness {
-        println!("[recover] Z3 SOLVED it unaided: {w:?}");
-        return Ok(());
+    println!("[recover] stage 1 verdict: {}", outcome.stage1);
+    for (i, r) in outcome.rounds.iter().enumerate() {
+        println!("[recover] round {} ({} ms)", i + 1, r.elapsed.as_millis());
+        if !r.restored.is_empty() {
+            println!("[recover]   restored: {}", r.restored.join(", "));
+        }
+        for c in &r.candidates {
+            println!("[recover]   Z3 candidate: {c:?}");
+        }
+        println!("[recover]   outcome: {}", r.outcome);
     }
-    if let Some(d) = &report.direct {
+    if outcome.witnesses.is_empty() {
+        println!("[recover] RESULT: no witness within the round budget");
+    } else {
         println!(
-            "[recover] step 2 (direct) — proposer suggests, Z3 validates the \
-             macro-inlined candidate, replay re-certifies (proposer: {})",
-            report.proposer.as_deref().unwrap_or("?")
+            "[recover] RESULT: {} witness(es), each a model of the unmodified query:",
+            outcome.witnesses.len()
         );
-        for (i, (cand, verdict)) in d.attempts.iter().enumerate() {
-            println!("[recover]   attempt {}: {cand:?}", i + 1);
-            println!("[recover]   attempt {} verdict: {verdict}", i + 1);
-        }
-        match &d.witness {
-            Some(w) => {
-                println!(
-                    "[recover] RESULT: direct route recovered a Z3-validated, replay-certified witness: {w:?}"
-                );
-                println!(
-                    "[recover] transcript: {}",
-                    out_dir.join("fallback.txt").display()
-                );
-                return Ok(());
-            }
-            None => println!("[recover] direct route found no certified witness; continuing"),
+        for w in &outcome.witnesses {
+            println!("[recover]   {w:?}");
         }
     }
-    match &report.guided {
-        None => {
-            println!(
-                "[recover] Z3 alone did not solve it. RUSMT_LLM_CMD is unset, so no AI⇄Z3 \
-                 loop ran.\n[recover] Set it (e.g. RUSMT_LLM_CMD='claude -p') to run the \
-                 collaboration."
-            );
-        }
-        Some(g) => {
-            println!(
-                "[recover] step 2 — AI⇄Z3 loop (proposer: {})",
-                report.proposer.as_deref().unwrap_or("?")
-            );
-            for (i, r) in g.rounds.iter().enumerate() {
-                println!(
-                    "[recover]   round {} scaffold: {}",
-                    i + 1,
-                    r.scaffold.replace('\n', " ⏎ ")
-                );
-                for (j, c) in r.candidates.iter().enumerate() {
-                    println!(
-                        "[recover]   round {} Z3 model {}/{}: {c:?}",
-                        i + 1,
-                        j + 1,
-                        r.candidates.len()
-                    );
-                }
-                println!("[recover]   round {} verdict: {}", i + 1, r.feedback);
-            }
-            match &g.witness {
-                Some(w) => {
-                    println!("[recover] RESULT: AI⇄Z3 recovered a replay-certified witness: {w:?}")
-                }
-                None => println!("[recover] RESULT: no certified witness within the round budget"),
-            }
-            println!(
-                "[recover] transcript: {}",
-                out_dir.join("guidance.txt").display()
-            );
-        }
-    }
+    println!(
+        "[recover] transcript: {}",
+        out_dir.join("cosolve.txt").display()
+    );
     Ok(())
 }
 
@@ -297,11 +250,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         if !parser_dir.exists() {
             return Err(format!("Parser '{parser_name}' not found at {parser_dir:?}").into());
         }
-        let output_dir = synthesis_base.join(parser_name);
+        let mut output_dir = synthesis_base.join(parser_name);
+        let mut suite_out = Some(std::env::temp_dir().join("rusmt-suite").join(parser_name));
 
         let mut unroll_depth: usize = 0;
         let mut k_set = false;
-        for extra in args.iter().skip(3) {
+        let mut rest = args.iter().skip(3);
+        while let Some(extra) = rest.next() {
             if let Some(n_str) = extra.strip_prefix("k=") {
                 if k_set {
                     return Err("k= specified more than once".to_string().into());
@@ -310,6 +265,18 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .parse::<usize>()
                     .map_err(|_| format!("k= must be a non-negative integer, got '{n_str}'"))?;
                 k_set = true;
+            } else if extra == "--suite-out" {
+                let path = rest.next().ok_or("--suite-out needs a directory")?;
+                suite_out = Some(PathBuf::from(path));
+            } else if let Some(path) = extra.strip_prefix("suite=") {
+                suite_out = Some(PathBuf::from(path));
+            } else if extra == "--no-suite" {
+                suite_out = None;
+            } else if extra == "--out-dir" {
+                let path = rest.next().ok_or("--out-dir needs a directory")?;
+                output_dir = PathBuf::from(path);
+            } else if let Some(path) = extra.strip_prefix("out=") {
+                output_dir = PathBuf::from(path);
             } else {
                 return Err(format!("unrecognized argument: '{extra}'").into());
             }
@@ -324,13 +291,36 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         solve(
             &model,
+            parser_name,
             Some(top_level_fn.as_str()),
             &output_dir,
             unroll_depth,
         )?;
+
+        if let Some(suite_out) = suite_out {
+            match rusmt_smt_derive::write_conformance_suite(
+                &model,
+                parser_name,
+                &output_dir,
+                &suite_out,
+            ) {
+                Ok(n) => {
+                    println!(
+                        "[rusmt] conformance suite: {n} input(s) written to {}",
+                        suite_out.display()
+                    );
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
+                    println!("[rusmt] no conformance suite written: {e}");
+                }
+                Err(e) => return Err(format!("cannot write conformance suite: {e}").into()),
+            }
+        }
     } else {
         return Err(
-            "Usage: cargo run -- <parser_name> <top_level_fn> [k=<N>]\nExample: cargo run -- toml parse_toml k=3".into()
+            "Usage: cargo run -- <parser_name> <top_level_fn> [k=<N>] [--suite-out <dir>]\n\
+             Example: cargo run -- toml parse_toml --suite-out /tmp/toml-suite"
+                .into(),
         );
     }
 

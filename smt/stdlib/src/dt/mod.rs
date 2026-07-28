@@ -11,8 +11,8 @@
 //! * `Array<K,V>`
 
 use crate::smt::SMT;
-use crate::{smt_float_impl, smt_impl};
 use crate::wrap::SMTWrap;
+use crate::{smt_float_impl, smt_impl};
 use internment::Intern;
 use num_bigint::BigInt;
 use num_rational::BigRational;

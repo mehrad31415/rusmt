@@ -136,9 +136,9 @@ impl<T: SMT> Seq<T> {
             }
         }
 
-        return ret.expect(&format!(
-            "index_of: subsequence not found in sequence starting from offset {start_pos}"
-        ));
+        ret.unwrap_or_else(|| {
+            panic!("index_of: subsequence not found in sequence starting from offset {start_pos}")
+        })
     }
 
     /// `(seq.indexof s sub)` - convenience method with offset 0

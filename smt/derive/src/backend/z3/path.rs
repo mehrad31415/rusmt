@@ -177,7 +177,10 @@ mod tests {
         let ir = ir_with_markers(&["a", "b", "c"]);
         let bit = |n: &str| 1u32 << bit_index(&ir, marker_id(n));
         let ids: BTreeSet<usize> = ["a", "c"].iter().map(|n| marker_id(n)).collect();
-        assert_eq!(mask_literal(&ir, &ids), format!("(_ bv{} 3)", bit("a") | bit("c")));
+        assert_eq!(
+            mask_literal(&ir, &ids),
+            format!("(_ bv{} 3)", bit("a") | bit("c"))
+        );
         // The empty target masks nothing.
         assert_eq!(mask_literal(&ir, &BTreeSet::new()), "(_ bv0 3)");
     }

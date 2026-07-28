@@ -209,7 +209,7 @@ impl Display for Generics {
         if self.params.is_empty() {
             f.write_str("")
         } else {
-            return write!(f, "<{}>", self.params.iter().format(","));
+            write!(f, "<{}>", self.params.iter().format(","))
         }
     }
 }

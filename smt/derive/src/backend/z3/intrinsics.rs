@@ -933,10 +933,9 @@ pub fn format_intrinsic(
         // A `Path` is a set of marker ids, encoded as a bit-set with one bit per
         // named marker (see `path.rs`). A named marker is the one-hot literal
         // for its bit.
-        Intrinsic::PathName { name } => crate::backend::z3::path::marker_literal(
-            ir,
-            rusmt_smt_stdlib::path::marker_id(name),
-        ),
+        Intrinsic::PathName { name } => {
+            crate::backend::z3::path::marker_literal(ir, rusmt_smt_stdlib::path::marker_id(name))
+        }
         // `Path::merge` is set union in the concrete semantics (graceful, non-
         // short-circuiting error accumulation), and `bvor` is exactly that on
         // the bit-set — both operands survive. Nothing here is approximate, so a

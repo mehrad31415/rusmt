@@ -1,0 +1,3246 @@
+{
+ "versions": {
+  "rust-toml": "version = \"1.1.3+spec-1.1.0\"",
+  "py-tomllib": "CPython 3.14.4",
+  "go-burntsushi": "require github.com/BurntSushi/toml v1.6.0 // indirect",
+  "node-smol-toml": "1.7.1"
+ },
+ "rows": [
+  {
+   "marker": "array_open_after_ws_eof",
+   "input": "a = [ ",
+   "oracle": "ERR array_open_after_ws_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed array, expected `]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected value",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished array encountered",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_open_eof",
+   "input": "a=[",
+   "oracle": "ERR array_open_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed array, expected `]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected value",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished array encountered",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_sep_eof_after_comma",
+   "input": "a=[1,",
+   "oracle": "ERR array_sep_eof_after_comma",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed array, expected `]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected value",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished array encountered",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_table_empty_name",
+   "input": "[[]]",
+   "oracle": "ERR array_table_empty_name",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unquoted keys cannot be empty, expected letters, numbers, `-",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid initial character for a key part",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected end of table name (table names cann",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: only letter, numbers, dashes and unde",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_table_missing_close_char",
+   "input": "[[a]",
+   "oracle": "ERR array_table_missing_close_char",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed array table, expected `]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected ']]' at the end of an array declaration",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected end of table array name delimiter ']'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "OK",
+     "verdict": "accept"
+    }
+   }
+  },
+  {
+   "marker": "array_table_missing_close_eof",
+   "input": "[[a",
+   "oracle": "ERR array_table_missing_close_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed array table, expected `]]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected ']]' at the end of an array declaration",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected '.' or ']' to end table name, but got",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_table_open_eof",
+   "input": "[[",
+   "oracle": "ERR array_table_open_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unquoted keys cannot be empty, expected letters, numbers, `-",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid initial character for a key part",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected end of table name (table names cann",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_table_redefines_closed_table",
+   "input": "a.b = 1\n[[a]]",
+   "oracle": "ERR array_table_redefines_closed_table",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot overwrite a value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' was already created and cannot be used",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_table_redefines_inline_array",
+   "input": "a=[]\n[[a]]",
+   "oracle": "ERR array_table_redefines_inline_array",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot mutate immutable namespace",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' was already created and cannot be used",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_table_redefines_inline_table",
+   "input": "a={}\n[[a]]",
+   "oracle": "ERR array_table_redefines_inline_table",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot mutate immutable namespace",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' was already created and cannot be used",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_table_redefines_std_table",
+   "input": "[a]\n[[a]]",
+   "oracle": "ERR array_table_redefines_std_table",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot overwrite a value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' was already created and cannot be used",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_value_eof_after_value",
+   "input": "a = [1",
+   "oracle": "ERR array_value_eof_after_value",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed array, expected `]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unclosed array",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected a comma (',') or array",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: cannot find end of structure",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_value_invalid_separator",
+   "input": "a=[1 2]",
+   "oracle": "ERR array_value_invalid_separator",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unclosed array",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected a comma (',') or array",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "array_values_expected_value",
+   "input": "a=[0,a]",
+   "oracle": "ERR array_values_expected_value",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected value but found \"a\" in",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "bare_key_invalid_start",
+   "input": "@=1",
+   "oracle": "ERR bare_key_invalid_start",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid unquoted key, expected letters, numbers, `-`, `_`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected '.' or '=', but got '@' instead",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: only letter, numbers, dashes and unde",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "basic_string_invalid_char",
+   "input": "\"\u0001\"",
+   "oracle": "ERR basic_string_invalid_char",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Illegal character '\\x01'",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: TOML files cannot contain control characters:",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "basic_string_missing_close_eof",
+   "input": "\"",
+   "oracle": "ERR basic_string_missing_close_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unterminated string",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected EOF; expected '\"'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "basic_string_newline",
+   "input": "\"\n\"",
+   "oracle": "ERR basic_string_newline",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Illegal character '\\n'",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: strings cannot contain newlines",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "boolean_invalid_allcaps_true",
+   "input": "x=TRUE",
+   "oracle": "ERR boolean_invalid_allcaps_true",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid boolean, expected `true`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): expected value but found \"TRUE\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "boolean_invalid_capital_false",
+   "input": "a=False",
+   "oracle": "ERR boolean_invalid_capital_false",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid boolean, expected `false`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected value but found \"False",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "boolean_invalid_capital_true",
+   "input": "a = True",
+   "oracle": "ERR boolean_invalid_capital_true",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid boolean, expected `true`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected value but found \"True\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "comment_invalid_char",
+   "input": "#\u0000",
+   "oracle": "ERR comment_invalid_char",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid comment character, expected printable characters",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Found invalid character '\\x00'",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: files cannot contain NULL bytes; probably usin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: control characters are not allowed in",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_invalid_day",
+   "input": "a=2023-01-32",
+   "oracle": "ERR date_invalid_day",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid date, expected day between 01 and 31",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): invalid datetime: \"2023-01-32\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_invalid_month",
+   "input": "d=1979-13-01",
+   "oracle": "ERR date_invalid_month",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid date, expected month between 01 and 12",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"d\"): invalid datetime: \"1979-13-01\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_mday_first_char_not_digit",
+   "input": "x=1979-01-a1",
+   "oracle": "ERR date_mday_first_char_not_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid date, expected day",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): invalid datetime: \"1979-01-\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_mday_second_char_not_digit",
+   "input": "a=1979-05-3a",
+   "oracle": "ERR date_mday_second_char_not_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid date, expected a two-digit day (DD)",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): invalid datetime: \"1979-05-3\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_month_first_char_not_digit",
+   "input": "x=1979-a1-01",
+   "oracle": "ERR date_month_first_char_not_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid date, expected month",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): invalid datetime: \"1979-\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_month_second_char_not_digit",
+   "input": "a=1979-0a-01",
+   "oracle": "ERR date_month_second_char_not_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid date, expected `-` (MM-DD)",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): invalid datetime: \"1979-0\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_year_fourth_char_not_digit",
+   "input": "a=197a-01-01",
+   "oracle": "ERR date_year_fourth_char_not_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "date_year_second_char_not_digit",
+   "input": "a=1a00-01-01",
+   "oracle": "ERR date_year_second_char_not_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "dotted_key_missing_segment",
+   "input": "a.",
+   "oracle": "ERR dotted_key_missing_segment",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid initial character for a key part",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected '='",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "dotted_key_redefines_inline_table",
+   "input": "a = { b = 1 }\na.c = 2",
+   "oracle": "ERR dotted_key_redefines_inline_table",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR cannot extend value of type inline table with a dotted key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot mutate immutable namespace",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_duplicate_exponent",
+   "input": "a=1e1e",
+   "oracle": "ERR float_duplicate_exponent",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid float, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid float value: \"1e1e\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_exp_no_digit_after_e",
+   "input": "a=1e",
+   "oracle": "ERR float_exp_no_digit_after_e",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid exponent, expected digits",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid float value: \"1e\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_exp_only_exp_overflow_i32",
+   "input": "x=1e2147483648",
+   "oracle": "ERR float_exp_only_exp_overflow_i32",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR floating-point number overflowed",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): 1e2147483648 is out of range fo",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "OK",
+     "verdict": "accept"
+    }
+   }
+  },
+  {
+   "marker": "float_exp_only_exp_underflow_i32",
+   "input": "a=1e-2147483649",
+   "oracle": "ERR float_exp_only_exp_underflow_i32",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "node-smol-toml": {
+     "raw": "OK",
+     "verdict": "accept"
+    }
+   }
+  },
+  {
+   "marker": "float_invalid_inf_casing_allcaps",
+   "input": "x = INF",
+   "oracle": "ERR float_invalid_inf_casing_allcaps",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid float, expected `inf`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): expected value but found \"INF\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_invalid_inf_casing_titlecase",
+   "input": "x = Inf",
+   "oracle": "ERR float_invalid_inf_casing_titlecase",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid float, expected `inf`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): expected value but found \"Inf\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_invalid_nan_casing_allcaps",
+   "input": "a = NAN",
+   "oracle": "ERR float_invalid_nan_casing_allcaps",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid float, expected `nan`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected value but found \"NAN\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_invalid_nan_casing_camelcase",
+   "input": "x = NaN",
+   "oracle": "ERR float_invalid_nan_casing_camelcase",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid float, expected `nan`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): expected value but found \"NaN\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_invalid_nan_casing_titlecase",
+   "input": "a = Nan",
+   "oracle": "ERR float_invalid_nan_casing_titlecase",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid float, expected `nan`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected value but found \"Nan\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_multiple_underscores",
+   "input": "x = 1.0__1",
+   "oracle": "ERR float_multiple_underscores",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): Invalid float \"1.0__1\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_no_digit_after_dot",
+   "input": "a=1._",
+   "oracle": "ERR float_no_digit_after_dot",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid fraction, expected digits",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid float \"1._\": underscore",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_no_digit_after_dot_eof",
+   "input": "a=1.",
+   "oracle": "ERR float_no_digit_after_dot_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid fraction, expected digits",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid float \"1.\": '.' must be",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "float_underscore_at_end",
+   "input": "a=1.0_",
+   "oracle": "ERR float_underscore_at_end",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid float \"1.0_\": underscor",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "full_date_expect_mday_after_month",
+   "input": "a=1979-05-",
+   "oracle": "ERR full_date_expect_mday_after_month",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid date, expected day",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): invalid datetime: \"1979-05-\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "inline_table_conflicting_keys",
+   "input": "a = { b = 1, b = 2 }",
+   "oracle": "ERR inline_table_conflicting_keys",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Duplicate inline table key 'b'",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a.b\"): Key 'a.b' has already been de",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "inline_table_open_eof",
+   "input": "a={",
+   "oracle": "ERR inline_table_open_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed inline table, expected `}`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid initial character for a key part",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected '=': key name appear",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished table encountered",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "inline_table_sep_expected_comma",
+   "input": "x = { a = 1 b = 2 }",
+   "oracle": "ERR inline_table_sep_expected_comma",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR extra assignment between key-value pairs, expected `,`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unclosed inline table",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x.a\"): expected a comma or an inline",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "inline_table_unterminated",
+   "input": "a={a=1",
+   "oracle": "ERR inline_table_unterminated",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed inline table, expected `}`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unclosed inline table",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a.a\"): expected a comma or an inline",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: cannot find end of structure",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_double_underscore",
+   "input": "x = 0b1__0",
+   "oracle": "ERR integer_bin_double_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): Invalid integer \"0b1__0\": under",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_hex_digit_after_prefix",
+   "input": "a = 0bA",
+   "oracle": "ERR integer_bin_hex_digit_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid binary number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a binary number: '0bA'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_hex_digit_after_underscore",
+   "input": "a = 0b1_a",
+   "oracle": "ERR integer_bin_hex_digit_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid binary number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0b1_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_hex_digit_in_body",
+   "input": "a=0b1f",
+   "oracle": "ERR integer_bin_hex_digit_in_body",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid binary number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_invalid_char_after_prefix",
+   "input": "a=0b#",
+   "oracle": "ERR integer_bin_invalid_char_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integer number overflowed",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a binary number: '0b#'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_invalid_char_after_underscore",
+   "input": "a=0b1_#",
+   "oracle": "ERR integer_bin_invalid_char_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0b1_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_no_digits_after_prefix",
+   "input": "a = 0b",
+   "oracle": "ERR integer_bin_no_digits_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integer number overflowed",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a binary number: '0b\u0000'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_oct_digit_after_prefix",
+   "input": "a=0b2",
+   "oracle": "ERR integer_bin_oct_digit_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid binary number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a binary number: '0b2'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid number",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_oct_digit_after_underscore",
+   "input": "a = 0b1_2",
+   "oracle": "ERR integer_bin_oct_digit_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid binary number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0b1_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid number",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_oct_digit_in_body",
+   "input": "a=0b12",
+   "oracle": "ERR integer_bin_oct_digit_in_body",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid binary number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid number",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_overflow",
+   "input": "a=0b11111111111111111111111111111111111111111111111111111111111111111",
+   "oracle": "ERR integer_bin_overflow",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid type: integer `36893488147419103231` as i128, expect",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): 0b11111111111111111111111111111",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: integer value cannot be represented l",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_prefix_uppercase",
+   "input": "a = 0B0",
+   "oracle": "ERR integer_bin_prefix_uppercase",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR radix must be lowercase, expected `0b`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_underscore_after_prefix",
+   "input": "a=0b_1",
+   "oracle": "ERR integer_bin_underscore_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a binary number: '0b_'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_bin_underscore_at_end",
+   "input": "a=0b1_",
+   "oracle": "ERR integer_bin_underscore_at_end",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0b1_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_double_underscore",
+   "input": "a=1__0",
+   "oracle": "ERR integer_dec_double_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"1__0\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_hex_char_after_underscore",
+   "input": "a = 1_a",
+   "oracle": "ERR integer_dec_hex_char_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integer number overflowed",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"1_\": underscor",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_hex_char_in_body",
+   "input": "a=1a",
+   "oracle": "ERR integer_dec_hex_char_in_body",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_invalid_char_after_underscore",
+   "input": "a=1_#",
+   "oracle": "ERR integer_dec_invalid_char_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"1_\": underscor",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_invalid_char_after_zero",
+   "input": "a = 0a",
+   "oracle": "ERR integer_dec_invalid_char_after_zero",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_leading_zero_digit",
+   "input": "a=01",
+   "oracle": "ERR integer_dec_leading_zero_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unexpected leading zero, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"01\": cannot ha",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: leading zeroes are not allowed",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_leading_zero_underscore",
+   "input": "a = 0_0",
+   "oracle": "ERR integer_dec_leading_zero_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unexpected leading zero, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0_0\": cannot h",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: leading zeroes are not allowed",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_minus_sign_no_digits_eof",
+   "input": "a=-",
+   "oracle": "ERR integer_dec_minus_sign_no_digits_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected a digit but got '\\x00'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_minus_sign_no_digits_other",
+   "input": "x=-a",
+   "oracle": "ERR integer_dec_minus_sign_no_digits_other",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): expected a digit but got 'a'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_overflow_plus_sign",
+   "input": "a=+9223372036854775808",
+   "oracle": "ERR integer_dec_overflow_plus_sign",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR u64 value was too large",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): +9223372036854775808 is out of",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: integer value cannot be represented l",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_overflow_unsigned",
+   "input": "x = 18446744073709551616",
+   "oracle": "ERR integer_dec_overflow_unsigned",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid type: integer `18446744073709551616` as i128, expect",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): 18446744073709551616 is out of",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: integer value cannot be represented l",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_plus_sign_no_digits_eof",
+   "input": "a=+",
+   "oracle": "ERR integer_dec_plus_sign_no_digits_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected a digit but got '\\x00'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_plus_sign_no_digits_other",
+   "input": "a=+a",
+   "oracle": "ERR integer_dec_plus_sign_no_digits_other",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected a digit but got 'a'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_underflow_minus_sign",
+   "input": "a=-9223372036854775809",
+   "oracle": "ERR integer_dec_underflow_minus_sign",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid type: integer `-9223372036854775809` as i128, expect",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): -9223372036854775809 is out of",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: integer value cannot be represented l",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_dec_underscore_at_end",
+   "input": "a = 1_",
+   "oracle": "ERR integer_dec_underscore_at_end",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"1_\": underscor",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_double_underscore",
+   "input": "a = 0x1__0",
+   "oracle": "ERR integer_hex_double_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0x1__0\": under",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_invalid_char_after_prefix",
+   "input": "a=0xz",
+   "oracle": "ERR integer_hex_invalid_char_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid hexadecimal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a hexadecimal number: '0xz'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_invalid_char_after_underscore",
+   "input": "a=0x1_g",
+   "oracle": "ERR integer_hex_invalid_char_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid hexadecimal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0x1_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_no_digits_after_prefix",
+   "input": "a = 0x",
+   "oracle": "ERR integer_hex_no_digits_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integer number overflowed",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a hexadecimal number: '0x\u0000'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_overflow",
+   "input": "a=0x8000000000000000",
+   "oracle": "ERR integer_hex_overflow",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR u64 value was too large",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): 0x8000000000000000 is out of ra",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: integer value cannot be represented l",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_prefix_uppercase",
+   "input": "a=0X1",
+   "oracle": "ERR integer_hex_prefix_uppercase",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR radix must be lowercase, expected `0x`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_underscore_after_prefix",
+   "input": "a=0x_",
+   "oracle": "ERR integer_hex_underscore_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not a hexadecimal number: '0x_'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_hex_underscore_at_end",
+   "input": "a=0x1_",
+   "oracle": "ERR integer_hex_underscore_at_end",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0x1_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_dec_digit_after_prefix",
+   "input": "a=0o8",
+   "oracle": "ERR integer_oct_dec_digit_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid octal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not an octal number: '0o8'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid number",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_dec_digit_after_underscore",
+   "input": "x = 0o7_8",
+   "oracle": "ERR integer_oct_dec_digit_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid octal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): Invalid integer \"0o7_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid number",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_dec_digit_in_body",
+   "input": "x = 0o78",
+   "oracle": "ERR integer_oct_dec_digit_in_body",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid octal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid number",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_double_underscore",
+   "input": "a=0o1__0",
+   "oracle": "ERR integer_oct_double_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0o1__0\": under",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_hex_digit_after_prefix",
+   "input": "a=0oa",
+   "oracle": "ERR integer_oct_hex_digit_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid octal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not an octal number: '0oa'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_hex_digit_after_underscore",
+   "input": "x=0o7_a",
+   "oracle": "ERR integer_oct_hex_digit_after_underscore",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid octal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): Invalid integer \"0o7_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_hex_digit_in_body",
+   "input": "a=0o7A",
+   "oracle": "ERR integer_oct_hex_digit_in_body",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid octal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_invalid_char_after_prefix",
+   "input": "a=0o/",
+   "oracle": "ERR integer_oct_invalid_char_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid octal number",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not an octal number: '0o/'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_no_digits_after_prefix",
+   "input": "a=0o",
+   "oracle": "ERR integer_oct_no_digits_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integer number overflowed",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not an octal number: '0o\u0000'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_overflow",
+   "input": "a=0o1000000000000000000000",
+   "oracle": "ERR integer_oct_overflow",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR u64 value was too large",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): 0o1000000000000000000000 is out",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: integer value cannot be represented l",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_prefix_uppercase",
+   "input": "a=0O",
+   "oracle": "ERR integer_oct_prefix_uppercase",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR radix must be lowercase, expected `0o`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_underscore_after_prefix",
+   "input": "a=0o_",
+   "oracle": "ERR integer_oct_underscore_after_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): not an octal number: '0o_'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_oct_underscore_at_end",
+   "input": "a=0o1_",
+   "oracle": "ERR integer_oct_underscore_at_end",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR `_` may only go between digits, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): Invalid integer \"0o1_\": undersc",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_signed_bin_prefix",
+   "input": "a=+0b1",
+   "oracle": "ERR integer_signed_bin_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integers with a radix cannot be signed, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): cannot use sign with non-decima",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_signed_hex_prefix",
+   "input": "a=-0x1",
+   "oracle": "ERR integer_signed_hex_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integers with a radix cannot be signed, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): cannot use sign with non-decima",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "integer_signed_oct_prefix",
+   "input": "x = +0o",
+   "oracle": "ERR integer_signed_oct_prefix",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR integers with a radix cannot be signed, expected nothing",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): cannot use sign with non-decima",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "key_value_missing_equals_char",
+   "input": "a#",
+   "oracle": "ERR key_value_missing_equals_char",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected '=' after a key in a key/value pair",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected '.' or '=', but got '#' instead",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "key_value_missing_equals_eof",
+   "input": "a",
+   "oracle": "ERR key_value_missing_equals_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected '=' after a key in a key/value pair",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected EOF; expected key separator '='",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "key_value_missing_value_eof",
+   "input": "a=",
+   "oracle": "ERR key_value_missing_value_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected value",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value declaration: no",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "key_value_missing_value_nomatch",
+   "input": "a=]",
+   "oracle": "ERR key_value_missing_value_nomatch",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR missing array opening, expected `[`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected value but found ']' in",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "literal_string_invalid_char",
+   "input": "'\u0001'",
+   "oracle": "ERR literal_string_invalid_char",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Found invalid character '\\x01'",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: TOML files cannot contain control characters:",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "literal_string_missing_close_eof",
+   "input": "'",
+   "oracle": "ERR literal_string_missing_close_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected \"'\"",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected EOF; expected \"'\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "ml_basic_missing_close_after_newline",
+   "input": "a = \"\"\"\n",
+   "oracle": "ERR ml_basic_missing_close_after_newline",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid multi-line basic string, expected `\"`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unterminated string",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected '\"\"\"'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished string",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "ml_basic_missing_close_no_newline",
+   "input": "x = \"\"\"abc",
+   "oracle": "ERR ml_basic_missing_close_no_newline",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid multi-line basic string, expected `\"`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unterminated string",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): unexpected EOF; expected '\"\"\"'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished string",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "ml_basic_open_eof",
+   "input": "a = \"\"\"",
+   "oracle": "ERR ml_basic_open_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid multi-line basic string, expected `\"`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unterminated string",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected '\"\"\"'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished string",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "ml_literal_missing_close_no_newline",
+   "input": "a = '''x",
+   "oracle": "ERR ml_literal_missing_close_no_newline",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid multi-line literal string, expected `'`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected \"'''\"",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected \"'''\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished string",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "ml_literal_open_eof",
+   "input": "a = '''",
+   "oracle": "ERR ml_literal_open_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid multi-line literal string, expected `'`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected \"'''\"",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): unexpected EOF; expected \"'''\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unfinished string",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "quoted_key_multiline_basic",
+   "input": "\"\"\"",
+   "oracle": "ERR quoted_key_multiline_basic",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected '=' after a key in a key/value pair",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected '.' or '=', but got '\"' instead",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "quoted_key_multiline_literal",
+   "input": "'''",
+   "oracle": "ERR quoted_key_multiline_literal",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected '=' after a key in a key/value pair",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected '.' or '=', but got '\\'' instead",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_duplicate",
+   "input": "[a]\n[a]",
+   "oracle": "ERR std_table_duplicate",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot declare",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' has already been defined.",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_empty_name",
+   "input": "[]",
+   "oracle": "ERR std_table_empty_name",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unquoted keys cannot be empty, expected letters, numbers, `-",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid initial character for a key part",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected end of table name (table names cann",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: only letter, numbers, dashes and unde",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_missing_close_char",
+   "input": "[a?",
+   "oracle": "ERR std_table_missing_close_char",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed table, expected `]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected ']' at the end of a table declaration",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected '.' or ']' to end table name, but got",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_missing_close_eof",
+   "input": "[a",
+   "oracle": "ERR std_table_missing_close_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unclosed table, expected `]`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected ']' at the end of a table declaration",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected '.' or ']' to end table name, but got",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_open_eof",
+   "input": "[",
+   "oracle": "ERR std_table_open_eof",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unquoted keys cannot be empty, expected letters, numbers, `-",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid initial character for a key part",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: unexpected end of table name (table names cann",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_redefines_array_table",
+   "input": "[[a]]\n[a]",
+   "oracle": "ERR std_table_redefines_array_table",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot declare",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' has already been defined.",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_redefines_implicit_table",
+   "input": "a.b = 1\n[a]",
+   "oracle": "ERR std_table_redefines_implicit_table",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot declare",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "OK",
+     "verdict": "accept"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "std_table_redefines_inline_table",
+   "input": "a = {}\n[a]",
+   "oracle": "ERR std_table_redefines_inline_table",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR duplicate key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot declare",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' has already been defined.",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "string_invalid_escape",
+   "input": "x=\"\\q\"",
+   "oracle": "ERR string_invalid_escape",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR missing escaped value, expected `b`, `e`, `f`, `n`, `r`, `\\`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Unescaped '\\' in a string",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"x\"): invalid escape in string '\\q'",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: unrecognized escape sequence",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "string_unicode_escape_invalid_hex",
+   "input": "a = \"\\u12G4\"",
+   "oracle": "ERR string_unicode_escape_invalid_hex",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR too few unicode value digits, expected unicode hexadecimal v",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Invalid hex value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): expected four hexadecimal digit",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid non-hex character in unicode",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "string_unicode_escape_invalid_scalar",
+   "input": "\"\\uD800\"",
+   "oracle": "ERR string_unicode_escape_invalid_scalar",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR key with no value, expected `=`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Escaped character is not a Unicode scalar value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: Escaped character '\\uD800' is not valid UTF-8.",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: incomplete key-value: cannot find end",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "time_hour_out_of_range",
+   "input": "a = 24:00:00",
+   "oracle": "ERR time_hour_out_of_range",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR invalid time, expected hour between 00 and 23",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1 (last key \"a\"): invalid datetime: \"24:00:00\"",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "time_hour_second_char_not_digit",
+   "input": "x = 0a:00:00",
+   "oracle": "ERR time_hour_second_char_not_digit",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR string values must be quoted, expected literal string",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "toml_expected_newline_between_expressions",
+   "input": "a=1 b=2",
+   "oracle": "ERR toml_expected_newline_between_expressions",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR unexpected key or value, expected newline, `#`",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Expected newline or end of document after a statement",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 1: expected a top-level item to end with a newlin",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: invalid value",
+     "verdict": "reject"
+    }
+   }
+  },
+  {
+   "marker": "toml_table_merge_type_mismatch",
+   "input": "a = 1\n[a.b]",
+   "oracle": "ERR toml_table_merge_type_mismatch",
+   "oracle_verdict": "reject",
+   "impls": {
+    "rust-toml": {
+     "raw": "ERR cannot extend value of type integer with a dotted key",
+     "verdict": "reject"
+    },
+    "py-tomllib": {
+     "raw": "ERR Cannot overwrite a value",
+     "verdict": "reject"
+    },
+    "go-burntsushi": {
+     "raw": "ERR toml: line 2: Key 'a' was already created as a hash.",
+     "verdict": "reject"
+    },
+    "node-smol-toml": {
+     "raw": "ERR Invalid TOML document: trying to redefine an already defined",
+     "verdict": "reject"
+    }
+   }
+  }
+ ],
+ "disagreements": [
+  [
+   "array_table_missing_close_char",
+   "node-smol-toml",
+   "ERR array_table_missing_close_char",
+   "OK"
+  ],
+  [
+   "dotted_key_redefines_inline_table",
+   "go-burntsushi",
+   "ERR dotted_key_redefines_inline_table",
+   "OK"
+  ],
+  [
+   "float_exp_only_exp_overflow_i32",
+   "py-tomllib",
+   "ERR float_exp_only_exp_overflow_i32",
+   "OK"
+  ],
+  [
+   "float_exp_only_exp_overflow_i32",
+   "node-smol-toml",
+   "ERR float_exp_only_exp_overflow_i32",
+   "OK"
+  ],
+  [
+   "float_exp_only_exp_underflow_i32",
+   "rust-toml",
+   "ERR float_exp_only_exp_underflow_i32",
+   "OK"
+  ],
+  [
+   "float_exp_only_exp_underflow_i32",
+   "py-tomllib",
+   "ERR float_exp_only_exp_underflow_i32",
+   "OK"
+  ],
+  [
+   "float_exp_only_exp_underflow_i32",
+   "go-burntsushi",
+   "ERR float_exp_only_exp_underflow_i32",
+   "OK"
+  ],
+  [
+   "float_exp_only_exp_underflow_i32",
+   "node-smol-toml",
+   "ERR float_exp_only_exp_underflow_i32",
+   "OK"
+  ],
+  [
+   "integer_bin_overflow",
+   "py-tomllib",
+   "ERR integer_bin_overflow",
+   "OK"
+  ],
+  [
+   "integer_dec_overflow_plus_sign",
+   "py-tomllib",
+   "ERR integer_dec_overflow_plus_sign",
+   "OK"
+  ],
+  [
+   "integer_dec_overflow_unsigned",
+   "py-tomllib",
+   "ERR integer_dec_overflow_unsigned",
+   "OK"
+  ],
+  [
+   "integer_dec_underflow_minus_sign",
+   "py-tomllib",
+   "ERR integer_dec_underflow_minus_sign",
+   "OK"
+  ],
+  [
+   "integer_hex_overflow",
+   "py-tomllib",
+   "ERR integer_hex_overflow",
+   "OK"
+  ],
+  [
+   "integer_oct_overflow",
+   "py-tomllib",
+   "ERR integer_oct_overflow",
+   "OK"
+  ],
+  [
+   "std_table_redefines_implicit_table",
+   "go-burntsushi",
+   "ERR std_table_redefines_implicit_table",
+   "OK"
+  ]
+ ]
+}

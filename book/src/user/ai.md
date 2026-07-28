@@ -72,18 +72,26 @@ The TOML v1.1.0 parser has 182 named markers. Z3 alone produced 0 witnesses at
 affordable budgets. With the model-to-Z3 loop, the reported run produced 131
 accepted TOML documents and left 51 markers uncovered.
 
-The proposal audit is the main reason Z3 remains in the loop:
+The proposal audit is the main reason Z3 remains in the loop. Per-round histories
+were recorded for 156 of the 182 markers; the other 26 were covered by an earlier
+sequential `cargo run` pass that preserved the accepted witnesses but not the
+per-round outcomes, so they count towards coverage and are excluded from the
+audit below.
 
 | Outcome | Count |
 |---|---:|
-| Accepted by Z3 and replay | 131 |
-| Rejected by Z3 as not reaching the marker | 551 |
+| Accepted by Z3 and replay | 105 |
+| Rejected by Z3 as not reaching the marker | 537 |
 | Undecided within budget | 7 |
-| Duplicate candidate skipped before Z3 | 65 |
+| **Total proposals that reached Z3** | **649** |
+| Duplicate candidate skipped before Z3 | 64 |
+| No parsable candidate returned | 5 |
 
-Those 131 accepted documents are the conformance suite. Running them against the
-Rust `toml` crate, CPython `tomllib`, BurntSushi `toml`, and Node `smol-toml`
-produced 15 accept/reject divergences.
+So roughly five of every six proposals did not reach the marker they were
+labelled with. Adding the 26 witnesses from the sequential pass gives the
+131-input conformance suite. Running it against the Rust `toml` crate, CPython
+`tomllib`, BurntSushi `toml`, and Node `smol-toml` produced 15 accept/reject
+divergences.
 
 ## TOML vs IMP Rendering
 

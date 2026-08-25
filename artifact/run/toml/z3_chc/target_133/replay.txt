@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `date_month_first_char_not_digit`
+the SMT lift and the concrete semantics agree on this input

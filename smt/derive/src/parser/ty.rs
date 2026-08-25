@@ -705,6 +705,10 @@ impl Display for EnumVariant {
 pub struct TypeEnum {
     /// The map between the variant names and their respective EnumVariant
     pub variants: BTreeMap<String, EnumVariant>,
+    /// The first variant in *declaration* order, which is the one `#[smt_type]`
+    /// gives `Default::default()`. The map above is keyed by name, so it cannot
+    /// answer this.
+    pub default_variant: String,
 }
 
 impl TypeEnum {
@@ -714,6 +718,7 @@ impl TypeEnum {
         items: I,
     ) -> Result<Self> {
         let mut variants = BTreeMap::new();
+        let mut default_variant: Option<String> = None;
 
         // for each of the variants, EnumVariant::from_fields(ctxt, fields)? generates the EnumVariant from the fields.
         for variant in items {
@@ -739,13 +744,19 @@ impl TypeEnum {
 
             // insert the variant
             // if the variant name already exists, an error is returned
+            default_variant.get_or_insert_with(|| ident.to_string());
             match variants.insert(ident.to_string(), branch) {
                 None => (),
                 Some(_) => bail_on!(ident, "duplicated variant name"),
             }
         }
 
-        Ok(Self { variants })
+        // the caller rejects an empty enum with `bail_if_empty!`
+        let default_variant = default_variant.expect("an enum has at least one variant");
+        Ok(Self {
+            variants,
+            default_variant,
+        })
     }
 }
 

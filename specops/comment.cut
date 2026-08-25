@@ -1,4 +1,0 @@
-We thank the SPECops~2026 reviewers, whose comments on the submitted version
-prompted the implementation comparison of \S\ref{sec:eval}, the removal of a
-fixed candidate table in favour of live proposer calls, and the reframing of
-\S\ref{sec:trust}.

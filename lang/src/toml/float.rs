@@ -552,35 +552,51 @@ fn is_nan(input: State) -> ParseResult<F64> {
     }
 }
 
+/// Whether a `+`/`-` sign starts here.
+#[smt_fn]
+fn starts_with_sign(input: State) -> Boolean {
+    match current_char(input) {
+        Optional::Some(c) => is_plus(c).or(is_minus(c)),
+        Optional::None => Boolean::from(false),
+    }
+}
+
+/// Whether a decimal digit starts here.
+#[smt_fn]
+fn starts_with_digit(input: State) -> Boolean {
+    match current_char(input) {
+        Optional::Some(c) => is_dec_digit(c),
+        Optional::None => Boolean::from(false),
+    }
+}
+
 /// exp = "e" float-exp-part
 /// float-exp-part = [ minus / plus ] zero-prefixable-int
 #[smt_fn]
 fn parse_float_exp_part(input: State) -> ParseResult<Integer> {
-    match current_char(input) {
-        Optional::Some(c) => {
-            let new_state = if *is_plus(c).or(is_minus(c)) {
-                let input_after_sign = advance(input);
-                input_after_sign
-            } else {
-                input
-            };
-            match parse_unsigned_dec_rest(new_state, Integer::from(1)) {
-                ParseResult::Ok(digits, after_digits) => {
-                    let dval = digits.to_int();
-                    if *is_minus(c) {
-                        return ParseResult::Ok(dval.neg(), after_digits);
-                    } else {
-                        return ParseResult::Ok(dval, after_digits);
-                    }
+    let neg = starts_with_minus(input);
+    let new_state = if *starts_with_sign(input) {
+        let input_after_sign = advance(input);
+        input_after_sign
+    } else {
+        input
+    };
+    // the exponent needs at least one digit of its own
+    if *starts_with_digit(new_state).not() {
+        // println!("must have at least one digit after e in float exponent part");
+        return ParseResult::Err(Path::named(String::from("float_exp_no_digit_after_e")));
+    } else {
+        match parse_unsigned_dec_rest(new_state, Integer::from(1)) {
+            ParseResult::Ok(digits, after_digits) => {
+                let dval = digits.to_int();
+                if *neg {
+                    return ParseResult::Ok(dval.neg(), after_digits);
+                } else {
+                    return ParseResult::Ok(dval, after_digits);
                 }
-                ParseResult::Err(e) => return ParseResult::Err(e),
-                ParseResult::NoMatch => return ParseResult::NoMatch,
             }
-        }
-        // after e there must be at least one digit
-        Optional::None => {
-            // println!("must have at least one digit after e in float exponent part");
-            return ParseResult::Err(Path::named(String::from("float_exp_no_digit_after_e")));
+            ParseResult::Err(e) => return ParseResult::Err(e),
+            ParseResult::NoMatch => return ParseResult::NoMatch,
         }
     }
 }

@@ -13,8 +13,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Generate an SMT-LIB term for the "null" (don't-care) default of an array value sort.
 ///
-/// Membership lives in `rarr-pres`, so this value is never observed at an absent key:
-/// any closed, well-sorted term is correct.
+/// Membership lives in `rarr-pres`, so this value carries no meaning -- but it *is*
+/// observable, via `select` on an absent key, so it must be the term denoting the
+/// value sort's Rust `Default`. For an enum that is the first variant in declaration
+/// order, which is what `#[smt_type]` generates.
 ///
 /// Panics if the sort has no writable finite inhabitant — that means a non-well-founded
 /// datatype, which Z3 would reject at `declare-datatype` anyway.
@@ -103,28 +105,22 @@ fn build_user_value(
             let sorts: Vec<Sort> = fields.values().cloned().collect();
             build_ctor(&format!("mk-{name}"), qual, &sorts, ir, in_progress)
         }
-        DataType::Enum(variants) => {
-            // Prefer a unit variant: smallest possible term, always buildable, and it
-            // can never re-enter the recursion. Falls back to the first variant, in
-            // `BTreeMap` name order, all of whose fields are buildable.
-            if let Some((vname, _)) = variants.iter().find(|(_, v)| matches!(v, Variant::Unit)) {
-                return Some(apply_ctor(&format!("{name}_{vname}"), qual, &[]));
-            }
-            for (vname, vdef) in variants {
-                let ctor = format!("{name}_{vname}");
-                let built = match vdef {
-                    Variant::Unit => unreachable!("unit variants handled above"),
-                    Variant::Tuple(slots) => build_ctor(&ctor, qual, slots, ir, in_progress),
-                    Variant::Record(rec) => {
-                        let sorts: Vec<Sort> = rec.values().cloned().collect();
-                        build_ctor(&ctor, qual, &sorts, ir, in_progress)
-                    }
-                };
-                if built.is_some() {
-                    return built;
+        DataType::Enum { variants, default } => {
+            // Must be the variant `#[smt_type]` gives `Default::default()`, which is
+            // the first in declaration order. Anything else and a concrete
+            // `V::default()` would disagree with the term Z3 reads at an absent key.
+            let ctor = format!("{name}_{default}");
+            match variants
+                .get(default)
+                .expect("the default variant is one of the variants")
+            {
+                Variant::Unit => Some(apply_ctor(&ctor, qual, &[])),
+                Variant::Tuple(slots) => build_ctor(&ctor, qual, slots, ir, in_progress),
+                Variant::Record(rec) => {
+                    let sorts: Vec<Sort> = rec.values().cloned().collect();
+                    build_ctor(&ctor, qual, &sorts, ir, in_progress)
                 }
             }
-            None
         }
     }
 }
@@ -544,7 +540,9 @@ pub fn format_intrinsic(
                 "(- {l} (* {r} (ite (>= {l} 0) (div {l} {r}) (- (div (- {l}) {r})))))"
             ))
         }
-        Intrinsic::IntPow { base, exp } => format!("(^ {} {})", fmt(*base), fmt(*exp)),
+        Intrinsic::IntPow { base, exp } => {
+            format!("(to_int (^ {} {}))", fmt(*base), fmt(*exp))
+        }
         Intrinsic::IntAbs { val } => format!("(abs {})", fmt(*val)),
         Intrinsic::IntDivides { lhs, rhs } => {
             let l = fmt(*lhs);
@@ -592,7 +590,7 @@ pub fn format_intrinsic(
         Intrinsic::RealToInt { val } => format!("(to_int {})", fmt(*val)),
         Intrinsic::RealToF32 { val } => format!("((_ to_fp 8 24) RNE {})", fmt(*val)),
         Intrinsic::RealToF64 { val } => format!("((_ to_fp 11 53) RNE {})", fmt(*val)),
-        Intrinsic::StrVal(s) => format!("\"{}\"", s.replace('"', "\"\"")),
+        Intrinsic::StrVal(s) => format_str_literal(s),
         Intrinsic::StrNew => "\"\"".to_string(),
         Intrinsic::StrLen { seq } => format!("(str.len {})", fmt(*seq)),
         Intrinsic::StrConcat { lhs, rhs } => format!("(str.++ {} {})", fmt(*lhs), fmt(*rhs)),
@@ -947,4 +945,30 @@ pub fn format_intrinsic(
         Intrinsic::SmtEq { lhs, rhs, .. } => format!("(= {} {})", fmt(*lhs), fmt(*rhs)),
         Intrinsic::SmtNe { lhs, rhs, .. } => format!("(not (= {} {}))", fmt(*lhs), fmt(*rhs)),
     }
+}
+
+/// Highest code point in Z3's string alphabet; `\u{..}` escapes above this are
+/// not recognised and would be emitted as literal text.
+/// So writing \u{30000} doesn't produce that character — Z3 doesn't recognise the escape and leaves the nine characters \u{30000} sitting there as plain text.
+const Z3_MAX_CODE_POINT: u32 = 0x2FFFF;
+
+/// SMT-LIB string literal
+fn format_str_literal(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            ' '..='~' if c != '"' && c != '\\' => out.push(c),
+            _ => {
+                let cp = c as u32;
+                assert!(
+                    cp <= Z3_MAX_CODE_POINT,
+                    "string literal holds U+{cp:04X}, above Z3's alphabet ceiling U+{Z3_MAX_CODE_POINT:04X}"
+                );
+                out.push_str(&format!("\\u{{{cp:x}}}"));
+            }
+        }
+    }
+    out.push('"');
+    out
 }

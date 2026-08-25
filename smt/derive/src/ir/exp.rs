@@ -737,7 +737,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     /// Utility: retrieve an enum-unit data type from a sort id and branch name
     fn expect_type_enum_unit(&self, sort_id: UsrSortId, branch: &str) {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
-            DataType::Enum(adt) => match adt.get(branch) {
+            DataType::Enum { variants: adt, .. } => match adt.get(branch) {
                 None => panic!("no such branch: {branch}"),
                 Some(Variant::Unit) => (),
                 Some(variant) => panic!("type mismatch: expect <enum::unit> | actual {variant}"),
@@ -749,7 +749,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
     /// Utility: retrieve an enum-tuple data type from a sort id and branch name
     fn expect_type_enum_tuple(&self, sort_id: UsrSortId, branch: &str) -> Vec<Sort> {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
-            DataType::Enum(adt) => match adt.get(branch) {
+            DataType::Enum { variants: adt, .. } => match adt.get(branch) {
                 None => panic!("no such branch: {branch}"),
                 Some(Variant::Tuple(tuple)) => tuple.clone(),
                 Some(variant) => panic!("type mismatch: expect <enum::tuple> | actual {variant}"),
@@ -765,7 +765,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
         branch: &String,
     ) -> BTreeMap<String, Sort> {
         match self.parent.ir.ty_registry.retrieve(sort_id) {
-            DataType::Enum(adt) => match adt.get(branch) {
+            DataType::Enum { variants: adt, .. } => match adt.get(branch) {
                 None => panic!("no such branch: {branch}"),
                 Some(Variant::Record(record)) => record.clone(),
                 Some(variant) => {
@@ -2297,7 +2297,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                                  rename one of them"
                             );
                         }
-                        self.parent.ir.path_targets.push(BTreeSet::from([id]));
+                        self.parent.ir.register_target(BTreeSet::from([id]));
                         self.parent.ir.marker_names.insert(id, name.clone());
                         Intrinsic::PathName { name: name.clone() }
                     }
@@ -2321,7 +2321,7 @@ impl<'b, 'ir: 'b, 'a: 'ir, 'ctx: 'a> ExpBuilder<'b, 'ir, 'a, 'ctx> {
                         }
                         // Register a multi-id target: "find an input reaching all
                         // these markers together" (graceful accumulation).
-                        self.parent.ir.path_targets.push(ids.clone());
+                        self.parent.ir.register_target(ids.clone());
                         Intrinsic::PathMerge {
                             lhs: lhs_id,
                             rhs: rhs_id,

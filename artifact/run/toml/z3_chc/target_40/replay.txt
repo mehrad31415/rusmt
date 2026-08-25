@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `ml_literal_quotes_without_content`
+the SMT lift and the concrete semantics agree on this input

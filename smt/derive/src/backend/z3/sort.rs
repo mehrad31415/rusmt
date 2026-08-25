@@ -291,7 +291,7 @@ pub fn collect_type_edges(defs: &BTreeMap<UsrSortId, DataType>) -> Vec<(UsrSortI
                     visit_sort(s, *src_id, &mut edges)
                 }
             }
-            DataType::Enum(variants) => {
+            DataType::Enum { variants, .. } => {
                 for fields in variants.values() {
                     match fields {
                         Variant::Unit => {}

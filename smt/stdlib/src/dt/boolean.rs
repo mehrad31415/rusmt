@@ -3,6 +3,8 @@
 use crate::{Boolean, smt::SMT};
 use std::ops::Deref;
 
+/// A Boolean is a wrapper around a `bool` that implements the SMT trait.
+/// To unwrap a Boolean, use `*b`.
 impl Deref for Boolean {
     type Target = bool;
     fn deref(&self) -> &Self::Target {

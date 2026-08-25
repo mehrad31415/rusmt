@@ -87,7 +87,7 @@ The current workspace members are:
 - `smt/derive`
 - `lang`
 
-Z3 is **not** a build dependency: nothing links against it and no C++ toolchain or CMake is needed. RuSmt talks to a **system `z3` CLI on `PATH`** (Z3 4.15.4) — one-shot (`z3 -smt2 <file>`) for independent checks, and a persistent `z3 -in` session for the guided loop. Install it with `brew install z3` (macOS) or `apt install z3` (Debian/Ubuntu); the backend, the helper scripts, and the differential / real-Z3 tests all use it.
+Z3 is **not** a build dependency: nothing links against it and no C++ toolchain or CMake is needed. RuSmt talks to a **system `z3` CLI on `PATH`** (Z3 4.15.4), one query per file (`z3 -smt2 <file>`), so every solve stays reproducible by hand. Install it with `brew install z3` (macOS) or `apt install z3` (Debian/Ubuntu); the backend, the helper scripts, and the differential / real-Z3 tests all use it.
 
 ### Cargo.lock
 

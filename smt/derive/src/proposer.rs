@@ -1,31 +1,16 @@
-//! The proposer transport: how the pipeline asks a model for directives.
+//! The proposer transport: moves a prompt to a command and text back.
 //!
-//! This module moves text and nothing else. It has no idea what a marker is or
-//! what makes a witness — that is [`crate::cosolve`]'s job. Keeping the two
-//! apart is what makes the loop testable without a model and reproducible
-//! without one.
+//! No decision-making — [`crate::cosolve`] owns that. Each call runs in a fresh
+//! temporary directory that is deleted afterwards, so nothing one marker's
+//! proposal leaves behind can reach another.
 //!
-//! Configuration:
-//! * `RUSMT_LLM_CMD` — a command that reads a prompt on stdin and writes
-//!   directives on stdout. It must not be able to read the semantics under
-//!   test: the loop's whole claim is that the model reasons about the emitted
-//!   SMT-LIB and the solver's behaviour, not about Rust source it could read the
-//!   answer out of. For Claude Code that means disabling its tools:
-//!
-//!   ```text
-//!   RUSMT_LLM_CMD="claude -p --allowedTools '' \
-//!     --disallowedTools 'Read,Write,Edit,Bash,Glob,Grep,WebFetch,WebSearch,Task'"
-//!   ```
-//!
-//! * `RUSMT_LLM_CACHE` — a directory of recorded prompt/response pairs. A hit
-//!   is served from disk without invoking anything, so a reviewer with no model
-//!   access replays a run exactly. A recorded transcript is not a stand-in for a
-//!   model: the responses in it were produced by one, and a run that populates
-//!   the cache is a real run. Reporting cached numbers as if no model was ever
-//!   involved would be the dishonest version of this.
+//! * `RUSMT_LLM_CMD` — a command reading a prompt on stdin, writing a candidate
+//!   on stdout. It must not be able to read the semantics under test.
+//! * `RUSMT_LLM_CACHE` — a directory of recorded exchanges, keyed by prompt hash.
+//!   A hit is served from disk, so a recorded run replays without model access.
 
 use anyhow::{Context, Result, bail};
-use rusmt_lang::certify::{LanguageOracle, Verdict};
+use rusmt_lang::certify::Verdict;
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::PathBuf;
@@ -93,6 +78,23 @@ impl CommandProposer {
         self
     }
 
+    /// The proposer named on the command line, falling back to `RUSMT_LLM_CMD`.
+    ///
+    /// `RUSMT_LLM_CACHE` is the transcript directory when set. `None` if neither
+    /// names a command.
+    pub fn from_cli_or_env(cli: Option<&str>) -> Option<Self> {
+        if let Some(c) = cli.filter(|c| !c.trim().is_empty()) {
+            let mut p = Self::new(c);
+            if let Ok(dir) = std::env::var("RUSMT_LLM_CACHE") {
+                if !dir.trim().is_empty() {
+                    p = p.with_cache(dir);
+                }
+            }
+            return Some(p);
+        }
+        Self::from_env()
+    }
+
     /// The proposer configured by `RUSMT_LLM_CMD`, with `RUSMT_LLM_CACHE` as the
     /// transcript directory when set. `None` if no command is configured.
     pub fn from_env() -> Option<Self> {
@@ -115,10 +117,19 @@ impl CommandProposer {
     }
 
     /// Invoke the command, returning its stdout with any code fence stripped.
+    ///
+    /// The command runs in a fresh empty directory that is deleted afterwards.
+    /// Each marker is an independent trial, so nothing a proposer writes — or
+    /// that a model runner keeps per working directory, since such state is
+    /// keyed by it — may reach the next one. Enforcing it here rather than in
+    /// the operator's command string is what lets the independence claim be a
+    /// property of the framework rather than of the reader's configuration.
     fn invoke(&self, prompt: &str) -> Result<String> {
+        let jail = tempfile::tempdir().context("cannot create a proposer directory")?;
         let mut child = Command::new("sh")
             .arg("-c")
             .arg(&self.cmd)
+            .current_dir(jail.path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -239,11 +250,6 @@ pub fn verdict_line(
         Verdict::Timeout => "DIVERGES: concrete replay exceeded its budget".to_string(),
         Verdict::Crashed(e) => format!("DIVERGES: concrete replay crashed: {e}"),
     }
-}
-
-/// The oracle for a language, if one is registered.
-pub fn oracle(lang: &str) -> Option<&'static LanguageOracle> {
-    rusmt_lang::certify::oracle_for(lang)
 }
 
 #[cfg(test)]

@@ -16,7 +16,7 @@ Concretely, this gives:
 
 ### Synthesis status
 
-Every error/spec-violation branch is a `Path::named` marker — **182 named
+Every error/spec-violation branch is a `Path::named` marker — **183 named
 markers**, one per call site and one synthesis target each, spanning both
 *syntactic* (malformed tokens, unterminated constructs) and *semantic* (overflow,
 out-of-range date/time, redefined keys) errors.
@@ -32,28 +32,16 @@ more easily than it can search for a symbolic document. The model reads the
 emitted SMT-LIB excerpt and Z3 feedback, proposes a complete TOML document, and
 RuSmt pins that document by adding one equality to the original query. Only a
 `sat` result from Z3 plus replay through the concrete parser becomes a witness.
-In the reported run, this produced **131/182** witnesses; **51 markers** remain
-uncovered and are reported by name in the paper. The generated 131-input suite,
-run against four TOML parsers, exposed **15 accept/reject divergences**.
+The framework writes the accepted inputs as the conformance suite and records
+the marker-level ledger that `specops/report.py` summarizes.
 
-Triaging those 15 against the TOML standard gave a split we did not expect:
+The generated suite can then be run against independent TOML parsers. Every
+accept/reject divergence is a candidate bug **in either direction**: the suite
+tests the reference against the standard just as much as it tests
+implementations against the reference.
 
-- **3 are parser bugs.** `smol-toml` accepts `[[a]` (an array-of-tables header
-  needs double brackets); BurntSushi accepts `a = { b = 1 }\na.c = 2` (inline
-  tables are self-contained, so keys cannot be added outside the braces) and
-  `a.b = 1\n[a]` (a `[table]` header cannot redefine a table a dotted key already
-  created implicitly).
-- **12 are places where *our* reference is stricter than TOML requires.** Six are
-  CPython `tomllib` accepting integers outside the 64-bit signed range: TOML only
-  *recommends* that at least 64-bit signed integers be handled losslessly and
-  requires an error only when a value *cannot* be represented losslessly, which
-  CPython's bignums can. The other six are the `float_exp_only_exp_*_i32`
-  markers — TOML leaves float precision to the implementation, so our `i32`
-  exponent bound is an artifact of `lang/src/toml/float.rs`, not a rule.
-
-A divergence is a candidate bug **in either direction**. The suite tests the
-reference against the standard just as much as it tests implementations against
-the reference.
+Fresh coverage, divergence counts, and triage belong to the run being reported;
+do not copy old artifact numbers into this page.
 
 For an end-to-end demo where *search itself* closes the loop, see the
 [IMP case study](../imp/overview.md) (dynamic semantics and AST rendering).

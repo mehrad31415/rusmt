@@ -70,6 +70,21 @@ impl Display for NamedItem {
 pub struct Context {
     types: BTreeMap<UsrTypeName, MarkedType>,
     funcs: BTreeMap<UsrFuncName, MarkedFunc>,
+    /// Marker sites across every file, checked once the walk finishes.
+    markers: super::markers::MarkerScan,
+}
+
+/// Whether a parsed file declares at least one `#[smt_type]` / `#[smt_fn]` item.
+fn declares_marked_item(file: &File) -> bool {
+    file.items.iter().any(|item| {
+        let attrs = match item {
+            Item::Enum(inner) => &inner.attrs,
+            Item::Struct(inner) => &inner.attrs,
+            Item::Fn(inner) => &inner.attrs,
+            _ => return false,
+        };
+        matches!(Mark::parse_attrs(attrs), Ok(Some(_)))
+    })
 }
 
 impl Context {
@@ -80,6 +95,7 @@ impl Context {
         let mut ctxt = Self {
             types: BTreeMap::new(),
             funcs: BTreeMap::new(),
+            markers: super::markers::MarkerScan::default(),
         };
 
         // scan over the code base
@@ -104,6 +120,9 @@ impl Context {
             }
         }
 
+        // whole-program marker rules, once every file has been scanned
+        ctxt.markers.validate()?;
+
         // post-collection checking
         ctxt.sanity_check()?;
 
@@ -123,7 +142,16 @@ impl Context {
                 )
             });
             // parse the content of the file and process the syntax if rs file
-            self.process_syntax(syn::parse_file(&content)?)?;
+            let file = syn::parse_file(&content)?;
+            // A file that declares no marked item is support code sitting next to
+            // the semantics (a concrete parser, a pretty-printer, unit tests): it is
+            // not part of the model, so plain Rust in it -- `impl`, `type`, `mod
+            // tests { .. }` -- is left to rustc instead of tripping the DSL front end.
+            if !declares_marked_item(&file) {
+                return Ok(());
+            }
+            self.markers.scan(&file, path);
+            self.process_syntax(file)?;
         }
         Ok(())
     }

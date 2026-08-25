@@ -1,0 +1,1 @@
+array_table_missing_close_char

@@ -7,7 +7,9 @@ order is fixed:
 2. Z3 tries the query with the input unconstrained.
 3. `sat` becomes a decoded witness; native-recursion `unsat` means the marker is
    unreachable under the encoding and bound.
-4. Only `unknown` or timeout invokes the model.
+4. Anything else — `unknown`, a timeout, or no verdict at all — invokes the
+   model. There is no flag that turns this off: a missing `RUSMT_LLM_CMD` is a
+   run failure the driver reports, not a quieter run.
 5. The model reads the emitted SMT-LIB excerpt, the marker name, and previous Z3
    feedback, then proposes one candidate input between `<<<` and `>>>`.
 6. RuSmt adds one equality, `input_0 == candidate`, to the original query and
@@ -23,27 +25,21 @@ The proposer is any command that reads a prompt on stdin and writes its answer o
 stdout:
 
 ```bash
-mkdir -p /tmp/rusmt-sandbox
-
-export RUSMT_LLM_CMD='cd /tmp/rusmt-sandbox && codex exec -m gpt-5.4-mini \
-  -c model_reasoning_effort="low" \
-  -s read-only \
-  --skip-git-repo-check \
-  --ephemeral \
-  --ignore-rules \
-  -'
-
+export RUSMT_LLM_CMD="./my_proposer"
 export RUSMT_LLM_CACHE=/tmp/rusmt-cache
-export RUSMT_ROUNDS=9
+export RUSMT_ROUNDS=9        # a resource guard; see "When the loop stops"
 export RUSMT_WITNESSES=1
-export RUSMT_Z3_SECS=15
+export RUSMT_STAGE1_SECS=2   # Z3 alone on the unmodified query
+export RUSMT_Z3_SECS=15      # each Stage-2 acceptance
 ```
 
-The sandbox matters. In the reported TOML run, the proposer ran from an empty
-directory with file and shell tools disabled, so it could not inspect
-`lang/src/toml/` and recover answers from the Rust source. The prompt cache is
-also part of the result: it lets the reported run replay without calling the
-model again. Re-running the model from scratch may produce a different suite.
+Any command works, including a local model or a deterministic script, as long as
+it reads exactly one prompt on stdin and writes exactly one answer on stdout.
+
+The sandbox matters. The framework runs every proposer invocation from a fresh
+temporary directory, then deletes it. The prompt cache is also part of the
+result: it lets the reported run replay without calling the model again.
+Re-running the model from scratch may produce a different suite.
 
 ## Running Suite Generation
 
@@ -58,40 +54,56 @@ cargo run -p rusmt-smt-derive -- imp eval_com \
   --suite-out /tmp/rusmt-suite/imp
 ```
 
-For large runs, use the resumable sweep driver:
-
 ```bash
-python3 experiments/sweep.py toml parse_toml /tmp/toml.jsonl --jobs 6 --timeout 120
-python3 conformance/collect.py /tmp/toml.jsonl /tmp/rusmt-suite/toml
+cargo run -p rusmt-smt-derive -- toml parse_toml \
+  --jobs 6 \
+  --out-dir /tmp/rusmt-toml-out \
+  --suite-out /tmp/rusmt-suite/toml
+
+cargo run -p rusmt-smt-derive -- imp eval_com \
+  --out-dir /tmp/rusmt-imp-out \
+  --suite-out /tmp/rusmt-suite/imp
+
 python3 conformance/diff.py /tmp/rusmt-suite/toml --json /tmp/toml-diff.json
+python3 specops/report.py /tmp/rusmt-toml-out/ledger.jsonl /tmp/toml-diff.json
 ```
+
+`--out-dir` keeps the per-marker queries, transcripts, and `ledger.jsonl`
+outside the repository. `--jobs` runs independent markers in parallel; each
+marker still has its own output directory and each proposer call still gets a
+fresh temporary directory.
+
+## When the loop stops
+
+Three reasons, and only one of them is a conclusion:
+
+| Stop | What it licenses |
+|---|---|
+| `witness` | Z3 accepted the candidate. A **conclusion**: the lifted semantics reach the marker on that input. |
+| `budget` | `RUSMT_ROUNDS` ran out. **A spending limit, not a verdict.** The proposer is stochastic, so another sample or a larger budget may still find a witness. |
+| `proposer-error` | The transport failed. A run to fix, not a result. |
+
+The only statement of the form "no input reaches this marker" the pipeline makes
+comes from Z3 answering `unsat` in Stage 1 on the unmodified, unbounded query.
+Everything else leaves the marker open, so **a coverage figure is always a lower
+bound**. The two spending stops are recorded to help you diagnose a run, not so
+either can be reported as exhaustion.
 
 ## Reported TOML Result
 
-The TOML v1.1.0 parser has 182 named markers. Z3 alone produced 0 witnesses at
-affordable budgets. With the model-to-Z3 loop, the reported run produced 131
-accepted TOML documents and left 51 markers uncovered.
+The TOML v1.1.0 parser has 183 named markers, and Z3 alone produces 0 witnesses
+at any affordable budget, so every marker that gets covered is covered by the
+loop.
 
-The proposal audit is the main reason Z3 remains in the loop. Per-round histories
-were recorded for 156 of the 182 markers; the other 26 were covered by an earlier
-sequential `cargo run` pass that preserved the accepted witnesses but not the
-per-round outcomes, so they count towards coverage and are excluded from the
-audit below.
+> **Numbers here are not pinned.** They belong to whichever run you report, and a
+> run with a different proposer will differ. Regenerate them with
+> `specops/report.py`, which prints the coverage, the proposal audit, the
+> round curve and the miss list, and also emits the macro block for the paper.
 
-| Outcome | Count |
-|---|---:|
-| Accepted by Z3 and replay | 105 |
-| Rejected by Z3 as not reaching the marker | 537 |
-| Undecided within budget | 7 |
-| **Total proposals that reached Z3** | **649** |
-| Duplicate candidate skipped before Z3 | 64 |
-| No parsable candidate returned | 5 |
-
-So roughly five of every six proposals did not reach the marker they were
-labelled with. Adding the 26 witnesses from the sequential pass gives the
-131-input conformance suite. Running it against the Rust `toml` crate, CPython
-`tomllib`, BurntSushi `toml`, and Node `smol-toml` produced 15 accept/reject
-divergences.
+The proposal audit is the main reason Z3 remains in the loop: it records how many
+proposals Z3 *rejected*. A rejected proposal is one whose document does not
+exercise the rule it was labelled with, which is precisely what an unaudited
+model-written suite would ship without noticing.
 
 ## TOML vs IMP Rendering
 

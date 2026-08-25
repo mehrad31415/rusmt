@@ -54,21 +54,17 @@ path target it writes a `.smt2` query (base declarations plus target-specific
 assertions) and runs Z3 on it.
 
 Queries are text for a reason beyond convenience. Every stage that reasons
-*about* a query — the guided loop's strengthening, the direct route's
-`macro_inline_input`, the authoring gates' fixed-input rewrite — manipulates
-SMT-LIB, and every reported result stays re-runnable with a bare
+*about* a query — Stage 2's acceptance pin, the authoring gates' fixed-input
+rewrite — manipulates SMT-LIB, and every reported result stays re-runnable with a
+bare
 `z3 -smt2 <file>`. In-process construction would buy typed term building at the
 cost of all of that. Where in-memory Z3 *is* wanted later (e.g. the
 user-propagator API), `Z3_solver_from_string` loads this backend's own output
 into a live solver — the text form is a front end to that, not an obstacle.
 
-Z3 is driven in two ways:
-
-- **One-shot** — spawn `z3 -smt2 <file>` for an independent check. This is the
-  per-target synthesis path.
-- **Persistent** (`z3_session.rs`) — hold one `z3 -in` process open and scope
-  work with `(push)`/`(pop)`. This is the guided loop's path; see
-  [AI in the loop](../user/ai.md).
+Z3 is driven one way: spawn `z3 -smt2 <file>` per check
+(`guidance::run_z3_file`). Every solve — Stage 1 and every Stage-2 acceptance —
+leaves its query on disk, so any result can be reproduced by hand.
 
 The backend:
 
@@ -97,12 +93,12 @@ out, leaving no orphaned process.
 
 2. **Z3's output and exit code are unreliable.** After printing `sat` / `unsat` it may emit trailing error text, and it may exit non-zero — or even segfault — on a query it actually answered. For example asking for a model after `unknown`, or crashing while serializing a model it already reported as `sat`. To stay robust, the backend reads the verdict from the **first output line** (`unknown` / `unsat` / `sat`) and ignores everything after it. It decides the result from that printed verdict, **not** the exit code. It reports an `unknown` that arrives *after the deadline* as `Response::Timeout` rather than a genuine "unknown".
 
-A persistent session (`z3_session.rs`) faces the same two quirks plus a third:
-because the process outlives a single check, a Z3 wedged in a preprocessing
-phase that ignores its own `:timeout` would block the pipeline forever. Every
-read is therefore deadline-bounded (`budget + 5 s`); on expiry the process group
-is killed and the session is **poisoned**, after which every call returns a
-failure verdict and the caller falls back to the one-shot path. A missing or
-older `z3 -in` therefore costs speed, never correctness.
+3. **`-t:` is charged against CPU, not wall clock.** On a per-marker TOML query
+with the input symbolic, Z3 4.15.4 at `-t:60000` returned `unknown` after
+**347.6 s of wall clock for 60.2 s of CPU** — it spends the overrun expanding
+definitions before it consults its own budget. A `-t:` alone therefore does not
+bound a run, so `run_z3_file` also kills the process group at `budget + 5 s` and
+reports the kill as `Response::Timeout`.
 
-The full timeout is set in `backend/response.rs` (`BACKEND_TIMEOUT`).
+Budgets are set by `RUSMT_STAGE1_SECS` (Stage 1) and `RUSMT_Z3_SECS` (each
+Stage-2 acceptance).

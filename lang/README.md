@@ -23,8 +23,9 @@ defined in the `rusmt-smt-stdlib` crate. Every implementation has two equivalent
 The main binary (`src/main.rs`) runs an interpreter on a concrete program.
 
 ```bash
-# Parse a TOML document and pretty-print the AST under lang/toml/output/.
-cargo run -p rusmt-lang -- toml lang/toml/input/example.toml
+# Parse a TOML document and pretty-print the AST.
+printf 'a = 1\n' > /tmp/example.toml
+cargo run -p rusmt-lang -- toml /tmp/example.toml
 
 # Evaluate an IMP program from a `.imp` source file.
 cargo run -p rusmt-lang -- imp lang/imp/input/factorial.imp

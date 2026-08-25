@@ -1,0 +1,75 @@
+marker          : inline_table_sep_eof
+raised in       : parse_inline_table_sep
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1412 ms) ===
+--- reply ---
+<<<{a=1,}>>>
+candidate: "{a=1,}"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+=== round 2 (2496 ms) ===
+--- reply ---
+<<<{a=1,>>>
+candidate: "{a=1,"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+=== round 3 (2016 ms) ===
+--- reply ---
+<<<{a=1, }>>>
+candidate: "{a=1, }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+=== round 4 (1441 ms) ===
+--- reply ---
+<<<{a=1, #>>>
+candidate: "{a=1, #"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+=== round 5 (1676 ms) ===
+--- reply ---
+<<<{a={b=1},>>>
+candidate: "{a={b=1},"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+=== round 6 (2463 ms) ===
+--- reply ---
+<<<{a=1, #x>>>
+candidate: "{a=1, #x"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+=== round 7 (1511 ms) ===
+--- reply ---
+<<<{a=1>>>
+candidate: "{a=1"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+=== round 8 (0 ms) ===
+--- reply ---
+<<<{a=1, }>>>
+candidate: "{a=1, }"
+--- outcome ---
+that candidate was already rejected — propose a DIFFERENT one
+
+=== round 9 (1833 ms) ===
+--- reply ---
+<<<
+{a=1,\u{a}
+>>>
+candidate: "{a=1,\n"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_sep_eof`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_sep_eof` is about.
+
+status: no witness (stopped: budget)

@@ -1,0 +1,95 @@
+marker          : inline_table_redefined_inline
+raised in       : parse_inline_table
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1675 ms) ===
+--- reply ---
+<<<
+a = { b = 1, b = 2 }
+>>>
+candidate: "a = { b = 1, b = 2 }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports that it reaches ERR inline_table_conflicting_keys instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_inline` is about.
+
+=== round 2 (1712 ms) ===
+--- reply ---
+<<<a = { b = {}, b.c = 1 }>>>
+candidate: "a = { b = {}, b.c = 1 }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `inline_table_redefined_inline` names.
+
+=== round 3 (1518 ms) ===
+--- reply ---
+<<<
+a = {}
+a.b = 1
+>>>
+candidate: "a = {}\na.b = 1"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports that it reaches ERR dotted_key_redefines_inline_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_inline` is about.
+
+=== round 4 (1562 ms) ===
+--- reply ---
+<<<
+a = { b = 1 }
+a.b = 2
+>>>
+candidate: "a = { b = 1 }\na.b = 2"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports that it reaches ERR dotted_key_redefines_inline_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_inline` is about.
+
+=== round 5 (3249 ms) ===
+--- reply ---
+<<<
+a = { b.c = 1, b = {} }
+>>>
+candidate: "a = { b.c = 1, b = {} }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `inline_table_redefined_inline` names.
+
+=== round 6 (2740 ms) ===
+--- reply ---
+input <<<
+a = { b = { c = 1 }, b.c = 2 }
+>>>
+candidate: "a = { b = { c = 1 }, b.c = 2 }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports that it reaches ERR inline_table_conflicting_keys instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_inline` is about.
+
+=== round 7 (1622 ms) ===
+--- reply ---
+<<<
+a.b = {}
+a = { b = {} }
+>>>
+candidate: "a.b = {}\na = { b = {} }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports that it reaches ERR inline_table_redefined_closed instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_inline` is about.
+
+=== round 8 (1578 ms) ===
+--- reply ---
+<<<
+a = { b = 1 }
+a.b = {}
+>>>
+candidate: "a = { b = 1 }\na.b = {}"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_inline`. Z3 reports that it reaches ERR dotted_key_redefines_inline_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_inline` is about.
+
+=== round 9 (762 ms) ===
+--- reply ---
+<<<
+a = {}
+a = {}
+>>>
+candidate: "a = {}\na = {}"
+--- outcome ---
+ACCEPTED: Z3 certified this input against the unmodified query (sat) — a witness for `inline_table_redefined_inline`
+
+status: 1 witness(es) accepted:
+  "a = {}\na = {}"

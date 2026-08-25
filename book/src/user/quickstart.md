@@ -4,7 +4,7 @@
 
 - Rust (edition 2024). The `rust-toolchain.toml` file pins the channel.
 - A system `z3` CLI on `PATH` (Z3 4.15.4) — the only external dependency.
-  The backend, the guided loop's persistent `z3 -in` session, the scripts,
+  The backend, the scripts,
   and the differential / real-Z3 tests all use it
   (`brew install z3` / `apt install z3`).
 
@@ -24,9 +24,9 @@ subcommands. From the workspace root:
 cargo run -p rusmt-lang -- imp lang/imp/input/factorial.imp
 # → final store written to lang/imp/output/factorial.txt and printed.
 
-# TOML v1.1.0 parser.
-cargo run -p rusmt-lang -- toml lang/toml/input/example.toml
-# → parsed AST written to lang/toml/output/example.txt.
+# TOML v1.1.0 parser. The repository ships no .toml inputs, so make one.
+printf 'a = 1\n' > /tmp/example.toml
+cargo run -p rusmt-lang -- toml /tmp/example.toml
 ```
 
 These are the only subcommands the CLI exposes today (see

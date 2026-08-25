@@ -1,0 +1,2 @@
+{"marker":"division_by_zero","status":"STAGE1","stage1":"sat","rounds":0,"stage1_ms":220,"witnesses":["A := (0 / 0)"],"round_outcomes":[],"rejected":0,"stop":"witness"}
+{"marker":"undefined_variable","status":"STAGE1","stage1":"sat","rounds":0,"stage1_ms":109,"witnesses":["v0 := v0"],"round_outcomes":[],"rejected":0,"stop":"witness"}

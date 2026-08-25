@@ -1,0 +1,81 @@
+marker          : numoffset_expect_colon_wrong_char
+raised in       : parse_time_numoffset
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1931 ms) ===
+--- reply ---
+<<<a=1979-05-27T07:32:00+07x00>>>
+candidate: "a=1979-05-27T07:32:00+07x00"
+--- outcome ---
+`unsat`: this input does not reach `numoffset_expect_colon_wrong_char`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `numoffset_expect_colon_wrong_char` is about.
+
+=== round 2 (2248 ms) ===
+--- reply ---
+input <<<
+a=1979-05-27T07:32:00+07:00x
+>>>
+candidate: "a=1979-05-27T07:32:00+07:00x"
+--- outcome ---
+`unsat`: this input does not reach `numoffset_expect_colon_wrong_char`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `numoffset_expect_colon_wrong_char` is about.
+
+=== round 3 (1682 ms) ===
+--- reply ---
+<<<a=1979-05-27T07:32:00+07x>>>
+candidate: "a=1979-05-27T07:32:00+07x"
+--- outcome ---
+`unsat`: this input does not reach `numoffset_expect_colon_wrong_char`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `numoffset_expect_colon_wrong_char` is about.
+
+=== round 4 (1621 ms) ===
+--- reply ---
+<<<a=1979-05-27T07:32:00+07>>>
+candidate: "a=1979-05-27T07:32:00+07"
+--- outcome ---
+`unsat`: this input does not reach `numoffset_expect_colon_wrong_char`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `numoffset_expect_colon_wrong_char` is about.
+
+=== round 5 (0 ms) ===
+--- reply ---
+<<<a=1979-05-27T07:32:00+07x00>>>
+candidate: "a=1979-05-27T07:32:00+07x00"
+--- outcome ---
+that candidate was already rejected — propose a DIFFERENT one
+
+=== round 6 (1838 ms) ===
+--- reply ---
+<<<a=1979-05-27T07:32:00+07x:00>>>
+candidate: "a=1979-05-27T07:32:00+07x:00"
+--- outcome ---
+`unsat`: this input does not reach `numoffset_expect_colon_wrong_char`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `numoffset_expect_colon_wrong_char` is about.
+
+=== round 7 (0 ms) ===
+--- reply ---
+input <<<
+a=1979-05-27T07:32:00+07:00x
+>>>
+candidate: "a=1979-05-27T07:32:00+07:00x"
+--- outcome ---
+that candidate was already rejected — propose a DIFFERENT one
+
+=== round 8 (1849 ms) ===
+--- reply ---
+<<<
+a=1979-05-27T07:32:00+07!
+>>>
+candidate: "a=1979-05-27T07:32:00+07!"
+--- outcome ---
+`unsat`: this input does not reach `numoffset_expect_colon_wrong_char`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `numoffset_expect_colon_wrong_char` is about.
+
+=== round 9 (2133 ms) ===
+--- reply ---
+input <<<
+a=1979-05-27T07:32:00+07;00
+>>>
+candidate: "a=1979-05-27T07:32:00+07;00"
+--- outcome ---
+`unsat`: this input does not reach `numoffset_expect_colon_wrong_char`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `numoffset_expect_colon_wrong_char` is about.
+
+status: no witness (stopped: budget)

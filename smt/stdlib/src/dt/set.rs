@@ -71,14 +71,14 @@ impl<T: SMT> Set<T> {
         self.is_subset(other).and(self.length().lt(other.length()))
     }
 
-    /// This is a concrete check. Z3's `set.has_size` is a symbolic predicate.
+    /// Checks if the set has a specific size
     /// (= (rset-card self) k)
     pub fn has_size(self, k: Integer) -> Boolean {
         self.length().eq(k)
     }
 
     /// Checks if two sets are disjoint (no common elements)
-    /// (= ((_ map and) (rset-data self) (rset-data other)) ((as const (Array {ts} Bool)) false))
+    /// (= ((_ map and) (rset-data self) (rset-data other)) ((as const (Array T Bool)) false))
     pub fn is_disjoint(self, other: Self) -> Boolean {
         self.inner.is_disjoint(&other.inner).into()
     }
@@ -96,26 +96,6 @@ macro_rules! set {
             set
         }
     };
-}
-
-mod tests {
-    #[test]
-    fn test_set_empty_len_insert() {
-        use crate::{Integer, Set, smt::SMT};
-
-        let empty: Set<Integer> = Set::new();
-        assert!(*empty.length().eq(Integer::from(0)));
-
-        let s1 = empty.insert(Integer::from(10));
-        assert!(*s1.length().eq(Integer::from(1)));
-
-        let s2 = s1.insert(Integer::from(20));
-        assert!(*s2.length().eq(Integer::from(2)));
-
-        // Duplicate insert — length stays the same
-        let s3 = s2.insert(Integer::from(10));
-        assert!(*s3.length().eq(Integer::from(2)));
-    }
 }
 
 mod test {

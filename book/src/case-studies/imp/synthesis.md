@@ -18,7 +18,7 @@ path-condition tags  ───────────────────�
                                   sat / unsat / unknown / timeout
                                               │
                                               ▼
-                          witness renderer (lang/src/imp_render.rs)
+                          witness renderer (lang/src/imp/render.rs)
                                               │
                                 ┌─────────────┴──────────────┐
                                 ▼                             ▼

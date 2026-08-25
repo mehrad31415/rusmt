@@ -12,7 +12,7 @@ help:
 
 lint:
 	@cargo fmt && \
-	cargo clippy --fix --allow-dirty --all-targets --all-features
+	cargo clippy --fix --all-targets
 
 cloc:
 	@cloc \

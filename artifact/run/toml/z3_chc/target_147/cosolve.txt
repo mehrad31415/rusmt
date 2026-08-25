@@ -1,0 +1,85 @@
+marker          : time_second_second_char_not_digit
+raised in       : parse_time_second
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1407 ms) ===
+--- reply ---
+input <<<
+00:00:0a
+>>>
+candidate: "00:00:0a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR key_value_missing_equals_char instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 2 (1463 ms) ===
+--- reply ---
+input <<<
+x = 00:00:0a
+>>>
+candidate: "x = 00:00:0a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 3 (1734 ms) ===
+--- reply ---
+<<<x = 1979-05-27T07:32:0a>>>
+candidate: "x = 1979-05-27T07:32:0a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 4 (1521 ms) ===
+--- reply ---
+<<<
+x = 12:34:5a
+>>>
+candidate: "x = 12:34:5a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 5 (2533 ms) ===
+--- reply ---
+<<<
+x = 23:59:5a
+>>>
+candidate: "x = 23:59:5a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 6 (1615 ms) ===
+--- reply ---
+<<<
+x = 07:32:5a
+>>>
+candidate: "x = 07:32:5a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 7 (1736 ms) ===
+--- reply ---
+<<<x = 1979-05-27T07:32:59a>>>
+candidate: "x = 1979-05-27T07:32:59a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 8 (1570 ms) ===
+--- reply ---
+<<<x=1979-05-27T07:32:59a>>>
+candidate: "x=1979-05-27T07:32:59a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+=== round 9 (1695 ms) ===
+--- reply ---
+<<<
+x = 1970-01-01T00:00:0a
+>>>
+candidate: "x = 1970-01-01T00:00:0a"
+--- outcome ---
+`unsat`: this input does not reach `time_second_second_char_not_digit`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_second_second_char_not_digit` is about.
+
+status: no witness (stopped: budget)

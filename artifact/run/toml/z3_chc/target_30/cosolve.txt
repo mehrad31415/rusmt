@@ -1,0 +1,97 @@
+marker          : inline_table_redefined_explicit
+raised in       : parse_inline_table
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1975 ms) ===
+--- reply ---
+<<<{ a = 1, a = 2 }>>>
+candidate: "{ a = 1, a = 2 }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 2 (1556 ms) ===
+--- reply ---
+<<<
+a = { b = 1 }
+a.b = 2
+>>>
+candidate: "a = { b = 1 }\na.b = 2"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR dotted_key_redefines_inline_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 3 (1568 ms) ===
+--- reply ---
+<<<
+a = { b = 1 }
+[a]
+>>>
+candidate: "a = { b = 1 }\n[a]"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR std_table_redefines_inline_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 4 (2124 ms) ===
+--- reply ---
+<<<
+a = { b = 1 }
+[a.b]
+>>>
+candidate: "a = { b = 1 }\n[a.b]"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR std_table_redefines_inline_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 5 (3117 ms) ===
+--- reply ---
+<<<
+a = { b = 1, b = 2 }
+>>>
+candidate: "a = { b = 1, b = 2 }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR inline_table_conflicting_keys instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 6 (2307 ms) ===
+--- reply ---
+<<<
+a = { b = 1 }
+a = 2
+>>>
+candidate: "a = { b = 1 }\na = 2"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR inline_table_redefined_inline instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 7 (1553 ms) ===
+--- reply ---
+<<<
+a.b = 1
+a = { b = 2 }
+>>>
+candidate: "a.b = 1\na = { b = 2 }"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR inline_table_redefined_closed instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 8 (1629 ms) ===
+--- reply ---
+<<<
+[a]
+b = { c = 1 }
+b = 2
+>>>
+candidate: "[a]\nb = { c = 1 }\nb = 2"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR inline_table_redefined_inline instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+=== round 9 (1941 ms) ===
+--- reply ---
+<<<
+a = 1
+a = {}
+>>>
+candidate: "a = 1\na = {}"
+--- outcome ---
+`unsat`: this input does not reach `inline_table_redefined_explicit`. Z3 reports that it reaches ERR toml_table_merge_type_mismatch instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `inline_table_redefined_explicit` is about.
+
+status: no witness (stopped: budget)

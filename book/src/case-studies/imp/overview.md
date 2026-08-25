@@ -21,7 +21,9 @@ The interpreter lives in `lang/src/imp/`:
 |------|---------|
 | `lang/src/imp/mod.rs` | Crate-public big-step evaluators `eval_aexp` / `eval_bexp` / `eval_com`, plus the `EvalResult` type and the synthesis markers. |
 | `lang/src/imp/ast.rs` | The three syntactic categories (`Aexp`, `Bexp`, `Com`) as `#[smt_type]` enums. |
-| `lang/src/imp_parser.rs` | Plain-Rust recursive-descent parser for the concrete `.imp` syntax + a `format_store` pretty-printer for final stores. |
+| `lang/src/imp/parser.rs` | Plain-Rust recursive-descent parser for the concrete `.imp` syntax + a `format_store` pretty-printer for final stores. |
+| `lang/src/imp/render.rs` | Prints a Z3 model's `input_0` back as `.imp` source. Registered as the language's `render_model` in the oracle table. |
+| `lang/src/imp/MARKERS.md` | The named-marker index for this reference. |
 
 The state is `Array<String, I64>`. Reads from an unwritten location return
 an error, whereas in Winskel's convention _all locations initially hold 0_. 

@@ -68,10 +68,12 @@ impl<K: SMT, V: SMT> Array<K, V> {
     /// Low-level SMT `select`, reading through the record's backing array:
     /// `(select (rarr-data self) k)`.
     ///
-    /// # Panics
-    /// Panics if key does not exist. Use `contains_key` to check first.
+    /// `V::default()` at an absent key, because that is the value the backend
+    /// writes into every empty slot (`array_null_value`). It carries no meaning
+    /// -- membership lives in `rarr-pres` -- so read it only after
+    /// `contains_key`.
     pub fn select(self, k: K) -> V {
-        self.inner.get(&SMTWrap(k)).map(|v| v.0).unwrap()
+        self.inner.get(&SMTWrap(k)).map_or_else(V::default, |v| v.0)
     }
 
     /// `arr.contains_key(k)` -> transpiles to `(select (rarr-pres arr) k)`

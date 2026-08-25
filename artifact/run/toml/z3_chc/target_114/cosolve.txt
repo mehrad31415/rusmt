@@ -1,0 +1,85 @@
+marker          : float_exp_only_final_overflow
+raised in       : parse_float
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1784 ms) ===
+--- reply ---
+input <<<
+0e9999999999999999999999999999999999999999
+>>>
+candidate: "0e9999999999999999999999999999999999999999"
+--- outcome ---
+`unsat`: this input does not reach `float_exp_only_final_overflow`. Z3 reports that it reaches ERR key_value_missing_equals_eof instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `float_exp_only_final_overflow` is about.
+
+=== round 2 (1857 ms) ===
+--- reply ---
+<<<x = 0e9223372036854775808>>>
+candidate: "x = 0e9223372036854775808"
+--- outcome ---
+`unsat`: this input does not reach `float_exp_only_final_overflow`. Z3 reports that it reaches ERR float_exp_only_exp_overflow_i32 instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `float_exp_only_final_overflow` is about.
+
+=== round 3 (2424 ms) ===
+--- reply ---
+<<<x = 0e2147483648>>>
+candidate: "x = 0e2147483648"
+--- outcome ---
+`unsat`: this input does not reach `float_exp_only_final_overflow`. Z3 reports that it reaches ERR float_exp_only_exp_overflow_i32 instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `float_exp_only_final_overflow` is about.
+
+=== round 4 (20708 ms) ===
+--- reply ---
+<<<
+x = 1e309
+>>>
+candidate: "x = 1e309"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 5 (21484 ms) ===
+--- reply ---
+input <<<
+x = 1e1000000000
+>>>
+candidate: "x = 1e1000000000"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 6 (0 ms) ===
+--- reply ---
+<<<x = 1e309>>>
+candidate: "x = 1e309"
+--- outcome ---
+that candidate was already rejected — propose a DIFFERENT one
+
+=== round 7 (20702 ms) ===
+--- reply ---
+<<<
+x = 1e-2147483648
+>>>
+candidate: "x = 1e-2147483648"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 8 (21281 ms) ===
+--- reply ---
+<<<
+x = 10e2147483647
+>>>
+candidate: "x = 10e2147483647"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 9 (21419 ms) ===
+--- reply ---
+input <<<
+x = 1e2147483646
+>>>
+candidate: "x = 1e2147483646"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+status: no witness (stopped: budget)

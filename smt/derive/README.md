@@ -9,7 +9,7 @@ inputs that reach `Path::named(...)` markers placed in the source.
 
 `backend/z3/` emits SMT-LIB2 to disk and runs the `z3` binary on it. The
 `-t:{ms}` flag makes Z3 self-terminate at the deadline. Per-target output:
-`lang/src/synthesis/<parser>/z3_chc/target_<N>/{main.smt2,response.<ext>,timing.txt}`.
+`lang/src/synthesis/<parser>/z3_chc/target_<N>/{main.smt2,accept.smt2,observe.smt2,response.<ext>,replay.txt,cosolve.txt,marker.txt}`.
 The response file is named by the object-language extension (`.imp`, `.toml`,
 `.tc`) for a replayable witness so it feeds straight back into `rusmt-lang`,
 and `response.txt` for any non-witness verdict (raw model, timeout, error).

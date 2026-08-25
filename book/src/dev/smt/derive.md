@@ -16,7 +16,7 @@ Defined in `src/lib.rs`:
   `z3` as a subprocess, render the generated model from Z3, and write the result
   to `target_<N>/response.<ext>` (the object-language extension — `.imp`,
   `.toml`, `.tc` — for a replayable witness, else `response.txt`) plus
-  `timing.txt`.
+  `ledger.jsonl` (one line per marker, including the Stage-1 wall clock).
 
 ### Internal layout
 
@@ -26,9 +26,8 @@ Defined in `src/lib.rs`:
 - `src/ir/*` — expression lowering, sort checking, monomorphisation.
 - `src/backend/*`:
   - `codegen.rs` — the `CodeGen` trait; iteration over path targets.
-  - `response.rs` — `Response` enum (`Sat(String)`, `Unsat`,
-    `Unknown(String)`, `Timeout`) and `BACKEND_TIMEOUT` (default
-    `Duration::from_secs(60 * 10)`).
+  - `response.rs` — the `Response` enum (`Sat(String)`, `Unsat`,
+    `Unknown(String)`, `Timeout`).
   - `z3/*` — the SMT-LIB2 backend.
     - `ctxt.rs` — `CodeGenZ3`, Z3 subprocess invocation, response parsing.
     - `exp.rs` — IR expressions → SMT-LIB2 text.
@@ -36,9 +35,13 @@ Defined in `src/lib.rs`:
       depth-indexed unrolled copies.
     - `intrinsics.rs` — every IR intrinsic mapped to its SMT-LIB2 form.
     - `sort.rs` — IR sorts → SMT-LIB2 datatype declarations.
-- `src/z3_session.rs` — a persistent `z3 -in` process: `push`/`pop` scoping,
-  blocking-clause model enumeration, and `(get-info :all-statistics)` on a
-  stuck verdict. Used by the guided loop; see [AI in the loop](../../user/ai.md).
+- `src/guidance.rs` — query surgery and the one Z3 runner: pin the entry input to
+  a candidate, decode a `(Seq (_ BitVec 32))` model back to text, run `z3 -smt2`
+  under a budget.
+- `src/cosolve.rs` — Stage 2, the proposer/Z3 loop; see
+  [AI in the loop](../../user/ai.md).
+- `src/proposer.rs` — the proposer transport and its prompt cache. No
+  decision-making.
 
 ### CLI surface
 
@@ -64,7 +67,7 @@ The env var `RUSMT_SKIP_INVOKE=1` makes the backend run codegen and write
 when the *generated text* is what you are debugging: stopping at `model`
 instead gives you an `IRContext` and no SMT-LIB at all, so it cannot show you a
 malformed `define-fun`. Skipping only the solver is what makes it cheap —
-TOML's 182 targets render in seconds instead of spending a solver budget on
+TOML’s 183 targets render in seconds instead of spending a solver budget on
 every marker.
 
 ### Bounded-recursion unrolling (`k=N`)
@@ -76,16 +79,16 @@ sentinel call. External callers route through `fn_dN`. The implementation is
 
 ### Timeout mechanics
 
-The solver budget is `BACKEND_TIMEOUT` (`backend/response.rs`).
+Budgets are `RUSMT_STAGE1_SECS` (Stage 1) and `RUSMT_Z3_SECS` (each Stage-2
+acceptance).
 
-1. **Z3 self-termination (one-shot).** The backend appends `-t:{ms}` to the `z3`
-   command line so Z3 stops on its own when the deadline elapses.
-2. **Deadline-bounded reads (persistent session).** Because a `z3 -in` process
-   outlives a single check, a Z3 wedged in a preprocessing phase that ignores
-   its own `:timeout` would block the caller. Every read in `z3_session.rs` is
-   bounded at `budget + 5 s`; on expiry the process group is killed and the
-   session is *poisoned*, so later calls fail fast and the loop falls back to
-   the one-shot path.
+1. **Z3 self-termination.** `run_z3_file` appends `-t:{ms}` so Z3 stops on its
+   own when the deadline elapses.
+2. **A watchdog, because `-t:` is not enough.** Z3 charges `-t:` against CPU
+   rather than wall clock: on a symbolic TOML query at `-t:60000` it answered
+   `unknown` only after 347.6 s of wall clock for 60.2 s of CPU. `run_z3_file`
+   therefore kills the process group at `budget + 5 s` and reports the kill as
+   `Response::Timeout`.
 
 ### Path-marker representation
 

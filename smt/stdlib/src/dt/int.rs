@@ -5,11 +5,32 @@ use internment::Intern;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::Euclid;
-use num_traits::Num;
 use num_traits::Signed;
 use num_traits::cast::ToPrimitive;
 
-/// Integer operations
+/// `(_ int2bv N)` is total: it takes the value modulo `2^N`.
+fn wrap_u64(v: &BigInt) -> u64 {
+    v.rem_euclid(&BigInt::from(1u128 << 64))
+        .to_u64()
+        .expect("value is in [0, 2^64)")
+}
+
+fn wrap_u32(v: &BigInt) -> u32 {
+    v.rem_euclid(&BigInt::from(1u64 << 32))
+        .to_u32()
+        .expect("value is in [0, 2^32)")
+}
+
+/// Z3 parses a digit string by folding left, mapping every character that is not
+/// a digit of the radix to zero; there is no sign, no prefix and no failure.
+fn fold_digits(s: String, radix: u32, digit: fn(char) -> u32) -> BigInt {
+    let mut acc = BigInt::from(0);
+    for c in s.inner.chars() {
+        acc = acc * radix + digit(c);
+    }
+    acc
+}
+
 impl Integer {
     /// addition - Result can grow arbitrarily large but is bounded by available system memory
     pub fn add(self, rhs: Self) -> Self {
@@ -39,11 +60,15 @@ impl Integer {
         }
     }
 
-    /// (define-fun div_trunc ((n Int) (d Int)) Int
-    ///   (ite (>= n 0)
-    ///        (div n d)
-    ///        (- (div (- n) d))))
-    /// corresponds to Z3: (div_trunc n d)
+    /// Truncating division, as C, Java and Rust have it.
+    ///
+    /// Emits `(ite (>= n 0) (div n d) (- (div (- n) d)))`. SMT-LIB offers only
+    /// Euclidean `div`, so this is built from it -- there is no `div_trunc`
+    /// function in the query, the term is inlined at each use. `n` and `d` are
+    /// bound by a `let` when either is a compound expression, since each occurs
+    /// more than once.
+    ///
+    /// Panics when `d` is zero: `(div n 0)` is underspecified.
     pub fn div_trunc(self, rhs: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.as_ref() / rhs.inner.as_ref()),
@@ -69,10 +94,12 @@ impl Integer {
         }
     }
 
-    /// remainder (will return 0 or the same sign as the dividend (self))
-    /// (define-fun rem_trunc ((a Int) (b Int)) Int
-    ///   (- a (* b (div_trunc a b))))
-    /// corresponds to Z3: (rem_trunc a b)
+    /// Remainder of the truncating division: zero, or the sign of the dividend.
+    ///
+    /// Emits `(- n (* d (ite (>= n 0) (div n d) (- (div (- n) d)))))`, inlined
+    /// the same way as [`Integer::div_trunc`]; there is no `rem_trunc` function.
+    ///
+    /// Panics when `d` is zero.
     pub fn rem(self, rhs: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.as_ref() % rhs.inner.as_ref()),
@@ -80,16 +107,50 @@ impl Integer {
     }
 
     /// exponentiation
-    /// corresponds to Z3: (^ self exp)
+    /// corresponds to Z3: (to_int (^ self exp))
     ///
-    /// panics if exp is negative or too large to fit in u32
+    /// A negative exponent gives the floor of a fraction, which is what the
+    /// emitted `to_int` computes: `2^-1` is `0`, `(-2)^-1` is `-1`, `1^-5` is `1`.
+    ///
+    /// # Panics
+    /// On `0^0`, which Z3 leaves unconstrained, and on an exponent beyond `u32`,
+    /// which Z3 handles but `BigInt::pow` cannot take -- the result would not fit
+    /// in memory regardless.
     pub fn pow(self, exp: Self) -> Self {
-        exp.inner
-            .to_u32()
-            .map(|e| Self {
-                inner: Intern::new(self.inner.as_ref().pow(e)),
-            })
-            .unwrap()
+        let base = self.inner.as_ref();
+        let e = exp.inner.as_ref();
+        let (zero, one, minus_one) = (BigInt::from(0), BigInt::from(1), BigInt::from(-1));
+
+        if e.is_negative() {
+            // |base^e| <= 1 here, so the floor is one of four values.
+            let odd = e % &BigInt::from(2) != zero;
+            let floor = if base == &zero {
+                zero.clone() // Z3 reads `(^ 0 e)` as 0.0, not as a division by zero
+            } else if base == &one {
+                one
+            } else if base == &minus_one {
+                if odd { minus_one } else { one }
+            } else if base.is_negative() && odd {
+                minus_one // in (-1, 0)
+            } else {
+                zero.clone() // in (0, 1)
+            };
+            return Self {
+                inner: Intern::new(floor),
+            };
+        }
+
+        assert!(
+            !(e == &zero && base == &zero),
+            "0^0 is underspecified in Z3, so there is no value to return"
+        );
+        let e = e.to_u32().expect(
+            "the power is determinate but unaffordable -- an exponent \
+                     beyond u32 gives a number of over a billion digits",
+        );
+        Self {
+            inner: Intern::new(base.pow(e)),
+        }
     }
 
     /// absolute value
@@ -146,7 +207,7 @@ impl Integer {
     /// ((_ int2bv 32) x)
     pub fn to_i32(self) -> I32 {
         I32 {
-            inner: Intern::new(self.inner.to_i32().unwrap()),
+            inner: Intern::new(wrap_u32(self.inner.as_ref()) as i32),
         }
     }
 
@@ -155,7 +216,7 @@ impl Integer {
     /// ((_ int2bv 64) x)
     pub fn to_i64(self) -> I64 {
         I64 {
-            inner: Intern::new(self.inner.to_i64().unwrap()),
+            inner: Intern::new(wrap_u64(self.inner.as_ref()) as i64),
         }
     }
 
@@ -164,7 +225,7 @@ impl Integer {
     /// ((_ int2bv 32) x)
     pub fn to_u32(self) -> U32 {
         U32 {
-            inner: Intern::new(self.inner.to_u32().unwrap()),
+            inner: Intern::new(wrap_u32(self.inner.as_ref())),
         }
     }
 
@@ -173,7 +234,7 @@ impl Integer {
     /// ((_ int2bv 64) x)
     pub fn to_u64(self) -> U64 {
         U64 {
-            inner: Intern::new(self.inner.to_u64().unwrap()),
+            inner: Intern::new(wrap_u64(self.inner.as_ref())),
         }
     }
 
@@ -191,78 +252,89 @@ impl Integer {
         F64::from(self.inner.as_ref().to_f64().unwrap())
     }
 
-    /// Creates an `Integer` from a hexadecimal string.
-    /// The string should not include the "0x" prefix nor any underscores.
+    /// Creates an `Integer` from a hexadecimal string, with no `0x` prefix and
+    /// no underscores.
     ///
-    /// corresponds to Z3: (from_hex_str s)
+    /// Emits `(rusmt_from_hex_str s)`, defined in the backend preamble as
     ///
-    // (define-fun hex_char_to_int ((s String)) Int
-    //   (if (and (str.<= "0" s) (str.<= s "9")) (- (str.to_code s) 48)       ; '0' is 48
-    //   (if (and (str.<= "A" s) (str.<= s "F")) (- (str.to_code s) 55)       ; 'A' is 65 -> 10
-    //   (if (and (str.<= "a" s) (str.<= s "f")) (- (str.to_code s) 87)       ; 'a' is 97 -> 10
-    //       0)))                                                             ; Error/Default
-    // )
-    // ; Recursive Hex Parser
-    // (define-fun-rec from_hex_str_impl ((s String) (acc Int)) Int
-    // (if (= (str.len s) 0)
-    //     acc
-    //     (from_hex_str_impl
-    //       (str.substr s 1 (- (str.len s) 1))
-    //       (+ (* acc 16) (hex_char_to_int (str.at s 0)))
-    //     )
-    // )
-    // )
-    // ; Wrapper to start recursion
-    // (define-fun from_hex_str ((s String)) Int (from_hex_str_impl s 0))
+    /// ```text
+    /// (define-fun rusmt_hex_char_to_int ((s String)) Int
+    ///     (ite (and (str.<= "0" s) (str.<= s "9")) (- (str.to_code s) 48)
+    ///     (ite (and (str.<= "A" s) (str.<= s "F")) (- (str.to_code s) 55)
+    ///     (ite (and (str.<= "a" s) (str.<= s "f")) (- (str.to_code s) 87)
+    ///     0))))
+    /// (define-fun-rec rusmt_from_hex_str_impl ((s String) (acc Int)) Int
+    ///     (ite (= (str.len s) 0)
+    ///         acc
+    ///         (rusmt_from_hex_str_impl
+    ///             (str.substr s 1 (- (str.len s) 1))
+    ///             (+ (* acc 16) (rusmt_hex_char_to_int (str.at s 0))))))
+    /// (define-fun rusmt_from_hex_str ((s String)) Int (rusmt_from_hex_str_impl s 0))
+    /// ```
+    ///
+    /// A `define-fun` is total, so the nested `ite` needs a final branch and it
+    /// must be an `Int`: there is no failure to return. That branch is `0`, so a
+    /// character that is not a hex digit contributes nothing and the fold carries
+    /// on. Hence `from_hex_str("zz")` is `0` and `from_hex_str("-ff")` is `255` --
+    /// there is no sign, no prefix and no error. Validate the string before
+    /// calling if the language being specified rejects such input.
     pub fn from_hex_str(s: String) -> Self {
         Self {
-            inner: Intern::new(BigInt::from_str_radix(s.inner.as_ref(), 16).unwrap()),
+            inner: Intern::new(fold_digits(s, 16, |c| match c {
+                '0'..='9' => c as u32 - 48,
+                'A'..='F' => c as u32 - 55,
+                'a'..='f' => c as u32 - 87,
+                _ => 0,
+            })),
         }
     }
 
-    /// Creates an `Integer` from an octal string.
-    /// The string should not include the "0o" prefix.
+    /// Creates an `Integer` from an octal string, with no `0o` prefix.
     ///
-    /// corresponds to Z3: (from_oct_str s)
+    /// Emits `(rusmt_from_oct_str s)`, defined in the backend preamble as
     ///
-    // (define-fun oct_char_to_int ((s String)) Int
-    // (if (and (str.<= "0" s) (str.<= s "7")) (- (str.to_code s) 48) 0)
-    // )
-    // ; Recursive Octal Parser
-    // (define-fun-rec from_oct_str_impl ((s String) (acc Int)) Int
-    // (if (= (str.len s) 0)
-    //     acc
-    //     (from_oct_str_impl
-    //       (str.substr s 1 (- (str.len s) 1))
-    //       (+ (* acc 8) (oct_char_to_int (str.at s 0)))
-    //     )
-    // )
-    // )
-    // ; Wrapper
-    // (define-fun from_oct_str ((s String)) Int (from_oct_str_impl s 0))
+    /// ```text
+    /// (define-fun rusmt_oct_char_to_int ((s String)) Int
+    ///     (ite (and (str.<= "0" s) (str.<= s "7")) (- (str.to_code s) 48) 0))
+    /// (define-fun-rec rusmt_from_oct_str_impl ((s String) (acc Int)) Int
+    ///     (ite (= (str.len s) 0)
+    ///         acc
+    ///         (rusmt_from_oct_str_impl
+    ///             (str.substr s 1 (- (str.len s) 1))
+    ///             (+ (* acc 8) (rusmt_oct_char_to_int (str.at s 0))))))
+    /// (define-fun rusmt_from_oct_str ((s String)) Int (rusmt_from_oct_str_impl s 0))
+    /// ```
+    ///
+    /// Non-octal characters contribute `0`, for the reason given on
+    /// [`Integer::from_hex_str`].
     pub fn from_oct_str(s: String) -> Self {
         Self {
-            inner: Intern::new(BigInt::from_str_radix(s.inner.as_ref(), 8).unwrap()),
+            inner: Intern::new(fold_digits(s, 8, |c| match c {
+                '0'..='7' => c as u32 - 48,
+                _ => 0,
+            })),
         }
     }
 
-    /// Creates an `Integer` from a binary string.
-    /// The string should not include the "0b" prefix.
+    /// Creates an `Integer` from a binary string, with no `0b` prefix.
     ///
-    /// corresponds to Z3: (from_bin_str s)
-    // (define-fun-rec from_bin_str_impl ((s String) (acc Int)) Int
-    //   (if (= (str.len s) 0)
-    //   acc
-    //   (from_bin_str_impl
-    //     (str.substr s 1 (- (str.len s) 1))
-    //     (+ (* acc 2) (if (= (str.at s 0) "1") 1 0))
-    //   )
-    // )
-    // )
-    // (define-fun from_bin_str ((s String)) Int (from_bin_str_impl s 0))
+    /// Emits `(rusmt_from_bin_str s)`, defined in the backend preamble as
+    ///
+    /// ```text
+    /// (define-fun-rec rusmt_from_bin_str_impl ((s String) (acc Int)) Int
+    ///     (ite (= (str.len s) 0)
+    ///         acc
+    ///         (rusmt_from_bin_str_impl
+    ///             (str.substr s 1 (- (str.len s) 1))
+    ///             (+ (* acc 2) (ite (= (str.at s 0) "1") 1 0)))))
+    /// (define-fun rusmt_from_bin_str ((s String)) Int (rusmt_from_bin_str_impl s 0))
+    /// ```
+    ///
+    /// Note the test is `= "1"`, so every character other than `1` contributes
+    /// `0` -- including `0` itself, and anything else.
     pub fn from_bin_str(s: String) -> Self {
         Self {
-            inner: Intern::new(BigInt::from_str_radix(s.inner.as_ref(), 2).unwrap()),
+            inner: Intern::new(fold_digits(s, 2, |c| u32::from(c == '1'))),
         }
     }
 
@@ -275,7 +347,7 @@ impl Integer {
 
     /// check if less than i64::MIN
     ///
-    /// corresponds to Z3: (< self -9223372036854775808)
+    /// corresponds to Z3: (< self (- 9223372036854775808))
     pub fn is_lt_i64_min(self) -> Boolean {
         (self.inner.as_ref() < &BigInt::from(i64::MIN)).into()
     }
@@ -296,7 +368,7 @@ impl Integer {
 
     /// check if less than i32::MIN
     ///
-    /// corresponds to Z3: (< self -2147483648)
+    /// corresponds to Z3: (< self (- 2147483648))
     pub fn is_lt_i32_min(self) -> Boolean {
         (self.inner.as_ref() < &BigInt::from(i32::MIN)).into()
     }

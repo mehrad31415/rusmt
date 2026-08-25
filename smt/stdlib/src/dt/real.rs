@@ -21,7 +21,7 @@ fn exact_nth_root(n: &BigInt, q: u32) -> Option<BigInt> {
     (r.pow(q) == *n).then_some(r)
 }
 
-/// Is n/d less than, equal to, or greater than 2^k?
+/// Is n/d less than, equal to, or greater than 2^k? Requires `d > 0`.
 fn cmp_pow2(n: &BigInt, d: &BigInt, k: i64) -> std::cmp::Ordering {
     if k >= 0 {
         n.cmp(&(d << k as usize))
@@ -113,35 +113,39 @@ fn rational_to_f32(r: &BigRational) -> f32 {
 
 /// Real operations
 impl Real {
-    /// addition
+    /// addition. Emits `(+ n m)`.
     pub fn add(self, rhs: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.as_ref() + rhs.inner.as_ref()),
         }
     }
 
-    /// multiplication
+    /// multiplication. Emits `(* n m)`.
     pub fn mul(self, rhs: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.as_ref() * rhs.inner.as_ref()),
         }
     }
 
-    /// subtraction
+    /// subtraction. Emits `(- n m)`.
     pub fn sub(self, rhs: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.as_ref() - rhs.inner.as_ref()),
         }
     }
 
-    /// negation
+    /// negation. Emits `(- n)`.
     pub fn neg(self) -> Self {
         Self {
             inner: Intern::new(-self.inner.as_ref()),
         }
     }
 
-    /// division
+    /// division. Emits `(/ n d)`.
+    ///
+    /// Panics when `d` is zero. The Reals theory makes `/` total but places no
+    /// constraint on `(/ t 0)`, so there is no value to return; the panic comes
+    /// from `num-rational`, not from an explicit check.
     pub fn div(self, rhs: Self) -> Self {
         Self {
             inner: Intern::new(self.inner.as_ref() / rhs.inner.as_ref()),
@@ -161,8 +165,9 @@ impl Real {
     /// * **Irrational result** — `(^ 2.0 0.5)` is `√2`, which Z3 represents as
     ///   an algebraic number (`root-obj (+ (^ x 2) (- 2)) 2`). `BigRational`
     ///   is not closed under roots so there is nothing faithful to return.
-    /// * **Negative base with an even root** — `(^ (- 2.0) 0.5)`: no real
-    ///   value and Z3 leaves the term uninterpreted.
+    /// * **Negative base with an even root** — `(^ (- 2.0) 0.5)` has no real
+    ///   value; Z3 does not reduce the term and `check-sat` answers `unknown`,
+    ///   so no value can be shown to agree with it.
     /// * **`0^0`** — Z3 leaves `(^ 0.0 0.0)` uninterpreted.
     /// * `p` outside `i32` / `q` outside `u32`.
     ///
@@ -174,8 +179,8 @@ impl Real {
         if self.inner.as_ref().is_zero() {
             assert!(
                 !e.is_zero(),
-                "DSL Error: Real::pow: 0^0 has no value -- Z3 leaves `(^ 0.0 0.0)` \
-                 uninterpreted (both `(= (^ 0.0 0.0) 0.0)` and `.. 1.0` are sat)"
+                "0^0 has no value -- Z3 leaves `(^ 0.0 0.0)` underspecified \
+                 (both `(= (^ 0.0 0.0) 0.0)` and `.. 1.0` are sat)"
             );
             return Self {
                 inner: Intern::new(BigRational::zero()),
@@ -183,33 +188,40 @@ impl Real {
         }
 
         if e.is_integer() {
-            let n = e
-                .to_integer()
-                .to_i32()
-                .expect("DSL Error: Real::pow exponent does not fit in i32");
+            let n = e.to_integer().to_i32().expect(
+                "the power is determinate but unaffordable -- an integral \
+                     exponent outside i32 gives a number too large to build",
+            );
             return Self {
                 inner: Intern::new(self.inner.as_ref().pow(n)),
             };
         }
 
         // Reduced form, with `denom() > 0` guaranteed by `BigRational`.
-        let p = e
-            .numer()
-            .to_i32()
-            .expect("DSL Error: Real::pow exponent numerator does not fit in i32");
-        let q = e
-            .denom()
-            .to_u32()
-            .expect("DSL Error: Real::pow exponent denominator does not fit in u32");
+        let p = e.numer().to_i32().expect(
+            "unaffordable -- an exponent numerator outside i32 gives a \
+                 number too large to build",
+        );
+        let q = e.denom().to_u32().expect(
+            "a root of index beyond u32 cannot be taken, and for any base other \
+             than 0 or ±1 the result would be irrational in any case",
+        );
 
         // `x^p` is exact; the q-th root is where representability can fail.
         let t = self.inner.as_ref().pow(p);
         let root = |n: &BigInt| -> BigInt {
             match exact_nth_root(n, q) {
                 Some(root) => root,
+                // Two different reasons land here, so name them apart.
+                None if n.is_negative() && q % 2 == 0 => panic!(
+                    "Real::pow({}, {}) has no real value; Z3 leaves the term \
+                     undecided (`check-sat` answers `unknown`), so there is nothing to return",
+                    self.inner.as_ref(),
+                    e
+                ),
                 None => panic!(
-                    "DSL Error: Real::pow({}, {}) is not rational -- Z3 evaluates it as an \
-               algebraic number, which `Real` (a BigRational) cannot represent",
+                    "Real::pow({}, {}) is determinate in Z3 -- a `root-obj` algebraic \
+                     number -- but no `BigRational` denotes it",
                     self.inner.as_ref(),
                     e
                 ),
@@ -221,7 +233,7 @@ impl Real {
         }
     }
 
-    /// Returns the absolute value of the real number.
+    /// Returns the absolute value of the real number. Emits `(abs n)`.
     pub fn abs(self) -> Self {
         Self {
             inner: Intern::new(self.inner.as_ref().abs()),
@@ -257,27 +269,27 @@ impl Real {
         }
     }
 
-    /// is integer
+    /// is integer. Emits `(is_int n)`.
     pub fn is_integer(self) -> Boolean {
         self.inner.is_integer().into()
     }
 
-    /// less than
+    /// less than. Emits `(< n m)`.
     pub fn lt(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() < rhs.inner.as_ref()).into()
     }
 
-    /// less than or equal
+    /// less than or equal. Emits `(<= n m)`.
     pub fn le(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() <= rhs.inner.as_ref()).into()
     }
 
-    /// greater than
+    /// greater than. Emits `(> n m)`.
     pub fn gt(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() > rhs.inner.as_ref()).into()
     }
 
-    /// greater than or equal
+    /// greater than or equal. Emits `(>= n m)`.
     pub fn ge(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() >= rhs.inner.as_ref()).into()
     }
@@ -371,7 +383,7 @@ mod tests {
     /// `(^ 2.0 2.5)` is `root-obj (+ (^ x 2) (- 32)) 2` = sqrt(32): a real value
     /// Z3 has and `BigRational` does not.
     #[test]
-    #[should_panic(expected = "is not rational")]
+    #[should_panic(expected = "no `BigRational` denotes it")]
     fn test_pow_irrational_is_rejected() {
         use crate::Real;
         let five_halves = Real::from(5).div(Real::from(2));
@@ -380,7 +392,7 @@ mod tests {
 
     /// `(^ (- 2.0) 0.5)` has no real value; Z3 leaves the term uninterpreted.
     #[test]
-    #[should_panic(expected = "is not rational")]
+    #[should_panic(expected = "has no real value")]
     fn test_pow_negative_base_even_root_is_rejected() {
         use crate::Real;
         let half = Real::from(1).div(Real::from(2));

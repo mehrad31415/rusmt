@@ -1,0 +1,27 @@
+marker          : time_hour_second_char_not_digit
+raised in       : parse_time_hour
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 2 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1509 ms) ===
+--- reply ---
+<<<x = 1a>>>
+candidate: "x = 1a"
+--- outcome ---
+`unsat`: this input does not reach `time_hour_second_char_not_digit`. Z3 reports that it reaches ERR integer_dec_hex_char_in_body instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `time_hour_second_char_not_digit` is about.
+
+=== round 2 (1138 ms) ===
+--- reply ---
+input <<<
+x = 1a:00:00
+>>>
+candidate: "x = 1a:00:00"
+--- outcome ---
+ACCEPTED: Z3 certified this input against the unmodified query (sat) — a witness for `time_hour_second_char_not_digit`
+
+status: 1 witness(es) accepted:
+  "x = 1a:00:00"

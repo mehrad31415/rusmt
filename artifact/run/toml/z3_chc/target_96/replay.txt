@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `integer_bin_invalid_char_after_underscore`
+the SMT lift and the concrete semantics agree on this input

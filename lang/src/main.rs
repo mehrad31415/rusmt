@@ -2,7 +2,7 @@
 //!
 //! This is the main entry point for running the executable semantics of programming languages on concrete inputs.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use rusmt_lang::imp::{EvalResult, eval_com, parser::format_store, parser::parse_imp_source};
 use rusmt_lang::toml::{ParseResult as TomlParseResult, parse_toml};
 use rusmt_smt_stdlib::{Seq, U32};
@@ -18,15 +18,22 @@ use std::path::{Path, PathBuf};
 struct Cli {
     /// Subcommand
     #[command(subcommand)]
-    languages: Languages,
+    command: Command,
 }
 
-/// Enum representing available subcommands for the CLI
-/// `cargo run -- toml <file_path>` or `cargo run toml <file_path>`
-/// `cargo run -- help` (or `cargo run -- --help` or `cargo run help`) shows the help message for the CLI.
-/// Note that this is different from `cargo run --help` which shows the help message for the `cargo run` command. Also `cargo help` shows the help message for the `cargo` command.
+/// The object languages a semantics is written for.
+#[derive(ValueEnum, Clone, Copy, Debug)]
+enum Language {
+    Toml,
+    Imp,
+}
+
+/// The CLI's subcommands.
+///
+/// `cargo run -- toml <file_path>` or `cargo run toml <file_path>`.
+/// `cargo run -- help` or `cargo run help` or `cargo run -- --help` shows this. Note that is different from `cargo run --help` which describes `cargo run` itself.
 #[derive(Subcommand, Debug)]
-enum Languages {
+enum Command {
     // These descriptions are displayed in the help message when the user runs the CLI help command.
     /// Parse and execute a TOML file, or every `.toml` file under a directory.
     Toml {
@@ -41,12 +48,19 @@ enum Languages {
         path: PathBuf,
     },
     /// Print one input's canonical observable behaviour, for differential
-    /// comparison against an independent implementation: `OK`, `ERR <marker>`,
-    /// `NOMATCH`, or `TIMEOUT`. One line per file, nothing else.
+    /// comparison against an independent implementation.
+    ///
+    /// Writes exactly one line and nothing else, one of:
+    ///
+    ///   OK            the input parsed
+    ///   ERR <marker>  it was rejected, naming the error that fired
+    ///   NOMATCH       the parser did not match
+    ///   TIMEOUT       the parse exceeded its budget
+    #[command(verbatim_doc_comment)]
     Observe {
-        /// Object language: `toml` or `imp`.
-        #[arg(required = true)]
-        language: String,
+        /// Object language.
+        #[arg(required = true, value_enum)]
+        language: Language,
         /// The input file.
         #[arg(required = true)]
         path: PathBuf,
@@ -58,9 +72,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let root_crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    match cli.languages {
+    match cli.command {
         // `cargo run toml <FILE_OR_DIR>`
-        Languages::Toml { path } => {
+        Command::Toml { path } => {
             for file in collect_files(&path, "toml")? {
                 if let Err(e) = process_toml_file(&file, &root_crate_dir) {
                     eprintln!("[RuSmt] Skipping '{}': {}", file.display(), e);
@@ -68,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         // `cargo run imp <FILE_OR_DIR>`
-        Languages::Imp { path } => {
+        Command::Imp { path } => {
             for file in collect_files(&path, "imp")? {
                 if let Err(e) = process_imp_file(&file, &root_crate_dir) {
                     eprintln!("[RuSmt] Skipping '{}': {}", file.display(), e);
@@ -76,13 +90,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         // `cargo run observe <toml|imp> <FILE>`
-        Languages::Observe { language, path } => {
+        Command::Observe { language, path } => {
             let source = fs::read_to_string(&path)?;
-            let budget = rusmt_lang::certify::DEFAULT_BUDGET;
-            let line = match language.as_str() {
-                "toml" => rusmt_lang::certify::observe_toml(&source, budget),
-                "imp" => rusmt_lang::certify::observe_imp(&source),
-                other => return Err(format!("unknown language `{other}`").into()),
+            let line = match language {
+                Language::Toml => {
+                    rusmt_lang::certify::observe_toml(&source, rusmt_lang::certify::DEFAULT_BUDGET)
+                }
+                Language::Imp => rusmt_lang::certify::observe_imp(&source),
             };
             println!("{line}");
         }

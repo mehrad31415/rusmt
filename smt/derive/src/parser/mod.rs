@@ -11,6 +11,7 @@ pub mod func;
 pub mod generics;
 pub mod infer;
 pub mod intrinsics;
+mod markers;
 pub mod name;
 pub mod path;
 pub mod ty;

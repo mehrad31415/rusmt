@@ -3,17 +3,13 @@
 use crate::backend::codegen::CodeGen;
 use crate::backend::codegen::ContentBuilder;
 use crate::backend::codegen::l;
-use crate::backend::error::{BackendError, BackendResult};
-use crate::backend::response::backend_timeout;
+use crate::backend::error::BackendResult;
 // use crate::backend::response::NUM_CPU_CORES;
-use crate::backend::response::Response;
 use crate::backend::z3::exp::format_expression;
 use crate::backend::z3::fun::collect_function_call_edges;
 use crate::backend::z3::fun::format_sort_for_fn;
 use crate::backend::z3::fun::resolve_function_name;
-use crate::backend::z3::fun::{
-    mk_function_str, mk_functions_rec_str, mk_functions_unrolled_str, mk_stub_str,
-};
+use crate::backend::z3::fun::{mk_function_str, mk_functions_rec_str, mk_functions_unrolled_str};
 use crate::backend::z3::sort::format_sort;
 use crate::backend::z3::sort::get_generic_param_count;
 use crate::backend::z3::sort::{collect_type_edges, resolve_type_name, scc_from_edges};
@@ -24,39 +20,17 @@ use crate::ir::ctxt::IRContext;
 use crate::ir::exp::Expression;
 use crate::ir::index::{UsrFunId, UsrSortId};
 use crate::ir::sort::{DataType, Sort, Variant};
-use command_group::CommandGroup;
-use log::{debug, warn};
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::io::Read;
-use std::path::Path;
-use std::process::Command;
-use std::process::Stdio;
-use std::thread;
-use std::time::Duration;
-use std::time::Instant;
 
 /// A wrapper for Z3 backends that implements the `CodeGen` trait.
 #[derive(Default)]
-pub struct CodeGenZ3 {
-    /// Functions to emit as stubs rather than definitions — the marker-directed
-    /// slice (`crate::slice`). Empty means emit the whole program.
-    stub: BTreeSet<UsrFunId>,
-}
-
-impl CodeGenZ3 {
-    /// Emit `stub`'s functions as constants of their return sort instead of
-    /// their real bodies. See [`crate::slice`] for what this is for and why a
-    /// model over the result is only a candidate.
-    pub fn with_stubs(stub: BTreeSet<UsrFunId>) -> Self {
-        Self { stub }
-    }
-}
+pub struct CodeGenZ3;
 
 impl CodeGen for CodeGenZ3 {
     /// Constructs a new `CodeGenZ3` wrapper.
     fn new() -> Self {
-        Self::default()
+        Self
     }
 
     /// Returns the name of the backend code generator, which is "z3_chc".
@@ -228,7 +202,7 @@ impl CodeGen for CodeGenZ3 {
                         DataType::Record(fields) => {
                             mk_record_str(type_name_str, fields, ir, &type_params)
                         }
-                        DataType::Enum(variants) => {
+                        DataType::Enum { variants, .. } => {
                             mk_enum_str(type_name_str, variants, ir, &type_params)
                         }
                     };
@@ -555,12 +529,7 @@ impl CodeGen for CodeGenZ3 {
                 let sig = ir.fn_registry.retrieve_sig(fid);
                 let def = ir.fn_registry.retrieve_def(fid);
 
-                let function_str = if self.stub.contains(&fid) {
-                    mk_stub_str(function_name, sig, ir)
-                } else {
-                    mk_function_str(function_name, sig, def, ir)
-                };
-                l!(x, "{}", function_str);
+                l!(x, "{}", mk_function_str(function_name, sig, def, ir));
             }
 
             for scc in recursive_sccs {
@@ -574,12 +543,7 @@ impl CodeGen for CodeGenZ3 {
                         let function_name = resolve_function_name(ir, fid);
                         let sig = ir.fn_registry.retrieve_sig(fid);
                         let def = ir.fn_registry.retrieve_def(fid);
-                        let function_str = if self.stub.contains(&fid) {
-                            mk_stub_str(function_name, sig, ir)
-                        } else {
-                            mk_function_str(function_name, sig, def, ir)
-                        };
-                        l!(x, "{}", function_str);
+                        l!(x, "{}", mk_function_str(function_name, sig, def, ir));
                         continue;
                     }
                 }
@@ -600,130 +564,6 @@ impl CodeGen for CodeGenZ3 {
         l!(x);
 
         Ok(x.build())
-    }
-
-    /// Execute the backend solver on the generated SMTLIB2 file.
-    fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response> {
-        // Z3 -t:N sets the timeout in milliseconds; on expiry Z3 outputs "unknown" and exits 0.
-        let timeout = backend_timeout();
-        let timeout_ms = timeout.as_millis();
-        let mut cmd = Command::new("z3");
-        cmd.arg("-smt2")
-            .arg(format!("-t:{timeout_ms}"))
-            .arg(path_src)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        // Command::new("z3") builds the command. group_spawn() launches Z3 as an OS process inside a process group. Z3's parallel solver can itself spawn worker sub-processes. A process group means child.kill() kills Z3 AND all its workers in one shot. If you used regular .spawn() + .kill(), you'd only kill the Z3 main process and leave orphaned workers running.
-        let mut child = cmd.group_spawn().map_err(|e| {
-            warn!("Failed to spawn z3 process: {e}");
-            BackendError
-        })?;
-
-        let mut stdout = child.inner().stdout.take().ok_or_else(|| {
-            warn!("Failed to capture stdout");
-            BackendError
-        })?;
-
-        let mut stderr = child.inner().stderr.take().ok_or_else(|| {
-            warn!("Failed to capture stderr");
-            BackendError
-        })?;
-
-        let start = Instant::now();
-
-        // Read stdout in a separate thread to avoid blocking
-        let stdout_thread = thread::spawn(move || {
-            let mut output = String::new();
-            if let Err(e) = stdout.read_to_string(&mut output) {
-                warn!("failed to read Z3 stdout: {e}");
-            }
-            output
-        });
-
-        // Read stderr in a separate thread
-        let stderr_thread = thread::spawn(move || {
-            let mut message = String::new();
-            if let Err(e) = stderr.read_to_string(&mut message) {
-                warn!("failed to read Z3 stderr: {e}");
-            }
-            message
-        });
-
-        // Monitor the execution
-        let monitor_thread = thread::spawn(move || {
-            loop {
-                // check status
-                if let Ok(Some(status)) = child.try_wait() {
-                    return Some(status);
-                }
-
-                // check timeout
-                if start.elapsed() > timeout {
-                    let _ = child.kill();
-                    return None;
-                }
-
-                // wait a bit longer
-                thread::sleep(Duration::from_millis(200));
-            }
-        });
-
-        // Wait for monitoring thread to finish
-        let status = monitor_thread.join().map_err(|_| {
-            warn!("Monitoring thread panicked");
-            BackendError
-        })?;
-
-        // Wait for the stdout and stderr threads to finish
-        let output = stdout_thread.join().map_err(|_| {
-            warn!("Stdout thread panicked");
-            BackendError
-        })?;
-
-        let stderr_output = stderr_thread.join().map_err(|_| {
-            warn!("Stderr thread panicked");
-            BackendError
-        })?;
-
-        if !stderr_output.is_empty() {
-            debug!("Z3 stderr: {stderr_output}");
-        }
-
-        // Interpret the output
-        let response = match status {
-            None => {
-                // Rust monitor killed Z3 (backup path: Z3 didn't respect its own -t:N flag).
-                if !output.is_empty() {
-                    warn!("Output received from timeout execution: {output}");
-                }
-                Response::Timeout
-            }
-            Some(exit_status) => {
-                if !exit_status.success() {
-                    // Z3 crashed during model output (e.g. segfault in get-model).
-                    warn!("Z3 exited with status {exit_status} (model may be incomplete)");
-                }
-
-                let verdict = output
-                    .lines()
-                    .map(|l| l.trim())
-                    .find(|&l| l == "sat" || l == "unsat" || l == "unknown");
-
-                match verdict {
-                    Some("unsat") => Response::Unsat,
-                    Some("unknown") => Response::Unknown(extract_reason_unknown(&output)),
-                    Some("sat") => Response::Sat(output),
-                    Some(_) => unreachable!("unexpected verdict"),
-                    None => {
-                        warn!("Z3 produced no verdict. Output: {}", output.trim());
-                        return Err(BackendError);
-                    }
-                }
-            }
-        };
-
-        Ok(response)
     }
 
     fn process_path_queries(
@@ -1018,80 +858,148 @@ fn collection_wellformed(var_expr: &str, sort: &Sort, ir: &IRContext) -> Vec<Str
 /// Panics if the return sort does not contain a reachable `Sort::Path` field.
 /// This indicates a bug: `path_targets` was populated but the top-level function
 /// does not surface path markers in its return type.
+impl CodeGenZ3 {
+    /// A query that asks Z3 which markers an input reaches, rather than whether
+    /// it reaches one.
+    ///
+    /// Same declarations as a marker query, but with no marker assertion; the
+    /// returned `Path` is bound to a constant the model then reports. Pinning an
+    /// input into this and reading the constant is how a rejected candidate gets
+    /// a *counterexample* — the marker that actually fired — without consulting
+    /// anything outside the solver.
+    pub fn process_path_observation(
+        &self,
+        base_code: &str,
+        ir: &IRContext,
+        top_level_fn: &str,
+    ) -> String {
+        let instantiations = ir
+            .fn_registry
+            .lookup()
+            .iter()
+            .find(|(name, _)| name.as_ref() == top_level_fn)
+            .unwrap_or_else(|| panic!("top-level function '{top_level_fn}' not found"))
+            .1;
+        let fn_id = instantiations.values().next().expect("monomorphic");
+        let sig = ir.fn_registry.retrieve_sig(*fn_id);
+
+        let mut query = base_code.to_string();
+        let mut param_vars: Vec<String> = Vec::new();
+        for (i, (_, param_sort)) in sig.params.iter().enumerate() {
+            let var = format!("input_{i}");
+            query.push_str(&format!(
+                "\n(declare-const {var} {})",
+                format_sort_for_fn(param_sort, ir)
+            ));
+            if let Some(bound) = unicode_bound_for(&var, param_sort) {
+                query.push_str(&format!("\n{bound}"));
+            }
+            for wf in collection_wellformed(&var, param_sort, ir) {
+                query.push_str(&format!("\n{wf}"));
+            }
+            param_vars.push(var);
+        }
+        let call_expr = if param_vars.is_empty() {
+            top_level_fn.to_string()
+        } else {
+            format!("({} {})", top_level_fn, param_vars.join(" "))
+        };
+
+        // Select the site whose guard holds; the empty path when none does,
+        // which is exactly "the run raised no marker".
+        let sites = path_sites(&sig.ret_ty, &call_expr, ir);
+        let empty = crate::backend::z3::path::empty_literal(ir);
+        let mut value = empty.clone();
+        for (guard, expr) in sites.iter().rev() {
+            value = if guard == "true" {
+                expr.clone()
+            } else {
+                format!("(ite {guard} {expr} {value})")
+            };
+        }
+        query.push_str(&format!(
+            "\n(declare-const {} {})\n(assert (= {} {value}))\n",
+            crate::guidance::OBSERVED_PATH,
+            crate::backend::z3::path::sort_str(ir),
+            crate::guidance::OBSERVED_PATH
+        ));
+        query.push_str("(check-sat)\n(get-model)\n");
+        query
+    }
+}
+
+/// Where a returned value carries its `Path`: one `(guard, path expression)` per
+/// site. `guard` is `true` when the return sort *is* `Path`, and the variant
+/// tester when it is an enum carrying one.
+fn path_sites(ret_sort: &Sort, call_expr: &str, ir: &IRContext) -> Vec<(String, String)> {
+    match ret_sort {
+        Sort::Path => vec![("true".to_string(), call_expr.to_string())],
+        Sort::User(sid) => {
+            let dt = ir.ty_registry.retrieve(*sid);
+            let type_name = resolve_type_name(ir, *sid);
+            let DataType::Enum { variants, .. } = dt else {
+                panic!("return type is not an enum — cannot extract path from {ret_sort:?}")
+            };
+            let mut sites = Vec::new();
+            for (vname, vdef) in variants {
+                let tester = format!("({} {call_expr})", format_args!("is-{type_name}_{vname}"));
+                match vdef {
+                    Variant::Tuple(slots) => {
+                        for (i, slot) in slots.iter().enumerate() {
+                            if *slot == Sort::Path {
+                                let acc = format!("field_{}_{}_{}_", type_name, vname, i + 1);
+                                sites.push((tester.clone(), format!("({acc} {call_expr})")));
+                            }
+                        }
+                    }
+                    Variant::Record(fields) => {
+                        for (key, sort) in fields {
+                            if *sort == Sort::Path {
+                                let acc = format!("record_{type_name}_{vname}_{key}_");
+                                sites.push((tester.clone(), format!("({acc} {call_expr})")));
+                            }
+                        }
+                    }
+                    Variant::Unit => {}
+                }
+            }
+            assert!(
+                !sites.is_empty(),
+                "return type '{type_name}' has no Path fields in any variant"
+            );
+            sites
+        }
+        _ => panic!("return sort {ret_sort:?} does not contain Path — cannot generate path query"),
+    }
+}
+
+/// "Every marker in the target fired", over whichever site carries the `Path`.
+///
+/// One mask handles both target shapes: a singleton `Path::named` and a
+/// multi-marker `Path::merge`. Building it once, rather than per id, is what
+/// makes the merge case work — conjoining per-id equalities over a single-value
+/// encoding was a contradiction, unsat for every input regardless of the program.
 fn extract_path_assertion(
     ret_sort: &Sort,
     call_expr: &str,
     path_ids: &BTreeSet<usize>,
     ir: &IRContext,
 ) -> String {
-    // "Every marker in the target fired." One mask handles both target shapes:
-    // a singleton `Path::named` target and a multi-marker `Path::merge` target.
-    // Building it once, rather than per id, is what makes the merge case work —
-    // conjoining per-id equalities over a single-value encoding was a
-    // contradiction, unsat for every input regardless of the program.
-    let member = |expr: &str| crate::backend::z3::path::contains_all(expr, path_ids, ir);
-    match ret_sort {
-        // Function returns Path directly.
-        // Example: (= (bvand (parse_toml input_0) (_ bv4 8)) (_ bv4 8))
-        Sort::Path => member(call_expr),
-        // Function returns a user-defined enum — find the variant(s) that carry a Path field.
-        // Example for ParseResult with Err(Path):
-        //   (and (is-Err (parse_toml input_0))
-        //        (= (bvand (field_ParseResult_Err_1_ (parse_toml input_0)) M) M))
-        Sort::User(sid) => {
-            let dt = ir.ty_registry.retrieve(*sid);
-            let type_name = resolve_type_name(ir, *sid);
-            match dt {
-                DataType::Enum(variants) => {
-                    let mut assertions: Vec<String> = Vec::new();
-                    for (vname, vdef) in variants {
-                        match vdef {
-                            Variant::Tuple(slots) => {
-                                for (i, slot_sort) in slots.iter().enumerate() {
-                                    if *slot_sort == Sort::Path {
-                                        let tester = format!("is-{type_name}_{vname}");
-                                        let accessor =
-                                            format!("field_{}_{}_{}_", type_name, vname, i + 1);
-                                        let field = format!("({accessor} {call_expr})");
-                                        assertions.push(format!(
-                                            "(and ({tester} {call_expr}) {})",
-                                            member(&field)
-                                        ));
-                                    }
-                                }
-                            }
-                            Variant::Record(fields) => {
-                                for (field_key, field_sort) in fields {
-                                    if *field_sort == Sort::Path {
-                                        let tester = format!("is-{type_name}_{vname}");
-                                        let accessor =
-                                            format!("record_{type_name}_{vname}_{field_key}_");
-                                        let field = format!("({accessor} {call_expr})");
-                                        assertions.push(format!(
-                                            "(and ({tester} {call_expr}) {})",
-                                            member(&field)
-                                        ));
-                                    }
-                                }
-                            }
-                            Variant::Unit => {} // Unit variants carry no data.
-                        }
-                    }
-                    assert!(
-                        !assertions.is_empty(),
-                        "return type '{type_name}' has no Path fields in any variant"
-                    );
-                    if assertions.len() == 1 {
-                        assertions.remove(0)
-                    } else {
-                        format!("(or {})", assertions.join(" "))
-                    }
-                }
-                _ => panic!(
-                    "return type is not an enum — cannot extract path assertion from {ret_sort:?}"
-                ),
+    let sites = path_sites(ret_sort, call_expr, ir);
+    let mut parts: Vec<String> = sites
+        .iter()
+        .map(|(guard, expr)| {
+            let member = crate::backend::z3::path::contains_all(expr, path_ids, ir);
+            if guard == "true" {
+                member
+            } else {
+                format!("(and {guard} {member})")
             }
-        }
-        _ => panic!("return sort {ret_sort:?} does not contain Path — cannot generate path query"),
+        })
+        .collect();
+    if parts.len() == 1 {
+        parts.remove(0)
+    } else {
+        format!("(or {})", parts.join(" "))
     }
 }

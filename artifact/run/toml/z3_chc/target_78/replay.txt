@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `integer_oct_hex_digit_in_body`
+the SMT lift and the concrete semantics agree on this input

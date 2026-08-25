@@ -1,0 +1,1 @@
+std_table_redefines_array_table

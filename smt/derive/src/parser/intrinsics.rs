@@ -1651,13 +1651,20 @@ impl Intrinsic {
             }) => Ok(val.value()),
             // DSL string-literal idiom: `String::from("marker")`.
             Exp::Call(ExprCall { func, args, .. }) => {
-                let is_from = matches!(
+                // `String::from` only: any other `T::from` is not a DSL string.
+                let is_string_from = matches!(
                     func.as_ref(),
                     Exp::Path(ExprPath { path, .. })
-                        if path.segments.last().is_some_and(|s| s.ident == "from")
+                        if path.segments.len() >= 2
+                            && path.segments[path.segments.len() - 2].ident == "String"
+                            && path.segments[path.segments.len() - 1].ident == "from"
                 );
-                if !is_from {
-                    bail_on!(expr, "marker name must be a string literal");
+                if !is_string_from {
+                    bail_on!(
+                        expr,
+                        "marker name must be a string literal, \
+                                    optionally wrapped in `String::from(..)`"
+                    );
                 }
                 let inner = bail_if_missing!(args.iter().next(), args, "marker name");
                 Self::extract_str_literal_syn(inner)

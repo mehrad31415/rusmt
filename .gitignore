@@ -4,8 +4,8 @@ target/
 # macOS
 .DS_Store
 
-# visual studio code
-.sln
+# visual studio
+*.sln
 
 # generated synthesis artifacts
 lang/src/synthesis/
@@ -26,7 +26,5 @@ lang/src/synthesis/
 *.fdb_latexmk
 *.synctex.gz
 *.toc
-
-# scratch
-temp.txt
-issues-to-file.md
+specops/rusmt-specops26-sources.zip
+*.cut

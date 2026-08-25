@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `key_value_missing_equals_char`
+the SMT lift and the concrete semantics agree on this input

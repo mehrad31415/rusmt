@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `dotted_key_redefines_inline_table`
+the SMT lift and the concrete semantics agree on this input

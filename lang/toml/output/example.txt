@@ -1,0 +1,25 @@
+Table(
+    Cloak {
+        inner: SMTWrap(
+            Bind(
+                String {
+                    inner: "a",
+                },
+                Cloak {
+                    inner: SMTWrap(
+                        Integer(
+                            I64 {
+                                inner: 1,
+                            },
+                        ),
+                    ),
+                },
+                Cloak {
+                    inner: SMTWrap(
+                        Empty,
+                    ),
+                },
+            ),
+        ),
+    },
+)

@@ -23,7 +23,7 @@
   institution = {Department of Computer Science, The University of Iowa},
   type        = {Technical Report},
   year        = {2017},
-  note        = {Available at \url{https://smt-lib.org}}
+  note        = {Available at \url{https://smt-lib.org/papers/smt-lib-reference-v2.6-r2021-05-12.pdf}}
 }
 
 % ---- Solver-aided languages / synthesis --------------------------------------
@@ -82,7 +82,8 @@
   booktitle = {2013 Formal Methods in Computer-Aided Design (FMCAD 2013)},
   pages     = {1--8},
   publisher = {IEEE},
-  year      = {2013}
+  year      = {2013},
+  doi          = {10.1109/FMCAD.2013.6679385}
 }
 
 % [verify] Synantic is the tool's name; the paper's title is the one below.
@@ -108,7 +109,8 @@
                Design and Implementation (OSDI 2008)},
   pages     = {209--224},
   publisher = {USENIX Association},
-  year      = {2008}
+  year      = {2008},
+  url          = {https://www.usenix.org/conference/osdi-08/klee-unassisted-and-automatic-generation-high-coverage-tests-complex-systems}
 }
 
 @article{futamura1999partial,
@@ -305,6 +307,51 @@
   doi       = {10.1109/ICSE43902.2021.00015}
 }
 
+@misc{smtlibunicode,
+  author       = {Cesare Tinelli and Clark Barrett and Pascal Fontaine},
+  title        = {{SMT-LIB} Theory of Unicode Strings},
+  howpublished = {\url{https://smt-lib.org/theories-UnicodeStrings.shtml}},
+  year         = {2020},
+  note         = {Accessed 2026-08-24}
+}
+
+@inproceedings{wen2024autospec,
+  author    = {Cheng Wen and Jialun Cao and Jie Su and Zhiwu Xu and
+               Shengchao Qin and Mengda He and Haokun Li and
+               Shing-Chi Cheung and Cong Tian},
+  title     = {Enchanting Program Specification Synthesis by Large Language
+               Models Using Static Analysis and Program Verification},
+  booktitle = {Computer Aided Verification (CAV 2024)},
+  series    = {Lecture Notes in Computer Science},
+  publisher = {Springer},
+  year      = {2024},
+  doi       = {10.1007/978-3-031-65630-9_16},
+  note      = {arXiv:2404.00762}
+}
+
+@misc{ma2024specgen,
+  author       = {Lezhi Ma and Shangqing Liu and Yi Li and Xiaofei Xie and
+                  Lei Bu},
+  title        = {{SpecGen}: Automated Generation of Formal Program
+                  Specifications via Large Language Models},
+  howpublished = {arXiv:2401.08807},
+  year         = {2024},
+  doi          = {10.48550/arXiv.2401.08807}
+}
+
+@inproceedings{solarlezama2006sketching,
+  author    = {Armando Solar-Lezama and Liviu Tancau and Rastislav Bod{\'i}k and
+               Sanjit A. Seshia and Vijay A. Saraswat},
+  title     = {Combinatorial Sketching for Finite Programs},
+  booktitle = {Proceedings of the 12th International Conference on Architectural
+               Support for Programming Languages and Operating Systems
+               (ASPLOS 2006)},
+  pages     = {404--415},
+  publisher = {ACM},
+  year      = {2006},
+  doi       = {10.1145/1168857.1168907}
+}
+
 @inproceedings{jha2023cegisllm,
   author    = {Sumit Kumar Jha and Susmit Jha and Patrick Lincoln and
                Nathaniel D. Bastian and Alvaro Velasquez and Rickard Ewetz and
@@ -357,7 +404,8 @@
   series    = {Foundations of Computing},
   publisher = {MIT Press},
   year      = {1993},
-  isbn      = {9780262231695}
+  isbn      = {9780262231695},
+  doi          = {10.7551/mitpress/3054.001.0001}
 }
 
 % ---- LLMs as proposers behind a trusted checker (verified on arXiv/DBLP) ------
@@ -378,7 +426,8 @@
   year      = {2025},
   note      = {To appear, IEEE Symposium on Security and Privacy (S\&P) 2026},
   eprint    = {2504.17542},
-  archivePrefix = {arXiv}
+  archivePrefix = {arXiv},
+  doi          = {10.48550/arXiv.2504.17542}
 }
 
 @inproceedings{wu2024lemur,
@@ -387,7 +436,8 @@
   booktitle = {International Conference on Learning Representations (ICLR 2024)},
   year      = {2024},
   eprint    = {2310.04870},
-  archivePrefix = {arXiv}
+  archivePrefix = {arXiv},
+  url          = {https://proceedings.iclr.cc/paper_files/paper/2024/hash/0c86142265c5e2c900613dd1d031cb90-Abstract-Conference.html}
 }
 
 @article{romeraparedes2023funsearch,
@@ -525,7 +575,8 @@
   booktitle = {11th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
   pages     = {249--265},
   year      = {2014},
-  publisher = {USENIX Association}
+  publisher = {USENIX Association},
+  url          = {https://www.usenix.org/conference/osdi14/technical-sessions/presentation/yuan}
 }
 
 @inproceedings{gunawi2008eio,
@@ -534,7 +585,8 @@
   booktitle = {6th USENIX Conference on File and Storage Technologies (FAST)},
   pages     = {207--222},
   year      = {2008},
-  publisher = {USENIX Association}
+  publisher = {USENIX Association},
+  url          = {https://www.usenix.org/legacy/events/fast08/tech/gunawi.html}
 }
 
 @misc{seriot2016json,
@@ -595,7 +647,8 @@
   author       = {{Ecma International TC39}},
   title        = {{Test262}: {ECMAScript} Conformance Test Suite},
   howpublished = {\url{https://github.com/tc39/test262}},
-  note         = {Accessed 2026-06-20}
+  year         = {2026},
+  note         = {Accessed 2026-08-25}
 }
 
 @inproceedings{biere1999bmc,
@@ -608,4 +661,49 @@
   year      = {1999},
   publisher = {Springer},
   doi       = {10.1007/3-540-49059-0_14}
+}
+
+@inproceedings{clarke2004cbmc,
+  author    = {Clarke, Edmund and Kroening, Daniel and Lerda, Flavio},
+  title     = {A Tool for Checking {ANSI-C} Programs},
+  booktitle = {TACAS},
+  pages     = {168--176},
+  year      = {2004},
+  doi          = {10.1007/978-3-540-24730-2_15}
+}
+@inproceedings{poeplau2020symcc,
+  author    = {Poeplau, Sebastian and Francillon, Aur{\'e}lien},
+  title     = {Symbolic Execution with {SymCC}: Don't Interpret, Compile!},
+  booktitle = {USENIX Security},
+  pages     = {181--198},
+  year      = {2020},
+  url          = {https://www.usenix.org/conference/usenixsecurity20/presentation/poeplau}
+}
+@article{meng2025autobug,
+  author  = {Li, Yihe and Meng, Ruijie and Duck, Gregory J.},
+  title   = {Large Language Model Powered Symbolic Execution},
+  journal = {Proc. ACM Program. Lang.},
+  volume  = {9},
+  number  = {OOPSLA2},
+  articleno = {385},
+  year    = {2025},
+  doi          = {10.1145/3763163}
+}
+@article{jard2005tgv,
+  author  = {Jard, Claude and J{\'e}ron, Thierry},
+  title   = {{TGV}: Theory, Principles and Algorithms},
+  journal = {Int. J. Softw. Tools Technol. Transf.},
+  volume  = {7},
+  number  = {4},
+  pages   = {297--315},
+  year    = {2005},
+  doi          = {10.1007/s10009-004-0153-x}
+}
+
+@misc{rusmt-artifact,
+  author       = {Mehrad Haghshenas and Meng Xu},
+  title        = {Reproduction Package for Article `{RuSMT}: An Executable Semantics as Conformance Oracle and Test Suite Synthesizer'},
+  howpublished = {Zenodo},
+  year         = {2026},
+  doi          = {10.5281/zenodo.22095547}
 }

@@ -11,7 +11,8 @@ candidate one, and each has to be triaged against the TOML spec by hand — this
 script flags, it does not adjudicate.
 
 usage: diff.py <suite_dir> [--json out.json]
-       suite_dir holds <marker>.toml files (see collect.py).
+       suite_dir holds <marker>.toml files produced by the framework's
+       --suite-out option.
 """
 import json
 import os
@@ -129,6 +130,27 @@ def main():
         for m, n, o, i in disagreements:
             print(f"{m:<40} {n:<16} {o[:25]:<26} {i[:40]}")
 
+    # Two different findings, and the paper must not conflate them.
+    #
+    #  * an implementation disagreeing with the ORACLE is a conformance result:
+    #    the executable specification says the document violates a named rule and
+    #    the implementation does not, so it is a candidate bug against the spec;
+    #  * implementations disagreeing with EACH OTHER is a differential result: it
+    #    shows the generated suite discriminates between real parsers, and holds
+    #    whether or not our formalisation is right.
+    cross = []
+    for r in rows:
+        verdicts = {n: i["verdict"] for n, i in r["impls"].items()}
+        if len({v for v in verdicts.values() if v in ("accept", "reject")}) > 1:
+            cross.append((r["marker"], verdicts))
+    print(f"\n# {len(cross)} inputs on which the independent implementations "
+          f"disagree with EACH OTHER")
+    print("#   (a differential result: the suite discriminates between parsers,")
+    print("#    independently of whether our reference is right)")
+    for marker, v in cross:
+        summary = ", ".join(f"{n}={x}" for n, x in sorted(v.items()))
+        print(f"    {marker:<44} {summary}")
+
     # Per-implementation agreement summary.
     print("\n# agreement with the RuSmt oracle (accept/reject only)")
     for name in sorted(available):
@@ -142,7 +164,10 @@ def main():
 
     if out_json:
         json.dump({"versions": vers, "rows": rows,
-                   "disagreements": disagreements}, open(out_json, "w"), indent=1)
+                   "disagreements": disagreements,
+                   "cross_implementation": [
+                       {"marker": m, "verdicts": v} for m, v in cross
+                   ]}, open(out_json, "w"), indent=1)
         print(f"\n# wrote {out_json}")
     return 0
 

@@ -1,50 +1,17 @@
-//! AI-assisted authoring of a reference semantics in the DSL, behind
-//! mechanical and behavioral gates.
+//! Drafts a reference semantics from a prose spec, behind mechanical gates.
 //!
-//! The single biggest objection to the RuSMT approach is economic: writing a
-//! complete interpreter in a restricted DSL is expensive. This module lowers
-//! that cost without admitting the model into the trusted base: an untrusted
-//! [`Proposer`] (typically a language model) drafts the `#[smt_type]` /
-//! `#[smt_fn]` source from a prose specification, and the *framework's own
-//! machinery* gates every draft:
+//! A [`Proposer`] writes the `#[smt_type]` / `#[smt_fn]` source; the framework's
+//! own machinery judges it. Gates run cheapest first:
 //!
-//! 1. **Front-end gate** — the draft must be accepted by the DSL parser and
-//!    sort checker (the same code that processes hand-written specifications);
-//!    rejections carry the parser's spanned error messages.
-//! 2. **Back-end gate** — the draft must transpile: the text backend must emit
-//!    well-formed SMT-LIB for it.
-//! 3. **Marker gate** — the draft must declare at least one *named* marker
-//!    (`Path::named`), since named markers are the test intent and what the
-//!    synthesis and certification pipeline operates on.
+//! 1. front end -- the DSL parser and sort checker accept it
+//! 2. back end -- it transpiles to well-formed SMT-LIB
+//! 3. marker -- it declares at least one `Path::named`
+//! 4. reachability -- no declared marker is dead under the draft's own semantics
+//! 5. spec example -- it agrees with the author's examples
 //!
-//! Those three are mechanical: they establish that the draft is a well-formed,
-//! transpilable specification with declared coverage intent. Two further gates
-//! check the draft's *behavior*, by turning the framework's own synthesis
-//! machinery against the draft (see [`author_semantics_validated`]):
-//!
-//! 4. **Marker-reachability gate** — for each named marker the draft declares,
-//!    the per-target synthesis query is built from the draft's own IR and
-//!    handed to the solver. `unsat` (at k=0, i.e. against the draft's genuine
-//!    recursive semantics) proves the marker is dead code *in the draft*: the
-//!    draft declared a test intent it cannot meet. That solver-proved
-//!    counterexample is fed back. `sat` records the witness; a timeout is a
-//!    warning, not a failure.
-//! 5. **Spec-example gate** — the human supplies concrete behavioral examples
-//!    (`INPUT<TAB>EXPECT`, where EXPECT is `ok`, `err:<marker>`, or
-//!    `nomatch`); examples come from the prose spec or its author, never from
-//!    the model. Each input is fixed concretely in the query
-//!    (`(assert (= input_0 …))`) and the draft's observable class — which
-//!    named markers its result carries — is checked by the solver. A mismatch
-//!    ("on this input your draft fires `boolean_invalid`, the spec says ok")
-//!    is fed back.
-//!
-//! Gate failures are fed back to the proposer verbatim and the loop repeats up
-//! to a round budget. The behavioral gates are what a chat session cannot
-//! reproduce: the repair loop consumes solver-generated counterexamples
-//! derived from the draft's own declared intent. Even so, the gates do **not**
-//! establish full semantic fidelity to the prose specification: that remains
-//! the author's judgment (review) plus downstream differential testing, with
-//! the human owning the artifact. The model proposes; it never certifies.
+//! Failures are fed back verbatim and the loop repeats to a round budget.
+//! Admission means the conjunction of those gates held: the draft is internally
+//! consistent, not correct. No reference exists to check it against.
 
 use crate::guidance::Response;
 use crate::ir::ctxt::IRContext;
@@ -59,6 +26,7 @@ use std::time::Duration;
 
 /// Default number of drafting rounds.
 pub const DEFAULT_MAX_ROUNDS: usize = 4;
+// A spending limit, not a tuned parameter. Same status as `cosolve::DEFAULT_ROUNDS`.
 
 /// Default per-query Z3 budget for the behavioral gates, in seconds.
 pub const DEFAULT_AUTHOR_Z3_SECS: u64 = 20;
@@ -72,57 +40,73 @@ pub fn author_z3_budget_from_env() -> Duration {
     Duration::from_secs(secs)
 }
 
-/// A condensed reference of the DSL surface handed to the proposer. It is a
-/// prompt aid, not a normative document — the gates, which run the *real*
-/// parser and backend, are what decide admissibility.
+/// The conventions the task imposes, and where the DSL itself is defined.
+///
+/// Not an API summary: a curated list is a second artifact that drifts from the
+/// crate it describes. The proposer reads the crates.
 pub const DSL_GUIDE: &str = r#"A RuSMT specification is one self-contained Rust
 source file of `#[smt_type]` data types and `#[smt_fn]` functions, written in a
-restricted subset that translates to SMT:
+restricted subset that translates to SMT.
 
-- Allowed: immutable `let` bindings, `if`/`else` (`else` is mandatory),
-  `match` over enums, struct/enum construction, and (mutually) recursive
-  function calls. Recursion is the ONLY iteration: no loops, no mutation, no
-  references, no closures, no `self` receivers, no `?`.
-- Imports: `use rusmt_smt_remark_derive::{smt_fn, smt_type};` and
-  `use rusmt_smt_stdlib::{...};` (plus `bitvector::BitvectorOps` and `smt::SMT`
-  when their methods are used).
-- Standard-library types (these denote Z3 sorts, not Rust semantics):
-  `Boolean`, `Integer` (unbounded), `Real`, `I32`/`I64`/`U32`/`U64`
-  (bit-vectors), `String`, `Seq<T>`, `Set<T>`, `Array<K, V>`, `Cloak<T>`,
-  `Path`.
-- Equality/comparison come from the `SMT` trait and return `Boolean`:
-  `a.eq(b)`, `a.ne(b)`; branch by dereferencing: `if *a.eq(b) { .. } else { .. }`.
-- Bit-vector arithmetic comes from `BitvectorOps`: `bv_add`, `bv_sub`,
-  `bv_mul`, `bv_div`, `bv_rem`, `bv_lt`, `bv_le`, `bv_gt`, `bv_ge`, shifts.
-  Literals: `I64::from(0)`, `U32::from(65)`, `Boolean::from(true)`,
-  `String::from("x")`.
-- Collections: `Array::new()`, `.store(k, v)`, `.select(k)`,
-  `.contains_key(k)`; `Seq::new()`, `.append(x)`.
-- Text input is a `Seq<U32>` of Unicode code points, indexed from 0. Useful
-  `Seq<U32>` methods: `.is_empty()` and `.length()` (the `Integer` length);
-  `.at(Integer::from(i))` (the `U32` code point at index `i`); `.contains(x)`,
-  `.prefix_of(other)`, `.suffix_of(other)`. Compare a code point with
-  `*s.at(Integer::from(0)).eq(U32::from(122))` (122 = 'z').
-- Self-referential ADTs use `Cloak<T>` at every recursive position
-  (`Add(Cloak<Aexp>, Cloak<Aexp>)`); build with `Cloak::shield(x)`, read with
-  `x.reveal()`. At least one variant of the enum must be non-recursive.
-- Every error or edge condition the future test suite should reach is a NAMED
-  marker: `Path::named("descriptive_snake_case_name")`, carried in a result
-  enum, e.g.
+== Requirements, and where each is enforced ==
+These are requirements of the task. None is a matter of taste: each is checked
+by code you can read, cited so you can confirm the wording against it.
+
+- Exactly ONE top-level entry function — the unique function no other function
+  calls — and for a text language it takes exactly one `Seq<U32>` parameter,
+  the input as Unicode code points. It must fix every other piece of context
+  internally, so its parameters are exactly the inputs to be synthesized.
+  Enforced: `detect_entry` and `entry_takes_one_text_input`,
+  smt/derive/src/authoring.rs.
+- Every error or edge condition the test suite should reach is a NAMED marker,
+  `Path::named("snake_case_name")`, carried in a result enum:
       #[smt_type]
       pub enum EvalResult { Err(Path), Ok(I64) }
-  The guard pattern: special-case the diverging input, fall through to the
-  stdlib operation otherwise:
+  The guard pattern is to special-case the diverging input and fall through to
+  the ordinary operation otherwise:
       if *divisor.eq(I64::from(0)) {
           EvalResult::Err(Path::named("division_by_zero"))
       } else {
           EvalResult::Ok(lhs.bv_div(divisor))
       }
-- Shape of a typical specification: one enum per syntactic category (with
-  `Cloak` at recursive positions), one result enum per evaluator, mutually
-  recursive `#[smt_fn]` evaluators, and ONE top-level entry function that fixes
-  every piece of context internally (e.g. starts from an empty store) so that
-  its parameters are exactly the inputs to be synthesized."#;
+  Enforced: marker collection in smt/remark/src/marker.rs.
+- Recursion is the ONLY iteration: no loops, no mutation, no references, no
+  closures, no `self` receivers, no `?`; `else` is mandatory on every `if`.
+  Enforced: smt/derive/src/parser/ (ctxt.rs, func.rs) — what the front end
+  rejects, you may not write.
+- Branch on an SMT `Boolean` by dereferencing: `if *a.eq(b) { .. } else { .. }`.
+- Self-referential ADTs use `Cloak<T>` at every recursive position
+  (`Add(Cloak<Aexp>, Cloak<Aexp>)`); build with `Cloak::shield(x)`, read with
+  `x.reveal()`. At least one variant must be non-recursive.
+- Imports: `use rusmt_smt_remark_derive::{smt_fn, smt_type};` and
+  `use rusmt_smt_stdlib::{...};` (plus trait imports such as
+  `bitvector::BitvectorOps` and `smt::SMT` when their methods are used).
+
+== Where the DSL is defined ==
+Three crates define the language. They are AUTHORITATIVE and you can read all
+of them; read what you need rather than guessing, and where this text and the
+source disagree, the source is right.
+
+  smt/stdlib/    every sort you can use and every operation on it.
+                 `src/dt/` has one file per sort — `seq.rs` (text and
+                 sequences), `int.rs` (unbounded `Integer`, radix decoding,
+                 range predicates), `bitvector.rs` (`I64`/`U32` arithmetic),
+                 `boolean.rs`, `string.rs`, `array.rs`, `set.rs`,
+                 `path.rs` (markers), `cloak.rs`, `real.rs`, `float.rs`,
+                 `smt.rs` (`eq`/`ne`) — and `src/exp.rs` has the quantified
+                 expressions. Every `pub fn` is callable from a specification;
+                 anything named `test_*` is a unit test, not API.
+  smt/remark/    the `#[smt_type]` / `#[smt_fn]` macros: which item shapes are
+                 accepted, and how markers are collected from a function body.
+  smt/derive/    the compiler. `src/parser/` is the front end and therefore the
+                 definition of the accepted subset — what it rejects, you may
+                 not write; `src/ir/` is the sorts a specification lowers into;
+                 `src/backend/` is the SMT-LIB emitted for each construct.
+
+Nothing else in the repository is readable. In particular the reference
+semantics for the language you are specifying is withheld on purpose: the
+exercise is to write it from the specification, not to recover it.
+"#;
 
 // ---------------------------------------------------------------------------
 // Spec examples (the human's behavioral test intent).
@@ -244,11 +228,7 @@ pub struct AuthoringOutcome {
     pub rounds: Vec<Round>,
 }
 
-/// Render the whole authoring session as a human-readable transcript: every
-/// round's draft, its gate failures, and what the solver established about it.
-/// Persisted next to the output file so a rejected session can be inspected,
-/// mirroring the `fallback.txt` / `guidance.txt` transcripts of the synthesis
-/// pipeline.
+/// Renders the session: every draft, its gate failures, and the solver's findings.
 pub fn render_transcript(
     spec_label: &str,
     examples: &[Example],
@@ -535,9 +515,8 @@ fn behavioral_gates(
         // pinned by an equality assertion, sat/unsat decides; None = budget.
         let mut fires = |id: usize, name: &str| -> Result<Option<bool>, String> {
             let query = build_query(id)?;
-            let query =
-                crate::guidance::fix_input_query(&query, &ex.input, crate::guidance::INPUT_VAR)
-                    .ok_or_else(|| "internal: the query has no (check-sat)".to_string())?;
+            let query = crate::guidance::pin_input(&query, &ex.input, crate::guidance::INPUT_VAR)
+                .ok_or_else(|| "internal: the query has no (check-sat)".to_string())?;
             Ok(match solve(&format!("example{n}:{name}"), &query) {
                 Response::Sat(_) => Some(true),
                 Response::Unsat => Some(false),
@@ -667,11 +646,28 @@ fn behavioral_gates(
 // ---------------------------------------------------------------------------
 
 /// Build the drafting prompt for one round.
-fn build_prompt(spec: &str, examples: &[Example], rounds: &[Round]) -> String {
+fn build_prompt(spec: &str, examples: &[Example], markers: &[String], rounds: &[Round]) -> String {
+    // Optional: supplied only when the caller fixes the taxonomy in advance.
+    let markers_block = if markers.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "== The markers you must declare ==\n\
+             Use `Path::named` with EXACTLY these names, one per error condition. \
+             The name states the rule; detect precisely that and nothing else. Do \
+             not invent, rename or omit any.\n{}\n\n",
+            markers
+                .iter()
+                .map(|m| format!("  {m}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
     let mut p = format!(
         "You are drafting an executable reference semantics in the RuSMT DSL.\n\n\
          == The DSL ==\n{DSL_GUIDE}\n\n\
          == The language to specify ==\n{spec}\n\n\
+         {markers_block}\
          == Requirements ==\n\
          - One self-contained Rust source file, nothing else.\n\
          - Mark every error/edge condition with `Path::named(\"...\")`.\n\
@@ -741,13 +737,14 @@ fn propose_with_retry(proposer: &mut dyn Proposer, prompt: &str) -> Result<Strin
 fn author_core(
     spec: &str,
     examples: &[Example],
+    markers: &[String],
     proposer: &mut dyn Proposer,
     mut solve: Option<&mut dyn FnMut(&str, &str) -> Response>,
     max_rounds: usize,
 ) -> AuthoringOutcome {
     let mut rounds: Vec<Round> = Vec::new();
     for _ in 0..max_rounds {
-        let prompt = build_prompt(spec, examples, &rounds);
+        let prompt = build_prompt(spec, examples, markers, &rounds);
         let candidate = match propose_with_retry(proposer, &prompt) {
             Ok(c) => c,
             Err(e) => {
@@ -791,39 +788,31 @@ fn author_core(
     }
 }
 
-/// The gated authoring loop, mechanical gates only: ask `proposer` for up to
-/// `max_rounds` drafts of a reference semantics for the prose specification
-/// `spec`; each draft must pass the mechanical gates (front end, back end,
-/// named markers) to be admitted. Gate failures are fed back verbatim
-/// (counterexample-guided). Prefer [`author_semantics_validated`], which adds
-/// the behavioral gates.
+/// Drafts `spec` under the mechanical gates only (front end, back end, marker).
 ///
-/// The admitted draft is *mechanically admissible*, not trusted: the human
-/// author reviews and owns it, and its semantic fidelity is established
-/// downstream (review, differential testing). See the module documentation.
+/// Prefer [`author_semantics_validated`], which adds the behavioral gates.
 pub fn author_semantics(
     spec: &str,
+    markers: &[String],
     proposer: &mut dyn Proposer,
     max_rounds: usize,
 ) -> AuthoringOutcome {
-    author_core(spec, &[], proposer, None, max_rounds)
+    author_core(spec, &[], markers, proposer, None, max_rounds)
 }
 
-/// The full gated authoring loop: the mechanical gates (front end, back end,
-/// named markers) plus the behavioral self-validation gates — solver-proved
-/// marker reachability and spec-example conformance — run on every draft.
-/// `solve` is the solver seam, `(label, query) -> Response`; the CLI passes a
-/// real Z3 invocation under `RUSMT_AUTHOR_Z3_SECS`, tests pass a script.
-/// `examples` is the human's concrete test intent (see [`parse_examples`]);
-/// pass `&[]` to run only the reachability gate.
+/// Drafts `spec` under all five gates.
+///
+/// `solve` is the solver seam, `(label, query) -> Response`. `examples` is the
+/// author's test intent; `&[]` runs only the reachability gate.
 pub fn author_semantics_validated(
     spec: &str,
     examples: &[Example],
+    markers: &[String],
     proposer: &mut dyn Proposer,
     solve: &mut dyn FnMut(&str, &str) -> Response,
     max_rounds: usize,
 ) -> AuthoringOutcome {
-    author_core(spec, examples, proposer, Some(solve), max_rounds)
+    author_core(spec, examples, markers, proposer, Some(solve), max_rounds)
 }
 
 #[cfg(test)]
@@ -957,7 +946,7 @@ pub fn second(v: I64) -> CheckResult {
     #[test]
     fn a_draft_that_fails_the_front_end_gets_feedback_and_a_repair_is_admitted() {
         let mut mock = MockProposer::new(vec!["fn broken(", GOOD_DRAFT]);
-        let outcome = author_semantics("a toy nonzero-check language", &mut mock, 4);
+        let outcome = author_semantics("a toy nonzero-check language", &[], &mut mock, 4);
         assert!(outcome.accepted.is_some());
         assert_eq!(outcome.rounds.len(), 2);
         assert!(!outcome.rounds[0].failures.is_empty());
@@ -970,7 +959,7 @@ pub fn second(v: I64) -> CheckResult {
     #[test]
     fn a_draft_without_named_markers_is_rejected_by_the_marker_gate() {
         let mut mock = MockProposer::new(vec![UNMARKED_DRAFT]);
-        let outcome = author_semantics("a toy identity language", &mut mock, 1);
+        let outcome = author_semantics("a toy identity language", &[], &mut mock, 1);
         assert!(outcome.accepted.is_none());
         assert!(
             outcome.rounds[0]
@@ -983,7 +972,7 @@ pub fn second(v: I64) -> CheckResult {
     #[test]
     fn the_round_budget_is_respected() {
         let mut mock = MockProposer::new(vec!["x", "y", "z", "w"]);
-        let outcome = author_semantics("anything", &mut mock, 2);
+        let outcome = author_semantics("anything", &[], &mut mock, 2);
         assert!(outcome.accepted.is_none());
         assert_eq!(outcome.rounds.len(), 2);
     }
@@ -993,7 +982,7 @@ pub fn second(v: I64) -> CheckResult {
         // Round 1's first proposer call errors; the immediate retry returns a
         // good draft, so a transient failure does not discard the session.
         let mut mock = MockProposer::new(vec!["__ERROR__", GOOD_DRAFT]);
-        let outcome = author_semantics("a toy nonzero-check language", &mut mock, 1);
+        let outcome = author_semantics("a toy nonzero-check language", &[], &mut mock, 1);
         assert!(outcome.accepted.is_some());
         assert_eq!(outcome.rounds.len(), 1);
         assert!(outcome.rounds[0].failures.is_empty());
@@ -1007,7 +996,7 @@ pub fn second(v: I64) -> CheckResult {
     #[test]
     fn two_proposer_errors_in_one_round_end_the_session() {
         let mut mock = MockProposer::new(vec!["__ERROR__", "__ERROR__", GOOD_DRAFT]);
-        let outcome = author_semantics("anything", &mut mock, 3);
+        let outcome = author_semantics("anything", &[], &mut mock, 3);
         assert!(outcome.accepted.is_none());
         assert_eq!(outcome.rounds.len(), 1);
         assert!(
@@ -1076,6 +1065,7 @@ pub fn second(v: I64) -> CheckResult {
         let outcome = author_semantics_validated(
             "a toy nonzero-check language",
             &[],
+            &[],
             &mut mock,
             &mut solve,
             4,
@@ -1107,7 +1097,7 @@ pub fn second(v: I64) -> CheckResult {
             calls += 1;
             Response::Unsat
         };
-        let outcome = author_semantics_validated("anything", &[], &mut mock, &mut solve, 1);
+        let outcome = author_semantics_validated("anything", &[], &[], &mut mock, &mut solve, 1);
         assert!(outcome.accepted.is_none());
         assert_eq!(calls, 0, "no solver call without a unique entry");
         assert!(
@@ -1124,6 +1114,7 @@ pub fn second(v: I64) -> CheckResult {
         let mut solve = |_l: &str, _q: &str| Response::Timeout;
         let outcome = author_semantics_validated(
             "a toy nonzero-check language",
+            &[],
             &[],
             &mut mock,
             &mut solve,
@@ -1169,8 +1160,14 @@ pub fn second(v: I64) -> CheckResult {
                 Response::Sat("sat".to_string())
             }
         };
-        let outcome =
-            author_semantics_validated("a toy classifier", &examples, &mut mock, &mut solve, 4);
+        let outcome = author_semantics_validated(
+            "a toy classifier",
+            &examples,
+            &[],
+            &mut mock,
+            &mut solve,
+            4,
+        );
         assert!(outcome.accepted.is_some());
         assert_eq!(outcome.rounds.len(), 2);
         assert!(
@@ -1205,8 +1202,14 @@ pub fn second(v: I64) -> CheckResult {
                 Response::Sat("sat".to_string())
             }
         };
-        let outcome =
-            author_semantics_validated("a toy classifier", &examples, &mut mock, &mut solve, 1);
+        let outcome = author_semantics_validated(
+            "a toy classifier",
+            &examples,
+            &[],
+            &mut mock,
+            &mut solve,
+            1,
+        );
         assert!(outcome.accepted.is_none());
         assert!(outcome.rounds[0].failures.iter().any(|f| {
             f.contains("empty_input") && f.contains("starts_with_z") && f.contains("instead")
@@ -1216,7 +1219,7 @@ pub fn second(v: I64) -> CheckResult {
     #[test]
     fn the_transcript_records_drafts_failures_and_observations() {
         let mut mock = MockProposer::new(vec!["fn broken(", GOOD_DRAFT]);
-        let outcome = author_semantics("a toy nonzero-check language", &mut mock, 4);
+        let outcome = author_semantics("a toy nonzero-check language", &[], &mut mock, 4);
         let t = render_transcript("toy.md", &[], &outcome);
         assert!(t.contains("round 1") && t.contains("gate failures"));
         assert!(t.contains("round 2") && t.contains("ADMITTED"));
@@ -1247,8 +1250,14 @@ pub fn second(v: I64) -> CheckResult {
                 Response::Sat("sat".to_string()) // "" fires a marker -> nomatch confirmed
             }
         };
-        let outcome =
-            author_semantics_validated("a toy classifier", &examples, &mut mock, &mut solve, 1);
+        let outcome = author_semantics_validated(
+            "a toy classifier",
+            &examples,
+            &[],
+            &mut mock,
+            &mut solve,
+            1,
+        );
         assert!(outcome.accepted.is_some());
         // `ok` must have been checked against EVERY named marker.
         assert_eq!(
@@ -1288,8 +1297,14 @@ pub fn second(v: I64) -> CheckResult {
                 Response::Unsat
             }
         };
-        let outcome =
-            author_semantics_validated("a toy classifier", &examples, &mut mock, &mut solve, 1);
+        let outcome = author_semantics_validated(
+            "a toy classifier",
+            &examples,
+            &[],
+            &mut mock,
+            &mut solve,
+            1,
+        );
         assert!(outcome.accepted.is_none());
         let f = &outcome.rounds[0].failures;
         assert!(
@@ -1314,6 +1329,7 @@ pub fn second(v: I64) -> CheckResult {
         let outcome = author_semantics_validated(
             "a toy nonzero-check language",
             &examples,
+            &[],
             &mut mock,
             &mut solve,
             1,
@@ -1333,8 +1349,14 @@ pub fn second(v: I64) -> CheckResult {
         }];
         let mut mock = MockProposer::new(vec![SEQ_DRAFT]);
         let mut solve = |_l: &str, _q: &str| Response::Sat("sat".to_string());
-        let outcome =
-            author_semantics_validated("a toy classifier", &examples, &mut mock, &mut solve, 1);
+        let outcome = author_semantics_validated(
+            "a toy classifier",
+            &examples,
+            &[],
+            &mut mock,
+            &mut solve,
+            1,
+        );
         assert!(outcome.accepted.is_none());
         assert!(
             outcome.rounds[0]
@@ -1379,6 +1401,7 @@ pub fn second(v: I64) -> CheckResult {
         let outcome = author_semantics_validated(
             "a toy first-character classifier",
             &examples,
+            &[],
             &mut mock,
             &mut solve,
             1,

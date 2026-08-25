@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `toml_table_merge_type_mismatch`
+the SMT lift and the concrete semantics agree on this input

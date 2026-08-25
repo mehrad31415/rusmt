@@ -1,9 +1,25 @@
-//! String datatype and operations (these operations are ASCII-only sound).
-//! Z3's string theory counts UTF-8 bytes, while Rust's string operations count Unicode code points.
+//! String datatype and operations. Both sides count Unicode code points: Rust
+//! via `chars()`, Z3 over its alphabet U+0000..U+2FFFF.
+//!
+//! A literal that is a string written in the source, like the `"é"` in
+//! `String::from("é")` is not copied into the SMT script as it stands. Z3's
+//! lexer reads a raw byte as a character and it reads `\u{..}` as an escape, so a
+//! copied literal can reach Z3 as a different string. The backend spells every
+//! character out instead:
+//!
+//! ```text
+//! rust value   emitted           z3 sees
+//! é            "\u{e9}"          1 character, not the 2 UTF-8 bytes
+//! \u0041       "\u{5c}u0041"     6 characters, not the letter A
+//! ```
+//!
+//! Surrogates are the one case with no shared answer: Z3 admits one as a
+//! character, Rust's `char` cannot hold it, so `from_code` panics.
 
 use crate::{Boolean, Integer, String, smt::SMT};
 use internment::Intern;
 use num_bigint::BigInt;
+use num_bigint::Sign;
 use num_traits::cast::ToPrimitive;
 
 impl From<&str> for String {
@@ -23,8 +39,7 @@ impl From<std::string::String> for String {
 }
 
 impl String {
-    /// Creates a new empty string `String::new()`
-    /// transpiles to `(declare-const s String) (assert (= s ""))`
+    /// Creates a new empty string. Emits `""`.
     pub fn new() -> Self {
         Self {
             inner: Intern::new(std::string::String::new()),
@@ -46,25 +61,32 @@ impl String {
     }
 
     /// `(str.at s offset)`
+    /// `""` when the index is negative or past the end, as `str.at` gives.
     pub fn at(self, index: Integer) -> Self {
         index
             .inner
             .to_usize()
             .and_then(|idx| self.inner.chars().nth(idx))
-            .map(|char_at| Self::from(char_at.to_string()))
-            .unwrap()
+            .map_or_else(Self::new, |char_at| Self::from(char_at.to_string()))
     }
 
     /// `(str.indexof s substr offset)`.
+    /// `-1` when the offset is outside `[0, len]` or the needle does not occur at
+    /// or after it, as `str.indexof` gives. An offset of exactly `len` is in range.
     pub fn index_of(self, substr: Self, offset: Integer) -> Integer {
-        let start_char = offset.inner.to_usize().unwrap();
-
-        let start_byte = self.inner.char_indices().nth(start_char).unwrap().0;
-
-        let found_byte_idx = self.inner[start_byte..]
-            .find(substr.inner.as_ref())
-            .unwrap();
-        Integer::from(self.inner[..(start_byte + found_byte_idx)].chars().count())
+        if offset.inner.sign() == Sign::Minus {
+            return Integer::from(-1);
+        }
+        let chars: Vec<char> = self.inner.chars().collect();
+        let start_char = offset.inner.to_usize().unwrap_or(usize::MAX);
+        if start_char > chars.len() {
+            return Integer::from(-1);
+        }
+        let start_byte: usize = chars[..start_char].iter().map(|c| c.len_utf8()).sum();
+        match self.inner[start_byte..].find(substr.inner.as_ref()) {
+            Some(found) => Integer::from(self.inner[..(start_byte + found)].chars().count()),
+            None => Integer::from(-1),
+        }
     }
 
     /// `(str.indexof s substr)`
@@ -73,22 +95,24 @@ impl String {
     }
 
     /// `(str.substr s offset length)`
-    /// Returns a substring starting at `offset` with the given `length`.
-    ///
-    /// # Panics
-    /// - Panics if `offset` or `length` are negative or cannot be converted to usize
-    /// - Panics if `offset` is beyond the string length
-    ///
-    /// Note: If `length` extends beyond the string, returns available characters (does not panic).
+    /// `""` when the offset is outside `[0, len)` or the length is not positive,
+    /// otherwise the longest available run, as `str.substr` gives.
     pub fn substr(self, offset: Integer, length: Integer) -> Self {
-        let start_char = offset.inner.to_usize().unwrap();
-        let len = length.inner.to_usize().unwrap();
-
+        if offset.inner.sign() == Sign::Minus || length.inner.sign() != Sign::Plus {
+            return Self::new();
+        }
         let chars: Vec<char> = self.inner.chars().collect();
-        let end_char = (start_char + len).min(chars.len());
-        let substring: std::string::String = chars[start_char..end_char].iter().collect();
-
-        Self::from(substring)
+        let start_char = offset.inner.to_usize().unwrap_or(usize::MAX);
+        if start_char >= chars.len() {
+            return Self::new();
+        }
+        let len = length.inner.to_usize().unwrap_or(usize::MAX);
+        let end_char = start_char.saturating_add(len).min(chars.len());
+        Self::from(
+            chars[start_char..end_char]
+                .iter()
+                .collect::<std::string::String>(),
+        )
     }
 
     ///`(str.contains self rhs)`
@@ -107,42 +131,49 @@ impl String {
     }
 
     /// `(str.to_int s)`
-    /// Z3's str.to_int only handles non-negative decimal integers & returns -1 for any string that is not a non-negative integer (including negative numbers).
-    /// but this method panics in case of non integer strings and gives the correct result for negative integers.
+    /// `-1` unless the string is a non-empty run of ASCII digits, as `str.to_int`
+    /// gives; in particular `"-5"` is `-1`, not `-5`.
     pub fn to_int(self) -> Integer {
+        let raw = self.inner.as_ref();
+        if raw.is_empty() || !raw.chars().all(|c| c.is_ascii_digit()) {
+            return Integer::from(-1);
+        }
         Integer {
-            inner: Intern::new(self.inner.as_ref().parse::<BigInt>().unwrap()),
+            inner: Intern::new(raw.parse::<BigInt>().unwrap()),
         }
     }
 
     /// `(str.from_int i)`
-    /// Z3's str.from_int returns "" for negative integers.
+    /// `""` for negative integers, as `str.from_int` gives.
     pub fn from_int(i: Integer) -> Self {
+        if i.inner.sign() == Sign::Minus {
+            return Self::new();
+        }
         Self::from(i.inner.to_string())
     }
 
-    /// Lexicographical less than or equal to
+    /// Lexicographical less than or equal to: `(str.<= self rhs)`
     /// For example, "a" <= "b" and "aa" <= "ab" and "a" <= "aa" etc.
     pub fn le(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() <= rhs.inner.as_ref()).into()
     }
 
-    /// Lexicographical less than
+    /// Lexicographical less than: `(str.< self rhs)`
     pub fn lt(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() < rhs.inner.as_ref()).into()
     }
 
-    /// Lexicographical greater than or equal to
+    /// Lexicographical greater than or equal to: `(str.<= rhs self)`
     pub fn ge(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() >= rhs.inner.as_ref()).into()
     }
 
-    /// Lexicographical greater than
+    /// Lexicographical greater than: `(str.< rhs self)`
     pub fn gt(self, rhs: Self) -> Boolean {
         (self.inner.as_ref() > rhs.inner.as_ref()).into()
     }
 
-    /// `(str.is_digit s)`
+    /// `(str.in_re s (re.range "0" "9"))`
     pub fn is_digit(self) -> Boolean {
         (*self.length().eq(Integer::from(1))
             && (self
@@ -156,34 +187,45 @@ impl String {
         .into()
     }
 
-    /// checks if the string is empty: `v.is_empty()`
-    /// transpiles to `(= s "")`
+    /// checks if the string is empty. Emits `(= (str.len s) 0)`.
     pub fn is_empty(self) -> Boolean {
         self.inner.is_empty().into()
     }
 
-    /// str.from_code i
+    /// `(str.from_code i)`
+    /// `""` outside Z3's alphabet `[0, 0x2FFFF]`, as `str.from_code` gives.
+    /// Panics on a surrogate: Z3 admits one as a character, Rust's `char` cannot
+    /// hold it, so there is no value to return.
     pub fn from_code(code: Integer) -> Self {
-        let raw_val = *code.to_u32().inner;
-        let c = char::from_u32(raw_val).unwrap();
+        if code.inner.sign() == Sign::Minus {
+            return Self::new();
+        }
+        let Some(raw_val) = code.inner.to_u32() else {
+            return Self::new();
+        };
+        if raw_val > 0x2FFFF {
+            return Self::new();
+        }
+        let c = char::from_u32(raw_val).unwrap_or_else(|| {
+            panic!(
+                "U+{raw_val:04X} is a surrogate -- Z3 admits it as a character, \
+                 no Rust `char` denotes it"
+            )
+        });
         Self::from(c.to_string())
     }
 
-    /// str.to_code s
+    /// `(str.to_code s)`
+    /// `-1` unless the string is exactly one character, as `str.to_code` gives.
     pub fn to_code(self) -> Integer {
-        if self.inner.as_ref().is_empty() {
-            panic!("Cannot get code point of an empty string");
+        let mut chars = self.inner.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => Integer::from(c as u32),
+            _ => Integer::from(-1),
         }
-
-        if self.inner.as_ref().chars().count() > 1 {
-            panic!("Cannot get code point of a string with more than one character");
-        }
-
-        let c = self.inner.as_ref().chars().next().unwrap();
-        Integer::from(c as u32)
     }
 
-    /// iterator
+    /// iterator, yielding one-character strings (`Seq::iterator` yields indices).
     /// Having this method means that the string can be used in the expression macros for iterating over the string (forall, exists, choose).
     pub fn iterator(self) -> Vec<Self> {
         self.inner
@@ -212,11 +254,13 @@ impl String {
 
 mod tests {
     #[test]
-    fn test_string_length() {
+    fn test_string_to_code() {
         use crate::{Integer, String, smt::SMT};
         // test to code
-        let s = String::from("😀");
-        assert!(*s.to_code().eq(Integer::from(128512)));
+        let s1 = String::from("😀");
+        let s2 = String::from("é");
+        assert!(*s1.to_code().eq(Integer::from(128512)));
+        assert!(*s2.to_code().eq(Integer::from(233)));
     }
 
     #[test]
@@ -224,8 +268,24 @@ mod tests {
         use crate::{Integer, String, smt::SMT};
         let s1 = String::from("😀");
         let s2 = String::from("Hello");
+        let s3 = String::from("é");
         assert!(*s1.length().eq(Integer::from(1)));
         assert!(*s2.length().eq(Integer::from(5)));
+        assert!(*s3.length().eq(Integer::from(1)));
+    }
+
+    #[test]
+    fn from_code_outside_z3s_alphabet_is_the_empty_string() {
+        use crate::{Integer, String, smt::SMT};
+        assert!(*String::from_code(Integer::from(0x30000)).eq(String::new()));
+        assert!(*String::from_code(Integer::from(-1)).eq(String::new()));
+    }
+
+    #[test]
+    #[should_panic(expected = "is a surrogate")]
+    fn from_code_on_a_surrogate_has_no_rust_value() {
+        use crate::{Integer, String};
+        let _ = String::from_code(Integer::from(0xD800));
     }
 
     #[test]
@@ -286,31 +346,49 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_index_of_not_found() {
-        use crate::{Integer, String};
-        String::from("Hello").index_of(String::from("xyz"), Integer::from(0));
+        use crate::{Integer, String, smt::SMT};
+        assert!(
+            *String::from("Hello")
+                .index_of(String::from("xyz"), Integer::from(0))
+                .eq(Integer::from(-1))
+        );
+        // an offset of exactly the length is in range and finds the empty needle
+        assert!(
+            *String::from("Hello")
+                .index_of(String::new(), Integer::from(5))
+                .eq(Integer::from(5))
+        );
     }
 
     #[test]
-    #[should_panic]
     fn test_index_of_offset_out_of_bounds() {
-        use crate::{Integer, String};
-        String::from("Hello").index_of(String::from("l"), Integer::from(10));
+        use crate::{Integer, String, smt::SMT};
+        assert!(
+            *String::from("Hello")
+                .index_of(String::from("l"), Integer::from(10))
+                .eq(Integer::from(-1))
+        );
     }
 
     #[test]
-    #[should_panic]
     fn test_index_of_negative_offset() {
-        use crate::{Integer, String};
-        String::from("Hello").index_of(String::from("l"), Integer::from(-1));
+        use crate::{Integer, String, smt::SMT};
+        assert!(
+            *String::from("Hello")
+                .index_of(String::from("l"), Integer::from(-1))
+                .eq(Integer::from(-1))
+        );
     }
 
     #[test]
-    #[should_panic]
     fn test_index_of_subsequence_longer_than_sequence() {
-        use crate::{Integer, String};
-        String::from("Hello").index_of(String::from("HelloWorld"), Integer::from(0));
+        use crate::{Integer, String, smt::SMT};
+        assert!(
+            *String::from("Hello")
+                .index_of(String::from("HelloWorld"), Integer::from(0))
+                .eq(Integer::from(-1))
+        );
     }
 
     #[test]
@@ -355,24 +433,33 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_substr_negative_offset() {
-        use crate::{Integer, String};
-        String::from("Hello").substr(Integer::from(-1), Integer::from(3));
+        use crate::{Integer, String, smt::SMT};
+        assert!(
+            *String::from("Hello")
+                .substr(Integer::from(-1), Integer::from(3))
+                .eq(String::new())
+        );
     }
 
     #[test]
-    #[should_panic]
     fn test_substr_offset_beyond_length() {
-        use crate::{Integer, String};
-        String::from("Hello").substr(Integer::from(10), Integer::from(1));
+        use crate::{Integer, String, smt::SMT};
+        assert!(
+            *String::from("Hello")
+                .substr(Integer::from(10), Integer::from(1))
+                .eq(String::new())
+        );
     }
 
     #[test]
-    #[should_panic]
     fn test_substr_negative_length() {
-        use crate::{Integer, String};
-        String::from("Hello").substr(Integer::from(0), Integer::from(-1));
+        use crate::{Integer, String, smt::SMT};
+        assert!(
+            *String::from("Hello")
+                .substr(Integer::from(0), Integer::from(-1))
+                .eq(String::new())
+        );
     }
 
     #[test]
@@ -432,35 +519,31 @@ mod tests {
 
         assert!(*String::from("123").to_int().eq(Integer::from(123)));
         assert!(*String::from("0").to_int().eq(Integer::from(0)));
-        assert!(*String::from("-5").to_int().eq(Integer::from(-5)));
+        assert!(*String::from("-5").to_int().eq(Integer::from(-1)));
     }
 
     #[test]
-    #[should_panic]
     fn test_str_to_int_empty() {
-        use crate::String;
-        String::from("").to_int();
+        use crate::{Integer, String, smt::SMT};
+        assert!(*String::from("").to_int().eq(Integer::from(-1)));
     }
 
     #[test]
-    #[should_panic]
     fn test_str_to_int_non_integer() {
-        use crate::String;
-        String::from("abc").to_int();
+        use crate::{Integer, String, smt::SMT};
+        assert!(*String::from("abc").to_int().eq(Integer::from(-1)));
     }
 
     #[test]
-    #[should_panic]
     fn test_str_to_int_non_integer2() {
-        use crate::String;
-        String::from("12a").to_int();
+        use crate::{Integer, String, smt::SMT};
+        assert!(*String::from("12a").to_int().eq(Integer::from(-1)));
     }
 
     #[test]
-    #[should_panic]
     fn test_str_to_int_non_integer3() {
-        use crate::String;
-        String::from(" 5").to_int();
+        use crate::{Integer, String, smt::SMT};
+        assert!(*String::from(" 5").to_int().eq(Integer::from(-1)));
     }
 
     #[test]
@@ -469,8 +552,8 @@ mod tests {
 
         assert!(*String::from_int(Integer::from(123)).eq(String::from("123")));
         assert!(*String::from_int(Integer::from(0)).eq(String::from("0")));
-        assert!(*String::from_int(Integer::from(-5)).eq(String::from("-5")));
-        assert!(*String::from_int(Integer::from(-1)).eq(String::from("-1")));
+        assert!(*String::from_int(Integer::from(-5)).eq(String::new()));
+        assert!(*String::from_int(Integer::from(-1)).eq(String::new()));
     }
 
     #[test]
@@ -569,16 +652,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot get code point of an empty string")]
     fn test_to_code_empty() {
-        use crate::String;
-        String::from("").to_code();
+        use crate::{Integer, String, smt::SMT};
+        assert!(*String::from("").to_code().eq(Integer::from(-1)));
     }
 
     #[test]
-    #[should_panic(expected = "Cannot get code point of a string with more than one character")]
     fn test_to_code_multi_char() {
-        use crate::String;
-        String::from("ab").to_code();
+        use crate::{Integer, String, smt::SMT};
+        assert!(*String::from("ab").to_code().eq(Integer::from(-1)));
     }
 }

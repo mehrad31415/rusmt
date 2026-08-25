@@ -1,23 +1,21 @@
-//! This is the main entry point for the derive crate.
-//! usage: cargo run -- <parser_name> <top_level_fn> [k=<N>] [--suite-out <dir>]
-//!    or: cargo run -- author <spec_file> <out_file> [rounds=<N>] [--examples <path>]
+//! CLI for the derive crate.
 //!
-//! `k=<N>` enables bounded-recursion unrolling:
-//!   k=0 (or omitted) -> recursive define-funs-rec.
-//!   k=N (N≥1)        -> every recursive SCC is unrolled to depth N.
+//! usage: cargo run -- <parser_name> <top_level_fn> [--llm <cmd>] [k=<N>]
+//!                       [--jobs <N>] [--out-dir <dir>]
+//!                       [--suite-out <dir> | --no-suite]
+//!    or: cargo run -- recover <parser> <top_level_fn> <marker> [--llm <cmd>]
+//!                       [k=<N>] [--out-dir <dir>]
+//!    or: cargo run -- author <spec_file> <out_file> [--llm <cmd>] [rounds=<N>]
+//!                       [--markers <path>] [--examples <path>]
 //!
-//! The parser command emits one query per marker, runs Z3 first, escalates to
-//! the AI-to-Z3 certification loop when needed, and writes the accepted
-//! witnesses as a conformance suite. `RUSMT_LLM_CMD` names the model transport.
+//! The parser command emits one query per marker, runs Z3 alone on it, escalates
+//! to the proposer loop when Z3 returns no model, and writes the accepted
+//! witnesses as a conformance suite plus a `ledger.jsonl`.
 //!
-//! `author` runs the gated AI-authoring loop: the proposer configured by
-//! `RUSMT_LLM_CMD` drafts a reference semantics in the DSL for the prose
-//! specification in `<spec_file>`; each draft must pass the mechanical gates
-//! (DSL front end, SMT emission, named markers) AND the behavioral gates
-//! (solver-proved marker reachability; conformance to the optional
-//! `--examples` file of `INPUT<TAB>EXPECT` lines, EXPECT = ok | err:<marker>
-//! | nomatch). The admitted draft is written to `<out_file>` for human
-//! review. Per-gate Z3 budget: `RUSMT_AUTHOR_Z3_SECS` (default 20).
+//! `--llm` names the proposer and overrides `RUSMT_LLM_CMD`; without either,
+//! Stage 2 cannot run and the run fails rather than reporting fewer witnesses.
+//! `--jobs` attempts that many markers at once.
+//! `k=<N>` unrolls recursion to depth N; k=0 uses `define-funs-rec`.
 
 use rusmt_smt_derive::guidance::{self, Response};
 use rusmt_smt_derive::proposer::{CommandProposer, Proposer as _};
@@ -30,12 +28,15 @@ use std::path::PathBuf;
 fn run_author(args: &[String]) -> Result<(), Box<dyn Error>> {
     let [spec_file, out_file, rest @ ..] = args else {
         return Err(
-            "Usage: cargo run -- author <spec_file> <out_file> [rounds=<N>] [--examples <path>]"
+            "Usage: cargo run -- author <spec_file> <out_file> [--llm <cmd>] \
+             [rounds=<N>] [--markers <path>] [--examples <path>]"
                 .into(),
         );
     };
     let mut rounds = authoring::DEFAULT_MAX_ROUNDS;
     let mut examples: Vec<authoring::Example> = Vec::new();
+    let mut markers: Vec<String> = Vec::new();
+    let mut llm: Option<String> = None;
     let mut rest_it = rest.iter();
     while let Some(extra) = rest_it.next() {
         if let Some(n) = extra.strip_prefix("rounds=") {
@@ -45,6 +46,18 @@ fn run_author(args: &[String]) -> Result<(), Box<dyn Error>> {
             if rounds == 0 {
                 return Err("rounds= must be at least 1".into());
             }
+        } else if extra == "--markers" {
+            let path = rest_it.next().ok_or("--markers needs a file path")?;
+            let text = fs::read_to_string(path)
+                .map_err(|e| format!("cannot read markers file '{path}': {e}"))?;
+            markers = text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .map(str::to_string)
+                .collect();
+        } else if extra == "--llm" {
+            llm = Some(rest_it.next().ok_or("--llm needs a command")?.clone());
         } else if extra == "--examples" {
             let path = rest_it
                 .next()
@@ -59,13 +72,16 @@ fn run_author(args: &[String]) -> Result<(), Box<dyn Error>> {
     }
     let spec = fs::read_to_string(spec_file)
         .map_err(|e| format!("cannot read spec file '{spec_file}': {e}"))?;
-    let mut proposer = CommandProposer::from_env().ok_or(
+    let mut proposer = CommandProposer::from_cli_or_env(llm.as_deref()).ok_or(
         "the author mode needs a proposer: set RUSMT_LLM_CMD to a command that \
-         reads a prompt on stdin and writes a draft on stdout (e.g. `claude -p`)",
+         reads a prompt on stdin and writes a draft on stdout",
     )?;
     println!("[authoring] proposer: {}", proposer.describe());
     if !examples.is_empty() {
         println!("[authoring] spec examples: {}", examples.len());
+    }
+    if !markers.is_empty() {
+        println!("[authoring] markers to declare: {}", markers.len());
     }
 
     // The behavioral gates' solver seam: each gate query goes to a real Z3
@@ -87,6 +103,7 @@ fn run_author(args: &[String]) -> Result<(), Box<dyn Error>> {
     let outcome = authoring::author_semantics_validated(
         &spec,
         &examples,
+        &markers,
         &mut proposer,
         &mut solve_gate,
         rounds,
@@ -137,24 +154,33 @@ fn run_author(args: &[String]) -> Result<(), Box<dyn Error>> {
     }
 }
 
-/// Run Stage 1 then the AI⇄Z3 co-solving loop for one named marker (the
-/// `recover` CLI mode). Z3 produces every model; the proposer only restores
-/// sliced-away definitions and constrains the input.
+/// Run both stages for one named marker (the `recover` CLI mode). Z3 decides
+/// every candidate; the proposer only writes them.
 fn run_recover(lang_src_dir: &std::path::Path, args: &[String]) -> Result<(), Box<dyn Error>> {
     let [parser_name, top_level_fn, marker_name, rest @ ..] = args else {
         return Err(
-            "Usage: cargo run -- recover <parser> <top_level_fn> <marker_name> [k=<N>]\n\
-             Example: RUSMT_LLM_CMD='claude -p' \\\n\
+            "Usage: cargo run -- recover <parser> <top_level_fn> <marker_name> \
+             [--llm <cmd>] [k=<N>] [--out-dir <dir>]\n\
+             Example: RUSMT_LLM_CMD='./my_proposer' \\\n\
              \x20 cargo run -- recover toml parse_toml comment_invalid_char"
                 .into(),
         );
     };
     let mut unroll_depth: usize = 0;
-    for extra in rest {
+    let mut out_root: Option<PathBuf> = None;
+    let mut llm: Option<String> = None;
+    let mut rest_it = rest.iter();
+    while let Some(extra) = rest_it.next() {
         if let Some(n) = extra.strip_prefix("k=") {
             unroll_depth = n
                 .parse()
                 .map_err(|_| format!("k= must be a non-negative integer, got '{n}'"))?;
+        } else if extra == "--out-dir" {
+            out_root = Some(PathBuf::from(
+                rest_it.next().ok_or("--out-dir needs a directory")?,
+            ));
+        } else if extra == "--llm" {
+            llm = Some(rest_it.next().ok_or("--llm needs a command")?.clone());
         } else {
             return Err(format!("unrecognized argument: '{extra}'").into());
         }
@@ -164,10 +190,13 @@ fn run_recover(lang_src_dir: &std::path::Path, args: &[String]) -> Result<(), Bo
         return Err(format!("Parser '{parser_name}' not found at {parser_dir:?}").into());
     }
     let model = model(&parser_dir)?;
-    let out_dir = lang_src_dir
-        .join("synthesis")
-        .join(parser_name)
-        .join("recover")
+    let out_dir = out_root
+        .unwrap_or_else(|| {
+            lang_src_dir
+                .join("synthesis")
+                .join(parser_name)
+                .join("recover")
+        })
         .join(marker_name);
 
     println!("[recover] marker  : {marker_name}");
@@ -179,22 +208,29 @@ fn run_recover(lang_src_dir: &std::path::Path, args: &[String]) -> Result<(), Bo
         marker_name,
         unroll_depth,
         &out_dir,
+        llm.as_deref(),
     )
     .map_err(|e| -> Box<dyn Error> { e.into() })?;
 
     println!("[recover] stage 1 verdict: {}", outcome.stage1);
     for (i, r) in outcome.rounds.iter().enumerate() {
         println!("[recover] round {} ({} ms)", i + 1, r.elapsed.as_millis());
-        if !r.restored.is_empty() {
-            println!("[recover]   restored: {}", r.restored.join(", "));
-        }
-        for c in &r.candidates {
-            println!("[recover]   Z3 candidate: {c:?}");
+        if let Some(c) = &r.candidate {
+            println!("[recover]   candidate: {c:?}");
         }
         println!("[recover]   outcome: {}", r.outcome);
     }
+    println!("[recover] rejected: {}", outcome.rejected());
     if outcome.witnesses.is_empty() {
-        println!("[recover] RESULT: no witness within the round budget");
+        let why = match outcome.stop {
+            rusmt_smt_derive::cosolve::Stop::Budget => {
+                "the round budget ran out. This is a spending limit, not a \
+                 verdict: a larger budget or another sample may still find one"
+            }
+            rusmt_smt_derive::cosolve::Stop::ProposerError => "the proposer failed",
+            rusmt_smt_derive::cosolve::Stop::Witness => "unreachable",
+        };
+        println!("[recover] RESULT: no witness — {why}");
     } else {
         println!(
             "[recover] RESULT: {} witness(es), each a model of the unmodified query:",
@@ -255,6 +291,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let mut unroll_depth: usize = 0;
         let mut k_set = false;
+        let mut jobs: usize = 1;
+        let mut llm: Option<String> = None;
         let mut rest = args.iter().skip(3);
         while let Some(extra) = rest.next() {
             if let Some(n_str) = extra.strip_prefix("k=") {
@@ -268,15 +306,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             } else if extra == "--suite-out" {
                 let path = rest.next().ok_or("--suite-out needs a directory")?;
                 suite_out = Some(PathBuf::from(path));
-            } else if let Some(path) = extra.strip_prefix("suite=") {
-                suite_out = Some(PathBuf::from(path));
             } else if extra == "--no-suite" {
                 suite_out = None;
             } else if extra == "--out-dir" {
                 let path = rest.next().ok_or("--out-dir needs a directory")?;
                 output_dir = PathBuf::from(path);
-            } else if let Some(path) = extra.strip_prefix("out=") {
-                output_dir = PathBuf::from(path);
+            } else if extra == "--llm" {
+                let c = rest.next().ok_or("--llm needs a command")?;
+                llm = Some(c.clone());
+            } else if extra == "--jobs" {
+                let n = rest.next().ok_or("--jobs needs a count")?;
+                jobs = n
+                    .parse()
+                    .map_err(|_| format!("--jobs must be a positive integer, got '{n}'"))?;
             } else {
                 return Err(format!("unrecognized argument: '{extra}'").into());
             }
@@ -289,21 +331,38 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let model = model(&parser_dir)?;
 
-        solve(
+        let report = solve(
             &model,
             parser_name,
             Some(top_level_fn.as_str()),
             &output_dir,
             unroll_depth,
+            jobs,
+            llm.as_deref(),
         )?;
+        println!(
+            "[rusmt] {} markers: {} covered, {} unreachable, {} without a witness, {} failed",
+            model.path_targets.len(),
+            report.covered.len(),
+            report.unreachable.len(),
+            report.missed.len(),
+            report.failed.len()
+        );
+        let ledger = output_dir.join("ledger.jsonl");
+        fs::write(&ledger, report.ledger.join("\n") + "\n")?;
+        println!("[rusmt] ledger: {}", ledger.display());
+        if !report.missed.is_empty() {
+            println!("[rusmt] no witness for: {}", report.missed.join(", "));
+        }
+        if !report.unreachable.is_empty() {
+            println!("[rusmt] unreachable: {}", report.unreachable.join(", "));
+        }
+        for (name, why) in &report.failed {
+            println!("[rusmt] RUN FAILURE {name}: {why}");
+        }
 
         if let Some(suite_out) = suite_out {
-            match rusmt_smt_derive::write_conformance_suite(
-                &model,
-                parser_name,
-                &output_dir,
-                &suite_out,
-            ) {
+            match rusmt_smt_derive::write_conformance_suite(parser_name, &output_dir, &suite_out) {
                 Ok(n) => {
                     println!(
                         "[rusmt] conformance suite: {n} input(s) written to {}",
@@ -318,7 +377,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     } else {
         return Err(
-            "Usage: cargo run -- <parser_name> <top_level_fn> [k=<N>] [--suite-out <dir>]\n\
+            "Usage: cargo run -- <parser_name> <top_level_fn> [--llm <cmd>] [k=<N>] \
+             [--jobs <N>] [--out-dir <dir>] [--suite-out <dir> | --no-suite]\n\
              Example: cargo run -- toml parse_toml --suite-out /tmp/toml-suite"
                 .into(),
         );

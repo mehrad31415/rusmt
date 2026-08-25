@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `array_table_redefines_std_table`
+the SMT lift and the concrete semantics agree on this input

@@ -1,0 +1,95 @@
+marker          : array_table_redefines_closed_table
+raised in       : parse_expression
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 8 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (2967 ms) ===
+--- reply ---
+input <<<
+[a]
+[[a]]
+>>>
+candidate: "[a]\n[[a]]"
+--- outcome ---
+`unsat`: this input does not reach `array_table_redefines_closed_table`. Z3 reports that it reaches ERR array_table_redefines_std_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `array_table_redefines_closed_table` is about.
+
+=== round 2 (2633 ms) ===
+--- reply ---
+<<<
+[a]
+[b]
+[[a]]
+>>>
+candidate: "[a]\n[b]\n[[a]]"
+--- outcome ---
+`unsat`: this input does not reach `array_table_redefines_closed_table`. Z3 reports that it reaches ERR array_table_redefines_std_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `array_table_redefines_closed_table` is about.
+
+=== round 3 (1453 ms) ===
+--- reply ---
+<<<
+[a.b]
+[[a]]
+>>>
+candidate: "[a.b]\n[[a]]"
+--- outcome ---
+`unsat`: this input does not reach `array_table_redefines_closed_table`. Z3 reports that it reaches ERR toml_table_merge_type_mismatch instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `array_table_redefines_closed_table` is about.
+
+=== round 4 (1464 ms) ===
+--- reply ---
+<<<
+[[a]]
+[a]
+>>>
+candidate: "[[a]]\n[a]"
+--- outcome ---
+`unsat`: this input does not reach `array_table_redefines_closed_table`. Z3 reports that it reaches ERR std_table_redefines_array_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `array_table_redefines_closed_table` is about.
+
+=== round 5 (1510 ms) ===
+--- reply ---
+<<<
+[[a]]
+[b]
+[[a]]
+>>>
+candidate: "[[a]]\n[b]\n[[a]]"
+--- outcome ---
+`unsat`: this input does not reach `array_table_redefines_closed_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `array_table_redefines_closed_table` names.
+
+=== round 6 (1514 ms) ===
+--- reply ---
+<<<
+[[a]]
+[a.b]
+[[a.b]]
+>>>
+candidate: "[[a]]\n[a.b]\n[[a.b]]"
+--- outcome ---
+`unsat`: this input does not reach `array_table_redefines_closed_table`. Z3 reports that it reaches ERR array_table_redefines_std_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `array_table_redefines_closed_table` is about.
+
+=== round 7 (1456 ms) ===
+--- reply ---
+input <<<
+[a]
+[b]
+[[a.b]]
+>>>
+candidate: "[a]\n[b]\n[[a.b]]"
+--- outcome ---
+`unsat`: this input does not reach `array_table_redefines_closed_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `array_table_redefines_closed_table` names.
+
+=== round 8 (760 ms) ===
+--- reply ---
+<<<
+a.b = 1
+[[a]]
+>>>
+candidate: "a.b = 1\n[[a]]"
+--- outcome ---
+ACCEPTED: Z3 certified this input against the unmodified query (sat) — a witness for `array_table_redefines_closed_table`
+
+status: 1 witness(es) accepted:
+  "a.b = 1\n[[a]]"

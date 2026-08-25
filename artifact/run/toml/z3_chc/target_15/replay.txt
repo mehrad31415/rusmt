@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `string_invalid_escape`
+the SMT lift and the concrete semantics agree on this input

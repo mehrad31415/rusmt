@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `integer_hex_underscore_at_end`
+the SMT lift and the concrete semantics agree on this input

@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `integer_signed_oct_prefix`
+the SMT lift and the concrete semantics agree on this input

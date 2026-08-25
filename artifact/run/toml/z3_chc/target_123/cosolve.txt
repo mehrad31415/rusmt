@@ -1,0 +1,85 @@
+marker          : float_frac_exp_overflow_i32
+raised in       : parse_float
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (2618 ms) ===
+--- reply ---
+<<<1.0e2147483648>>>
+candidate: "1.0e2147483648"
+--- outcome ---
+`unsat`: this input does not reach `float_frac_exp_overflow_i32`. Z3 reports that it reaches ERR key_value_missing_equals_eof instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `float_frac_exp_overflow_i32` is about.
+
+=== round 2 (21506 ms) ===
+--- reply ---
+<<<x = 1.0e2147483648>>>
+candidate: "x = 1.0e2147483648"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 3 (2908 ms) ===
+--- reply ---
+<<<
+x=1e2147483648
+>>>
+candidate: "x=1e2147483648"
+--- outcome ---
+`unsat`: this input does not reach `float_frac_exp_overflow_i32`. Z3 reports that it reaches ERR float_exp_only_exp_overflow_i32 instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `float_frac_exp_overflow_i32` is about.
+
+=== round 4 (21126 ms) ===
+--- reply ---
+input <<<
+x=1.0e2147483648
+>>>
+candidate: "x=1.0e2147483648"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 5 (0 ms) ===
+--- reply ---
+<<<
+x=1.0e2147483648
+>>>
+candidate: "x=1.0e2147483648"
+--- outcome ---
+that candidate was already rejected — propose a DIFFERENT one
+
+=== round 6 (1681 ms) ===
+--- reply ---
+<<<+1.0e2147483648>>>
+candidate: "+1.0e2147483648"
+--- outcome ---
+`unsat`: this input does not reach `float_frac_exp_overflow_i32`. Z3 reports that it reaches ERR bare_key_invalid_start instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `float_frac_exp_overflow_i32` is about.
+
+=== round 7 (21145 ms) ===
+--- reply ---
+input <<<
+x=0.1e2147483648
+>>>
+candidate: "x=0.1e2147483648"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 8 (21168 ms) ===
+--- reply ---
+input <<<
+x=0.0e2147483648
+>>>
+candidate: "x=0.0e2147483648"
+--- outcome ---
+`timeout`: Z3 could not decide this input within the budget. Simplify it — shorter, fewer constructs.
+
+=== round 9 (0 ms) ===
+--- reply ---
+<<<
+x=1.0e2147483648
+>>>
+candidate: "x=1.0e2147483648"
+--- outcome ---
+that candidate was already rejected — propose a DIFFERENT one
+
+status: no witness (stopped: budget)

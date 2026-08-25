@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `array_sep_eof_after_comma`
+the SMT lift and the concrete semantics agree on this input

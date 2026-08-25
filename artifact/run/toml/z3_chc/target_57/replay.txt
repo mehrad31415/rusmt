@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `integer_dec_minus_sign_no_digits_eof`
+the SMT lift and the concrete semantics agree on this input

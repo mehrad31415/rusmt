@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `toml_expected_newline_between_expressions`
+the SMT lift and the concrete semantics agree on this input

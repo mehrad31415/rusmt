@@ -1,6 +1,6 @@
 ## IMP concrete syntax and parser
 
-The plain-Rust recursive-descent parser lives in `lang/src/imp_parser.rs`.
+The plain-Rust recursive-descent parser lives in `lang/src/imp/parser.rs`.
 Its public entry point is `parse_imp_source(&str) -> Result<Com, String>`.
 
 ### Concrete grammar
@@ -41,16 +41,16 @@ mojibake in identifiers).
 ### Important Notes
 
 - **Comments.** `// ...` line comments are accepted, but **only at the very
-  top of the file** — `parse_line_comments` runs once before `parse_com`.
+  top of the file** — the lexer (`lex`) strips them before `com` runs.
   Mid-program comments are not supported. This is a deliberate concrete-
   syntax extension: it keeps the printer-emitted `response.imp` witnesses
   parseable while preserving Winskel's grammar exactly inside any actual
   source code.
-- **No `{ ... }` blocks.** Grouping uses `( ... )` only — see `parse_block`.
+- **No `{ ... }` blocks.** Grouping uses `( ... )` only — see the `"(" com ")"` arm of `com`.
   This matches Winskel §2.1, where the surface grammar uses parentheses for
   grouping. Curly braces are *not* accepted.
 - **No empty `()` shorthand.** `()` is not a valid command. Use `skip` for
-  the no-op explicitly. (`parse_block` requires the inner `com` to be
+  the no-op explicitly. (the grouping arm requires the inner `com` to be
   non-empty.)
 - **`;` is a separator, not a terminator.** A trailing `;` immediately before
   a closing `)` is tolerated for ergonomic paste-back, but otherwise the
@@ -59,7 +59,7 @@ mojibake in identifiers).
   - We add a division operator so that division-by-zero can be marked as a path condition.
   - Undefined variables do not default to 0 in the  store; reading an uninitialized variable is itself a flagged condition.
 
-The grammar comment at the top of `lang/src/imp_parser.rs` is authoritative
+The grammar comment at the top of `lang/src/imp/parser.rs` is authoritative
 if these notes ever drift.
 
 ### Parenthesised-bexp disambiguation
@@ -68,7 +68,7 @@ if these notes ever drift.
 `aexp == aexp` / `aexp <= aexp`. When the cursor sees `(`, the parser
 *tries* to read a parenthesised bexp; if the next token after the closing
 `)` is a comparison operator, it backs up and reparses the `(...)` as an
-arithmetic atom. See `parse_bcmp`.
+arithmetic atom. See the boolean `atom`, which uses `attempt` to rewind.
 
 ### Pretty-printing the final store
 

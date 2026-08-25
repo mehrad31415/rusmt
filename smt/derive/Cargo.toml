@@ -8,6 +8,8 @@ license.workspace = true
 keywords = ["smt", "model", "derivation"]
 categories = ["compilers", "parser-implementations"]
 edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 num-bigint = { workspace = true }
@@ -25,3 +27,9 @@ num_cpus = { workspace = true }
 lazy_static = { workspace = true }
 rusmt-lang = { workspace = true }
 rusmt-smt-stdlib = { workspace = true }
+
+# Paper tooling, not a framework feature: it scores a drafted semantics against a
+# reference suite, which only makes sense when both exist. Lives beside the paper.
+[[example]]
+name = "evaluate_draft"
+path = "../../specops/evaluate_draft.rs"

@@ -80,72 +80,107 @@ fn lang_sat_add(a: I32, b: I32) -> I32 {
 }
 ```
 
-### Input validation contract
+### The agreement invariant
 
-Some stdlib functions have preconditions on their inputs. For example, `Integer::from_hex_str`
-expects a string of pure hex digits — no `0x` prefix, no underscores. On invalid input:
+For every stdlib operation and every input, one of two things holds:
 
-- **Rust** panics (`unwrap()` on a failed parse).
-- **Z3** silently returns a wrong value (e.g., 0 for an unrecognized character).
+1. the Rust value and the Z3 value are **equal**, or
+2. the Rust side **panics**, because Z3 has no value to agree with — the SMT-LIB
+   term is unconstrained (`(div 1 0)` is satisfiable equal to 5 *and* to 77), or
+   it leaves the sort (`(^ 2.0 0.5)` is an algebraic number), or Rust cannot
+   represent what Z3 admits (a lone surrogate is not a `char`).
 
-These behaviors diverge, but this does NOT break soundness because we make the assumption that the author of the the interpreter must validate inputs before calling stdlib functions. The TOML parser, for example, checks each character with `is_hex_digit` and strips prefixes/underscores before the string ever reaches `from_hex_str`. Invalid inputs are caught by the parser and produce a named marker (`Path::named(String::from("..."))`) — they never reach the stdlib.
+There is no third case: no operation returns a value that disagrees with Z3.
+Anything else would be unsound — Z3 would synthesise a witness for a path that
+concrete execution does not take, and the generated test would not test what it
+claims. A panic is not "safe" either (see the rule below); it is a refusal, and
+every one of them is a proof obligation on the interpreter author, so the stdlib
+keeps them to the minimum the semantics force.
 
-**Rule for interpreter authors:** if a stdlib function can panic on certain inputs, your
-interpreter must guard against those inputs explicitly. Do not rely on the stdlib to handle
-invalid inputs gracefully — it is not designed to. The stdlib assumes its inputs satisfy
-the documented preconditions. If you violate them, Rust panics and Z3 gives garbage.
+**This is not mechanically checked in this tree.** A differential suite —
+running every operation in Rust, posing the term the backend emits to Z3, and
+asking whether the two can differ — would establish it, and building one is the
+obvious next step. Until then the correspondence is a design obligation
+discharged by construction and review, not a measured result. See
+[Stdlib design](stdlib-design.md).
+
+**Rule for interpreter authors:** a stdlib function that can panic must be
+guarded by your interpreter. A panic is not a safe fallback: if the model reaches
+that path, replay crashes instead of returning, and any witness Z3 found for it
+is worthless.
 
 ### Integer — functions that panic
 
-The following `Integer` methods panic on certain inputs. When writing an interpreter, we guard against these inputs before calling the method (e.g., checking divisor != 0 before calling `div`). On the unguarded path, we use the method as-is. On the guarded path, the panic is unreachable and we must replicate the behavior of the target language:
+Only where Z3 has no value to agree with. `div`/`mod` by zero is *uninterpreted*
+in SMT-LIB — `(= (div 1 0) 5)` and `(= (div 1 0) 77)` are both satisfiable — so
+there is nothing to return.
 
-- If the target language treats the operation as an error — division by zero, for instance, is a runtime error in most languages — place a named marker `Path::named(String::from("division_by_zero"))` in the guard branch. This marks the branch as a synthesis target: Z3 will search for an input that drives the program into that error case. The marker name is a stdlib `String` (written with the DSL string-literal idiom `String::from("...")`); its stable id (`marker_id(name)`) is what lets replay check that a synthesized input reaches *this specific* marker. If you don't want Z3 to synthesize such inputs (say the error case is uninteresting for testing), just handle the branch normally — return a sentinel or default value — and omit the marker. The branch still executes correctly under concrete Rust; it simply isn't used as a synthesis goal.
+- `div(rhs)`, `div_trunc(rhs)`, `modulo(rhs)`, `rem(rhs)` — panic when `rhs == 0`
+- `divides(rhs)` — panics when `self == 0` (it is `(= (mod rhs self) 0)`)
+- `pow(exp)` — panics on `0^0`, which Z3 leaves unconstrained, and on an exponent
+  beyond `u32`, which Z3 handles but `BigInt::pow` cannot take (`2^(2^32)` is some
+  1.3 billion digits). A **negative** exponent no longer panics: `^` is Real-sorted
+  in Z3 even for `Int` arguments, so the backend emits `(to_int (^ a b))`, and the
+  stdlib returns the same floor — `2^-1` is `0`, `(-2)^-1` is `-1`, `1^-5` is `1`,
+  and `0^-1` is `0` because Z3 reads `(^ 0 e)` as `0.0` rather than a division by
+  zero. The `to_int` also keeps the term usable where an `Int` is required:
+  a bare `(^ 2 3)` prints `8.0` and `str.at` rejects it.
 
-- If the target language defines specific behavior for that input (e.g., saturating, wrapping, returning a default), we implement that behavior using other stdlib operations in the guard branch.
+Everything else is total and agrees with Z3, including the cases that used to
+panic:
 
-In either case, the guard branch handles the diverging input before the stdlib method is reached, so the panic never fires. If the interpreter does NOT guard, Rust panics (crashes) while Z3 silently returns a wrong value. Any models Z3 finds on that path are unsound because the Rust side never reaches the return — it crashes instead.
+- `to_i32()` / `to_i64()` / `to_u32()` / `to_u64()` — `(_ int2bv N)` is total and
+  takes the value modulo `2^N`, so these **wrap** rather than panic
+- `to_f32()` / `to_f64()` — out-of-range values round to `±oo`, matching
+  `((_ to_fp ..) RNE (to_real x))`
+- `from_hex_str(s)` / `from_oct_str(s)` / `from_bin_str(s)` — Z3 folds the string
+  left and maps every character that is not a digit of the radix to zero. There is
+  no sign, no prefix and no failure: `from_hex_str("-ff")` is `255`, and
+  `from_hex_str("")` is `0`. Validate the string yourself if your language cares.
 
-- `div(rhs)` — panics when `rhs == 0`
-- `div_trunc(rhs)` — panics when `rhs == 0`
-- `modulo(rhs)` — panics when `rhs == 0`
-- `rem(rhs)` — panics when `rhs == 0`
-- `pow(exp)` — panics when `exp < 0` or `exp > u32::MAX`
-- `divides(rhs)` — panics when `self == 0`
-- `to_i32()` — panics when value is outside `[-2147483648, 2147483647]`
-- `to_i64()` — panics when value is outside `[-9223372036854775808, 9223372036854775807]`
-- `to_u32()` — panics when value is outside `[0, 4294967295]`
-- `to_u64()` — panics when value is outside `[0, 18446744073709551615]`
-- `to_f32()` — panics when value is too large for f32
-- `to_f64()` — panics when value is too large for f64
-- `from_hex_str(s)` — panics when `s` contains non-hex characters
-- `from_oct_str(s)` — panics when `s` contains non-octal characters
-- `from_bin_str(s)` — panics when `s` contains characters other than `0` or `1`
+### String — code points
+
+Both sides count Unicode code points: Rust via `chars()`, Z3 over its string
+alphabet `U+0000..U+2FFFF`. The backend emits every string literal with each
+non-ASCII character, `"` and `\` escaped as `\u{..}`, because Z3's lexer reads a
+raw non-ASCII byte as one character and interprets `\u{..}`/`\uXXXX` inside
+literals — unescaped, a literal would denote a different string. Together with
+the `U+2FFFF` guard on `from_code`, no character outside Z3's alphabet can enter
+a query.
 
 ### String — functions that panic
 
-- `at(index)` — panics when index is out of bounds (negative or >= length)
-- `index_of(substr, offset)` — panics when offset is negative or bigger than the length of the string, or when substr is not found
-- `index_of_default(substr)` — panics when substr is not found.
-- `substr(offset, length)` — panics when offset or length are negative or when offset is beyond the string length
-- `to_int()` — panics when the string is not a valid integer. Divergence: Rust parses any valid integer (including negative), Z3's `str.to_int` returns -1 for non-digit strings & negative numbers. Guard: ensure the string contains only digits before calling.
-- `from_int(i)` — does not panic but diverges: Rust's `to_string()` gives gives the expected result for negative integers, Z3's `str.from_int` gives `""` for negative numbers. Guard: check for negative integers before calling if the target language needs specific behavior.
-- `replace_all(s, "", dst)` — does not panic but diverges: Rust inserts `dst` at every position (e.g., `"Hello"` → `"XHXeXlXlXoX"`), Z3 returns the original string unchanged. Guard: do not call `replace_all` with an empty source string.
-- `from_code(code)` — panics when code is negative, greater than u32 max, or not a valid Unicode scalar value (not all u32 values are valid characters). Z3's `str.from_code` returns `""` for invalid values instead of panicking.
-- `to_code()` — panics on empty string or string with more than one character but z3 returns -1.
+- `from_code(code)` — panics only on a surrogate (`0xD800..=0xDFFF`). Z3 admits
+  one as a character; Rust's `char` cannot hold it, so there is no value to
+  return. Outside `[0, 0x2FFFF]` it returns `""`, as `str.from_code` does.
+
+Every other `String` operation is total and agrees with Z3. Note the conventions
+this inherits from the SMT-LIB theory:
+
+- `at(i)`, `substr(off, len)` — `""` when the index or range is out of bounds
+- `index_of(sub, off)` — `-1` when `off` is outside `[0, len]` or the needle is
+  not found; `off == len` is in range and finds the empty needle there
+- `to_int()` — `-1` unless the string is a non-empty run of ASCII digits, so
+  `"-5"` is `-1`, not `-5`
+- `from_int(i)` — `""` for negative `i`
+- `to_code()` — `-1` unless the string is exactly one character
 
 ### Seq — functions that panic
 
-- `at(index)` — panics when index is out of bounds (negative or >= length). Z3's `seq.nth` returns an value `-1`.
-- `at_seq(index)` — panics when index is out of bounds (negative or >= length). Z3's `seq.extract` returns an empty sequence.
-- `extract(offset, length)` — panics when offset or length are negative, or when offset is beyond the sequence length. Z3's `seq.extract` returns an empty sequence for invalid inputs.
-- `index_of(sub, offset)` — panics when offset is negative, when the subsequence is longer than the sequence, when offset is beyond the valid search range, or when the subsequence is not found. Z3's `seq.indexof` returns -1 when not found.
-- `index_of_default(sub)` — same as `index_of` with offset 0.
+- `at(index)` — panics when the index is out of bounds. `seq.nth` is unconstrained
+  off the end (satisfiable equal to any value), so there is nothing to return.
+
+`at_seq`, `extract` and `index_of` are total and mirror the String theory exactly:
+the empty sequence for an out-of-range extract, `-1` for a missing subsequence,
+and `off == len` in range for the empty needle.
 
 ### Real — functions that panic
 
-- `div(rhs)` — panics when `rhs == 0`
+- `div(rhs)` — panics when `rhs == 0`; `(/ 1.0 0.0)` is unconstrained in Z3
 - `pow(exp)` — see [Real.pow vs SMT-LIB `^`](#realpow-vs-smt-lib-) below
-- `to_f32()` — panics when value is too large for f32 but is finite in f64 (roughly `1.8 * 10^308 > |value| > 3.4 * 10^38`)
+
+`to_f32()` / `to_f64()` are total: an out-of-range magnitude rounds to `±oo`,
+matching Z3.
 
 #### `Real.pow` vs SMT-LIB `^`
 
@@ -186,26 +221,38 @@ zero denominator and panic.
 `p` outside `i32` or `q` outside `u32` also panics; see
 [Theoretical limitations](#theoretical-limitations-unguarded-edge-cases).
 
-### Bitvector — functions that panic
+### Bitvector — no panics
 
-- `bv_div(rhs)` — panics when `rhs == 0`. Z3's `bvsdiv`/`bvudiv` returns `0xFFFFFFFF` (all-ones) for division by zero. Note: signed `MIN / -1` does NOT panic — `wrapping_div` wraps to `MIN`, matching Z3's `bvsdiv` behavior.
-- `bv_rem(rhs)` — panics when `rhs == 0`. Z3's `bvsrem`/`bvurem` returns the dividend unchanged for remainder by zero.
-- `bv_mod(rhs)` — panics when `rhs == 0`. Z3's `bvsmod`/`bvurem` returns the dividend unchanged for modulo by zero.
+Every bitvector operation is total and agrees with Z3 on all 3,838 tested cases.
+The SMT-LIB conventions worth knowing, since they are not Rust's:
+
+- `bv_div(0)` — `(bvudiv x 0)` is the all-ones vector; `(bvsdiv x 0)` is `-1` for
+  non-negative `x` and `1` otherwise
+- `bv_rem(0)`, `bv_mod(0)` — both return the dividend unchanged
+- signed `MIN / -1` wraps to `MIN`, matching `bvsdiv`
+- shifts of `>=` the bit width give `0` (`bvashr` sign-extends instead)
 
 ### Float — functions that panic
 
-- `to_integer()` — panics on NaN or Infinity. Z3's `(to_int (fp.to_real x))` returns an unspecified value.
-- `to_real()` — panics on NaN or Infinity. Z3's `(fp.to_real x)` returns an unspecified value.
-- `to_i32()` — panics on NaN, Infinity, or value outside `[-2147483648, 2147483647]`. Z3's `(fp.to_sbv 32)` returns an unspecified bitvector.
-- `to_i64()` — panics on NaN, Infinity, or value outside `[-9223372036854775808, 9223372036854775807]`. Z3's `(fp.to_sbv 64)` returns an unspecified bitvector.
-- `to_u32()` — panics on NaN, Infinity, negative values, or value > 4294967295. Z3's `(fp.to_ubv 32)` returns an unspecified bitvector.
-- `to_u64()` — panics on NaN, Infinity, negative values, or value > 18446744073709551615. Z3's `(fp.to_ubv 64)` returns an unspecified bitvector.
+All of these are unconstrained in Z3 — each was confirmed satisfiable against two
+different values — so there is nothing to agree with:
+
+- `to_integer()`, `to_real()` — on NaN or infinity
+- `to_i32()`, `to_i64()`, `to_u32()`, `to_u64()` — on NaN, infinity, or a value
+  outside the target range (`fp.to_sbv` / `fp.to_ubv` are partial)
+- `min(rhs)`, `max(rhs)` — only when the two arguments are zeros of **opposite
+  sign**: SMT-LIB leaves `(fp.min +zero -zero)` unspecified, and Z3 does not
+  reduce it. Every other `min`/`max` pair, NaN included, agrees.
 
 ### Float — NaN behavior notes
 
-- `is_negative()` / `is_positive()` — guarded with `!is_nan()` to match Z3. Rust's `is_sign_negative` returns true for `-NaN`, Z3's `fp.isNegative` returns false for all NaN. Without the guard, soundness breaks.
-- `rem(rhs)` — uses `libm::remainderf`/`libm::remainder` (IEEE 754 remainder), NOT Rust's `%` which is fmod. Z3's `fp.rem` matches IEEE 754.
-- `nearest()` — custom implementation for ties-to-even. Rust's `f64::round()` uses ties-away-from-zero, Z3's RNE uses ties-to-even.
+- `is_negative()` / `is_positive()` — guarded with `!is_nan()` to match Z3. Rust's
+  `is_sign_negative` returns true for `-NaN`; `fp.isNegative` is false for all NaN.
+- `rem(rhs)` — uses `libm::remainderf` / `libm::remainder` (IEEE 754 remainder),
+  not Rust's `%`, which is fmod. Z3's `fp.rem` is the IEEE one.
+- `nearest()` — `f32::round_ties_even` / `f64::round_ties_even`, which is IEEE
+  roundTiesToEven and keeps the sign of a zero result: `RNE(-0.5)` is `-0.0`.
+  Rust's `round()` is ties-away-from-zero and loses that sign.
 
 ### Set — unsupported binary operations
 
@@ -231,9 +278,18 @@ Z3 does not support binary operations (such as `set.inter`, `set.union`, `set.se
   quantifiers, no performance
   > cost.
 
-### Array — functions that panic
+### Array — no panics
 
-- `select(key)` — panics when key does not exist. Z3 returns the null sentinel value. Use `contains_key` to guard first.
+- `select(key)` — returns `V::default()` when the key is absent, matching the term
+  the backend writes into every empty slot (`array_null_value`). The two are kept
+  in step deliberately: for an enum, `array_null_value` builds the **first variant
+  in declaration order**, because that is the one `#[smt_type]` generates
+  `Default::default()` from. Pick any other variant and a concrete `V::default()`
+  would silently disagree with what Z3 reads.
+
+  The value carries no meaning — membership lives in `rarr-pres`, not in the
+  value slot — so read it only after `contains_key`. But reading it early is now
+  a bug in your interpreter, not a divergence between the two sides.
 
 ### Theoretical limitations (unguarded edge cases)
 
@@ -243,19 +299,30 @@ The following cases are not explicitly guarded in the TOML interpreter because t
 
 - **`Integer.pow(exp)` with digit-count exponent**: Similarly, `Integer::from(10).pow(number_of_digits(val))`in the float parser uses the digit count as an exponent for `Integer.pow`, which requires the exponent to fit in `u32`. A number with more than 4,294,967,295 digits (~4 GB) would be needed to trigger this. Same practical impossibility applies.
 
-### String encoding: ASCII-only soundness
+### String encoding
 
-The stdlib `String` operations (`length`, `at`, `substr`, `index_of`, etc.) count Unicode code points (via Rust's `.chars()`). Z3's string theory counts UTF-8 bytes. For ASCII (code points 0-127), one code point equals one byte so they agree. For non-ASCII, they diverge:
+The stdlib's `String` operations count Unicode **code points** (Rust's `.chars()`).
+So does Z3's string theory — its alphabet is code points, not UTF-8 bytes.
 
-| Input | Rust (code points) | Z3 (bytes) |
-|-------|-------------------|------------|
-| `"Hello"` | 5 | 5 |
-| `"é"` (U+00E9) | 1 | 2 |
-| `"😀"` (U+1F600) | 1 | 4 |
+What used to break this was the *script*, not the theory: the backend wrote string
+literals verbatim, and Z3's lexer reads a raw non-ASCII byte as one character, so
+`"é"` arrived as a two-character string. Worse, SMT-LIB interprets `\u{..}` and
+`\uXXXX` *inside* literals, so a backslash in the data could start an escape that
+was never in the value — `"\u0041"` arrived as `"A"`.
 
-This affects all position-based operations (`at`, `substr`, `index_of`) since indices refer to different units. The soundness invariant holds only for ASCII input. Changing the Rust side to byte-based is not desirable: Z3's `str.at` can return individual bytes of multi-byte UTF-8 sequences (e.g., `(str.at "😀" 0)` returns `\xF0`), which cannot be stored in a Rust `String` (requires valid UTF-8).
+`format_str_literal` (`backend/z3/intrinsics.rs`) now emits printable ASCII
+verbatim and everything else — `"`, `\`, control characters, all non-ASCII — as a
+`\u{..}` escape. Measured against Z3 4.15.4:
 
-For interpreter authors: restrict string inputs to ASCII for soundness.
+| Rust value | emitted | Z3 `str.len` | Rust `chars().count()` |
+|---|---|---|---|
+| `Hello` | `"Hello"` | 5 | 5 |
+| `é` | `"\u{e9}"` | 1 | 1 |
+| `😀` | `"\u{1f600}"` | 1 | 1 |
+| `\u0041` | `"\u{5c}u0041"` | 6 | 6 |
+
+Interpreter authors no longer need to restrict input to ASCII. The one remaining
+limit is the alphabet ceiling below.
 
 #### Z3's character range stops at `0x2FFFF`
 
@@ -266,13 +333,26 @@ represent every Unicode scalar value. Measured on 4.15.4:
 |---|---|---|---|
 | `0x1F600` | `128512` | `1` | 1 char |
 | `0x2FFFF` | `196607` | `1` | 1 char |
-| `0x30000` | `-1` | `0` | 1 char |
-| `0x10FFFF` | `-1` | `0` | 1 char |
+| `0x30000` | `-1` | `0` | `""` |
+| `0x10FFFF` | `-1` | `0` | `""` |
 
-Above `0x2FFFF`, `str.from_code` yields the **empty** string while the stdlib's
-`String::from_code` (`char::from_u32(..).unwrap()`) yields a one-character
-string — so `length()` disagrees immediately. This is reachable: the TOML
-front-end feeds input code points straight into `String::from_code`.
+Where that ceiling falls in Unicode:
+
+| range | plane | what lives there | Z3 | Rust |
+|---|---|---|---|---|
+| `U+0000`–`U+D7FF` | 0 (start) | ASCII, Latin, Greek, Cyrillic, CJK — most everything | yes | yes |
+| `U+D800`–`U+DFFF` | 0 | surrogates — not characters at all | yes | **no** |
+| `U+E000`–`U+FFFF` | 0 (rest) | private use, CJK compatibility | yes | yes |
+| `U+10000`–`U+1FFFF` | 1 | emoji (😀 = `U+1F600`), ancient scripts | yes | yes |
+| `U+20000`–`U+2FFFF` | 2 | rare CJK ideographs | yes | yes |
+| `U+30000`–`U+10FFFF` | 3–16 | CJK extensions G/H, tag chars, private use | **no** | yes |
+
+Above `0x2FFFF`, `str.from_code` yields the **empty** string, and
+`String::from_code` now does the same, so the two agree. (It used to build the
+character, which disagreed with Z3 immediately at `length()` — reachable, since
+the TOML front-end feeds input code points straight into `String::from_code`.)
+Surrogates are the one case Rust cannot mirror: Z3 admits one as a character and
+`char` cannot hold it, so `from_code` panics there.
 
 The transpiler therefore bounds `U32` / `Seq<U32>` inputs to
 `[0x0, 0xD7FF] ∪ [0xE000, 0x2FFFF]` (`backend/z3/ctxt.rs::unicode_bound_for`).

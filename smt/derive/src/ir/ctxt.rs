@@ -20,9 +20,7 @@ pub struct IRContext {
     /// Path-marker targets for synthesis queries. Each target is a set of marker
     /// ids to assert simultaneously.
     pub path_targets: Vec<BTreeSet<usize>>,
-    /// Targets whose single id is
-    /// in this map can be certified per-target by concrete replay, which is
-    /// what makes them eligible for the proposer-fallback loop.
+    /// These are all marker ids and their human-readable names.
     pub marker_names: BTreeMap<usize, String>,
 }
 
@@ -35,6 +33,17 @@ impl IRContext {
             fn_registry: FunRegistry::new(),
             path_targets: Vec::new(),
             marker_names: BTreeMap::new(),
+        }
+    }
+
+    /// Register a synthesis target, ignoring one already registered.
+    ///
+    /// A marker name may appear at several call sites, and each occurrence
+    /// reaches this point; without the guard the same target is queried once per
+    /// occurrence, so `path_targets.len()` would exceed the marker count.
+    pub(crate) fn register_target(&mut self, ids: BTreeSet<usize>) {
+        if !self.path_targets.contains(&ids) {
+            self.path_targets.push(ids);
         }
     }
 }

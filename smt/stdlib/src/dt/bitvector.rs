@@ -130,18 +130,32 @@ impl BitvectorOps for I32 {
     }
 
     fn bv_div(self, rhs: Self) -> Self {
+        // (bvsdiv x 0) is -1 for non-negative x and 1 otherwise; it is not a trap.
+        if *rhs.inner == 0 {
+            return Self {
+                inner: Intern::new(if *self.inner >= 0 { -1 } else { 1 }),
+            };
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_div(*rhs.inner)),
         }
     }
 
     fn bv_rem(self, rhs: Self) -> Self {
+        // (bvsrem x 0) and (bvurem x 0) are both x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_rem(*rhs.inner)),
         }
     }
 
     fn bv_mod(self, rhs: Self) -> Self {
+        // (bvsmod x 0) is x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         let a = *self.inner;
         let b = *rhs.inner;
         let rem = a.wrapping_rem(b);
@@ -311,18 +325,32 @@ impl BitvectorOps for U32 {
     }
 
     fn bv_div(self, rhs: Self) -> Self {
+        // (bvudiv x 0) is the all-ones vector; it is not a trap.
+        if *rhs.inner == 0 {
+            return Self {
+                inner: Intern::new(u32::MAX),
+            };
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_div(*rhs.inner)),
         }
     }
 
     fn bv_rem(self, rhs: Self) -> Self {
+        // (bvsrem x 0) and (bvurem x 0) are both x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_rem(*rhs.inner)),
         }
     }
 
     fn bv_mod(self, rhs: Self) -> Self {
+        // (bvurem x 0) is x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         self.bv_rem(rhs)
     }
 
@@ -476,18 +504,32 @@ impl BitvectorOps for I64 {
     }
 
     fn bv_div(self, rhs: Self) -> Self {
+        // (bvsdiv x 0) is -1 for non-negative x and 1 otherwise; it is not a trap.
+        if *rhs.inner == 0 {
+            return Self {
+                inner: Intern::new(if *self.inner >= 0 { -1 } else { 1 }),
+            };
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_div(*rhs.inner)),
         }
     }
 
     fn bv_rem(self, rhs: Self) -> Self {
+        // (bvsrem x 0) and (bvurem x 0) are both x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_rem(*rhs.inner)),
         }
     }
 
     fn bv_mod(self, rhs: Self) -> Self {
+        // (bvsmod x 0) is x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         let a = *self.inner;
         let b = *rhs.inner;
         let rem = a.wrapping_rem(b);
@@ -660,18 +702,32 @@ impl BitvectorOps for U64 {
     }
 
     fn bv_div(self, rhs: Self) -> Self {
+        // (bvudiv x 0) is the all-ones vector; it is not a trap.
+        if *rhs.inner == 0 {
+            return Self {
+                inner: Intern::new(u64::MAX),
+            };
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_div(*rhs.inner)),
         }
     }
 
     fn bv_rem(self, rhs: Self) -> Self {
+        // (bvsrem x 0) and (bvurem x 0) are both x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         Self {
             inner: Intern::new(self.inner.wrapping_rem(*rhs.inner)),
         }
     }
 
     fn bv_mod(self, rhs: Self) -> Self {
+        // (bvurem x 0) is x.
+        if *rhs.inner == 0 {
+            return self;
+        }
         self.bv_rem(rhs)
     }
 
@@ -959,10 +1015,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_bv_div_by_zero_i32() {
-        use crate::{I32, bitvector::BitvectorOps};
-        I32::from(7).bv_div(I32::from(0));
+    fn test_bv_div_by_zero_matches_smtlib() {
+        use crate::smt::SMT;
+        use crate::{I32, U32, bitvector::BitvectorOps};
+        // (bvsdiv x 0) is -1 for non-negative x and 1 otherwise; (bvudiv x 0) is all ones.
+        assert!(*I32::from(7).bv_div(I32::from(0)).eq(I32::from(-1)));
+        assert!(*I32::from(-7).bv_div(I32::from(0)).eq(I32::from(1)));
+        assert!(*U32::from(7).bv_div(U32::from(0)).eq(U32::from(u32::MAX)));
+        // (bvsrem x 0), (bvurem x 0) and (bvsmod x 0) all give back the dividend.
+        assert!(*I32::from(7).bv_rem(I32::from(0)).eq(I32::from(7)));
+        assert!(*I32::from(7).bv_mod(I32::from(0)).eq(I32::from(7)));
+        assert!(*U32::from(7).bv_rem(U32::from(0)).eq(U32::from(7)));
     }
 
     #[test]

@@ -30,7 +30,7 @@
 //!
 //! ```ignore
 //! pub struct Seq<T: SMT> {
-//!     inner: Intern<Vec<SMTWrap<T>>>,  // SMTWrap enables Vec operations
+//!     inner: Intern<Vec<SMTWrap<T>>>,
 //! }
 //!
 //! pub struct Set<T: SMT> {
@@ -61,7 +61,7 @@ use std::hash::Hash;
 ///
 /// # Note
 ///
-/// We manually implement `PartialEq` instead of using `#[derive(Eq)]` to avoid imposing the
+/// We manually implement `Eq` instead of using `#[derive(Eq)]` to avoid imposing the
 /// `T: Eq` constraint, since `T` only needs to implement the `SMT` trait which provides its
 /// own `eq()` method.
 #[derive(Debug, Clone, Copy, Default)]

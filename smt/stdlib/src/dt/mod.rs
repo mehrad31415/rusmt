@@ -819,9 +819,9 @@ mod test {
         assert!(*array.length().eq(1.into()));
     }
 
-    /// getting an element that does not exist in the array should give None
+    /// reading an absent key gives the value sort's default, matching the term
+    /// the backend writes into every empty slot
     #[test]
-    #[should_panic]
     fn test_array_get_non_existent() {
         let array = Array::new().store(Integer::from(1), Integer::from(2));
         assert!(*array.select(Integer::from(2)).eq(Integer::default()));

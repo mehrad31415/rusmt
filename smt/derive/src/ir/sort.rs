@@ -109,7 +109,13 @@ pub enum DataType {
     /// A record type like MyStruct{x: i32, y: i32, z: i32}
     Record(BTreeMap<String, Sort>),
     /// An enum type like MyEnum::MyVariant{x:1,y:2,z:3}
-    Enum(BTreeMap<String, Variant>),
+    Enum {
+        /// The variants, keyed by name.
+        variants: BTreeMap<String, Variant>,
+        /// The variant `#[smt_type]` gives `Default::default()`: the first in
+        /// declaration order, which the name-keyed map above cannot recover.
+        default: String,
+    },
 }
 
 impl Display for DataType {
@@ -123,7 +129,7 @@ impl Display for DataType {
                 let content: Vec<_> = fields.iter().map(|(k, v)| format!("{k}:{v}")).collect();
                 write!(f, "{{{}}}", content.join(","))
             }
-            Self::Enum(variants) => {
+            Self::Enum { variants, .. } => {
                 let content: Vec<_> = variants
                     .iter()
                     .map(|(k, v)| match v {
@@ -349,7 +355,10 @@ impl<'a, 'ctx: 'a> IRBuilder<'a, 'ctx> {
                             };
                             variants.insert(key.clone(), variant);
                         }
-                        DataType::Enum(variants)
+                        DataType::Enum {
+                            variants,
+                            default: adt.default_variant.clone(),
+                        }
                     }
                 }
             }

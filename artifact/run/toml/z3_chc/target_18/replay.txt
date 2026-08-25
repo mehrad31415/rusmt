@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `basic_string_missing_close_eof`
+the SMT lift and the concrete semantics agree on this input

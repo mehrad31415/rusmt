@@ -32,6 +32,7 @@ Concretely (in `lang/src/toml/mod.rs`), it parses one `expression` and then loop
 - **`key_value.rs`**: parses `key = value` and dotted keys; constructs implicit tables
 - **`string.rs` / `integer.rs` / `float.rs` / `boolean.rs` / `datetime.rs`**: value sub-parsers
 - **`array.rs`**: parses TOML arrays (including whitespace/comment/newline rules)
+- **`mod.rs`**: the `parse_toml` entry point, the shared `State` cursor, and the character-class predicates the sub-parsers share
 
 ### Context tracking (`ParserContext`)
 

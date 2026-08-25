@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `float_exp_no_digit_after_e`
+the SMT lift and the concrete semantics agree on this input

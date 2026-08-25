@@ -1,0 +1,1 @@
+integer_bin_invalid_char_after_prefix

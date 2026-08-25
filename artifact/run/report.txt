@@ -1,0 +1,48 @@
+markers in catalog            : 183
+stage 1 sat                   : 0
+stage 1 unsat (unreachable)   : 0
+witness after stage 2         : 146
+COVERED (certcount)           : 146
+MISSES  (misscount)           : 37
+run failures                  : 0
+not attempted                 : 0
+
+how each marker's loop ended
+  witness          146
+  budget           37
+
+37 markers have no witness. None of them is ruled out:
+  a budget stop is a spending limit, and the proposer is stochastic,
+  so another sample or a larger budget may still find one.
+  -> COVERAGE IS A LOWER BOUND at RUSMT_ROUNDS attempts per marker
+
+counterexample quality, over 442 rejections
+   390 (88.2%)  Z3 named a DIFFERENT marker
+    26 ( 5.9%)  the document was simply valid
+    26 ( 5.9%)  no observation (bare unsat)
+
+sensitivity: what coverage WOULD have been at each budget
+  (recovered from this single run; no extra solving)
+
+witnesses by round (the round-budget curve)
+  round 1: + 57  cumulative 57
+  round 2: + 56  cumulative 113
+  round 3: + 19  cumulative 132
+  round 4: +  6  cumulative 138
+  round 5: +  3  cumulative 141
+  round 6: +  2  cumulative 143
+  round 7: +  0  cumulative 143
+  round 8: +  2  cumulative 145
+  round 9: +  1  cumulative 146
+
+  witnesses in the final two productive rounds: 3
+  -> the curve had NOT flattened at the cap: a larger budget would
+     very likely have covered more. Coverage is a lower bound.
+Traceback (most recent call last):
+  File "/Users/mehradhq/WATERLOO/rusmt_project/rusmt/specops/report.py", line 209, in <module>
+    main()
+    ~~~~^^
+  File "/Users/mehradhq/WATERLOO/rusmt_project/rusmt/specops/report.py", line 124, in main
+    if und:
+       ^^^
+NameError: name 'und' is not defined

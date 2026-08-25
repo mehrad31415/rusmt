@@ -341,14 +341,36 @@ pub(crate) fn parse_expression(state: State) -> ParseResult<Table> {
                                                         ),
                                                     ));
                                                 } else {
-                                                    let new_array_tables = array_of_tables
-                                                        .append(new_array_table_name);
+                                                    // a new element: everything remembered under
+                                                    // this path belonged to the previous one
+                                                    let new_array_tables = drop_under(
+                                                        array_of_tables,
+                                                        new_array_table_name,
+                                                        Seq::new(),
+                                                    )
+                                                    .append(new_array_table_name);
                                                     let new_context = ParserContext {
                                                         current_table_path: new_array_table_name,
-                                                        explicit_tables: explicit_tables,
-                                                        closed_tables: closed_tables,
-                                                        inline_tables: inline_tables,
-                                                        inline_arrays: inline_arrays,
+                                                        explicit_tables: drop_under(
+                                                            explicit_tables,
+                                                            new_array_table_name,
+                                                            Seq::new(),
+                                                        ),
+                                                        closed_tables: drop_under(
+                                                            closed_tables,
+                                                            new_array_table_name,
+                                                            Seq::new(),
+                                                        ),
+                                                        inline_tables: drop_under(
+                                                            inline_tables,
+                                                            new_array_table_name,
+                                                            Seq::new(),
+                                                        ),
+                                                        inline_arrays: drop_under(
+                                                            inline_arrays,
+                                                            new_array_table_name,
+                                                            Seq::new(),
+                                                        ),
                                                         array_of_tables: new_array_tables,
                                                     };
                                                     let _state_after_array_table = State {
@@ -472,6 +494,35 @@ pub(crate) fn make_tables_from_key_inner(
             droplast(key_parts),
             acc.append(table_keyname.concat(key_parts)),
         )
+    }
+}
+
+/// Whether `path` lies strictly under `prefix`.
+#[smt_fn]
+pub(crate) fn is_under(prefix: Seq<String>, path: Seq<String>) -> Boolean {
+    prefix
+        .prefix_of(path)
+        .and(path.length().gt(prefix.length()))
+}
+
+/// Drop every remembered path that lies strictly under `prefix`. A new
+/// `[[prefix]]` element starts a fresh table, so names under it are undefined again.
+#[smt_fn]
+pub(crate) fn drop_under(
+    entries: Seq<Seq<String>>,
+    prefix: Seq<String>,
+    acc: Seq<Seq<String>>,
+) -> Seq<Seq<String>> {
+    if *entries.is_empty() {
+        acc
+    } else {
+        let first = entries.at(Integer::from(0));
+        let rest = entries.extract(Integer::from(1), entries.length().sub(Integer::from(1)));
+        if *is_under(prefix, first) {
+            drop_under(rest, prefix, acc)
+        } else {
+            drop_under(rest, prefix, acc.append(first))
+        }
     }
 }
 

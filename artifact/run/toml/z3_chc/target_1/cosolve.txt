@@ -1,0 +1,18 @@
+marker          : comment_invalid_char
+raised in       : parse_comment_rest
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 1 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1445 ms) ===
+--- reply ---
+<<<#\u{0}>>>
+candidate: "#\0"
+--- outcome ---
+ACCEPTED: Z3 certified this input against the unmodified query (sat) — a witness for `comment_invalid_char`
+
+status: 1 witness(es) accepted:
+  "#\0"

@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `bare_key_invalid_start`
+the SMT lift and the concrete semantics agree on this input

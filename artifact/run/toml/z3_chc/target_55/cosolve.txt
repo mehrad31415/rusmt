@@ -1,0 +1,20 @@
+marker          : integer_dec_leading_zero_digit
+raised in       : parse_unsigned_dec_int
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 1 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1026 ms) ===
+--- reply ---
+<<<
+a = 01
+>>>
+candidate: "a = 01"
+--- outcome ---
+ACCEPTED: Z3 certified this input against the unmodified query (sat) — a witness for `integer_dec_leading_zero_digit`
+
+status: 1 witness(es) accepted:
+  "a = 01"

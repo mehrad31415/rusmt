@@ -3,6 +3,7 @@
 use crate::smt::SMT;
 use crate::{Boolean, Integer, Seq, dt::SMTWrap};
 use internment::Intern;
+use num_bigint::Sign;
 use num_traits::cast::ToPrimitive;
 
 impl<T: SMT> Seq<T> {
@@ -49,17 +50,30 @@ impl<T: SMT> Seq<T> {
     }
 
     /// `(seq.nth s i)`
+    /// Panics if the index is negative, not a valid usize, or out of bounds:
+    /// `seq.nth` is unconstrained off the end, satisfiable equal to any value,
+    /// so there is nothing to return. Whether a lookup can be total depends on
+    /// what it returns -- an element sort has no canonical empty value, a
+    /// sequence sort does:
+    ///
+    /// ```text
+    ///               returns        z3 off the end   rust
+    /// String::at    a string       ""               returns ""
+    /// Seq::at_seq   a sequence     empty seq        returns empty
+    /// Seq::at       an element T   unconstrained    panics
+    /// ```
     pub fn at(self, i: Integer) -> T {
         i.inner
             .to_usize()
             .and_then(|idx| self.inner.get(idx))
             .map(|wrapped_val| wrapped_val.0)
-            .unwrap()
+            .expect("seq.nth is underspecified off the end, so there is no value to return")
     }
 
-    /// `(seq.at s i)`
+    /// `(seq.at s i)`, emitted as `(seq.extract s i 1)`: the empty sequence when
+    /// the index is out of range, never a panic.
     pub fn at_seq(self, i: Integer) -> Self {
-        Self::unit(self.at(i))
+        self.extract(i, Integer::from(1))
     }
 
     /// `(seq.contains s (seq.unit e))`
@@ -86,59 +100,47 @@ impl<T: SMT> Seq<T> {
     }
 
     /// `(seq.extract s offset length)`
-    /// Extracts a subsequence starting at `offset` with given `length`.
-    ///
-    /// # Panics
-    /// Panics if offset or length are negative or too large to convert to usize.
-    /// Panics if offset is beyond the sequence length.
-    /// If length extends beyond sequence, takes what's available (does not panic).
+    /// The empty sequence when the offset is outside `[0, len)` or the length is
+    /// not positive, otherwise the longest available run, as `seq.extract` gives.
     pub fn extract(self, offset: Integer, length: Integer) -> Self {
-        let start = offset.inner.to_usize().unwrap();
-        let len = length.inner.to_usize().unwrap();
-
-        // Clamp end to sequence length (like substr for strings)
-        let end = (start + len).min(self.inner.len());
-
-        let new_vec = self.inner[start..end].to_vec();
+        if offset.inner.sign() == Sign::Minus || length.inner.sign() != Sign::Plus {
+            return Self::new();
+        }
+        let start = offset.inner.to_usize().unwrap_or(usize::MAX);
+        if start >= self.inner.len() {
+            return Self::new();
+        }
+        let len = length.inner.to_usize().unwrap_or(usize::MAX);
+        let end = start.saturating_add(len).min(self.inner.len());
         Self {
-            inner: Intern::new(new_vec),
+            inner: Intern::new(self.inner[start..end].to_vec()),
         }
     }
 
     /// `(seq.indexof s sub offset)`
-    /// Returns the first index where subsequence `sub` appears in `self`, starting search at `offset`.
-    ///
-    /// # Panics
-    /// - Panics if offset is negative or too large to convert to usize
-    /// - Panics if offset is beyond the sequence length
-    /// - Panics if subsequence is not found
+    /// `-1` when the offset is outside `[0, len]` or the subsequence does not occur
+    /// at or after it, as `seq.indexof` gives. An offset of exactly `len` is in range.
     pub fn index_of(self, sub: Self, offset: Integer) -> Integer {
-        let mut ret = None;
-        let start_pos = offset.inner.to_usize().unwrap();
-        if sub.inner.is_empty() {
-            return offset;
+        if offset.inner.sign() == Sign::Minus {
+            return Integer::from(-1);
         }
-
+        let start = offset.inner.to_usize().unwrap_or(usize::MAX);
+        if start > self.inner.len() {
+            return Integer::from(-1);
+        }
         let sub_len = sub.inner.len();
+        if sub_len == 0 {
+            return Integer::from(start);
+        }
         if sub_len > self.inner.len() {
-            ret.expect("index_of: subsequence is longer than the sequence");
+            return Integer::from(-1);
         }
-
-        if start_pos > self.inner.len() - sub_len {
-            ret.expect("index_of: offset is beyond the sequence length");
-        }
-
-        for i in start_pos..=(self.inner.len() - sub_len) {
-            let window = &self.inner[i..i + sub_len];
-            if window == &sub.inner[..] {
-                ret = Some(Integer::from(i));
-                break;
+        for i in start..=(self.inner.len() - sub_len) {
+            if self.inner[i..i + sub_len] == sub.inner[..] {
+                return Integer::from(i);
             }
         }
-
-        ret.unwrap_or_else(|| {
-            panic!("index_of: subsequence not found in sequence starting from offset {start_pos}")
-        })
+        Integer::from(-1)
     }
 
     /// `(seq.indexof s sub)` - convenience method with offset 0
@@ -318,27 +320,33 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_seq_extract_negative_offset() {
-        use crate::{Integer, Seq};
+        use crate::{Integer, Seq, smt::SMT};
         let s = Seq::unit(Integer::from(10));
-        s.extract(Integer::from(-1), Integer::from(1));
+        assert!(
+            *s.extract(Integer::from(-1), Integer::from(1))
+                .eq(Seq::<Integer>::new())
+        );
     }
 
     #[test]
-    #[should_panic]
     fn test_seq_extract_negative_length() {
-        use crate::{Integer, Seq};
+        use crate::{Integer, Seq, smt::SMT};
         let s = Seq::unit(Integer::from(10));
-        s.extract(Integer::from(1), Integer::from(-1));
+        assert!(
+            *s.extract(Integer::from(1), Integer::from(-1))
+                .eq(Seq::<Integer>::new())
+        );
     }
 
     #[test]
-    #[should_panic]
     fn test_seq_extract_out_of_bounds() {
-        use crate::{Integer, Seq};
+        use crate::{Integer, Seq, smt::SMT};
         let s = Seq::unit(Integer::from(10));
-        s.extract(Integer::from(10), Integer::from(1));
+        assert!(
+            *s.extract(Integer::from(10), Integer::from(1))
+                .eq(Seq::<Integer>::new())
+        );
     }
 
     #[test]
@@ -369,39 +377,40 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "index_of: subsequence not found in sequence starting from offset 0")]
     fn test_seq_index_of_not_found() {
-        use crate::{Integer, Seq};
+        use crate::{Integer, Seq, smt::SMT};
         let s = Seq::unit(Integer::from(10));
         let sub = Seq::unit(Integer::from(99));
-        s.index_of(sub, Integer::from(0));
+        assert!(*s.index_of(sub, Integer::from(0)).eq(Integer::from(-1)));
     }
 
     #[test]
-    #[should_panic]
     fn test_seq_index_of_negative_offset() {
-        use crate::{Integer, Seq};
+        use crate::{Integer, Seq, smt::SMT};
         let s = Seq::unit(Integer::from(10));
         let sub = Seq::unit(Integer::from(10));
-        s.index_of(sub, Integer::from(-1));
+        assert!(*s.index_of(sub, Integer::from(-1)).eq(Integer::from(-1)));
     }
 
     #[test]
-    #[should_panic(expected = "index_of: offset is beyond the sequence length")]
     fn test_seq_index_of_offset_out_of_bounds() {
-        use crate::{Integer, Seq};
+        use crate::{Integer, Seq, smt::SMT};
         let s = Seq::unit(Integer::from(10));
         let sub = Seq::unit(Integer::from(10));
-        s.index_of(sub, Integer::from(20));
+        assert!(*s.index_of(sub, Integer::from(20)).eq(Integer::from(-1)));
+        // an offset of exactly the length is in range and finds the empty needle
+        assert!(
+            *s.index_of(Seq::new(), Integer::from(1))
+                .eq(Integer::from(1))
+        );
     }
 
     #[test]
-    #[should_panic(expected = "index_of: subsequence is longer than the sequence")]
     fn test_seq_index_of_subsequence_longer_than_sequence() {
-        use crate::{Integer, Seq};
+        use crate::{Integer, Seq, smt::SMT};
         let s = Seq::unit(Integer::from(10));
         let sub = Seq::unit(Integer::from(10)).append(Integer::from(20));
-        s.index_of(sub, Integer::from(0));
+        assert!(*s.index_of(sub, Integer::from(0)).eq(Integer::from(-1)));
     }
 
     #[test]

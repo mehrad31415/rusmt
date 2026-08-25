@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `float_frac_exp_underflow_i32`
+the SMT lift and the concrete semantics agree on this input

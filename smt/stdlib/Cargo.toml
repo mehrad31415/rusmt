@@ -8,6 +8,8 @@ license.workspace = true
 keywords = ["smt", "types", "modeling"]
 categories = ["compilers"]
 edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }

@@ -1,0 +1,2 @@
+AGREES: concrete replay also reaches `array_open_after_ws_eof`
+the SMT lift and the concrete semantics agree on this input

@@ -41,16 +41,23 @@ cargo build --workspace
 (cd runners/go_bs     && go build -o go_bs_runner .)
 (cd runners/node_smol && npm install)
 
-# 1. gather the pipeline's witnesses into a suite directory
-python3 collect.py ../lang/src/synthesis/toml/z3_chc /tmp/suite
+# 1. generate the suite with the framework
+export RUSMT_LLM_CMD="./my_proposer"
+export RUSMT_ROUNDS=9 RUSMT_WITNESSES=1
+export RUSMT_STAGE1_SECS=2 RUSMT_Z3_SECS=15
+
+cargo run -p rusmt-smt-derive -- toml parse_toml \
+  --jobs 6 \
+  --out-dir /tmp/rusmt-toml-out \
+  --suite-out /tmp/suite
 
 # 2. diff the suite across implementations
 python3 diff.py /tmp/suite --json /tmp/diff.json
 ```
 
-`collect.py` writes one `.toml` per accepted witness, named after its marker;
+The framework writes one `.toml` per accepted witness, named after its marker;
 additional witnesses for the same marker get a `__2`, `__3` suffix so the diff
-exercises all of them. One witness per marker is thin — the solver may return an
+exercises all of them. One witness per marker is thin: the solver may return an
 input every implementation already handles.
 
 Versions are printed in the `diff.py` header, so a reported table always carries

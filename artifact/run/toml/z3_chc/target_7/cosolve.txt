@@ -1,0 +1,27 @@
+marker          : boolean_invalid_capital_true
+raised in       : parse_boolean
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 2 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (2066 ms) ===
+--- reply ---
+<<<True>>>
+candidate: "True"
+--- outcome ---
+`unsat`: this input does not reach `boolean_invalid_capital_true`. Z3 reports that it reaches ERR key_value_missing_equals_eof instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `boolean_invalid_capital_true` is about.
+
+=== round 2 (922 ms) ===
+--- reply ---
+<<<
+a = True
+>>>
+candidate: "a = True"
+--- outcome ---
+ACCEPTED: Z3 certified this input against the unmodified query (sat) — a witness for `boolean_invalid_capital_true`
+
+status: 1 witness(es) accepted:
+  "a = True"

@@ -1,0 +1,21 @@
+# INPUT<TAB>EXPECT   (EXPECT = ok | nomatch | err:<marker>)
+#
+# VALID documents only, and deliberately so. An `err:<marker>` example would
+# hand over an input-to-marker mapping, and those inputs are exactly the
+# evaluation set — the draft would be scored partly on answers it was given.
+# Mapping a spec rule onto a marker name unaided is the experiment.
+#
+# These still do real work: they stop a degenerate draft that rejects
+# everything from passing the marker and liveness gates.
+#
+# Every line is an example from the TOML 1.1.0 Integer section itself.
+int2 = 42	ok
+int1 = +99	ok
+int4 = -17	ok
+int3 = 0	ok
+int5 = 1_000	ok
+int8 = 1_2_3_4_5	ok
+hex3 = 0xdead_beef	ok
+hex1 = 0xDEADBEEF	ok
+oct2 = 0o755	ok
+bin1 = 0b11010110	ok

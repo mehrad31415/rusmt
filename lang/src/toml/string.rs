@@ -460,6 +460,20 @@ fn is_valid_unicode_scalar(value: U32) -> Boolean {
     is_low_range.or(is_high_range)
 }
 
+/// Whether what follows an escape can still begin `ws newline`: whitespace, a
+/// line-ending character, or the end of the document.
+#[smt_fn]
+fn starts_line_continuation(state: State) -> Boolean {
+    match current_char(state) {
+        Optional::None => return Boolean::from(true),
+        Optional::Some(c) => {
+            return is_wschar(c)
+                .or(c.eq(U32::from(0x0A)))
+                .or(c.eq(U32::from(0x0D)));
+        }
+    }
+}
+
 /// mlb-escaped-nl = escape ws newline *( wschar / newline )
 #[smt_fn]
 fn parse_mlb_escaped_nl(state: State) -> ParseResult<String> {
@@ -472,13 +486,19 @@ fn parse_mlb_escaped_nl(state: State) -> ParseResult<String> {
                 match parse_newline(after_ws_parse) {
                     ParseResult::Err(e) => return ParseResult::Err(e),
                     ParseResult::NoMatch => {
-                        // println!(
-                        //   "newline expected after escaped newline in multi-line basic string"
-                        //);
-                        return ParseResult::Err(Path::named(String::from(
-                            "ml_basic_escaped_newline_missing_newline",
-                        )));
-                    } // newline expected
+                        // A backslash that cannot begin a line continuation was an
+                        // `escaped` all along, and `parse_escaped` already rejected
+                        // its character.
+                        if *starts_line_continuation(advance(state)) {
+                            return ParseResult::Err(Path::named(String::from(
+                                "ml_basic_escaped_newline_missing_newline",
+                            )));
+                        } else {
+                            return ParseResult::Err(Path::named(String::from(
+                                "ml_basic_invalid_escape",
+                            )));
+                        }
+                    }
                     ParseResult::Ok(_newline_str, after_newline_state) => {
                         match parse_wschar_newline_sequence(after_newline_state) {
                             ParseResult::Err(e) => return ParseResult::Err(e),

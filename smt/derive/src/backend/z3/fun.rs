@@ -249,27 +249,50 @@ pub fn mk_function_str(
     )
 }
 
-/// Convert a function definition into a *stub*: same signature, body replaced
-/// by a constant of the return sort (see [`bmc_terminator`]).
+/// The monomorphic, non-`choose!` functions the backend emits as definitions.
+fn definable(ir: &IRContext) -> BTreeSet<UsrFunId> {
+    ir.fn_registry
+        .lookup()
+        .values()
+        .flat_map(|insts| insts.iter())
+        .filter(|(ty_args, _)| !ty_args.iter().any(|s| matches!(s, Sort::Uninterpreted(_))))
+        .map(|(_, fid)| *fid)
+        .filter(|&fid| {
+            let def = ir.fn_registry.retrieve_def(fid);
+            !matches!(
+                def.body.lookup_exp(&def.root_exp_id),
+                Expression::IterChoose { .. }
+            )
+        })
+        .collect()
+}
+
+/// The functions whose body raises one of `target_ids`.
 ///
-/// Used by marker-directed slicing (`crate::slice`) to remove definitions that
-/// cannot contribute to a target. Parameters are renamed to `a0..` because the
-/// body no longer mentions them, and an unused original name could shadow a
-/// global.
-pub fn mk_stub_str(function_name: String, sig: &FunSig, ir: &IRContext) -> String {
-    let param_list: Vec<String> = sig
-        .params
+/// Found by rendering each body and looking for the marker's one-hot `Path`
+/// literal, which the backend emits exactly where the `Path::named` was.
+pub fn marker_holders(ir: &IRContext, target_ids: &BTreeSet<usize>) -> BTreeSet<UsrFunId> {
+    let needles: Vec<String> = target_ids
         .iter()
-        .enumerate()
-        .map(|(i, (_, sort))| format!("(a{} {})", i, format_sort_for_fn(sort, ir)))
+        .map(|&id| crate::backend::z3::path::marker_literal(ir, id))
         .collect();
-    format!(
-        "(define-fun {} ({}) {} {})",
-        function_name,
-        param_list.join(" "),
-        format_sort_for_fn(&sig.ret_ty, ir),
-        bmc_terminator(&sig.ret_ty, ir)
-    )
+    definable(ir)
+        .into_iter()
+        .filter(|&fid| {
+            let def = ir.fn_registry.retrieve_def(fid);
+            let body = format_expression(&def.body, def.root_exp_id, ir);
+            needles.iter().any(|n| body.contains(n.as_str()))
+        })
+        .collect()
+}
+
+/// The name of the function that raises `target_ids`, for the proposer prompt.
+pub fn holder_name(ir: &IRContext, target_ids: &BTreeSet<usize>) -> String {
+    marker_holders(ir, target_ids)
+        .into_iter()
+        .next()
+        .map(|f| resolve_function_name(ir, f))
+        .unwrap_or_else(|| "(unknown)".to_string())
 }
 
 /// Helper to format a single function signature.
@@ -433,7 +456,7 @@ pub fn mk_functions_unrolled_str(
 pub(crate) fn bmc_terminator(sort: &Sort, ir: &IRContext) -> String {
     if let Sort::User(sid) = sort {
         let dt = ir.ty_registry.retrieve(*sid);
-        if let DataType::Enum(variants) = dt {
+        if let DataType::Enum { variants, .. } = dt {
             if let Some(vname) = variants.iter().find_map(|(n, v)| {
                 if matches!(v, Variant::Unit) {
                     Some(n.clone())

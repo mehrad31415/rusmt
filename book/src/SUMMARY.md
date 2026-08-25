@@ -13,6 +13,9 @@
 # Developer guide
 - [Project Setup](dev/project-setup.md)
 - [Pipeline](dev/pipeline.md)
+- [Design rationale](dev/design.md)
+- [Authoring a semantics](dev/authoring.md)
+- [Standard library: design](dev/smt/stdlib-design.md)
 - [doc](dev/doc.md)
 - [smt](dev/smt.md)
   - [stdlib](dev/smt/stdlib.md)

@@ -6,6 +6,29 @@ use crate::toml::{
 use rusmt_smt_remark_derive::smt_fn;
 use rusmt_smt_stdlib::{Boolean, Path, Seq, String, U32, smt::SMT};
 
+/// Remember `key` -- an absolute path -- as a statically defined array.
+#[smt_fn]
+fn remember_inline_array(state: State, key: Seq<String>) -> State {
+    let state_temp = state;
+    let stream = state_temp.stream;
+    let cursor = state_temp.cursor;
+    let context = state_temp.context;
+    let context_temp = context;
+    let new_context = ParserContext {
+        current_table_path: context_temp.current_table_path,
+        explicit_tables: context_temp.explicit_tables,
+        closed_tables: context_temp.closed_tables,
+        inline_tables: context_temp.inline_tables,
+        inline_arrays: context_temp.inline_arrays.append(key),
+        array_of_tables: context_temp.array_of_tables,
+    };
+    State {
+        stream,
+        cursor,
+        context: new_context,
+    }
+}
+
 /// array = array-open [ array-values ] ws-comment-newline array-close
 #[smt_fn]
 pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Value>> {
@@ -24,57 +47,37 @@ pub(crate) fn parse_array(key: Seq<String>, input: State) -> ParseResult<Seq<Val
                             ParseResult::Err(e) => return ParseResult::Err(e),
                             ParseResult::NoMatch => return ParseResult::NoMatch, // cannot happen
                             ParseResult::Ok(_ws, after_ws) => {
-                                match current_char(after_ws) {
-                                    Optional::None => {
-                                        // println!("expect array-close after array-open found nothing");
-                                        ParseResult::Err(Path::named(String::from(
-                                            "array_open_after_ws_eof",
-                                        )))
-                                    }
-                                    Optional::Some(x) => {
-                                        if *is_array_close(x) {
-                                            let after_close = advance(after_ws);
-                                            // check if the array is in the array of tables and throw error if so
-                                            let after_close_temp = after_close;
-                                            let stream = after_close_temp.stream;
-                                            let cursor = after_close_temp.cursor;
-                                            let context = after_close_temp.context;
-                                            let context_temp = context;
-                                            let current_table_path =
-                                                context_temp.current_table_path;
-                                            let explicit_tables = context_temp.explicit_tables;
-                                            let closed_tables = context_temp.closed_tables;
-                                            let inline_tables = context_temp.inline_tables;
-                                            let inline_arrays = context_temp.inline_arrays;
-                                            let array_of_tables = context_temp.array_of_tables;
-                                            if *array_of_tables.contains(key) {
-                                                // println!("arrays of tables cannot contain inline arrays");
-                                                return ParseResult::Err(Path::named(
-                                                    String::from("array_of_tables_inline_array"),
-                                                )); // arrays of tables cannot contain inline arrays
-                                            } else {
-                                                // update the inline_arrays in the context
-                                                let new_inline_arrays = inline_arrays.append(key);
-                                                let new_context = ParserContext {
-                                                    current_table_path,
-                                                    explicit_tables,
-                                                    closed_tables,
-                                                    inline_tables,
-                                                    inline_arrays: new_inline_arrays,
-                                                    array_of_tables,
-                                                };
-                                                let new_state = State {
-                                                    stream,
-                                                    cursor,
-                                                    context: new_context,
-                                                };
+                                // the array's absolute path: the enclosing table path plus its key
+                                let after_ws_temp = after_ws;
+                                let context = after_ws_temp.context;
+                                let context_temp = context;
+                                let current_table_path = context_temp.current_table_path;
+                                let array_of_tables = context_temp.array_of_tables;
+                                let new_key = current_table_path.concat(key);
+                                if *array_of_tables.contains(new_key) {
+                                    // println!("arrays of tables cannot contain inline arrays");
+                                    return ParseResult::Err(Path::named(String::from(
+                                        "array_of_tables_inline_array",
+                                    ))); // arrays of tables cannot contain inline arrays
+                                } else {
+                                    // a statically defined array closes its path, empty or not
+                                    let state_with_array = remember_inline_array(after_ws, new_key);
+                                    match current_char(state_with_array) {
+                                        Optional::None => {
+                                            // println!("expect array-close after array-open found nothing");
+                                            ParseResult::Err(Path::named(String::from(
+                                                "array_open_after_ws_eof",
+                                            )))
+                                        }
+                                        Optional::Some(x) => {
+                                            if *is_array_close(x) {
                                                 return ParseResult::Ok(
                                                     Seq::<Value>::new(),
-                                                    new_state,
+                                                    advance(state_with_array),
                                                 );
+                                            } else {
+                                                parse_array_values(key, state_with_array)
                                             }
-                                        } else {
-                                            parse_array_values(key, after_ws)
                                         }
                                     }
                                 }

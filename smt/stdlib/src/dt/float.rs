@@ -278,14 +278,24 @@ impl FloatOps for F32 {
     }
 
     fn min(self, rhs: Self) -> Self {
+        let (a, b) = (self.inner.0, rhs.inner.0);
+        assert!(
+            !(a == 0.0 && b == 0.0 && a.is_sign_negative() != b.is_sign_negative()),
+            "(fp.min +zero -zero) is unspecified in SMT-LIB, so there is no value to agree on"
+        );
         Self {
-            inner: OrderedFloat(self.inner.0.min(rhs.inner.0)),
+            inner: OrderedFloat(a.min(b)),
         }
     }
 
     fn max(self, rhs: Self) -> Self {
+        let (a, b) = (self.inner.0, rhs.inner.0);
+        assert!(
+            !(a == 0.0 && b == 0.0 && a.is_sign_negative() != b.is_sign_negative()),
+            "(fp.max +zero -zero) is unspecified in SMT-LIB, so there is no value to agree on"
+        );
         Self {
-            inner: OrderedFloat(self.inner.0.max(rhs.inner.0)),
+            inner: OrderedFloat(a.max(b)),
         }
     }
 
@@ -346,7 +356,7 @@ impl FloatOps for F32 {
             .map(|bi| Integer {
                 inner: Intern::new(bi),
             })
-            .unwrap()
+            .expect("(to_int (fp.to_real x)) is underspecified on NaN and infinity")
     }
 
     fn to_real(self) -> Real {
@@ -354,7 +364,7 @@ impl FloatOps for F32 {
             .map(|br| Real {
                 inner: Intern::new(br),
             })
-            .unwrap()
+            .expect("fp.to_real is underspecified on NaN and infinity")
     }
 
     fn to_i32(self) -> I32 {
@@ -362,25 +372,37 @@ impl FloatOps for F32 {
         // Note: Returns None (unwrap panics) on NaN or Overflow.
         // Your interpreter guards should catch those before calling this.
         I32 {
-            inner: Intern::new(self.inner.0.to_i32().unwrap()),
+            inner: Intern::new(self.inner.0.to_i32().expect(
+                "(to_sbv 32) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
     fn to_i64(self) -> I64 {
         I64 {
-            inner: Intern::new(self.inner.0.to_i64().unwrap()),
+            inner: Intern::new(self.inner.0.to_i64().expect(
+                "(to_sbv 64) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
     fn to_u32(self) -> U32 {
         U32 {
-            inner: Intern::new(self.inner.0.to_u32().unwrap()),
+            inner: Intern::new(self.inner.0.to_u32().expect(
+                "(to_ubv 32) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
     fn to_u64(self) -> U64 {
         U64 {
-            inner: Intern::new(self.inner.0.to_u64().unwrap()),
+            inner: Intern::new(self.inner.0.to_u64().expect(
+                "(to_ubv 64) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
@@ -403,15 +425,10 @@ impl FloatOps for F32 {
     }
 
     fn nearest(self) -> Self {
-        let val = self.inner.0;
-        let r = val.round();
-        let res = if (val - r).abs() == 0.5 && (r % 2.0 != 0.0) {
-            if val > 0.0 { r - 1.0 } else { r + 1.0 }
-        } else {
-            r
-        };
+        // `round_ties_even` is IEEE roundTiesToEven, which keeps the sign of a
+        // zero result: RNE(-0.5) is -0.0, not +0.0.
         Self {
-            inner: OrderedFloat(res),
+            inner: OrderedFloat(self.inner.0.round_ties_even()),
         }
     }
 
@@ -506,14 +523,24 @@ impl FloatOps for F64 {
     }
 
     fn min(self, rhs: Self) -> Self {
+        let (a, b) = (self.inner.0, rhs.inner.0);
+        assert!(
+            !(a == 0.0 && b == 0.0 && a.is_sign_negative() != b.is_sign_negative()),
+            "(fp.min +zero -zero) is unspecified in SMT-LIB, so there is no value to agree on"
+        );
         Self {
-            inner: OrderedFloat(self.inner.0.min(rhs.inner.0)),
+            inner: OrderedFloat(a.min(b)),
         }
     }
 
     fn max(self, rhs: Self) -> Self {
+        let (a, b) = (self.inner.0, rhs.inner.0);
+        assert!(
+            !(a == 0.0 && b == 0.0 && a.is_sign_negative() != b.is_sign_negative()),
+            "(fp.max +zero -zero) is unspecified in SMT-LIB, so there is no value to agree on"
+        );
         Self {
-            inner: OrderedFloat(self.inner.0.max(rhs.inner.0)),
+            inner: OrderedFloat(a.max(b)),
         }
     }
 
@@ -574,7 +601,7 @@ impl FloatOps for F64 {
             .map(|bi| Integer {
                 inner: Intern::new(bi),
             })
-            .unwrap()
+            .expect("(to_int (fp.to_real x)) is underspecified on NaN and infinity")
     }
 
     fn to_real(self) -> Real {
@@ -582,30 +609,42 @@ impl FloatOps for F64 {
             .map(|br| Real {
                 inner: Intern::new(br),
             })
-            .unwrap()
+            .expect("fp.to_real is underspecified on NaN and infinity")
     }
 
     fn to_i32(self) -> I32 {
         I32 {
-            inner: Intern::new(self.inner.0.to_i32().unwrap()),
+            inner: Intern::new(self.inner.0.to_i32().expect(
+                "(to_sbv 32) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
     fn to_i64(self) -> I64 {
         I64 {
-            inner: Intern::new(self.inner.0.to_i64().unwrap()),
+            inner: Intern::new(self.inner.0.to_i64().expect(
+                "(to_sbv 64) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
     fn to_u32(self) -> U32 {
         U32 {
-            inner: Intern::new(self.inner.0.to_u32().unwrap()),
+            inner: Intern::new(self.inner.0.to_u32().expect(
+                "(to_ubv 32) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
     fn to_u64(self) -> U64 {
         U64 {
-            inner: Intern::new(self.inner.0.to_u64().unwrap()),
+            inner: Intern::new(self.inner.0.to_u64().expect(
+                "(to_ubv 64) is underspecified on NaN, infinity and \
+                 out-of-range values",
+            )),
         }
     }
 
@@ -628,15 +667,10 @@ impl FloatOps for F64 {
     }
 
     fn nearest(self) -> Self {
-        let val = self.inner.0;
-        let r = val.round();
-        let res = if (val - r).abs() == 0.5 && (r % 2.0 != 0.0) {
-            if val > 0.0 { r - 1.0 } else { r + 1.0 }
-        } else {
-            r
-        };
+        // `round_ties_even` is IEEE roundTiesToEven, which keeps the sign of a
+        // zero result: RNE(-0.5) is -0.0, not +0.0.
         Self {
-            inner: OrderedFloat(res),
+            inner: OrderedFloat(self.inner.0.round_ties_even()),
         }
     }
 

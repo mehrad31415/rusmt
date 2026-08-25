@@ -8,8 +8,8 @@ use rusmt_smt_stdlib::{Array, Boolean, I64, Path, String, bitvector::BitvectorOp
 /// Abstract syntax.
 pub mod ast;
 /// Parser and pretty-printer for `.imp` source files.
-#[path = "../imp_parser.rs"]
 pub mod parser;
+pub mod render;
 
 /// The result of evaluating a [`Com`].
 ///
@@ -64,9 +64,8 @@ pub fn store_get(s: Array<String, I64>, x: String) -> StoreGetResult {
 
 /// Big-step evaluation of arithmetic expressions.
 ///
-/// `+`, `-`, `*`, `/` are integer ops on signed 64-bit (`I64`); overflow wraps
-/// in two's complement, matching Z3 BV semantics. Evaluation yields `Err` when a
-/// variable is undefined (via [`store_get`]) or when the divisor of `/` is `0`;
+/// `+`, `-`, `*`, `/` are integer ops on signed 64-bit (`I64`).
+/// Evaluation yields `Err` when a variable is undefined (via [`store_get`]) or when the divisor of `/` is `0`;
 /// each carries a fresh path-condition marker.
 #[smt_fn]
 pub fn eval_aexp(a: Aexp, s: Array<String, I64>) -> ArithmeticResult {

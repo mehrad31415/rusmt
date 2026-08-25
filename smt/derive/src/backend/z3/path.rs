@@ -32,8 +32,9 @@
 //!
 //! The two sides exchange the name, never the number, so the "identical by
 //! construction" property that makes per-target replay sound is untouched.
-//! Nothing decodes a `Path` value back out of a model, so an index never has to
-//! be reversed.
+//! The Stage-2 rejection observer reverses an index only inside the same query
+//! instance, using this same sorted-id order, to tell the proposer which marker
+//! a rejected candidate actually reached.
 
 use crate::ir::ctxt::IRContext;
 use num_bigint::BigUint;
@@ -229,6 +230,8 @@ pub fn check_both(a: I64, b: I64) -> CheckResult {
         } else {
             CheckResult::Err(Path::named("a_zero"))
         }
+    } else if *b.eq(I64::from(0)) {
+        CheckResult::Err(Path::named("b_zero"))
     } else {
         CheckResult::Ok(a)
     }

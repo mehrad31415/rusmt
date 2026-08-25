@@ -25,13 +25,13 @@ pub fn marker_id(name: &str) -> usize {
     (h & 0x7fff_ffff_ffff_ffff) as usize
 }
 
-/// The set of marker ids carried by `p`.
+/// The set of marker ids carried by `p`. No intrinsic backs it, so it cannot appear inside an `#[smt_fn]`
 pub fn marker_ids(p: Path) -> BTreeSet<usize> {
     p.inner.as_ref().clone()
 }
 
 /// The SMT surface of `Path`. Every method here is registered as an intrinsic
-/// in `ApplyDatabase::with_intrinsics` and is callable from transpiled code.
+/// in `ApplyDatabase::with_intrinsics` and is callable inside an `#[smt_fn]`-annotated function.
 impl Path {
     /// Allocate a *named* path-condition marker whose integer id is
     /// [`marker_id`]`(name)`.

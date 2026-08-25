@@ -44,7 +44,7 @@ pub(crate) fn parse_boolean(input: State) -> ParseResult<Boolean> {
                                         ParseResult::Ok(_s, _new_state) => {
                                             // println!("invalid boolean FALSE");
                                             ParseResult::Err(Path::named(String::from(
-                                                "boolean_invalid",
+                                                "boolean_invalid_allcaps_false",
                                             ))) // invalid boolean
                                         }
                                         ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen

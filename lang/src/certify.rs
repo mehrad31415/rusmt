@@ -219,7 +219,7 @@ pub fn certify_imp(source: &str, target: &str, budget: Duration) -> Verdict {
 
 /// The named TOML markers. Every TOML `ParseResult::Err(Path::...)` branch is
 /// named, giving each target a stable id shared between SMT and replay.
-pub const TOML_NAMED_MARKERS: [&str; 182] = [
+pub const TOML_NAMED_MARKERS: [&str; 183] = [
     "array_comment_missing_newline",
     "array_of_tables_inline_array",
     "array_open_after_ws_eof",
@@ -240,7 +240,7 @@ pub const TOML_NAMED_MARKERS: [&str; 182] = [
     "basic_string_invalid_char",
     "basic_string_missing_close_eof",
     "basic_string_newline",
-    "boolean_invalid",
+    "boolean_invalid_allcaps_false",
     "boolean_invalid_allcaps_true",
     "boolean_invalid_capital_false",
     "boolean_invalid_capital_true",
@@ -362,6 +362,7 @@ pub const TOML_NAMED_MARKERS: [&str; 182] = [
     "literal_string_missing_close_eof",
     "literal_string_newline",
     "ml_basic_escaped_newline_missing_newline",
+    "ml_basic_invalid_escape",
     "ml_basic_missing_close_after_newline",
     "ml_basic_missing_close_no_newline",
     "ml_basic_open_eof",
@@ -506,47 +507,30 @@ pub struct LanguageOracle {
     pub name: &'static str,
     /// File extension of object-language sources (e.g. `imp`, `toml`).
     pub ext: &'static str,
-    /// A short object-language description included in proposer prompts.
-    pub brief: &'static str,
     /// Replay check: `(candidate source, target marker name(s), budget)`.
     /// The target is one marker name, or several separated by [`TARGET_SEP`]
     /// (a `Path::merge` target), in which case all of them must fire on the
     /// same run.
     pub certify: fn(&str, &str, Duration) -> Verdict,
+    /// Rebuild object-language source from a Z3 model, for a language whose
+    /// entry input is an AST. `None` when the entry input is a code-point
+    /// sequence, which the synthesis pipeline decodes as source directly.
+    pub render_model: Option<fn(&str) -> Option<std::string::String>>,
 }
-
-/// Object-language brief for IMP (grammar of `lang/src/imp_parser.rs`).
-const IMP_BRIEF: &str = "IMP/WHILE program. Grammar (whitespace-insensitive):\n\
-  com  ::= stmt (';' stmt)*\n\
-  stmt ::= 'skip' | ident ':=' aexp | '(' com ')'\n\
-         | 'if' bexp 'then' stmt 'else' stmt | 'while' bexp 'do' stmt\n\
-  aexp ::= integer arithmetic over '+' '-' '*' '/' with parentheses,\n\
-           signed 64-bit literals, and identifiers\n\
-  bexp ::= 'true' | 'false' | 'not' b | b 'and' b | b 'or' b\n\
-         | aexp '==' aexp | aexp '<=' aexp\n\
-Execution starts from an EMPTY store. Reading a variable that was never \
-assigned is the error marker `undefined_variable`; dividing by zero is the \
-error marker `division_by_zero`. Example program: A := (1 + 2); B := (A * A)";
-
-/// Object-language brief for TOML (the v1.1.0 reference parser).
-const TOML_BRIEF: &str = "A TOML v1.1.0 document (UTF-8 text): key/value pairs \
-(bare or quoted keys, '=', values: strings, integers, floats, booleans, \
-datetimes, arrays, inline tables), [table] and [[array-of-table]] headers, \
-'#' comments. The parser flags specification violations with named markers.";
 
 /// The registered language oracles.
 pub static ORACLES: [LanguageOracle; 2] = [
     LanguageOracle {
         name: "imp",
         ext: "imp",
-        brief: IMP_BRIEF,
         certify: certify_imp,
+        render_model: Some(crate::imp::render::render_response),
     },
     LanguageOracle {
         name: "toml",
         ext: "toml",
-        brief: TOML_BRIEF,
         certify: certify_toml,
+        render_model: None,
     },
 ];
 
@@ -741,7 +725,7 @@ mod tests {
 
     #[test]
     fn an_llm_style_proposal_is_certified_for_its_target() {
-        // The example used in the paper (a different div-by-zero program than the
+        // A different div-by-zero program than the
         // solver's witness): proposed by a language model, certified by replay.
         assert_eq!(certify("B := (7 / (2 - 2))", DIV0), Verdict::ReachedTarget);
     }
@@ -749,12 +733,12 @@ mod tests {
     /// One model-free proposed document per named TOML target. These are the
     /// witnesses the *solver* could not synthesize within budget (TOML sweep:
     /// 0/182); each is checked here, in milliseconds, by concrete replay
-    /// through the reference parser — the asymmetry the paper's evaluation
+    /// through the reference parser — the asymmetry the differential harness
     /// reports (solving is out of budget; checking a determined candidate is a
     /// concrete parse). Together they are a small, replay-checked conformance
     /// suite for these ten specification violations.
     const TOML_DIRECT_WITNESSES: [(&str, &str); 10] = [
-        ("boolean_invalid", "a = FALSE"),
+        ("boolean_invalid_allcaps_false", "a = FALSE"),
         ("bare_key_invalid_start", "@ = 1"),
         ("time_hour_out_of_range", "a = 25:32:00"),
         ("time_minute_out_of_range", "a = 00:99:00"),
@@ -771,7 +755,7 @@ mod tests {
         // A model-free proposer (these hand-authored documents) recovers every
         // named TOML target by direct proposal + replay certification, where the
         // solver synthesized none. This is the conformance-suite payoff the
-        // paper claims, demonstrated end-to-end on the realistic case study.
+        // relies on, demonstrated end-to-end on the realistic case study.
         for (target, src) in TOML_DIRECT_WITNESSES {
             assert_eq!(
                 certify_toml(src, target, DEFAULT_BUDGET),

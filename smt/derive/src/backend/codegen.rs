@@ -1,11 +1,8 @@
 //! Generic `CodeGen` trait for backend solvers
 
 use crate::backend::error::BackendResult;
-use crate::backend::response::Response;
-use crate::backend::z3::ctxt::CodeGenZ3;
 use crate::ir::ctxt::IRContext;
 use std::collections::BTreeSet;
-use std::path::Path;
 
 /// A generic trait for backend code generators.
 pub(crate) trait CodeGen {
@@ -23,9 +20,6 @@ pub(crate) trait CodeGen {
     /// Given an IRContext, generate the backend source code.
     /// Returns a `BackendResult<String>` containing either the full source code or a BackendError.
     fn process(&self, ir: &IRContext, unroll_depth: usize) -> BackendResult<String>;
-
-    /// process generates SMT-LIB as a String → caller writes it to a file → invoke_backend takes that file path. The intermediate file step is intentional (keeps the generated code inspectable for debugging).
-    fn invoke_backend(&self, path_src: &Path) -> BackendResult<Response>;
 
     /// For a given path-marker target (set of path IDs), generate an SMT-LIB query that asks Z3
     /// to find inputs to `top_level_fn` such that ALL IDs in the target are in the result's
@@ -101,8 +95,3 @@ macro_rules! l {
     };
 }
 pub(crate) use l;
-
-/// Available list of backend solvers
-pub(crate) fn solvers() -> Vec<Box<dyn CodeGen>> {
-    vec![Box::new(CodeGenZ3::new())]
-}

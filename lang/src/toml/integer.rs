@@ -331,13 +331,21 @@ fn parse_unsigned_dec_int(input: State) -> ParseResult<Integer> {
                                         "integer_dec_leading_zero_underscore",
                                     )));
                                 } else {
-                                    if *is_alpha(next_char) {
-                                        // println!("invalid character after zero");
-                                        return ParseResult::Err(Path::named(String::from(
-                                            "integer_dec_invalid_char_after_zero",
-                                        )));
-                                    } else {
+                                    // `e`/`E` ends the integer part: `0e10` is a float
+                                    if *next_char
+                                        .eq(U32::from(0x65))
+                                        .or(next_char.eq(U32::from(0x45)))
+                                    {
                                         return ParseResult::Ok(Integer::from(0), next_input);
+                                    } else {
+                                        if *is_alpha(next_char) {
+                                            // println!("invalid character after zero");
+                                            return ParseResult::Err(Path::named(String::from(
+                                                "integer_dec_invalid_char_after_zero",
+                                            )));
+                                        } else {
+                                            return ParseResult::Ok(Integer::from(0), next_input);
+                                        }
                                     }
                                 }
                             }

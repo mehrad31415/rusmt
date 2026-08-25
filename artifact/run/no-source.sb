@@ -1,0 +1,3 @@
+(version 1)
+(allow default)
+(deny file-read* (subpath "/Users/mehradhq/WATERLOO/rusmt_project/rusmt"))

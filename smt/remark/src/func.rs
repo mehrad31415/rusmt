@@ -1,6 +1,7 @@
 //! Provides function restriction checks for SMT conversion.
 
 use crate::generics::TypeParamGroup;
+use crate::marker;
 use crate::{bail_on, ensure_none};
 use proc_macro2::TokenStream;
 use syn::{FnArg, ItemFn, Result, Safety, Signature};
@@ -23,9 +24,12 @@ fn check(target: &ItemFn) -> Result<()> {
         attrs: _,
         vis: _,
         sig,
-        block: _,
+        block,
         modifiers,
     } = target;
+
+    // Marker names this function declares twice.
+    marker::check_body(block)?;
 
     // `FnModifiers` is `#[non_exhaustive]`, so we cannot destructure it to force a
     // compile error when syn adds a new modifier (e.g. `final fn`, contracts).

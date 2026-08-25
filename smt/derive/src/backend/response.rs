@@ -2,25 +2,9 @@
 
 use lazy_static::lazy_static;
 use std::fmt::{Display, Formatter};
-use std::time::Duration;
-
-/// Default execution timeout for the backend in seconds: 10 minutes.
-pub const DEFAULT_BACKEND_TIMEOUT: Duration = Duration::from_secs(60 * 10);
 
 /// Execution timeout for the backend.
 ///
-/// `RUSMT_BACKEND_TIMEOUT_SECS` overrides the default and is intentionally a
-/// runtime setting so large target sweeps can be reproduced under a bounded
-/// budget without changing normal behavior.
-pub fn backend_timeout() -> Duration {
-    std::env::var("RUSMT_BACKEND_TIMEOUT_SECS")
-        .ok()
-        .and_then(|raw| raw.parse::<u64>().ok())
-        .filter(|secs| *secs > 0)
-        .map(Duration::from_secs)
-        .unwrap_or(DEFAULT_BACKEND_TIMEOUT)
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// The response returned by the backend solver.
 pub enum Response {

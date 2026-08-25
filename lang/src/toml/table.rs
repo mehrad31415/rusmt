@@ -9,12 +9,12 @@ use crate::toml::{
         table_new, table_store,
     },
     cp_to_str, current_char,
-    expr::make_nested_table,
+    expr::{has_intersection, make_nested_table, make_tables_from_table_names},
     key_value::{parse_key, parse_key_value},
     parse_ws,
 };
 use rusmt_smt_remark_derive::smt_fn;
-use rusmt_smt_stdlib::{Cloak, Integer, Path, Seq, String, U32, smt::SMT};
+use rusmt_smt_stdlib::{Boolean, Cloak, Integer, Path, Seq, String, U32, smt::SMT};
 
 /// `std-table = std-table-open key std-table-close`
 #[smt_fn]
@@ -221,6 +221,30 @@ fn parse_array_table_close(state: State) -> ParseResult<String> {
     }
 }
 
+/// Re-scope a state's context to `path`: an inline table's body defines keys and
+/// sub-tables of the inline table itself, so it is parsed under its own path.
+#[smt_fn]
+fn scope_to(state: State, path: Seq<String>) -> State {
+    let state_temp = state;
+    let stream = state_temp.stream;
+    let cursor = state_temp.cursor;
+    let context = state_temp.context;
+    let context_temp = context;
+    let new_context = ParserContext {
+        current_table_path: path,
+        explicit_tables: context_temp.explicit_tables,
+        closed_tables: context_temp.closed_tables,
+        inline_tables: context_temp.inline_tables,
+        inline_arrays: context_temp.inline_arrays,
+        array_of_tables: context_temp.array_of_tables,
+    };
+    State {
+        stream,
+        cursor,
+        context: new_context,
+    }
+}
+
 /// `inline-table = inline-table-open [ inline-table-keyvals ] inline-table-close`
 #[smt_fn]
 pub(crate) fn parse_inline_table(key: Seq<String>, state: State) -> ParseResult<Table> {
@@ -232,23 +256,32 @@ pub(crate) fn parse_inline_table(key: Seq<String>, state: State) -> ParseResult<
     let explicit_tables = context_temp1.explicit_tables;
     let closed_tables = context_temp1.closed_tables;
     let inline_tables = context_temp1.inline_tables;
+    let inline_arrays = context_temp1.inline_arrays;
 
     let new_key = current_table_path.concat(key);
-    if *inline_tables.contains(new_key) {
+    // Elements of a statically defined array share that array's key, so the
+    // per-key redefinition rules do not apply to them.
+    let in_static_array = has_intersection(
+        inline_arrays,
+        make_tables_from_table_names(new_key, Seq::new()),
+    );
+    let checked = in_static_array.not();
+    if *checked.and(inline_tables.contains(new_key)) {
         // println!("inline table already defined");
         return ParseResult::Err(Path::named(String::from("inline_table_redefined_inline")));
     } else {
-        if *closed_tables.contains(new_key) {
+        if *checked.and(closed_tables.contains(new_key)) {
             // println!("inline table already closed");
             return ParseResult::Err(Path::named(String::from("inline_table_redefined_closed")));
         } else {
-            if *explicit_tables.contains(new_key) {
+            if *checked.and(explicit_tables.contains(new_key)) {
                 // println!("inline table already defined as explicit table");
                 return ParseResult::Err(Path::named(String::from(
                     "inline_table_redefined_explicit",
                 )));
             } else {
-                match parse_inline_table_open(state) {
+                let body_state = scope_to(state, new_key);
+                match parse_inline_table_open(body_state) {
                     ParseResult::Ok(_open_brace, state_after_open) => {
                         match current_char(state_after_open) {
                             Optional::None => {
@@ -264,14 +297,13 @@ pub(crate) fn parse_inline_table(key: Seq<String>, state: State) -> ParseResult<
                                         let cursor = state_after_close_temp.cursor;
                                         let context_inner = state_after_close_temp.context;
                                         let context_temp = context_inner;
-                                        let current_table_path2 = context_temp.current_table_path;
                                         let explicit_tables2 = context_temp.explicit_tables;
                                         let closed_tables2 = context_temp.closed_tables;
                                         let inline_tables2 = context_temp.inline_tables;
                                         let inline_arrays2 = context_temp.inline_arrays;
                                         let array_of_tables2 = context_temp.array_of_tables;
                                         let new_context = ParserContext {
-                                            current_table_path: current_table_path2,
+                                            current_table_path: current_table_path,
                                             explicit_tables: explicit_tables2,
                                             closed_tables: closed_tables2,
                                             inline_tables: inline_tables2.append(new_key),
@@ -287,7 +319,17 @@ pub(crate) fn parse_inline_table(key: Seq<String>, state: State) -> ParseResult<
                                     }
                                     ParseResult::NoMatch => {
                                         // non-empty inline table
-                                        parse_inline_table_keyvals(new_key, state_after_open)
+                                        match parse_inline_table_keyvals(new_key, state_after_open)
+                                        {
+                                            ParseResult::Ok(tbl, state_after_kvs) => {
+                                                ParseResult::Ok(
+                                                    tbl,
+                                                    scope_to(state_after_kvs, current_table_path),
+                                                )
+                                            }
+                                            ParseResult::NoMatch => ParseResult::NoMatch,
+                                            ParseResult::Err(e) => return ParseResult::Err(e),
+                                        }
                                     }
                                     ParseResult::Err(e) => return ParseResult::Err(e), // cannot happen
                                 }
@@ -537,15 +579,28 @@ fn parse_inline_table_sep(state: State) -> ParseResult<String> {
     }
 }
 
+/// Whether every element of `values` is a table (i.e. an array of tables).
+#[smt_fn]
+fn all_tables(values: Seq<Value>) -> Boolean {
+    if *values.is_empty() {
+        Boolean::from(true)
+    } else {
+        match values.at(Integer::from(0)) {
+            Value::Table(_t) => {
+                all_tables(values.extract(Integer::from(1), values.length().sub(Integer::from(1))))
+            }
+            _ => Boolean::from(false),
+        }
+    }
+}
+
 /// Recursively merges two TOML tables.
 #[smt_fn]
 pub(crate) fn recursive_merge_tables(acc_table: Table, new_table: Table) -> Optional<Table> {
     if *table_is_empty(new_table) {
         return Optional::Some(acc_table);
     } else {
-        if *table_is_empty(new_table) {
-            return Optional::Some(acc_table); // early-return
-        } else {
+        {
             let key_to_merge = table_key_min(new_table);
             let new_val = table_get(new_table, key_to_merge);
             let rest_of_new_table = table_del(new_table, key_to_merge);
@@ -582,15 +637,19 @@ pub(crate) fn recursive_merge_tables(acc_table: Table, new_table: Table) -> Opti
                             let acc_seq = acc_cloak.reveal();
                             let new_seq = new_cloak.reveal();
 
-                            // Concatenate the new items to the existing array
-                            let final_seq = acc_seq.concat(new_seq);
-
-                            let next_acc = table_store(
-                                acc_table,
-                                key_to_merge,
-                                Value::Array(Cloak::shield(final_seq)),
-                            );
-                            return recursive_merge_tables(next_acc, rest_of_new_table);
+                            // Only an array-of-tables append merges; any other
+                            // repeat of the key defines it a second time.
+                            if *all_tables(acc_seq).and(all_tables(new_seq)) {
+                                let final_seq = acc_seq.concat(new_seq);
+                                let next_acc = table_store(
+                                    acc_table,
+                                    key_to_merge,
+                                    Value::Array(Cloak::shield(final_seq)),
+                                );
+                                return recursive_merge_tables(next_acc, rest_of_new_table);
+                            } else {
+                                return Optional::None;
+                            }
                         }
 
                         Value::Table(new_cloak) => {

@@ -1,0 +1,62 @@
+You are generating a test input inside a program-synthesis pipeline.
+Object language: toml
+Goal: an input whose execution reaches the error marker `integer_bin_dec_digit_after_prefix`.
+
+Z3 cannot search for this input: the lifted parser is too large to solve with a symbolic input. So the division of labour is inverted — YOU propose a concrete candidate, and Z3 DECIDES it by pinning it into the unmodified query. A candidate is accepted only when Z3 answers `sat`, which means the lifted semantics genuinely reach `integer_bin_dec_digit_after_prefix` on that input.
+
+Two things make a candidate fail, and both are reported back to you:
+* `unsat` — the input does not reach `integer_bin_dec_digit_after_prefix`. Usually it reaches a DIFFERENT error first (an earlier syntax error shadows the one you want), or it is simply valid.
+* `unknown`/timeout — rare for a pinned input; treat as a hint to simplify.
+
+== The channel (a contract, not advice) ==
+A control character cannot reach us as a raw byte. Spell it `\u{XX}` — e.g. `\u{0}` for NUL, `\u{7f}` for DEL. That is the ONLY escape decoded; every other backslash is passed through verbatim, so a TOML escape such as `\q` or `\uZZZZ` reaches the parser exactly as you wrote it.
+
+== A domain prior (hints only; ignore any that do not fit) ==
+These shape where you look. They decide nothing: acceptance is Z3's alone.
+* Only the FIRST error matters — the parser stops there, so everything before the intended violation must be valid or it will shadow it.
+* Shorter is better: extra keys, tables and whitespace add chances to trip an earlier rule.
+* The marker name states the rule. Violate exactly that and nothing else.
+
+== The emitted SMT-LIB for this marker (truncated) ==
+(set-option :print-success false)
+(set-option :produce-models true)
+(set-option :produce-proofs false)
+(set-option :produce-unsat-cores false)
+(set-option :sat.random_seed 42)
+(set-option :smt.random_seed 42)
+
+(set-option :sat.restart.max 100000)
+(set-option :smt.arith.solver 6)
+(set-option :smt.case_split 3)
+(set-option :smt.phase_selection 3)
+(set-option :smt.mbqi true)
+(set-option :smt.qi.eager_threshold 10.0)
+(set-option :smt.qi.max_multi_patterns 1000)
+(set-option :smt.ematching true)
+(set-option :smt.auto_config false)
+
+(declare-datatypes ((RuSmtSet 1)) ((par (T) ((mk-rset (rset-data (Array T Bool)) (rset-card Int))))))
+(declare-datatypes ((RuSmtArray 2)) ((par (K V) ((mk-rarr (rarr-da
+; … 216310 bytes of parser definitions elided …
+t_Ok_2_ (parse_expression (field_ParseResult_Ok_2_ (parse_newline state)))))))))))))
+(define-fun parse_toml_inner ((state State)) (ParseResult Value) (ite (is-ParseResult_Err (parse_expression state)) ((as ParseResult_Err (ParseResult Value)) (field_ParseResult_Err_1_ (parse_expression state))) (ite (is-ParseResult_NoMatch (parse_expression state)) (as ParseResult_NoMatch (ParseResult Value)) (ite (is-Optional_None (current_char (field_ParseResult_Ok_2_ (parse_expression state)))) ((as ParseResult_Ok (ParseResult Value)) ((as Value_Table Value) (field_ParseResult_Ok_1_ (parse_expression state))) (field_ParseResult_Ok_2_ (parse_expression state))) (parse_toml_loop (field_ParseResult_Ok_1_ (parse_expression state)) (field_ParseResult_Ok_2_ (parse_expression state)))))))
+(define-fun parse_toml ((input (Seq (_ BitVec 32)))) (ParseResult Value) (parse_toml_inner (mk-State default_parser_context 0 input)))
+
+; Base SMT-LIB definitions complete
+; Add error-specific assertions below
+
+
+(declare-const input_0 (Seq (_ BitVec 32)))
+(assert (forall ((__i Int)) (=> (and (>= __i 0) (< __i (seq.len input_0))) (let ((__c (seq.nth input_0 __i))) (or (bvule __c #x0000D7FF) (and (bvuge __c #x0000E000) (bvule __c #x0002FFFF)))))))(assert (and (is-ParseResult_Err (parse_toml input_0)) (= (bvand (field_ParseResult_Err_1_ (parse_toml input_0)) (_ bv21778071482940061661655974875633165533184 183)) (_ bv21778071482940061661655974875633165533184 183))))
+(check-sat)
+(get-info :reason-unknown)
+(get-model)
+
+
+Reply with the candidate input between <<< and >>> and nothing else:
+input <<<
+(your candidate here)
+>>>
+
+===RESPONSE===
+<<<0b2>>>

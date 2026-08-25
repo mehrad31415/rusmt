@@ -1,0 +1,39 @@
+marker          : ml_literal_missing_close_after_newline
+raised in       : parse_ml_literal_string
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 3 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1465 ms) ===
+--- reply ---
+<<<
+a = '''
+>>>
+candidate: "a = '''"
+--- outcome ---
+`unsat`: this input does not reach `ml_literal_missing_close_after_newline`. Z3 reports that it reaches ERR ml_literal_open_eof instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `ml_literal_missing_close_after_newline` is about.
+
+=== round 2 (0 ms) ===
+--- reply ---
+<<<
+a = '''
+>>>
+candidate: "a = '''"
+--- outcome ---
+that candidate was already rejected — propose a DIFFERENT one
+
+=== round 3 (1027 ms) ===
+--- reply ---
+<<<
+a = '''
+abc
+>>>
+candidate: "a = '''\nabc"
+--- outcome ---
+ACCEPTED: Z3 certified this input against the unmodified query (sat) — a witness for `ml_literal_missing_close_after_newline`
+
+status: 1 witness(es) accepted:
+  "a = '''\nabc"

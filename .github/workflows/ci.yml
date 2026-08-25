@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+# a new push to a PR cancels the previous run; main runs are never cancelled
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -14,8 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # rustup honours rust-toolchain.toml, so the toolchain and its components
-      # install on the first cargo invocation.
       - name: Show toolchain
         run: rustup show && cargo --version
 
@@ -31,14 +37,9 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
-      # -D warnings gates against *new* lint classes. The five allowed below are
-      # the ones the tree ships with today: the first three are deliberate --
-      # the DSL mirrors SMT operator names (`add`, `sub`, ...) on its own types
-      # and the backend passes wide contexts around. The last two are trivial
-      # nits; fix them and delete the -A lines.
       - name: Clippy
         run: |
-          cargo clippy --workspace --all-targets -- \
+          cargo clippy --locked --workspace --all-targets -- \
             -D warnings \
             -A clippy::should_implement_trait \
             -A clippy::too_many_arguments \
@@ -47,4 +48,24 @@ jobs:
             -A clippy::doc_lazy_continuation
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --locked --workspace
+
+      # pinned: the differential tests record this version's behaviour
+      - name: Install Z3
+        env:
+          Z3_VERSION: "4.15.4"
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(curl -sSL -H "Authorization: Bearer $GH_TOKEN" \
+                  "https://api.github.com/repos/Z3Prover/z3/releases/tags/z3-$Z3_VERSION" \
+                | grep -o 'https://[^"]*x64-glibc[^"]*\.zip' | head -1)
+          test -n "$url" || { echo "no x64-glibc asset for z3-$Z3_VERSION"; exit 1; }
+          curl -sSL -o z3.zip "$url"
+          unzip -q z3.zip
+          sudo install z3-*/bin/z3 /usr/local/bin/z3
+
+      # the solver-backed tests are #[ignore]d so `cargo test` stays hermetic
+      - name: Test (solver-backed)
+        run: |
+          z3 --version
+          cargo test --locked --workspace -- --ignored

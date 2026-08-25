@@ -1,0 +1,81 @@
+marker          : partial_time_second_colon_without_first
+raised in       : partial_time
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (1461 ms) ===
+--- reply ---
+<<<07::00>>>
+candidate: "07::00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR key_value_missing_equals_char instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 2 (1463 ms) ===
+--- reply ---
+<<<
+x = 07::00
+>>>
+candidate: "x = 07::00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 3 (1626 ms) ===
+--- reply ---
+<<<x = 1979-05-27T07::00>>>
+candidate: "x = 1979-05-27T07::00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR date_invalid_month instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 4 (1457 ms) ===
+--- reply ---
+<<<
+x = ::00
+>>>
+candidate: "x = ::00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR key_value_missing_value_nomatch instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 5 (1467 ms) ===
+--- reply ---
+<<<x = 07:00::00>>>
+candidate: "x = 07:00::00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 6 (1468 ms) ===
+--- reply ---
+<<<x = 07:00:>>>
+candidate: "x = 07:00:"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 7 (1414 ms) ===
+--- reply ---
+<<<
+x = 23::00
+>>>
+candidate: "x = 23::00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 8 (3799 ms) ===
+--- reply ---
+<<<
+x = 00::00
+>>>
+candidate: "x = 00::00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR time_hour_out_of_range instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+=== round 9 (1367 ms) ===
+--- reply ---
+<<<07:00:00>>>
+candidate: "07:00:00"
+--- outcome ---
+`unsat`: this input does not reach `partial_time_second_colon_without_first`. Z3 reports that it reaches ERR key_value_missing_equals_char instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `partial_time_second_colon_without_first` is about.
+
+status: no witness (stopped: budget)

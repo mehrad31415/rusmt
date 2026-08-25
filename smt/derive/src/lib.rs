@@ -1,68 +1,30 @@
 //! Pipeline for deriving and solving models from Rust code using SMT solvers.
 
-use crate::backend::codegen::solvers;
+use crate::backend::codegen::CodeGen as _;
 use crate::backend::response::Response;
+use crate::backend::z3::ctxt::CodeGenZ3;
 use crate::ir::ctxt::{IRBuilder, IRContext};
 use crate::parser::ctxt::Context;
 use crate::proposer::Proposer as _;
-use rusmt_lang::certify::{self, ORACLES, oracle_for};
-use rusmt_lang::imp_render;
+use rusmt_lang::certify::{self, LanguageOracle, oracle_for};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 use syn::Result;
 
-/// For the `imp` case study, a `sat` model is stored as the rendered `.imp`
-/// program (the inverse of the Z3 encoding) rather than the raw solver text; any
-/// other parser, or a non-`sat` response, is stored verbatim. The second
-/// component reports whether the body is a rendered object-language witness
-/// (and hence replayable through the concrete reference semantics).
-fn response_to_store(parser_name: &str, raw: String) -> (String, bool) {
-    match parser_name {
-        "imp" => match imp_render::render_response(&raw) {
-            Some(rendered) => (rendered, true),
-            None => (raw, false),
-        },
-        _ => (raw, false),
-    }
-}
+// module tree
+pub mod authoring;
+mod backend;
+pub mod cosolve;
+pub mod guidance;
+mod ir;
+mod parser;
+pub mod proposer;
 
-/// Store a target's result under exactly one `response.*` file. A replayable
-/// object-language witness is named by the extension the `rusmt-lang` runner
-/// expects for that language — taken from the shared oracle registry, so
-/// `imp` → `response.imp`, `toml` → `response.toml`
-/// — and can therefore be fed straight back for replay. Every non-witness body
-/// (raw solver text, timeout, `unknown`, error) stays `response.txt`, since it
-/// is not a runnable object-language program.
-///
-/// Any sibling `response.*` left by an earlier write under a different extension
-/// — e.g. the timeout text that a later recovered witness now replaces, or a
-/// stale file from a previous run — is removed first, so a target dir always
-/// holds a single canonical response file whose extension reflects its content.
-fn write_response(target_dir: &Path, parser_name: &str, body: &str, is_witness: bool) {
-    let ext = if is_witness {
-        oracle_for(parser_name).map(|o| o.ext).unwrap_or("txt")
-    } else {
-        "txt"
-    };
-    for other in std::iter::once("txt").chain(ORACLES.iter().map(|o| o.ext)) {
-        if other != ext {
-            let _ = fs::remove_file(target_dir.join(format!("response.{other}")));
-        }
-    }
-    fs::write(target_dir.join(format!("response.{ext}")), body)
-        .expect("failed to write response file");
-}
-
-/// The replay target for a synthesis target, if every one of its ids was
-/// declared via `Path::named`: the marker names joined by [`certify::TARGET_SEP`].
-///
-/// Accepts a merged, multi-marker target (`Path::merge`): replay's check is that
-/// the targeted ids are a subset of the fired `Path` set, which generalizes at
-/// no cost. Using names rather than raw ids keeps the transcript readable; the
-/// ids are recovered by `marker_id`, the same function both sides use.
-fn replay_target(model: &IRContext, target_ids: &BTreeSet<usize>) -> Option<String> {
+/// Marker names a target covers: `"div_by_zero"`, or `"a,b"` for a merged target.
+/// `None` if empty or if any id has no name.
+fn target_name(model: &IRContext, target_ids: &BTreeSet<usize>) -> Option<String> {
     if target_ids.is_empty() {
         return None;
     }
@@ -73,214 +35,191 @@ fn replay_target(model: &IRContext, target_ids: &BTreeSet<usize>) -> Option<Stri
     Some(names.join(&certify::TARGET_SEP.to_string()))
 }
 
-/// The single named marker behind a target, if it is a singleton.
-///
-/// Co-solving prompts by marker name and slices toward the one function that
-/// raises it, so it applies to single-marker targets. A merged target still gets
-/// its transpilation-fidelity replay.
-fn single_marker<'a>(model: &'a IRContext, target_ids: &BTreeSet<usize>) -> Option<&'a str> {
-    if target_ids.len() != 1 {
-        return None;
+/// Object-language source for a Z3 model. A `Seq<U32>` input is already the
+/// source; any other sort is an AST the language's renderer prints.
+fn render_witness(
+    oracle: &LanguageOracle,
+    query: &str,
+    model_text: &str,
+) -> std::result::Result<String, String> {
+    if guidance::query_has_seq_input(query, guidance::INPUT_VAR) {
+        guidance::decode_seq_model(model_text, guidance::INPUT_VAR)
+            .ok_or_else(|| "the model's input is not a concrete code-point sequence".to_string())
+    } else {
+        let render = oracle
+            .render_model
+            .ok_or_else(|| format!("no model renderer registered for `{}`", oracle.name))?;
+        render(model_text).ok_or_else(|| "the model does not render as source".to_string())
     }
-    let id = target_ids.iter().next().expect("singleton");
-    model.marker_names.get(id).map(String::as_str)
 }
 
-/// Re-run a decoded input through the concrete Rust semantics and record the
-/// verdict in `replay.txt`.
-///
-/// This checks the **transpiler**, not the witness: the witness was already
-/// established by Z3 answering `sat` on the unmodified query. Agreement between
-/// the SMT lift and the Rust it was lifted from is a fidelity property of RuSmt,
-/// and a disagreement is a bug in the lift worth reporting — not grounds for
-/// rejecting the model.
-fn record_replay(
-    oracle: &'static certify::LanguageOracle,
+/// Write a target's witnesses and replay the first through the concrete
+/// semantics. Z3 already decided reachability, so a disagreement here is a bug in
+/// the lift; it is reported, not hidden.
+fn write_witnesses(
+    oracle: &'static LanguageOracle,
     model: &IRContext,
-    target_dir: &Path,
+    dir: &Path,
     target: &str,
-    witness: &str,
-) -> bool {
-    let verdict = rusmt_lang::certify::certify_isolated(
-        oracle.name,
-        witness,
-        target,
-        proposer::REPLAY_BUDGET,
-    );
-    let agrees = verdict.is_certified();
+    witnesses: &[String],
+) -> std::result::Result<(), String> {
+    let Some(first) = witnesses.first() else {
+        return Ok(());
+    };
+    let path = dir.join(format!("response.{}", oracle.ext));
+    fs::write(&path, first).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    if witnesses.len() > 1 {
+        let extra = witnesses[1..].join("\n---\n");
+        let path = dir.join("witnesses.txt");
+        fs::write(&path, extra).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    }
+
+    let verdict = certify::certify_isolated(oracle.name, first, target, proposer::REPLAY_BUDGET);
     let line = proposer::verdict_line(&verdict, target, &model.marker_names);
-    let note = if agrees {
+    let note = if verdict.is_certified() {
         "the SMT lift and the concrete semantics agree on this input"
     } else {
         "MISMATCH: the SMT lift and the concrete semantics disagree on this input — \
          a transpilation-fidelity bug to investigate, not a rejected witness"
     };
-    let _ = fs::write(target_dir.join("replay.txt"), format!("{line}\n{note}\n"));
-    agrees
+    let _ = fs::write(dir.join("replay.txt"), format!("{line}\n{note}\n"));
+    if !verdict.is_certified() {
+        eprintln!("[rusmt] FIDELITY MISMATCH on `{target}`: {line}");
+    }
+    Ok(())
 }
 
-/// Stage 2 for one target: the AI⇄Z3 co-solving loop.
+/// Everything a run holds fixed across its markers.
+pub struct Run<'a> {
+    /// The IR the queries are emitted from.
+    pub model: &'a IRContext,
+    /// Base SMT-LIB: types and functions, no queries.
+    pub base_code: &'a str,
+    /// Object language, for the oracle registry.
+    pub lang: &'a str,
+    /// Entry function the queries call.
+    pub top_level_fn: &'a str,
+    /// Bounded-recursion depth; 0 uses `define-funs-rec`.
+    pub unroll_depth: usize,
+    /// Proposer command, overriding `RUSMT_LLM_CMD`.
+    pub llm: Option<&'a str>,
+}
+
+/// Stage 1 then Stage 2 for one target, writing every artifact under `dir`.
 ///
-/// Runs whenever Stage 1 did not hand back a model. It is not gated on
-/// configuration: a missing proposer command is a run failure to report, not a
-/// silent downgrade to doing nothing.
-#[allow(clippy::too_many_arguments)]
-fn co_solve_target(
-    model: &IRContext,
-    parser_name: &str,
-    target_dir: &Path,
+/// Stage 1 is Z3 alone, input free. `sat` is rendered and replayed; `unsat` at
+/// k=0 means unreachable and stops. Anything else escalates to Stage 2, always —
+/// a missing proposer is a run failure, not a quieter run.
+pub fn run_target(
+    run: &Run<'_>,
     target_ids: &BTreeSet<usize>,
-    top_level_fn: &str,
-    unmodified: &str,
-    stage1: &Response,
-    unroll_depth: usize,
-) {
-    let (Some(replay_tgt), Some(oracle)) =
-        (replay_target(model, target_ids), oracle_for(parser_name))
-    else {
-        return;
-    };
+    dir: &Path,
+) -> std::result::Result<cosolve::Outcome, String> {
+    let (model, base_code, lang, top_level_fn, unroll_depth, llm) = (
+        run.model,
+        run.base_code,
+        run.lang,
+        run.top_level_fn,
+        run.unroll_depth,
+        run.llm,
+    );
+    let oracle =
+        oracle_for(lang).ok_or_else(|| format!("no oracle registered for language `{lang}`"))?;
+    let target = target_name(model, target_ids)
+        .ok_or_else(|| "target has no named marker (use Path::named)".to_string())?;
+    fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    // The suite is labelled from this file, not from the directory's position,
+    // so collecting a run of different code cannot mislabel a witness.
+    fs::write(dir.join("marker.txt"), &target)
+        .map_err(|e| format!("cannot write marker.txt: {e}"))?;
 
-    // A model for this target already: only the fidelity replay is left.
-    if let Response::Sat(text) = stage1 {
-        if let Some(w) = guidance::decode_seq_model(text, guidance::INPUT_VAR) {
-            record_replay(oracle, model, target_dir, &replay_tgt, &w);
-        }
-        return;
+    let unmodified =
+        CodeGenZ3::new().process_path_queries(base_code, model, top_level_fn, target_ids);
+    let qpath = dir.join("main.smt2");
+    fs::write(&qpath, &unmodified).map_err(|e| format!("cannot write query: {e}"))?;
+
+    let started = Instant::now();
+    let stage1 = guidance::run_z3_file(&qpath, guidance::stage1_budget_from_env());
+    let stage1_ms = started.elapsed().as_millis();
+
+    if let Response::Sat(text) = &stage1 {
+        let witness = render_witness(oracle, &unmodified, text)
+            .map_err(|e| format!("Stage 1 solved `{target}` but {e}"))?;
+        write_witnesses(oracle, model, dir, &target, std::slice::from_ref(&witness))?;
+        return Ok(cosolve::Outcome {
+            witnesses: vec![witness],
+            rounds: Vec::new(),
+            stage1: "sat".to_string(),
+            stop: cosolve::Stop::Witness,
+            stage1_ms,
+        });
     }
-    // `unsat` with no bounding is a genuine unreachability verdict for this
-    // encoding; under k-unrolling it only means "no witness within depth k".
+    // Only the unmodified, unbounded query licenses an unreachability verdict;
+    // under k-unrolling `unsat` means "no witness within depth k".
     if matches!(stage1, Response::Unsat) && unroll_depth == 0 {
-        return;
-    }
-    let Some(marker) = single_marker(model, target_ids) else {
-        return;
-    };
-    if !guidance::query_has_seq_input(unmodified, guidance::INPUT_VAR) {
-        return;
-    }
-
-    let mut llm = proposer::CommandProposer::from_env();
-    if llm.is_none() && cosolve::mode_from_env() == cosolve::Mode::Guide {
-        eprintln!(
-            "[rusmt] {marker}: only the mechanical round will run — RUSMT_LLM_CMD is unset. \
-             The co-solving loop is a pipeline stage; set it (e.g. \
-             RUSMT_LLM_CMD='claude -p --allowedTools \"\"') for the full pipeline."
-        );
-    }
-
-    let ladder = slice::plan_ladder(model, top_level_fn, target_ids);
-    let mut plan = ladder.first().cloned().unwrap_or_default();
-    let holder = slice::marker_holders(model, target_ids)
-        .into_iter()
-        .next()
-        .map(|f| backend::z3::fun::resolve_function_name(model, f))
-        .unwrap_or_else(|| "(unknown)".to_string());
-
-    let emit = |p: &slice::StubPlan| -> String {
-        use crate::backend::codegen::CodeGen as _;
-        use crate::backend::z3::ctxt::CodeGenZ3;
-        let cg = CodeGenZ3::with_stubs(p.stub.clone());
-        match cg.process(model, unroll_depth) {
-            Ok(base) => cg.process_path_queries(&base, model, top_level_fn, target_ids),
-            Err(e) => format!("; sliced codegen failed: {e:?}\n(check-sat)\n"),
-        }
-    };
-    let names = |p: &slice::StubPlan| p.stub_names(model);
-    let restorer = |p: &mut slice::StubPlan, n: &[String]| p.restore(model, n);
-    let mut solver = cosolve::FileSolver {
-        emit,
-        unmodified,
-        dir: target_dir,
-        budget: guidance::z3_budget_from_env(),
-        names: &names,
-        restorer: &restorer,
-    };
-
-    if cosolve::mode_from_env() == cosolve::Mode::Certify {
-        let Some(l) = llm.as_mut() else {
-            let outcome = cosolve::Outcome {
-                witnesses: Vec::new(),
-                rounds: vec![cosolve::Round {
-                    directives: String::new(),
-                    restored: Vec::new(),
-                    constraints: Vec::new(),
-                    candidates: Vec::new(),
-                    outcome: "RUN FAILURE: certify mode needs RUSMT_LLM_CMD".to_string(),
-                    elapsed: std::time::Duration::ZERO,
-                }],
-                stage1: stage1.to_string(),
-            };
-            let _ = fs::write(
-                target_dir.join("cosolve.txt"),
-                cosolve::render_transcript("(none)", marker, &holder, &outcome),
-            );
-            return;
-        };
-        let excerpt = smt_excerpt(unmodified);
-        let outcome = cosolve::certify(
-            marker,
-            oracle.name,
-            &holder,
-            &excerpt,
-            stage1,
-            l as &mut dyn proposer::Proposer,
-            &mut solver,
-            cosolve::rounds_from_env(),
-            cosolve::witnesses_from_env(),
-        );
-        let desc = l.describe();
         let _ = fs::write(
-            target_dir.join("cosolve.txt"),
-            cosolve::render_transcript(&desc, marker, &holder, &outcome),
+            dir.join("unreachable.txt"),
+            format!("unsat on the unmodified, unconstrained query: no input reaches `{target}`\n"),
         );
-        if let Some(first) = outcome.witnesses.first() {
-            write_response(target_dir, parser_name, first, true);
-            if outcome.witnesses.len() > 1 {
-                let extra = outcome.witnesses[1..].join("\n---\n");
-                let _ = fs::write(target_dir.join("witnesses.txt"), extra);
-            }
-            record_replay(oracle, model, target_dir, &replay_tgt, first);
-        }
-        return;
+        return Ok(cosolve::Outcome {
+            witnesses: Vec::new(),
+            rounds: Vec::new(),
+            stage1: "unsat".to_string(),
+            stop: cosolve::Stop::Witness,
+            stage1_ms,
+        });
     }
 
-    let outcome = cosolve::co_solve(
-        marker,
-        oracle.name,
-        &holder,
-        stage1,
-        &mut plan,
-        &ladder,
-        llm.as_mut().map(|l| l as &mut dyn proposer::Proposer),
+    if !guidance::query_has_seq_input(&unmodified, guidance::INPUT_VAR) {
+        return Err(format!(
+            "Stage 2 needs a `Seq<U32>` entry input; `{top_level_fn}` does not take one"
+        ));
+    }
+    let mut llm = proposer::CommandProposer::from_cli_or_env(llm).ok_or_else(|| {
+        "Stage 2 needs a proposer: name one on the command line, or set \
+         RUSMT_LLM_CMD to a command that reads a prompt on stdin and writes a \
+         candidate on stdout"
+            .to_string()
+    })?;
+    let holder = backend::z3::fun::holder_name(model, target_ids);
+    let excerpt = smt_excerpt(&unmodified);
+    // Marker names in bit order, so a rejection's observed `Path` decodes.
+    let marker_at_bit: Vec<String> = model.marker_names.values().cloned().collect();
+    let observation = CodeGenZ3::new().process_path_observation(base_code, model, top_level_fn);
+    let mut solver = cosolve::FileSolver {
+        unmodified: &unmodified,
+        dir,
+        budget: guidance::z3_budget_from_env(),
+        round: 0,
+        observation: &observation,
+        marker_at_bit: &marker_at_bit,
+    };
+    let outcome = cosolve::certify(
+        &cosolve::Target {
+            marker: &target,
+            language: oracle.name,
+            holder: &holder,
+            smt_excerpt: &excerpt,
+        },
+        &stage1,
+        &mut llm,
         &mut solver,
         cosolve::rounds_from_env(),
         cosolve::witnesses_from_env(),
     );
-    let desc = llm
-        .as_ref()
-        .map(|l| l.describe())
-        .unwrap_or_else(|| "(none: mechanical round only)".to_string());
     let _ = fs::write(
-        target_dir.join("cosolve.txt"),
-        cosolve::render_transcript(&desc, marker, &holder, &outcome),
+        dir.join("cosolve.txt"),
+        cosolve::render_transcript(&llm.describe(), &target, &holder, &outcome),
     );
-    if let Some(first) = outcome.witnesses.first() {
-        write_response(target_dir, parser_name, first, true);
-        // Extra witnesses go beside it: one per marker is thin for a
-        // conformance suite (reviewer 5A), and the rest cost one re-solve each.
-        if outcome.witnesses.len() > 1 {
-            let extra = outcome.witnesses[1..].join("\n---\n");
-            let _ = fs::write(target_dir.join("witnesses.txt"), extra);
-        }
-        record_replay(oracle, model, target_dir, &replay_tgt, first);
-    }
+    write_witnesses(oracle, model, dir, &target, &outcome.witnesses)?;
+    let mut outcome = outcome;
+    outcome.stage1_ms = stage1_ms;
+    Ok(outcome)
 }
 
-/// Run Stage 1 then the co-solving loop for one *named* marker, writing every
-/// query and the transcript under `out_dir`. This is the `recover` CLI mode: the
-/// same two stages the full sweep runs, for one marker, so a single result can be
-/// reproduced without re-running everything.
+/// Run both stages for one *named* marker under `out_dir` — the `recover` CLI
+/// mode, and the unit the sweep drives. It is [`run_target`] with the marker
+/// looked up by name, so it cannot drift from what the full run does.
 pub fn recover_marker(
     model: &IRContext,
     lang: &str,
@@ -288,10 +227,8 @@ pub fn recover_marker(
     marker_name: &str,
     unroll_depth: usize,
     out_dir: &Path,
+    llm: Option<&str>,
 ) -> std::result::Result<cosolve::Outcome, String> {
-    use crate::backend::codegen::CodeGen as _;
-    use crate::backend::z3::ctxt::CodeGenZ3;
-
     let id = rusmt_smt_stdlib::path::marker_id(marker_name);
     if model.marker_names.get(&id).map(String::as_str) != Some(marker_name) {
         let mut names: Vec<&str> = model.marker_names.values().map(String::as_str).collect();
@@ -305,129 +242,21 @@ pub fn recover_marker(
             }
         ));
     }
-    let oracle = oracle_for(lang)
-        .ok_or_else(|| format!("no replay oracle registered for language `{lang}`"))?;
-    let target_ids = BTreeSet::from([id]);
-    fs::create_dir_all(out_dir).map_err(|e| format!("cannot create {}: {e}", out_dir.display()))?;
-
-    // Stage 1: the unmodified query.
-    let cg = CodeGenZ3::new();
-    let base = cg
+    let base = CodeGenZ3::new()
         .process(model, unroll_depth)
         .map_err(|e| format!("base SMT-LIB generation failed: {e:?}"))?;
-    let unmodified = cg.process_path_queries(&base, model, top_level_fn, &target_ids);
-    if !guidance::query_has_seq_input(&unmodified, guidance::INPUT_VAR) {
-        return Err(format!(
-            "co-solving needs a `Seq<U32>` entry input; `{top_level_fn}` does not take one"
-        ));
-    }
-    let qpath = out_dir.join("unmodified.smt2");
-    fs::write(&qpath, &unmodified).map_err(|e| format!("cannot write query: {e}"))?;
-    let budget = guidance::z3_budget_from_env();
-    let stage1 = guidance::run_z3_file(&qpath, guidance::stage1_budget_from_env());
-
-    // Stage 2 runs unless Stage 1 already produced a model.
-    let ladder = slice::plan_ladder(model, top_level_fn, &target_ids);
-    let mut plan = ladder.first().cloned().unwrap_or_default();
-    let holder = slice::marker_holders(model, &target_ids)
-        .into_iter()
-        .next()
-        .map(|f| backend::z3::fun::resolve_function_name(model, f))
-        .unwrap_or_else(|| "(unknown)".to_string());
-    if let Response::Sat(text) = &stage1 {
-        let w = guidance::decode_seq_model(text, guidance::INPUT_VAR);
-        return Ok(cosolve::Outcome {
-            witnesses: w.into_iter().collect(),
-            rounds: Vec::new(),
-            stage1: stage1.to_string(),
-        });
-    }
-    // The mechanical round runs regardless; only the model-driven rounds need a
-    // proposer. `RUSMT_ABLATION=mechanical` stops after the mechanical round on
-    // purpose, which is how the ablation measures slicing on its own.
-    let ablate = std::env::var("RUSMT_ABLATION").ok().as_deref() == Some("mechanical");
-    let mut llm = proposer::CommandProposer::from_env();
-    if llm.is_none() && !ablate {
-        eprintln!(
-            "[rusmt] RUSMT_LLM_CMD is unset: only the mechanical round will run. \
-             The co-solving loop is a pipeline stage, not an option — set it to measure the \
-             full pipeline, or set RUSMT_ABLATION=mechanical to state that you meant this."
-        );
-    }
-    let emit = |p: &slice::StubPlan| -> String {
-        let cg = CodeGenZ3::with_stubs(p.stub.clone());
-        match cg.process(model, unroll_depth) {
-            Ok(b) => cg.process_path_queries(&b, model, top_level_fn, &target_ids),
-            Err(e) => format!("; sliced codegen failed: {e:?}\n(check-sat)\n"),
-        }
-    };
-    let names = |p: &slice::StubPlan| p.stub_names(model);
-    let restorer = |p: &mut slice::StubPlan, n: &[String]| p.restore(model, n);
-    let mut solver = cosolve::FileSolver {
-        emit,
-        unmodified: &unmodified,
-        dir: out_dir,
-        budget,
-        names: &names,
-        restorer: &restorer,
-    };
-    let desc = llm
-        .as_ref()
-        .map(|l| l.describe())
-        .unwrap_or_else(|| "(none: mechanical round only)".to_string());
-
-    // Certification mode: the proposer generates candidates from the emitted
-    // SMT-LIB and Z3 decides each against the unmodified query. This is the
-    // default reported pipeline; `RUSMT_MODE=guide` selects the older sketch
-    // mode for experiments.
-    if cosolve::mode_from_env() == cosolve::Mode::Certify {
-        let Some(l) = llm.as_mut() else {
-            return Err("certify mode needs RUSMT_LLM_CMD".to_string());
-        };
-        // The proposer sees the lifted query, not the Rust. The declarations and
-        // the marker assertion are what matter; the bulk is parser bodies.
-        let excerpt = smt_excerpt(&unmodified);
-        let outcome = cosolve::certify(
-            marker_name,
-            oracle.name,
-            &holder,
-            &excerpt,
-            &stage1,
-            l as &mut dyn proposer::Proposer,
-            &mut solver,
-            cosolve::rounds_from_env(),
-            cosolve::witnesses_from_env(),
-        );
-        let _ = fs::write(
-            out_dir.join("cosolve.txt"),
-            cosolve::render_transcript(&desc, marker_name, &holder, &outcome),
-        );
-        for w in &outcome.witnesses {
-            record_replay(oracle, model, out_dir, marker_name, w);
-        }
-        return Ok(outcome);
-    }
-
-    let outcome = cosolve::co_solve(
-        marker_name,
-        oracle.name,
-        &holder,
-        &stage1,
-        &mut plan,
-        &ladder,
-        llm.as_mut().map(|l| l as &mut dyn proposer::Proposer),
-        &mut solver,
-        cosolve::rounds_from_env(),
-        cosolve::witnesses_from_env(),
-    );
-    let _ = fs::write(
-        out_dir.join("cosolve.txt"),
-        cosolve::render_transcript(&desc, marker_name, &holder, &outcome),
-    );
-    for w in &outcome.witnesses {
-        record_replay(oracle, model, out_dir, marker_name, w);
-    }
-    Ok(outcome)
+    run_target(
+        &Run {
+            model,
+            base_code: &base,
+            lang,
+            top_level_fn,
+            unroll_depth,
+            llm,
+        },
+        &BTreeSet::from([id]),
+        out_dir,
+    )
 }
 
 /// The part of an emitted query worth putting in a prompt.
@@ -469,17 +298,6 @@ fn smt_excerpt(query: &str) -> String {
     )
 }
 
-// module tree
-pub mod authoring;
-mod backend;
-pub mod cosolve;
-pub mod guidance;
-mod ir;
-mod parser;
-pub mod proposer;
-pub mod slice;
-pub mod z3_session;
-
 /// Create the intermediate representations (IR) from the parsing context.
 pub fn model<P: AsRef<Path>>(input: P) -> Result<IRContext> {
     // The `new` function collects all the smt-marked items from the input file
@@ -499,132 +317,180 @@ pub fn model<P: AsRef<Path>>(input: P) -> Result<IRContext> {
     Ok(ir)
 }
 
-/// Emit the text backend's *base* SMT-LIB for a model: datatype declarations,
-/// the stdlib helper definitions, and one `define-fun(-rec)` per user function —
-/// with no `check-sat` and no path queries.
-///
-/// This is exposed so the randomized differential harness (which checks the
-/// per-construct soundness contract `rust_impl(f,x) == z3_eval(z3_formula(f),x)`)
-/// can append its own equality queries to the exact formulas the backend emits,
-/// rather than re-deriving them.
-pub fn emit_text_base_smt(model: &IRContext, unroll_depth: usize) -> String {
-    use crate::backend::codegen::CodeGen;
-    use crate::backend::z3::ctxt::CodeGenZ3;
-    CodeGenZ3::new()
-        .process(model, unroll_depth)
-        .expect("base SMT-LIB generation failed")
+/// One marker's result as a JSON line.
+fn ledger_line(name: &str, outcome: &std::result::Result<cosolve::Outcome, String>) -> String {
+    fn esc(s: &str) -> String {
+        let mut o = String::from("\"");
+        for c in s.chars() {
+            match c {
+                '"' => o.push_str("\\\""),
+                '\\' => o.push_str("\\\\"),
+                '\n' => o.push_str("\\n"),
+                '\r' => o.push_str("\\r"),
+                '\t' => o.push_str("\\t"),
+                c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+                c => o.push(c),
+            }
+        }
+        o.push('"');
+        o
+    }
+    match outcome {
+        Err(e) => format!(
+            "{{\"marker\":{},\"status\":\"FAIL\",\"failure\":{},\"witnesses\":[],\"round_outcomes\":[],\"rounds\":0}}",
+            esc(name),
+            esc(e)
+        ),
+        Ok(o) => {
+            let status = if !o.witnesses.is_empty() {
+                if o.rounds.is_empty() {
+                    "STAGE1"
+                } else {
+                    "WITNESS"
+                }
+            } else if o.stage1 == "unsat" {
+                "UNREACH"
+            } else {
+                "none"
+            };
+            let ws: Vec<String> = o.witnesses.iter().map(|w| esc(w)).collect();
+            let os: Vec<String> = o.rounds.iter().map(|r| esc(&r.outcome)).collect();
+            format!(
+                "{{\"marker\":{},\"status\":\"{status}\",\"stage1\":{},\"rounds\":{},\"stage1_ms\":{},\"witnesses\":[{}],\"round_outcomes\":[{}],\"rejected\":{},\"stop\":\"{}\"}}",
+                esc(name),
+                esc(&o.stage1),
+                o.rounds.len(),
+                o.stage1_ms,
+                ws.join(","),
+                os.join(","),
+                o.rejected(),
+                o.stop.as_str()
+            )
+        }
+    }
 }
 
-/// Solve the models by synthesizing inputs for specific Path IDs.
+/// What a whole-model run produced, per target.
+pub struct SolveReport {
+    /// One JSON line per marker.
+    pub ledger: Vec<String>,
+    /// Markers a witness was found for, and how many.
+    pub covered: Vec<String>,
+    /// Markers Z3 proved unreachable on the unmodified, unbounded query.
+    pub unreachable: Vec<String>,
+    /// Markers the round budget ran out on.
+    pub missed: Vec<String>,
+    /// Markers whose run failed, with the reason. Never counted as a miss.
+    pub failed: Vec<(String, String)>,
+}
+
+/// Run both stages for every named marker in `model`, writing each target's
+/// artifacts under `<output>/<backend>/target_<N>/`.
 ///
 /// `unroll_depth` controls bounded-recursion unrolling in the text backend
-/// (see `CodeGen::process`); pass 0 or not specified to keep the existing recursive emission.
+/// (see `CodeGen::process`); pass 0 to keep the recursive emission.
 ///
-/// When the env var `RUSMT_SKIP_INVOKE=1` is set, everything runs except the
-/// per-target Z3 invocation: codegen still happens and `main.smt2` plus every
-/// `target_<N>/main.smt2` is still written. This is the codegen-debugging path,
-/// and it is not the same as stopping at [`model`] — that returns an
-/// `IRContext` and emits no SMT-LIB at all, so it shows nothing when the
-/// generated text is the thing under inspection. Skipping the solver is what
-/// makes it cheap: TOML's 182 targets render in seconds instead of spending a
-/// Z3 budget on every marker.
+/// `jobs` markers are attempted at a time.
+///
+/// With `RUSMT_SKIP_INVOKE=1` the queries are written and nothing is solved.
 pub fn solve<P: AsRef<Path>>(
     model: &IRContext,
     parser_name: &str,
     top_level_fn: Option<&str>,
     output: P,
     unroll_depth: usize,
-) -> Result<()> {
+    jobs: usize,
+    llm: Option<&str>,
+) -> Result<SolveReport> {
     let skip_invoke = std::env::var("RUSMT_SKIP_INVOKE").ok().as_deref() == Some("1");
-    for solver in solvers() {
-        let name = solver.name();
+    let cg = CodeGenZ3::new();
+    let dir = output.as_ref().join(cg.name());
+    fs::create_dir_all(&dir).expect("workspace freshly created");
 
-        // Create a root directory for the solver (e.g., ./lang/src/synthesis/<parser_name>/<solver_name>)
-        let path_solver = output.as_ref().join(name);
-        fs::create_dir_all(&path_solver).expect("workspace freshly created");
+    let base_code = match cg.process(model, unroll_depth) {
+        Ok(code) => code,
+        Err(e) => panic!("error generating SMT-LIB code: {e:?}"),
+    };
+    fs::write(dir.join(format!("main.{}", cg.flavor())), &base_code)
+        .unwrap_or_else(|e| panic!("IO error on source file: {e}"));
 
-        // Generate base SMT-LIB (types + functions, no queries).
-        let base_code = match solver.process(model, unroll_depth) {
-            Ok(code) => code,
-            Err(e) => panic!("error generating SMT-LIB code: {e:?}"),
-        };
+    let mut report = SolveReport {
+        ledger: Vec::new(),
+        covered: Vec::new(),
+        unreachable: Vec::new(),
+        missed: Vec::new(),
+        failed: Vec::new(),
+    };
+    let Some(top_level_fn) = top_level_fn else {
+        return Ok(report);
+    };
 
-        // Write main.smt2 (base declarations, no check-sat).
-        let path_src = path_solver.join(format!("main.{}", solver.flavor()));
-        fs::write(&path_src, &base_code).unwrap_or_else(|e| panic!("IO error on source file: {e}"));
-
-        // For each path-marker target, generate one query against `top_level_fn` and run it.
-        // Skip entirely if no top-level function was specified.
-        let Some(top_level_fn) = top_level_fn else {
-            continue;
-        };
-        for (target_idx, target_ids) in model.path_targets.iter().enumerate() {
-            let target_label = format!("target_{target_idx}");
-            let path_target_dir = path_solver.join(&target_label);
-            fs::create_dir_all(&path_target_dir).expect("target directory created");
-
-            let query_code =
-                solver.process_path_queries(&base_code, model, top_level_fn, target_ids);
-            let query_path = path_target_dir.join(format!("main.{}", solver.flavor()));
-            fs::write(&query_path, &query_code).expect("failed to write query file");
-
-            if skip_invoke {
-                continue;
-            }
-
-            println!(
-                "[rusmt] {}/{} {}",
-                target_idx + 1,
-                model.path_targets.len(),
-                target_label
-            );
-
-            let timing_file = path_target_dir.join("timing.txt");
-            let start = Instant::now();
-            match solver.invoke_backend(&query_path) {
-                Ok(resp) => {
-                    let elapsed_ms = start.elapsed().as_millis();
-                    let (body, is_witness) = response_to_store(parser_name, resp.to_string());
-                    write_response(&path_target_dir, parser_name, &body, is_witness);
-                    fs::write(&timing_file, format!("{elapsed_ms}ms"))
-                        .expect("failed to write timing file");
-
-                    co_solve_target(
-                        model,
-                        parser_name,
-                        &path_target_dir,
-                        target_ids,
-                        top_level_fn,
-                        &query_code,
-                        &resp,
-                        unroll_depth,
-                    );
-                }
-                Err(x) => {
-                    let elapsed_ms = start.elapsed().as_millis();
-                    write_response(
-                        &path_target_dir,
-                        parser_name,
-                        &format!(
-                            "[{name}] backend failed for {target_label} fn {top_level_fn}: {x:?}"
-                        ),
-                        false,
-                    );
-                    fs::write(&timing_file, format!("{elapsed_ms}ms"))
-                        .expect("failed to write timing file");
-                }
-            }
+    let targets: Vec<(usize, &BTreeSet<usize>)> = model.path_targets.iter().enumerate().collect();
+    if skip_invoke {
+        for (idx, target_ids) in targets {
+            let name = target_name(model, target_ids).unwrap_or_else(|| format!("target_{idx}"));
+            let target_dir = dir.join(format!("target_{idx}"));
+            fs::create_dir_all(&target_dir).expect("target directory created");
+            let q = cg.process_path_queries(&base_code, model, top_level_fn, target_ids);
+            fs::write(target_dir.join(format!("main.{}", cg.flavor())), q)
+                .expect("failed to write query file");
+            let _ = fs::write(target_dir.join("marker.txt"), &name);
         }
+        return Ok(report);
     }
-    Ok(())
+
+    // Markers share no state, so this changes wall clock and nothing else.
+    let jobs = jobs.max(1).min(targets.len().max(1));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let done = std::sync::Mutex::new(&mut report);
+    std::thread::scope(|scope| {
+        for _ in 0..jobs {
+            scope.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(&(idx, target_ids)) = targets.get(i) else {
+                        break;
+                    };
+                    let name =
+                        target_name(model, target_ids).unwrap_or_else(|| format!("target_{idx}"));
+                    let outcome = run_target(
+                        &Run {
+                            model,
+                            base_code: &base_code,
+                            lang: parser_name,
+                            top_level_fn,
+                            unroll_depth,
+                            llm,
+                        },
+                        target_ids,
+                        &dir.join(format!("target_{idx}")),
+                    );
+                    let mut r = done.lock().expect("report lock");
+                    r.ledger.push(ledger_line(&name, &outcome));
+                    match outcome {
+                        Ok(o) if !o.witnesses.is_empty() => r.covered.push(name),
+                        Ok(o) if o.stage1 == "unsat" => r.unreachable.push(name),
+                        Ok(_) => r.missed.push(name),
+                        // A failed run is not a marker without a witness: it is
+                        // a run to fix.
+                        Err(e) => {
+                            eprintln!("[rusmt] {name}: RUN FAILURE: {e}");
+                            r.failed.push((name, e));
+                        }
+                    }
+                }
+            });
+        }
+    });
+    Ok(report)
 }
 
 /// Copy accepted witnesses from a synthesis run into an object-language suite.
 ///
-/// The suite contains only inputs that Z3 accepted: `response.<ext>` plus any
-/// extra witnesses in `witnesses.txt`, named by the marker they target.
+/// The suite holds only inputs Z3 accepted: each target's `response.<ext>` plus
+/// any extra witnesses in `witnesses.txt`, named by the `marker.txt` the run
+/// wrote beside them.
 pub fn write_conformance_suite<P: AsRef<Path>, Q: AsRef<Path>>(
-    model: &IRContext,
     parser_name: &str,
     synthesis_dir: P,
     suite_dir: Q,
@@ -644,22 +510,18 @@ pub fn write_conformance_suite<P: AsRef<Path>, Q: AsRef<Path>>(
         }
     }
 
-    let solver_dir = synthesis_dir.as_ref().join("z3_chc");
+    let solver_dir = synthesis_dir.as_ref().join(CodeGenZ3::new().name());
     let mut written = 0usize;
-    for (target_idx, target_ids) in model.path_targets.iter().enumerate() {
-        let names: Vec<&str> = target_ids
-            .iter()
-            .filter_map(|id| model.marker_names.get(id).map(String::as_str))
-            .collect();
-        if names.is_empty() {
+    let mut dirs: Vec<_> = fs::read_dir(&solver_dir)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    for target_dir in dirs {
+        let Ok(name) = fs::read_to_string(target_dir.join("marker.txt")) else {
             continue;
-        }
-        let stem = names
-            .iter()
-            .map(|n| sanitize_suite_stem(n))
-            .collect::<Vec<_>>()
-            .join("__");
-        let target_dir = solver_dir.join(format!("target_{target_idx}"));
+        };
+        let stem = sanitize_suite_stem(name.trim());
         let response = target_dir.join(format!("response.{}", oracle.ext));
         if response.exists() {
             fs::copy(&response, suite_dir.join(format!("{stem}.{}", oracle.ext)))?;
@@ -692,4 +554,21 @@ fn sanitize_suite_stem(name: &str) -> String {
             }
         })
         .collect()
+}
+
+/// A query that reports which markers an input fires, rather than asserting one.
+///
+/// The same query Stage 2 uses to explain a rejection. Pin an input into it with
+/// [`guidance::pin_input`] and read [`guidance::OBSERVED_PATH`] out of the model
+/// with [`guidance::decode_bitvec_bits`]; bit *i* is `marker_names`' *i*-th key.
+pub fn observation_query(
+    ir: &IRContext,
+    top_level_fn: &str,
+    unroll_depth: usize,
+) -> std::result::Result<String, String> {
+    let cg = CodeGenZ3::new();
+    let base = cg
+        .process(ir, unroll_depth)
+        .map_err(|e| format!("does not transpile: {e:?}"))?;
+    Ok(cg.process_path_observation(&base, ir, top_level_fn))
 }

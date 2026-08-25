@@ -1,0 +1,102 @@
+marker          : dotted_key_redefines_array_table
+raised in       : parse_expression
+stage 1 (Z3 on the unmodified query): timeout
+proposer        : command proposer `sandbox-exec -f /tmp/rusmt-run/no-source.sb codex exec -m gpt-5.4-mini -c model_reasoning_effort="low" -s read-only --skip-git-repo-check -o last.txt >/dev/null 2>&1; cat last.txt` (cache /tmp/rusmt-cache-final, 0 hit / 9 invoked)
+
+The proposer reads the emitted SMT-LIB and returns one candidate. Every witness below
+is a model of the UNMODIFIED query, obtained by pinning the candidate into it and
+re-solving; a rejected candidate is a counterexample fed into the next round.
+
+=== round 1 (2394 ms) ===
+--- reply ---
+<<<
+[[a]]
+a.b = 1
+>>>
+candidate: "[[a]]\na.b = 1"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `dotted_key_redefines_array_table` names.
+
+=== round 2 (2447 ms) ===
+--- reply ---
+<<<
+[[a.b]]
+a.b.c = 1
+>>>
+candidate: "[[a.b]]\na.b.c = 1"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `dotted_key_redefines_array_table` names.
+
+=== round 3 (2376 ms) ===
+--- reply ---
+<<<
+[[a.b]]
+a.b = 1
+>>>
+candidate: "[[a.b]]\na.b = 1"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `dotted_key_redefines_array_table` names.
+
+=== round 4 (1517 ms) ===
+--- reply ---
+<<<
+[[a]]
+a.b.c = 1
+>>>
+candidate: "[[a]]\na.b.c = 1"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `dotted_key_redefines_array_table` names.
+
+=== round 5 (1710 ms) ===
+--- reply ---
+<<<
+[[a]]
+x = 1
+a.b = 1
+>>>
+candidate: "[[a]]\nx = 1\na.b = 1"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `dotted_key_redefines_array_table` names.
+
+=== round 6 (1517 ms) ===
+--- reply ---
+<<<
+a.b = 1
+[[a.b]]
+>>>
+candidate: "a.b = 1\n[[a.b]]"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports that it reaches ERR toml_table_merge_type_mismatch instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `dotted_key_redefines_array_table` is about.
+
+=== round 7 (1512 ms) ===
+--- reply ---
+<<<
+[[a]]
+[a]
+>>>
+candidate: "[[a]]\n[a]"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports that it reaches ERR std_table_redefines_array_table instead — a DIFFERENT rule fired first and shadowed the one you want. Fix that earlier violation so the document is valid up to the point `dotted_key_redefines_array_table` is about.
+
+=== round 8 (1466 ms) ===
+--- reply ---
+input <<<
+[[a]]
+[a.b]
+>>>
+candidate: "[[a]]\n[a.b]"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `dotted_key_redefines_array_table` names.
+
+=== round 9 (1571 ms) ===
+--- reply ---
+input <<<
+[[a.b]]
+[x]
+a.b = 1
+>>>
+candidate: "[[a.b]]\n[x]\na.b = 1"
+--- outcome ---
+`unsat`: this input does not reach `dotted_key_redefines_array_table`. Z3 reports OK for it — the document is simply valid, so it violates no rule at all. It has to break exactly the rule `dotted_key_redefines_array_table` names.
+
+status: no witness (stopped: budget)

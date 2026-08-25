@@ -8,6 +8,8 @@ license.workspace = true
 keywords = ["smt", "annotation", "macros"]
 categories = ["compilers", "development-tools::procedural-macro-helpers"]
 edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 
 [lib]
 proc-macro = true

@@ -135,12 +135,9 @@ impl CommandProposer {
             .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("failed to spawn proposer command `{}`", self.cmd))?;
-        child
-            .stdin
-            .take()
-            .expect("stdin piped")
-            .write_all(prompt.as_bytes())
-            .context("failed to write prompt to proposer stdin")?;
+        let mut stdin = child.stdin.take().expect("stdin piped");
+        let write_err = stdin.write_all(prompt.as_bytes()).err();
+        drop(stdin);
         let out = child
             .wait_with_output()
             .context("failed to wait for proposer command")?;
@@ -151,6 +148,11 @@ impl CommandProposer {
                 out.status,
                 String::from_utf8_lossy(&out.stderr).trim()
             );
+        }
+        if let Some(e) = write_err {
+            if e.kind() != std::io::ErrorKind::BrokenPipe {
+                return Err(e).context("failed to write prompt to proposer stdin");
+            }
         }
         let text = strip_fences(&String::from_utf8_lossy(&out.stdout));
         if text.is_empty() {

@@ -117,9 +117,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let name = p.file_stem().unwrap().to_string_lossy().to_string();
         match run(&p)? {
             Outcome::Accepted => agree += 1,
-            Outcome::Rejected(m) => {
-                false_reject.push(format!("{name} ({})", m.iter().cloned().collect::<Vec<_>>().join(",")))
-            }
+            Outcome::Rejected(m) => false_reject.push(format!(
+                "{name} ({})",
+                m.iter().cloned().collect::<Vec<_>>().join(",")
+            )),
             Outcome::Undecided(_) => undecided += 1,
         }
     }
@@ -167,7 +168,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let distinct_classes = classes.len();
     println!("\n== 2. granularity (name-free) ==");
     println!("  reference markers over these documents : {n_invalid}");
-    println!("  distinct draft markers fired           : {}", distinct_markers.len());
+    println!(
+        "  distinct draft markers fired           : {}",
+        distinct_markers.len()
+    );
     println!("  distinct draft marker-sets (classes)   : {distinct_classes}");
     println!(
         "  resolution ratio                       : {:.2}  (1.00 = as fine as the reference)",

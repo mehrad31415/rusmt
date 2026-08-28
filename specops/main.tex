@@ -178,25 +178,18 @@
 \email{meng.xu.cs@uwaterloo.ca}
 
 \begin{abstract}
-Conformance testing asks whether an implementation agrees with its specification. When the specification is prose, one established response is to mechanize it: an executable specification serves as the oracle, and an input on which an implementation disagrees with it is a candidate bug — in the implementation, or in the mechanization itself. How those inputs are obtained matters, because an oracle only adjudicates what it is given. They can be derived from the specification itself, and coverage-guided generators drive aggregate coverage high. But coverage is an aggregate over the specification, not a way to name one condition and obtain an input that reaches it. That matters for error conditions in particular, where implementations are known to diverge and where the code is empirically under-tested.
+Conformance testing asks whether an implementation agrees with its specification. When the specification is expressed in prose, one established approach is to mechanize it as an executable specification. This executable then serves as the oracle, and an input on which an implementation disagrees with it is a potential bug, either in the implementation or in the mechanized specification itself. How those inputs are obtained matters, because an oracle can only adjudicate the inputs it receives. Inputs can be derived from the specification itself, and coverage-guided generators can drive aggregate coverage high. But aggregate coverage does not provide a way to target a specific condition in the specification and generate an input that reaches it. This matters particularly for error conditions, where implementations are known to diverge and where the code is empirically under-tested.
 
-This paper presents \rusmt{}, a framework built around a domain-specific language whose types denote Z3 sorts and whose primitives denote Z3's operations. A program in the DSL is an executable specification. The author marks a branch with a named marker; in this paper, this always indicates an error condition. The single source is read two ways: compiled by \code{rustc} it executes as the conformance oracle; lowered to SMT-LIB it yields one reachability query per marker. A satisfying model yields the input, which a printer renders as source in the language being specified. That source is the test. An \code{unsat} says that no input reaches the marker. When the solver returns \code{unknown} or times out, \rusmt{} turns to a language model: it reads the emitted SMT-LIB and Z3's earlier verdicts and returns one concrete candidate, pinned into the unmodified query as a single equality. The proposer shapes the search and Z3 decides. A rejected candidate is fed back to the model, and the loop repeats up to a fixed number of rounds.
+This paper presents \rusmt{}, a framework for encoding prose specifications as executable oracles using a domain-specific language embedded in Rust. Its DSL provides types denoting Z3 sorts and primitives corresponding to Z3's operations. Concretely, the author writes the specification and marks a branch with a named marker, which identifies a path condition for the backend test synthesizer. In this paper, markers always identify error conditions. The same program is therefore used in two ways: compiled by \code{rustc}, it executes as the conformance oracle; lowered to SMT-LIB it yields one reachability query per marker. Z3 then solves each query: a \code{sat} model is rendered by a printer into a test program in the specified language, while \code{unsat} indicates that the marker is unreachable. If Z3 returns \code{unknown} or times out, \rusmt{} invokes a language model to propose a concrete candidate based on the emitted SMT-LIB and Z3's previous verdicts. The candidate is added to the original query as a single equality, thus constraining the search. If the candidate is rejected, its result is fed back to the language model to propose a new candidate. The process repeats until the fixed budget is exhausted.
 
 We write two executable specifications in the DSL: \imp{}, Winskel's
-canonical small imperative language, as a demonstration, and a \toml{}~1.1.0
-parser, written from the published specification. We mark \impmarkers{}
-branches in the first and \markers{} in the second. Z3 alone answers both \imp{} queries, in under a quarter of a
-second. It answers none of the \markers{} \toml{} queries at any budget we
-could afford: lowering a recursive parser whole-program is bounded model
-checking, whose formula-size blowup is well known. With the language model in the loop, \rusmt{} reaches \certcount{} of the \markers{}; the \misscount{} misses are named.
+canonical small imperative language as a small end-to-end demonstration, and a \toml{}~1.1.0
+parser, implemented from the published specification. We mark \impmarkers{}
+branches in the \imp{} program and \markers{} in the \toml{} parser. Z3 alone solves both \imp{} queries. It solves none of the \markers{} \toml{} queries within our available computational budget: lowering the recursive parser as a whole effectively turns the problem into bounded model checking, whose formula-size blowup is well known. With the language model in the loop, \rusmt{} reaches \certcount{} of the \markers{}.
 
-We ran the \toml{} generated test suite against four independent TOML parsers; on
-\divmarkers{} of the inputs the parsers and our oracle did not all agree. \specopen{} of these test behaviour the specification leaves open, such as
+We ran the \toml{}-generated test suite against four independent TOML parsers and found divergences on \divmarkers{} inputs. Of these, \specopen{} test behaviour the specification leaves open, such as
 integer width and float exponent range, so they are not conformance
-obligations at all. Three are
-implementation defects, and \newbugcount{} of those was previously
-unreported: \code{smol-toml} accepts an array-of-tables header closed by a
-single bracket, which we have reported upstream.
+obligations. The remaining three are implementation defects, \newbugcount{} of which was previously unreported. The unreported defect was found in \code{smol-toml}, which accepts an \emph{array-of-tables} header closed by a single bracket; we have reported this issue upstream.
 \end{abstract}
 
 \keywords{executable semantics, conformance testing, differential testing,
@@ -233,168 +226,114 @@ SMT, bounded model checking, large language models}
 \label{sec:intro}
 
 Conformance testing asks whether an implementation agrees with its
-specification. When the specification is prose, one established way to make the
-question mechanical is to write the specification as a program. K~\cite{rosu2010k}, PLT
-Redex~\cite{felleisen2009redex}, and Ott/Lem~\cite{sewell2007ott,mulligan2014lem}
-are built on that idea. The executable specification is then the oracle: run it and an
-implementation on the same input, and a disagreement is a candidate bug, in the
-implementation, or in the mechanization if it is not faithful to the prose.
+specification. When the specification is expressed in prose, one established way to make the
+question executable is to write the specification as a program. Systems such as K~\cite{rosu2010k}, PLT
+Redex~\cite{felleisen2009redex}, and Ott/Lem~\cite{sewell2007ott,mulligan2014lem} follow this approach. The executable specification is then the oracle: run it and an implementation on the same input, and a disagreement indicates a potential bug, either in the implementation or in the mechanization if it is not faithful to the prose.
 
-An oracle only adjudicates the inputs it is given, so generating the inputs is the next step. They can be generated from the specification
+An oracle only adjudicates the inputs it is given, so the next challenge is generating those inputs. Inputs can be generated from the specification
 itself~\cite{park2021jest}, and coverage-guided generation drives aggregate
-coverage high~\cite{lemieux2023codamosa}. But coverage is an aggregate over the specification: it does not let an author point at one condition the specification states and obtain an
-input that reaches it. That is particularly relevant for error conditions, where the code is empirically under-tested: in a study of production
-failures in distributed data-intensive systems, 92\% of catastrophic failures
+coverage high~\cite{lemieux2023codamosa}. But coverage is an aggregate measure and provides no mechanism for specifying a particular condition and generating an input that reaches it. This is particularly relevant for error conditions, where the code is empirically under-tested. In a study of production failures in distributed data-intensive systems, 92\% of catastrophic failures
 resulted from incorrect handling of non-fatal errors, and 58\% could have been
-caught by simple tests of the error-handling code~\cite{yuan2014simple}; error
-paths are routinely dropped in Linux file systems~\cite{gunawi2008eio}. It is
-also where implementations diverge. No two JSON parsers agree across malformed
-documents~\cite{seriot2016json}, discrepancies between parsers on ill-formed
+caught by simple tests of the error-handling code~\cite{yuan2014simple}. Error paths are also routinely dropped in Linux file systems~\cite{gunawi2008eio}. Error conditions are also a common source of implementation divergence. For example, no two JSON parsers agree across malformed
+documents~\cite{seriot2016json}, and discrepancies between parsers on ill-formed
 input are a documented source of security
-vulnerabilities~\cite{sassaman2013langsec,brubaker2014frankencerts}, and a
-conformance suite asserts error behaviour normatively~\cite{tc39test262}.
+vulnerabilities~\cite{sassaman2013langsec,brubaker2014frankencerts}. Error behaviour is part of normative conformance, as reflected in conformance suites such as Test262~\cite{tc39test262}.
 
-\rusmt{} is built for the case where the author wants to name the condition
-and obtain an input that reaches it. The specification is written in a subset
+\rusmt{} targets cases where the author wants to name a condition and obtain an input that reaches it. 
+The specification is written in a subset
 of Rust whose types denote Z3 sorts and whose primitives denote Z3's
 operations~\cite{demoura2008z3}; compiled, it is the oracle, and lowered to
-SMT-LIB, it is what the solver reads. The author marks each condition to be
-covered (in this paper, always an error condition) with a named marker, and the
-transpiler emits one reachability query per marker, so the suite has one input
-per condition and a condition that is not reached is reported by name. Z3 is
-asked each query. Where it returns a model, that model is the input; where it
-returns no verdict, a language model proposes a concrete input, Z3 checks the
-proposal against the unmodified query, and a rejected proposal is fed back to
-the model, for a fixed number of rounds. No input becomes a test except by a
-solver verdict. Figure~\ref{fig:pipeline} shows the flow;
-\S\ref{sec:dsl}--\S\ref{sec:trust} give the details.
+SMT-LIB, it becomes the input to the solver. Concretely, the author marks each path condition with a marker, and the
+transpiler emits one reachability query for each of them. If the query is satisfiable, Z3 returns a model, which a printer renders as a test program that reaches the path condition. If the query is unsatisfiable, the condition is unreachable. If Z3 returns \code{unknown} or times out, a language model proposes a concrete input. Z3 checks the proposal by adding it as an equality constraint to the original query. The language model therefore proposes candidates; Z3 remains responsible for validation. If the constrained query is unsatisfiable, the result is fed back to the language model, which proposes another candidate; this continues until the fixed budget is exhausted. Figure~\ref{fig:pipeline} shows the flow.
 
 \begin{figure}[t]
 \centering
 \resizebox{\columnwidth}{!}{\input{figures/pipeline}}
-\caption{One executable specification, two readings, and the loop that turns
-one marked branch into one test, shown with the running example of
-\S\ref{sec:pipeline}.}
+\caption{One executable specification and the loop that turns
+one marked branch into one test.}
 \label{fig:pipeline}
 \end{figure}
 
 \paragraph{Contributions}
 This is a tool-and-artifact paper. We propose no new solver, synthesis
-algorithm, or completeness result; the ideas it composes --- conformance
+algorithm, or completeness result. Related techniques have been studied previously in conformance
 testing from a formal specification~\cite{jard2005tgv}, solver-aided
 synthesis~\cite{solarlezama2006sketching}, and counterexample-guided inductive synthesis with a language model as the
-candidate generator~\cite{jha2023cegisllm} --- precede it.
+candidate generator~\cite{jha2023cegisllm}.
 
 \begin{enumerate}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
-\item A framework in which one recursive Rust interpreter is both the
-conformance oracle, by compilation, and the source of one reachability query
-per marked branch, by lowering to SMT-LIB, and in which every generated test is
-admitted by Z3's verdict on the query of the marker it is filed under
-(\S\ref{sec:dsl}--\S\ref{sec:trust}).
+\item A framework for writing one recursive program that serves as the conformance oracle when compiled and is lowered to SMT-LIB, from which a conformance test suite is generated with one test for each marked path condition for which Z3 finds a model.
 \item Two executable specifications written in it: \imp{}, with
-\impmarkers{} markers, as a demonstration, and a \toml{}~1.1.0 parser with
-\markers{}, written from the published specification. Z3 alone answers both
-\imp{} queries and none of the \toml{} ones; with the language model in the
-loop the \toml{} suite covers \certcount{} markers, and the \misscount{}
-misses are named (\S\ref{sec:cases}, \S\ref{sec:eval}).
+\impmarkers{} markers, and a \toml{}~1.1.0 parser with
+\markers{}. Z3 alone answers both
+\imp{} queries and none of the \toml{} ones within the available budget; with the language model in the
+loop the \toml{} suite covers \certcount{} markers (\S\ref{sec:cases}, \S\ref{sec:eval}).
 \item A run of the \toml{} suite against four independent parsers. On
-\divmarkers{} inputs the parsers and our oracle did not all agree: three are
-implementation defects, \newbugcount{} of them previously unreported and now
-filed, and \specopen{} test behaviour the standard leaves open, so they are not
-conformance obligations (\S\ref{sec:eval}).
+\divmarkers{} inputs the parsers and our oracle did not all agree: \specopen{} exercise behaviour the specification leaves open, while three are implementation defects, \newbugcount{} of them previously unreported and now filed (\S\ref{sec:eval}).
 \item A negative result on solver-alone synthesis. Lowering a recursive parser
 whole-program is bounded model checking~\cite{clarke2004cbmc,biere1999bmc}; we
-report how sharply its known blowup arrives on a real parser, and what the
-working generator turned out to be (\S\ref{sec:pipeline}, \S\ref{sec:eval}).
+report how sharply its known blowup arrives on a real parser (\S\ref{sec:pipeline}, \S\ref{sec:eval}).
 \end{enumerate}
 
 \paragraph{Research questions}
-\emph{RQ1:} How many of the marked branches does the pipeline produce a test
-for, and how many of those does the solver produce alone?
-\emph{RQ2:} How often does a proposed input fail to reach the marker it was
-proposed for --- that is, how many tests would have been mislabelled without
-the solver's verdict?
-\emph{RQ3:} Run against independent implementations, on how many inputs do the
-implementations and the oracle disagree, and what does each disagreement turn
-out to be?
+\emph{RQ1:} How many marked path conditions does the pipeline produce tests for, and how many can Z3 produce tests for alone?
+\emph{RQ2:} How often does a proposed input fail to reach the path condition it was proposed for; i.e., how often would the language model propose an input that does not satisfy the target?
+\emph{RQ3:} When the generated suite is run against independent implementations, on how many inputs do the implementations and the oracle disagree, and what does each disagreement turn out to be?
+
+Together, these questions ask whether the pipeline can generate targeted tests, whether those tests can be trusted, and whether they reveal conformance discrepancies in independent implementations.
 
 % =====================================================================
 \section{The \rusmt{} DSL}
 \label{sec:dsl}
 
-A specification in the \rusmt{} DSL is a Rust program that is read in two ways. When it is
-compiled by \code{rustc}, it runs as an ordinary interpreter; when it is lowered
-by the transpiler, it denotes an SMT formula. For these two readings to agree,
-every construct that the DSL admits must have a meaning that the solver can
-express. That requirement bounds the subset from above; what bounds it from
-below is that the subset must still be enough to write an interpreter or a
-parser in, i.e., recursive functions over algebraic data types, sequences, and
-numbers. The DSL sits between the two bounds: it admits the constructs of Rust
-for which the transpiler has an SMT meaning and rejects the rest, and those
-constructs sufficed for both case studies of \S\ref{sec:cases}. We write parsers and interpreters in it, although nothing
-in the framework is specific to either. In this section we describe the
+A program written using the \rusmt{} DSL is embedded in Rust and serves two purposes: compiled by \code{rustc}, it executes as the conformance oracle; lowered by the transpiler, it becomes an SMT formula. The DSL sits between two bounds. The upper bound is imposed by SMT: every construct admitted by the DSL must be translatable to a corresponding SMT encoding. The lower bound is imposed by expressiveness: the DSL must remain expressive enough to write a whole interpreter. The resulting fragment sufficed for both case studies in \S\ref{sec:cases}. In this section we describe the
 fragment, the standard library that gives it its types, and the marker type on
 which the synthesis pipeline is built.
 
 \paragraph{The fragment}
 The parser of the transpiler accepts a fixed set of expression forms and
-rejects every other Rust expression with an \emph{invalid expression} error. The
-accepted forms are literals (integer, floating-point, boolean, and string),
-variables, the construction of a \code{struct}, of an \code{enum} variant, or
-of a tuple, field access, function calls and method calls, \code{if} with a
-mandatory \code{else}, \code{match}, blocks and parenthesized expressions, the
+rejects every other Rust expression. The
+accepted forms include literals (integer, floating-point, boolean, and string),
+variables, construction of \code{structs}, \code{enums}, and tuples, field access, function calls and method calls, \code{if} expressions with a
+mandatory \code{else}, \code{match}, blocks and parenthesized expressions, and the
 dereference \code{*} of a \code{Boolean} (which is how a branch condition is
-read), and three macros, namely the bounded quantifiers \code{forall!},
-\code{exists!}, and \code{choose!} over a collection. A function body consists
-of \code{let} bindings followed by a single expression. Consequently, there are
-no loops, no assignments, no closures, no references, and no indexing;
-recursion, including mutual recursion, is the only form of iteration. Each of
-these exclusions preserves a property that the lowering depends on. Without
+read). Three macros provide bounded quantification and choice over a collection: \code{forall!},
+\code{exists!}, and \code{choose!}. A function body consists of let bindings followed by a single expression as the return value.
+
+The fragment excludes loops, assignments, closures, references, and indexing. Without
 mutation and references, a value never aliases and never changes under another
 name, so a \code{let} is a substitution and the translation is referentially
 transparent; this is the same discipline that lets a big-step operational
-semantics be read as a system of equations. Likewise, without loops, repetition
-is expressed as a recursive definition, which is also how a solver expresses it.
-The interpreters we wrote read much like the rules they formalize; Winskel's
-big-step rules for \imp{}~\cite{winskel1993} transcribe almost line for line.
+semantics be read as a system of equations. Without loops, recursion is the only form of iteration.
 
-At the type level, \code{\#[smt\_type]} accepts a \code{struct} with named or
-tuple fields and an \code{enum} whose variants may be unit, tuple, or struct
-variants; it rejects unit structs, default values, and any other attribute, and
-it derives \code{Copy} (among other traits) for the type, so that values cannot
-alias. Type parameters are permitted provided that they are bounded only by the
-library's \code{SMT} trait, and the transpiler monomorphizes generic functions
-on demand. At the function level, \code{\#[smt\_fn]} rejects \code{const},
-\code{async}, \code{unsafe}, an explicit ABI, and variadic parameters.
-Accordingly, a specification outside the fragment fails to compile rather than
-being mistranslated.
+At the type level, the transpiler accepts \code{structs} with named or
+tuple fields and \code{enums} whose variants may be unit, tuple, or struct
+variants. It rejects, in particular, unit structs, default values, and any other attributes. 
+Type parameters are permitted provided that they are bounded only by the
+library's \code{SMT} trait, which bridges the gap between the Rust type system and the SMT solver.
+At the function level, \code{const},
+\code{async}, \code{unsafe}, explicit ABIs, and variadic parameters are rejected. 
+A specification outside the fragment therefore fails to compile rather than being mistranslated. These restrictions are enforced by the \code{\#[smt\_type]} and \code{\#[smt\_fn]} attributes, which are applied to each type and function that the transpiler accepts.
 
 \paragraph{Errors as values}
 The fragment has no \code{panic!}, \code{?}, or \code{.unwrap()}, so every
-departure from the expected path that a specification expresses is a returned
-value (for instance, a \code{ParseResult::Err} carrying a \code{Path}) rather
-than an exception, and each such branch is where a marker is placed. A DSL
-function can nevertheless panic at run time, through a library primitive that
-is called outside its documented precondition; the rule for the standard
-library given below governs that case, and the interpreter is expected to guard
-such calls.
+departure from the expected path that a specification expresses is represented as a returned value rather than an exception. A DSL function can nevertheless panic at run time through a library primitive called outside its documented precondition; the rule for the standard library given below governs that case, and the interpreter is expected to guard such calls.
 
 \paragraph{The standard library}
-The types of the DSL denote Z3 sorts, and their methods denote Z3 operations;
-Table~\ref{tab:stdlib} lists them. The scalar types map directly onto Z3
+The DSL's library types are lowered to Z3 sorts, and their methods to Z3 operations; Table~\ref{tab:stdlib} lists these mappings. 
+The scalar types map onto Z3
 theories, namely \code{Boolean}, the unbounded \code{Integer} and \code{Real},
 the bit-vectors \code{I32}, \code{I64}, \code{U32}, and \code{U64} (where signed
 and unsigned are two readings of one Z3 sort, distinguished by the operations
 applied to it), and the IEEE floating-point types \code{F32} and \code{F64}.
 \code{String} and \code{Seq<T>} map onto the sequence theory. \code{Set<T>} and
-\code{Array<K,V>}, however, are not the SMT array theory directly, since that
+\code{Array<K,V>}, however, are not represented directly using SMT arrays, since that
 theory has no notion of size; each is lowered to an algebraic datatype that pairs
 an SMT array with an explicit cardinality (and, for \code{Array}, with a second
 array recording which keys are present), so that \code{length} and
 \code{is\_empty} become definable. \code{Path} is the marker type and is
 described below. \code{Cloak<T>} is a \code{Box}-like indirection that exists
-only so that an author can write a self-referential type, e.g.,
-\code{Add(Cloak<Aexp>, Cloak<Aexp>)}, under Rust's sized-type rule; the IR erases
+only so that an author can write self-referential types under Rust's sized-type rule; the intermediate representation erases
 it, lowering every \code{Cloak<T>} to \code{T}, because Z3 supports recursive
 datatypes natively.\footnote{Provided that the type also has a non-recursive
 variant; otherwise the lowered datatype is uninhabited.} Every method in the
@@ -427,50 +366,28 @@ Type & Z3 sort & Operations \\
 \end{tabular}
 \end{table}
 
-Two layers are thus kept apart. The standard library denotes Z3's theories and
-nothing else, whereas the interpreter encodes the semantics of the target
-language on top of it. The particularities of a target (two's-complement
-wraparound, a parser's error conditions, and so on) live in the interpreter as
-explicit guards, and never in the library. Accordingly, the correspondence
-obligation of \S\ref{sec:trust} is argued once, over a fixed vocabulary, rather
-than once per case study.
-
-The rule that governs this vocabulary is where a framework of this kind is most
-tempted to cheat; therefore, we state it exactly. A primitive denotes Z3's
-operation, not Rust's and not the target's, and where the two readings differ,
-the library documents the difference instead of hiding it. For a primitive $f$,
+Two layers are thus kept apart. The standard library denotes Z3's theories, whereas the executable specification encodes the semantics of the target
+language. The particularities of a target live in the interpreter as
+explicit guards, and never in the library. Thus, the correctness of the library's Rust-to-SMT translations needs to be established only once, for a fixed set of primitives, rather than separately for each case study. Concretely, a primitive denotes Z3's
+operation, not Rust's and not the target's, and where the Rust and SMT readings differ,
+the library documents the difference. For a primitive $f$,
 exactly one of the following holds.
 \begin{enumerate}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
-\item \textbf{Total agreement.} Rust and Z3 agree on every value of the sort,
+\item \textbf{Total agreement.} Rust and Z3 agree on every value in the primitive's domain,
 and $f$ is used directly.
-\item \textbf{Agreement under a precondition.} They agree on a documented
-subset of the values and differ outside it, and the difference takes one of two
-forms. In the first, Z3 defines a value where Rust panics: division by zero is
+\item \textbf{Agreement under a precondition.} They agree on a documented subset of the values and differ outside it, in one of two ways. In the first, Z3 defines a value where Rust panics: division by zero is
 defined in SMT-LIB (\code{bvudiv} returns all ones, and \code{bvsdiv} returns
 all ones for a non-negative dividend and $1$ for a negative one), whereas the
 corresponding Rust division panics. In the second, the SMT term is well-formed
-but the theory does not fix its value: \code{(div x 0)} over the integers is a
-legal term, and with $x = 7$ Z3 satisfies \code{(= (div x 0) 100)} and
-\code{(= (div x 0) 999)} alike.\footnote{Both checked on Z3~4.15.4. The second
-form is the more dangerous one: if such a term is left unguarded, the solver is
-free to choose its value so as to satisfy the marker assertion, and the
-resulting model corresponds to no real execution.} In either form, the
+but the theory does not constrain its value: \code{(div x 0)} over the integers is a
+legal term, and with $x = 7$, for example, Z3 can satisfy \code{(= (div x 0) 100)} and
+\code{(= (div x 0) 999)} alike.\footnote{Both checked on Z3~4.15.4. The second form, if left unguarded, would make the framework unsound: the solver could choose an unspecified value that satisfies the marker assertion even though no corresponding Rust execution exists.} In either form, the
 \emph{interpreter} guards the differing inputs and calls $f$ only on the rest.
-\item \textbf{No total Rust reading.} Z3 admits values that Rust cannot
-represent, and the primitive is not offered at all.
 \end{enumerate}
 Listing~\ref{lst:div} is the division guard of the \imp{} arithmetic evaluator.
-The interpreter branches on a zero divisor because that is the condition the
-specification names and the input we want to synthesize, so the marker sits on
-that branch; the other branch calls \code{bv\_div}, which agrees with Z3 on
-every nonzero divisor. It is ordinary recursive Rust in which the only token
-specific to synthesis is \code{Path::named}. From this source, \rusmt{}
-synthesizes \code{A := (0 / 0)}, and replaying the program through the same
-\code{eval\_aexp} reaches the marker.
+The interpreter branches on a zero divisor. The zero-divisor branch is marked because it is a condition the specification identifies and for which we want to synthesize an input; the other branch calls \code{bv\_div}, which agrees with Z3 for every nonzero divisor and therefore requires no guard. The code is otherwise ordinary recursive Rust; the only token specific to synthesis is \code{Path::named}. From this source, \rusmt{} synthesizes \code{A := (0 / 0)}, and replaying the program through the same \code{eval\_aexp} reaches the marker.
 
-\begin{lstlisting}[style=rust,caption={The division guard of \imp{}'s evaluator
-(operands already evaluated to \code{new\_l} and \code{new\_r}; \code{Err}
-propagation elided).},label={lst:div}]
+\begin{lstlisting}[style=rust,caption={The division guard of \imp{}'s evaluator.},label={lst:div}]
 if *new_r.eq(I64::from(0)) {
     ArithmeticResult::Err(Path::named("division_by_zero"))
 } else {
@@ -479,21 +396,9 @@ if *new_r.eq(I64::from(0)) {
 \end{lstlisting}
 
 \paragraph{Markers}
-A \emph{marker} names a program point that the author wants covered.
-Concretely, a \code{Path} is a set of marker ids; an execution that trips
-several markers accumulates all of them, and \code{Path::merge} is set union.
-Two properties of this type carry the method, and we discuss them in turn.
+A \emph{marker} identifies a path condition for which the author wants a test to be generated. Concretely, a \code{Path} is a set of marker IDs, and \code{Path::named} creates a singleton marker. An execution that trips several markers accumulates them, and \code{Path::merge} computes their set union.
 
-The first property is identity. \code{Path::named("\(d\)")} derives its id as a fixed
-hash of the name \(d\), and the same function computes this hash in the
-transpiler and in the compiled evaluator. Hence, the id that the query asserts
-and the id that a replayed witness carries are identical by construction, which
-is what allows replay to check that the \emph{named} marker fired, rather than
-merely some marker.
-
-The second property is representation. In SMT, a \code{Path} is a bit-vector
-with one bit per named marker in the program, and the set operations of the
-type become bit-vector operations:
+A marker must have the same identity in the compiled evaluator and in the SMT encoding so that the test generated for it can be checked against the same condition during replay. Accordingly, \code{Path::named("\(d\)")} derives the marker ID by hashing the name \(d\), and the same hash function is used by the transpiler and the compiled evaluator. This allows replay to check that the named marker was actually reached. In the SMT encoding, a \code{Path} is a bit-vector with one bit per named marker in the program, and the set operations on the type become bit-vector operations:
 \[
   \begin{aligned}
     \emptyset &\mapsto \texttt{(\_ bv0 N)}, &
@@ -505,53 +410,34 @@ type become bit-vector operations:
 That is, the empty path is the zero vector, a named marker sets its own bit,
 \code{merge} is bitwise or, and ``the path $s$ contains every marker of the
 target $T$'' is the masked equality on the right, where $M_T$ is the vector
-with exactly the bits of $T$ set. The encoding is exact, in the sense that
-union and membership are represented as themselves, so no query is answered
-from information that the encoding has lost. Bit indices are derived from the
-ids and never leave the query they were emitted into; the two readings exchange
-the name, and never the number.
+with exactly the bits of $T$ set.
 
 % =====================================================================
 \section{From a Marker to a Conformance Test}
 \label{sec:pipeline}
 
-The annotated source is compiled in two modes. In oracle mode, \code{rustc}
-compiles the interpreter, which then executes on concrete inputs. In solver
-mode, the transpiler parses the fragment of \S\ref{sec:dsl}, lowers it to a
+The annotated source is compiled in two modes. In the first, \code{rustc}
+compiles the interpreter, which then executes on concrete inputs. In the second, the transpiler parses the fragment of \S\ref{sec:dsl}, lowers it to a
 sort-checked intermediate representation by Hindley--Milner unification over SMT
-sorts, monomorphizes generic functions on demand, records every
+sorts. It further monomorphizes generic functions on demand, records every
 \code{Path::named} site as a target, and emits one query per target. Each query
-is a self-contained SMT-LIB2 file, which is what makes every result in this paper
-re-runnable with a bare \code{z3 -smt2} on a committed file. The driver then runs
+is a self-contained SMT-LIB2 file. The driver then runs
 the loop of Figure~\ref{fig:pipeline} over these files and writes the accepted
-witnesses out as the suite. Adding a language means writing an interpreter and
-registering one oracle entry for replay; it touches neither the front end nor
-the backend, which is what \imp{} and \toml{} exercise.
+witnesses out as the suite. Adding a language means writing an interpreter using the DSL.
 
 \subsection{Markers to Queries}
 
-\rusmt{} uses the solver to ask one question: does there exist an input such
-that the executable specification reaches marker $d$? For a target $T$, which
-is a set of marker ids, the query declares one constant per parameter of the
-entry function (\code{input\_0}, \ldots), bounds any code-point parameter to
-the alphabet of the solver (see \S\ref{sec:limits}), applies the entry
-function, and asserts that the \code{Path} carried by the returned error value
-\emph{contains} every id in $T$, guarded by the constructor test that selects
-the error variant; it ends with \code{(check-sat)} and \code{(get-model)}. In
-other words, the query is
-\[
-  \exists x.\; \mathit{entry}(x) = \mathit{Err}(p) \;\wedge\; T \subseteq p,
-\]
-where $x$ is the object-language program or input text and the containment is
-the masked equality of \S\ref{sec:dsl}. One formula thus covers both shapes that
-a target can take, namely the singleton $T = \{i\}$ of an ordinary
-\code{Path::named} and the multi-marker $T$ of a \code{Path::merge} site, which
-asks for one run that reaches all of them. Containment rather than equality is
-what keeps the assertion robust to a run that fires \emph{additional} markers,
-which accumulating error handling makes routine.
+The entry function of a specification takes an input parameter. For example, the \imp{} specification takes an abstract syntax tree representing an \imp{} program, while the \toml{} specification takes a TOML document as an input string. To generate a test for a path condition, \rusmt{} treats this input as symbolic and asks Z3 whether some assignment to it causes the executable specification to reach the target. Any other state used by the specification is fixed to the same value in both the symbolic and concrete executions. For example, the \imp{} entry function \code{eval\_com(c: Com)} fixes the empty store internally in the interpreter, so the program is the single free input. If the store were instead left symbolic, Z3 could choose an initial state that is never used by the concrete specification, producing a witness that does not replay. The \toml{} entry point \code{parse\_toml} takes only the document as an input, so the document is the only symbolic input and no additional input needs to be fixed.
 
-A recursive interpreter is not a finite formula, and the \code{k=N} flag selects
-between two routes. With \code{N=0}, which is the default and what both case
+For a path condition $P$, which is a set of marker IDs, \rusmt{} generates an SMT query that declares one symbolic constant for each parameter of the entry function (\code{input\_0}, \ldots), applies the entry function to these constants, and asserts that the resulting \code{Path} contains every marker in $P$. Any code-point parameter is additionally bounded to the solver's alphabet (see \S\ref{sec:limits}). Thus, the query asks
+
+\[
+\exists x.\; \mathit{entry}(x) = \mathit{Err}(p) \;\wedge\; P \subseteq p,
+\]
+
+where $x$ is the symbolic test input and $p$ is the \code{Path} accumulated during execution. If the query is satisfiable, Z3's model assigns concrete values to $x$, which are rendered as a test.\footnote{The renderer extracts the input parameters to the entry function, inlines \code{let}-shared subterms, maps mangled constructors back to AST nodes, canonicalizes solver-chosen identifiers, and decodes bit-vector literals as two's-complement signed integers.} A singleton ($P=\{i\}$) corresponds to a \code{Path::named} marker; a larger $P$ arises from a \code{Path::merge} site and asks for one input that reaches all markers in the set. We use containment rather than equality because an execution may reach additional markers without invalidating the target condition.
+
+A recursive interpreter is not a finite formula. \rusmt{} provides a flag \code{k=N} that controls how recursive calls are encoded. With \code{N=0}, which is the default and what both case
 studies use, the recursive strongly connected components of the call graph are
 emitted as \code{define-funs-rec}, and the solver handles the recursion
 natively. With \code{N\,$\geq$\,1}, every recursive component is unrolled into
@@ -562,49 +448,22 @@ is reachable in at most $N$ recursive steps, and this is the sense in which the
 completeness is \emph{bounded}, as in bounded model
 checking~\cite{biere1999bmc}.
 
-Unrolling cuts both ways, and \imp{} shows both directions. At \code{k=1}, the
-division-by-zero target returns \code{unsat}, whereas the same marker is
-\code{sat} with a replay-accepted witness at \code{k=0}. A bounded \code{unsat}
-therefore means only that there is no witness within depth $k$, and never that
-the marker is unreachable; for this reason, the pipeline treats \code{unsat} as
-a genuine verdict only at \code{k=0}. In the other direction, the terminator $f_0$ has to return something, and
-what it returns is a nullary \emph{bottom} variant that the concrete semantics
-never produces, so that the cutoff cannot satisfy an \code{Err}-marker
-assertion by itself; replay would reject any such model in any case, since the
-bottom value never arises in a concrete run.
+Unrolling has two consequences. First, a bounded \code{unsat} means only that no witness exists within the unrolling depth $k$; it does not show that the marker is unreachable. For example, in \imp{}, at \code{k=1} the query for the division-by-zero target returns \code{unsat}, whereas the same query is \code{sat} at \code{k=0}. For this reason, the pipeline treats \code{unsat} as a definitive verdict only at \code{k=0}, where no unrolling is applied. Second, the terminator ($f_0$) must return a value. \rusmt{} gives it a nullary \emph{bottom} variant that the concrete semantics never produces. Consequently, the artificial cutoff cannot satisfy an \code{Err}-marker assertion, and the bottom value cannot appear in a concrete execution.
+
+More generally, we claim no completeness in the absence of resource and depth bounds. Even when an input reaching a marker exists, Z3 may return \code{unknown} or time out, since the encoded formula can fall outside what the solver decides within its resource limits. Thus, any completeness provided by the pipeline is bounded by the recursion depth and contingent on the solver.
 
 \subsection{Solving, and Where the Solver Stops}
 \label{sec:stages}
 
 The query is first handed to Z3 exactly as emitted, with the input
 unconstrained. For \imp{}, this is the whole story; both markers are discharged
-unaided, in $220$\,ms and $109$\,ms respectively. We treat Z3 as sound for the
-verdicts it returns and as an incomplete search procedure otherwise, so an
-\code{unknown} or a timeout costs coverage and nothing else.
+unaided, in $220$\,ms and $109$\,ms, respectively. We treat a \code{sat} result as providing a valid witness and an \code{unsat} result as establishing that the target is unreachable under the unbounded encoding. An \code{unknown} result or timeout provides neither, and therefore costs coverage.
 
-For \toml{}, the solver never once succeeded, and it is worth being precise
-about the reason, since it is not specific to us. Emitting the entire semantics
-as one formula and asking whether some input satisfies it is bounded model
-checking~\cite{clarke2004cbmc}. BMC unrolls loops and recursion a bounded number
-of times and encodes every path within that bound into a single query, and the
-resulting growth of the formula is a documented consequence of the
-approach~\cite{biere1999bmc,clarke2004cbmc}. Our encoding takes the sharpest form
-of it. The transpiled parser functions are non-recursive \code{define-fun}
-definitions, which by construction are eliminated by macro
-expansion~\cite{barrett2017smtlib}, and this expansion happens during
-preprocessing, i.e., before the solver can know which branch is taken. A concrete
-document lets the simplifier fold each conditional as it expands; a symbolic
-document leaves both arms of every conditional alive, and the expansion
+For \toml{}, the solver never solved a query within our computational budget. The reason is the size of the formula produced when the recursive parser is lowered as a whole. This is bounded model checking~\cite{clarke2004cbmc}: recursive calls are unrolled into a finite formula that represents executions up to the chosen depth, and the resulting formula can grow rapidly with the number of recursive calls~\cite{biere1999bmc,clarke2004cbmc}. In our encoding, the growth is particularly severe because the parser operates on a symbolic input. With a concrete document, preprocessing can simplify each conditional as the input flows through the parser. With a symbolic document, however, the solver cannot determine which branch will be taken, so both arms remain in the formula and the expansion
 multiplies through the nesting.
 
-What we can add is the shape of this effect on a real artifact, and it is sharper
-than the general statement that symbolic inputs are expensive would suggest.
-Taking the query of one marker and varying only how much of a $16$-character
-document is left free, the fully pinned query decides in $798$\,ms, whereas a
-single free character is already enough to return \code{unknown} at $30$\,s;
-two, three, four, six, and eight free characters behave identically. A single
-character ranges over roughly $55$k values, so this is not an effect of the size
-of the search space. It is the expansion: any free variable at all defeats the
+The difference between concrete and symbolic inputs is stark on the real \toml{} parser. Taking the query for one marker and varying only how much of a $16$-character document is left free, the query with all 16 characters fixed by equality constraints is decided in $798$\,ms, whereas leaving a single character unconstrained is already enough for Z3 to return \code{unknown} at $30$\,s; two, three, four, six, and eight free characters behave identically. A single character ranges over roughly $55$k values, so this is not an effect of the size
+of the search space. The effect instead comes from the expansion: any free variable at all defeats the
 folding, and the whole parser stays live regardless of how tightly that variable
 is constrained. Consequently, there is no partially symbolic middle ground to
 exploit here; the concretization step that makes concolic testing
@@ -615,200 +474,92 @@ predicates could then no longer fold either.
 
 \subsection{The Language Model in the Loop}
 
-The design of the loop follows from this diagnosis. If the solver is cheap on a
-determined input and hopeless on a symbolic one, then the productive move is to
-determine the input by other means and let Z3 do what it does well. Accordingly,
+The design of the loop follows from this diagnosis. If Z3 is effective once the input is concrete but struggles to find an input symbolically, then the productive move is to obtain concrete candidates by other means and let Z3 validate them. Accordingly,
 when Z3 returns \code{unknown} or times out, the driver invokes a language model,
 which receives the emitted SMT-LIB text, the name of the marker, and the
 candidates already rejected together with Z3's verdict on each, and which
-returns one candidate. The pipeline appends a single equality,
-$\mathit{input}_0 = c$, to the \emph{unmodified} query. A \code{sat} answer is
-then a model of the original marker query, whereas an \code{unsat} answer says
+returns one candidate. When the language model supplies a candidate $c$, \rusmt{} adds the constraint that the parameter of the entry function equals $c$ to the original query $Q_d$, producing $Q_d \wedge (\mathit{input}_0=c)$. If Z3 returns \code{sat}, the candidate therefore satisfies the original query as well: every model of the strengthened query is also a model of $Q_d$. On the other hand, an \code{unsat} answer says
 only that this particular candidate does not reach this particular marker, and
 it is fed back as the context of the next round. Each marker is given the same
-number of rounds, and running out of rounds is a spending limit and nothing
-more.
+number of rounds.
 
-Rather than returning a bare \code{unsat} to the model, the pipeline puts a
-second query to Z3, with the same input pinned, the marker assertion dropped,
-and the returned \code{Path} bound to a constant that the query reports; the
-answer names the marker that the candidate actually reached. The running example
-of Figure~\ref{fig:pipeline} shows why this matters. The \toml{} reference raises
+When a proposed input candidate from the language model is rejected by Z3, the pipeline also determines which marker(s) the candidate actually reaches.
+Specifically, rather than returning a bare \code{unsat} to the language model as feedback, the pipeline gives a
+second query to Z3, with the same input pinned, but without the original marker assertion. It instead asks Z3 to evaluate the \code{Path} returned by the entry function, thereby identifying the marker(s) actually reached by the candidate. The following example illustrates why this matters: the \toml{} reference raises
 \code{array\_table\_missing\_close\_char} when an array-of-tables header is
 closed by something other than \code{]]}. Z3 returned no verdict on the
 unconstrained query for this marker, as for every other \toml{} marker, so the
-model was shown the SMT-LIB, the name, and an empty history, and it proposed
-\code{[[a}. Pinned into the query, that document was \code{unsat}; the second
-query reported that it reaches \code{array\_table\_missing\_close\_eof} instead,
+language model was shown the SMT-LIB, the name, and an empty history, and it proposed
+\code{[[a}. Pinned into the query, that document gave \code{unsat}; the second
+query showed that it reaches \code{array\_table\_missing\_close\_eof} instead,
 since the header runs into the end of the input before any closing bracket. That
 answer was fed back, and in the next round the model proposed \code{[[a]x},
-which Z3 accepted in $\exampletime$\,s. The document was then re-executed through
+which Z3 accepted. The input was then re-executed through
 the compiled semantics, where it fired the same marker, and it entered the
-suite. In \S\ref{sec:eval}, one of the four \toml{} parsers we test accepts this
+suite. In \S\ref{sec:eval}, one of the four \toml{} parsers we test mistakenly accepts this
 document as valid.
 
-Two aspects of this arrangement need to be stated explicitly. The first is what
-the model is not allowed to see. It runs in an empty working directory under an
-operating-system sandbox that denies reads of the repository, so it cannot read
-\code{lang/src/toml/} and recover an answer from the Rust source. The denial is
-at the operating-system level on purpose, because the read-only mode of the
-model runner forbids writes but permits reading any file on disk, and it would
-therefore not have prevented this. We verified the result rather than assuming
-it; asked to quote a named function from the reference parser, the model replies
-that it has no file access. The claim that the model reasons from the emitted
-SMT-LIB depends on this, and hence we state it as a configuration requirement.
-
-The second is that nothing in the design requires a language model. The
+Note that nothing in the design specifically requires a language model. The
 proposer is an ordinary shell command that reads a prompt on standard input and
 writes a candidate on standard output, so an enumerator or a fuzzer is a drop-in
-replacement, and the acceptance step, and with it the guarantee of
-\S\ref{sec:trust}, is unchanged by the substitution. We did not try an
-undirected generator; the numbers of \S\ref{sec:eval} show that Z3 rejected
-about three in four proposals even from a marker-targeted one, mostly because an
-earlier error masked the intended one, and a generator with no notion of the
-marker faces a strictly harder version of that problem.
-
-\subsection{Rendering a Model}
-
-A \code{sat} model is rendered back to object-language source by a printer,
-which extracts \code{input\_0}, inlines \code{let}-shared subterms, maps mangled
-constructors back to AST nodes, canonicalizes solver-chosen identifiers, and
-decodes bit-vector literals as two's-complement signed integers. Canonicalizing
-identifiers is sound here because which marker fires does not depend on their
-spelling. This rendering step is visible in \imp{}, where Z3 returns a
-\code{Com} AST that has to be printed as an \imp{} program; in \toml{}, the
-top-level input is already a sequence of Unicode code points, so the decoded
-model is the document itself.
+replacement. The acceptance step, and with it the guarantee of \S\ref{sec:trust}, is unchanged by the substitution. We did not evaluate an undirected generator. In our experiments, the numbers in \S\ref{sec:eval} show that Z3 rejected about three in four proposals even from a marker-targeted model, mostly because an earlier error masked the intended marker; an undirected generator would have to discover the relevant marker as well as produce an input that reaches it.
 
 % =====================================================================
-\section{What \rusmt{} Asks the Reader to Trust}
+\section{\rusmt{}'s Trusted Computing Base}
 \label{sec:trust}
 
-\rusmt{} is a trusted computing base in the same sense that the kernel of a
-proof assistant is one, at a much smaller scale. If the framework is accepted,
-then the conformance tests it produces are tests whose acceptance was decided by
-a solver rather than by a person reading them, and we state here exactly what
-that acceptance rests on.
-
-\paragraph{The trusted base}
-Four things are trusted. First, the \rusmt{} specification itself; the
-transcription of a prose standard into the DSL is done by a human and is not
-verified against the standard. Second, the correspondence between the standard
-library and Z3, which we discuss next. Third, the transpiler that lowers the DSL
-to SMT-LIB. Fourth, Z3. The concrete parser and pretty-printer used for replay
-are trusted as well. A bug in any of these is a bug in our results.
+The guarantees of \rusmt{} depend on the correctness of several components. First, the executable specification: note that the implementation of the prose specification in the \rusmt{} DSL is written manually, and we provide no guarantee that it faithfully transcribes the standard. Second, the correspondence between the standard library's primitives and their Z3 encodings. Third, the transpiler that lowers the DSL to SMT-LIB. Fourth, the concrete parser and pretty-printer used for replay. Furthermore, the Rust compiler and Z3 engine are trusted. A bug in any of these components can affect our results.
 
 \paragraph{The per-construct correspondence}
-Everything else rests on one obligation, stated for every standard-library
-primitive.
+
+The Rust implementation and SMT encoding of each standard-library primitive must agree on the inputs for which the primitive is used. We state this requirement as a per-construct correspondence.
+
 \begin{definition}[Per-construct correspondence]\label{def:contract}
-For every stdlib function $f$ and every concrete input $x$ satisfying the
-documented preconditions of $f$,
+For every stdlib function $f$ and every concrete input $x$ satisfying the documented preconditions of $f$,
+
 \[
   \mathit{rust\_impl}(f, x) \;=\; \mathit{z3\_eval}\bigl(\mathit{z3\_formula}(f),\, x\bigr).
 \]
+
 \end{definition}
-We \emph{assume} this rather than prove it; what we do instead is make it
-auditable. The documentation of each stdlib method states the exact Z3 formula
-that the backend emits for it, together with its preconditions and, where the
-two readings genuinely differ, the inputs on which they differ. Such divergences
-exist and are documented, e.g., \code{String::to\_int} on a non-numeric string,
-\code{String::from\_int} on a negative integer, \code{replace\_all} with an
-empty pattern, and \code{Array::select} on an absent key. In every such case,
-the obligation is pushed onto the author of the interpreter, who must guard the
-input before the call. The \toml{} parser, for instance, checks each character
-with \code{is\_hex\_digit} and strips prefixes and underscores before anything
-reaches \code{Integer::from\_hex\_str}, so that an invalid input becomes a named
-marker and never reaches the library at all. This is the division of labour of
-\S\ref{sec:dsl}: a primitive that matches the target exactly is used directly,
-and a primitive that diverges on specific inputs is guarded on those inputs.
-Because concrete Rust and Z3 take the \emph{same} branch on the same input, the
-equality of Definition~\ref{def:contract} survives the conditional.
 
-\paragraph{Which inputs are free}
-One point is easily overlooked, and it is load-bearing. The set of inputs that
-the SMT query treats as free must coincide with the set of inputs that the
-concrete oracle leaves free, and everything else must be fixed to the same
-value on both sides. The \imp{} entry point \code{eval\_com(c: Com)} fixes the
-empty store internally, so the program is the single free input; had the store
-been left free, Z3 could have chosen a starting state that the concrete run
-never uses, producing a ``witness'' that does not replay. The \toml{} entry
-point \code{parse\_toml} needs no such wrapper.
-
-\paragraph{Why a \code{sat} answer is enough}
-This is the one place where something is proved, and it is elementary. A
-candidate enters the query as an added conjunct, so the strengthened query is
-$Q_d \wedge (\mathit{input}_0 = c)$. Adding a conjunct cannot create a model that
-$Q_d$ lacked; hence, every model of the strengthened query is a model of $Q_d$. A
-\code{sat} verdict is therefore a statement about the original query, i.e., the
-one encoding the marker that the author named, and it remains so however the
-candidate was produced. Nothing about the model needs to be trusted for this
-reason, and it is also why we do not describe the model as ``untrusted but
-checked'': there is no checking step in which it could be trusted or not, only a
-fact about conjunction.
+We \emph{assume} this correspondence rather than prove it formally, although we also checked the primitives by differential testing. We make the correspondence auditable: the documentation of each stdlib method states the exact Z3 formula that the backend emits for it, together with its preconditions and, where the two readings genuinely differ, the inputs on which they differ. In case of divergence, the author of the interpreter must guard the corresponding inputs before calling the primitive. This is the division of labour of \S\ref{sec:dsl}: a primitive that matches the target exactly is used directly, while a primitive that diverges on specific inputs is guarded on those inputs. Because concrete Rust and Z3 take the \emph{same} branch on the same input, the equality of Definition~\ref{def:contract} is preserved.
 
 \paragraph{Replay}
-A candidate is accepted for target $d$ only if Z3 decides that the lowered
-semantics reach the named marker $d$, and the same candidate, re-executed
-through the concrete interpreter under a wall-clock bound, fires the same $d$
-rather than merely some marker. Since acceptance is already a logical consequence of \code{sat}, the only way an
-accepted candidate can be wrong is if Definition~\ref{def:contract} fails on
-some construct that the candidate exercises. Replay is a check on the lowering,
-not on the proposal, and it catches precisely that disagreement. It also fails
-safe, in that a defect in the correspondence shows up as a spurious rejection
-and never as a false acceptance. Likewise, replay would reject a model that satisfied the assertion only at the
-cutoff of a depth-bounded unrolling (\S\ref{sec:pipeline}).
 
-\paragraph{Completeness}
-We claim no completeness in any general sense. Even when an input reaching a
-marker exists, Z3 may return \code{unknown} or time out, since the encoded
-formula can fall outside what the solver decides within its resource limits. At
-best, the pipeline has bounded completeness relative to a depth bound, and even
-that is contingent on the solver.
+A candidate is accepted for a marker only if the executable specification, given the same candidate input, reaches the same named marker that Z3 reported. Since acceptance is already a logical consequence of \code{sat}, a discrepancy between the symbolic and concrete executions can arise only if Definition~\ref{def:contract} fails on some construct that the candidate exercises. Replay is a check on the lowering and catches precisely that disagreement. A defect in the correspondence can therefore cause a spurious rejection, but not a false acceptance. Likewise, replay rejects a spurious marker reached only through the artificial bottom value at the cutoff of a depth-bounded unrolling (\S\ref{sec:pipeline}).
 
 % =====================================================================
 \section{Case Studies}
 \label{sec:cases}
 
 \rusmt{} is meant for the authors of new executable specifications, and the two
-case studies were chosen to stress two different regimes rather than to maximize
-a benchmark count.
+case studies were chosen to stress two different regimes.
 
 \subsection{\imp{}}
 \label{sec:imp}
 
 \imp{} is the canonical small imperative ``while'' language of
-Winskel~\cite{winskel1993}. Its big-step semantics is familiar and recursive, yet small enough that
-native Z3 recursion ought to succeed if the pipeline is sound at all. We added
-two dynamic error branches, namely \code{division\_by\_zero}, and
-\code{undefined\_variable} for reading a variable from the initially empty
-store, so that the study answers whether a direct-style interpreter can be
+Winskel~\cite{winskel1993}. Its big-step semantics is familiar and recursive, yet small enough to demonstrate an end-to-end flow of the \rusmt{} pipeline. We added
+two dynamic error branches, namely \code{division\_by\_zero} and
+\code{undefined\_variable}, so that the study answers whether a direct-style interpreter can be
 lowered, solved, rendered, and replayed without bounded unrolling and without a
-proposer. Note that Z3 here synthesizes an
-AST rather than text, so the printer of \S\ref{sec:pipeline} is exercised as
-well. The specification is $1{,}084$ non-blank lines of Rust.
+language model. Z3 synthesizes an AST rather than source text: the AST is more compact for Z3 than the complete source text. The source text is therefore parsed into an AST as a preprocessing step, and the printer described in \S\ref{sec:pipeline} is exercised when rendering the generated tests. The specification is $1{,}084$ non-blank lines of Rust.
 
 \subsection{\toml{}}
 \label{sec:tomlcase}
 
-\toml{}~1.1.0~\cite{tomlspec} was chosen because it is large enough to defeat
-the solver while still having a precise public specification and several
-independent implementations to test against. The executable parser, written
+\toml{}~1.1.0~\cite{tomlspec} was chosen because it is large enough to expose the solver's scalability limitations, has a precise public specification, and has several independent implementations to test against. The executable parser, written
 from the published specification, has a single free input, i.e., a sequence of
-Unicode code points, and $158$ functions covering documents, key-value pairs,
+Unicode code points, and $158$ functions covering key-value pairs,
 tables, arrays, inline tables, booleans, integers, floats, strings, and
 datetimes, in $5{,}878$ non-blank lines. Its \markers{} named markers cover
 syntactic errors (malformed keys, unterminated strings, invalid escapes, and
 missing array or table delimiters) as well as semantic violations (integer and
 float overflow, out-of-range date and time fields, duplicate keys, and
-redefined tables). This is the case study that motivated the method, for the
-reasons given in \S\ref{sec:pipeline}. The witnesses that come out of the loop
-are small and readable, which is a property that we did not design for but
-which matters downstream, since a minimal document isolates the rule it
-violates; besides the running example, the run produced \code{d = 1979-13-01}
-for the invalid-month marker and \code{a = [} for an unterminated array. We do
-not claim a verified or complete \toml{} formalisation. We claim a
-formalisation with \markers{} named obligations, and a suite generated from it.
+redefined tables). This is the case study that motivated the use of language models. The witnesses produced by the loop are also small and readable, although this was not an explicit design goal. This matters downstream because a small document makes it easier to isolate the rule it violates. We do
+not claim a verified \toml{} formalization. We claim a
+formalization with \markers{} named obligations, and a suite generated from it.
 
 % =====================================================================
 \section{Evaluation}
@@ -817,36 +568,20 @@ formalisation with \markers{} named obligations, and a suite generated from it.
 \paragraph{Setup}
 All measurements were taken on an Apple~M1 running macOS~26 with Z3~4.15.4 and
 Rust~1.88.0, with Z3 driven as a subprocess over SMT-LIB2. Both suites were
-generated by the driver of \S\ref{sec:pipeline}, the \toml{} one through a
-resumable per-marker sweep with six workers, so that a stopped run does not
-repeat the model calls it has already paid for. The proposer was OpenAI's
+generated by the driver of \S\ref{sec:pipeline}. The language model was OpenAI's
 \code{gpt-5.4-mini}, invoked through the \code{codex} command-line runner as
 an ordinary shell command, with one witness requested per marker, nine rounds
 per marker, and a $20$\,s Z3 budget for each pinned candidate. The
-unconstrained solve was given a budget of $2$\,s per \toml{} marker, for the
-reason given in \S\ref{sec:stages}: separate probing had established that a
-symbolic \toml{} input does not decide at any budget we could afford, and that
+unconstrained query was given a budget of $2$\,s per \toml{} marker. Separate probing had already established that a symbolic \toml{} input does not decide at any budget we could afford, and that
 Z3 charges its \code{-t:} limit against CPU time rather than wall-clock time, so
 that a $60$\,s budget on one of these queries returned \code{unknown} only after
-$347.6$\,s of wall-clock time. A larger budget therefore buys nothing and is
-subtracted from the rounds that do finish.
+$347.6$\,s of wall-clock time. A larger budget is therefore not practical; queries that do not decide within the short probe are passed to the language model.
 
-The round limit and the per-candidate budget are constants that we did not
-tune. A budget can only turn a marker that would have been covered into a miss,
-never manufacture a witness (\S\ref{sec:limits}), and rather than asserting that
-the limits were generous we report how binding they were: the cumulative column
-of Table~\ref{tab:rounds} is a sensitivity curve over the round limit, recovered
-from the same run at no extra cost. Every model exchange is recorded and keyed by a content hash of the
-prompt, so the reported run replays without model access. Because the model is
-nondeterministic, re-running it from scratch is not guaranteed to regenerate an
-identical suite; the scientific object here is the recorded run together with
-the suite it produced, and not a claim of determinism.
+The round limit and per-candidate Z3 budget were fixed in advance and not tuned. A smaller budget can turn a marker that would otherwise be covered into a miss, but cannot create a witness (\S\ref{sec:limits}). We therefore report the effect of the round limit directly: the cumulative column in Table~\ref{tab:rounds} shows coverage after each round. We also record every model exchange and key it by a content hash of the prompt. Because the model is nondeterministic, an independent rerun need not produce the same suite; our experimental artifact is the recorded run and the suite it produced.
 
 \begin{table}[t]
 \centering
-\caption{New witnesses per round over the \markers{} \toml{} markers. Since a
-witness accepted in round $k$ would have been accepted at any round limit
-$\geq k$, the cumulative column reads directly as coverage at each limit.}
+\caption{New witnesses per round over the \markers{} \toml{} markers.}
 \label{tab:rounds}
 \scriptsize
 \begin{tabular}{@{}ccc@{}}
@@ -860,7 +595,7 @@ Round & New witnesses & Cumulative \\
 
 \paragraph{RQ1: coverage, and the share of it that the solver produced alone}
 For \imp{}, Z3 returned a model for both markers under native recursion, in
-$220$\,ms and $109$\,ms, with no model involved; the printer rendered them as
+$220$\,ms and $109$\,ms, with no language model involved; the printer rendered them as
 \code{A := (0 / 0)} for \code{division\_by\_zero} and \code{v0 := v0} for
 \code{undefined\_variable}, and both replayed. We do not run \imp{} through the
 differential harness, since it is a small end-to-end demonstration and not a
@@ -868,89 +603,42 @@ language with competing production parsers.
 
 For \toml{}, the lowering produces SMT-LIB that Z3 accepts without a front-end
 error, but the unconstrained solve produced no witness for any of the
-\markers{} markers, in the manner described in \S\ref{sec:stages}; no query
-returned \code{unsat} either, so no marker was shown unreachable. With the
-language model in the loop, coverage went from $0/\markers{}$ to
+\markers{} markers, and no query
+returned \code{unsat} either, so no marker was shown unreachable. In short, none of the unconstrained queries produced a decisive result. With the language model in the loop, coverage went from $0/\markers{}$ to
 \certcount{}/\markers{}. Table~\ref{tab:rounds} shows how the witnesses arrived.
-The first two rounds account for the majority of them, the later rounds add
-progressively fewer, and witnesses were still arriving in rounds eight and nine;
-the curve had not flattened at the limit. Consequently, every coverage figure
-we report is a lower bound at that budget, and the \misscount{} markers without
-a witness are markers left open, not markers ruled out.
+The first two rounds account for the majority of them; the later rounds add
+progressively fewer. Thus, the reported coverage is the coverage achieved within our computational budget; the \misscount{} markers without a witness remain unresolved rather than being ruled out. We did not fill the misses with hand-written tests.
 
-The misses are not spread uniformly, and their distribution is the most
-diagnostic part of this result. \missdate{} of them are date, time, and
-numeric-offset markers; \missnum{} are numeric-literal markers, mostly float
-overflow and malformed radix forms; \misstable{} concern table or key
-redefinition and unterminated composite constructs; and \missarray{} is an
-array case. The pattern is consistent. The loop handles a local syntax error
-well, and it struggles where the intended marker is easily masked by an earlier
-parse error, or where the input must first pass through a long chain of numeric
-or temporal sub-parsers before it can reach the labelled branch. We did not fill
-the misses with hand-written tests; the accepted witnesses \emph{are} the
-suite, and the artifact records the marker-level ledger, including every miss by
-name.
+The misses are not spread uniformly across the markers. \missdate{} concern date, time, and numeric-offset markers; \missnum{} are numeric-literal markers, mostly float overflow and malformed radix forms; \misstable{} concern table or key redefinition and unterminated composite constructs; and \missarray{} is an array case. The pattern is consistent with the structure of the parser: the loop handles local syntax errors well, but struggles when the intended marker is easily masked by an earlier parse error or when reaching it requires passing through a long chain of numeric or temporal sub-parsers.
 
-\paragraph{RQ2: how many tests would have been mislabelled}
-The per-round history was recorded for every marker. Over the run, the model
+\paragraph{RQ2: how often does the language model target the wrong marker?}
+The per-round history was recorded for every marker. Over the run, the language model
 made \decided{} proposals that reached Z3 and got a verdict: \acceptcount{}
 were accepted and \rejectcount{} were rejected as \code{unsat}. A further
 \dupcount{} proposals repeated an already rejected candidate and were dropped
-before Z3, and on \nocandcount{} occasions the model returned no parsable
-candidate at all. No acceptance check timed out. In other words, about three of
-every four proposals did not reach the marker they were labelled with, and
-without the solver's verdict the suite would have carried several hundred tests
-filed under the wrong obligation. This is also the answer to the objection that
-a language model could produce such a suite on its own: it could produce the
-documents, but not the labelling, since without the query there is nothing
-against which to check the claim that a given document exercises a given rule.
+before Z3, and on \nocandcount{} occasions the language model returned no parsable
+candidate at all. No acceptance check timed out. In other words, about three of every four proposals that reached Z3 were rejected for the marker they were targeting. The solver's verdict therefore prevents these proposals from being accepted under the wrong obligation.
 
-The second query of \S\ref{sec:pipeline} tells us why the proposals failed. Over
-the run, \cexnamed{}\% of the rejections came back naming a different marker
-that the document actually reached, \cexvalid{}\% reported that the document was
-simply valid, and on \cexnone{}\% the observation itself returned no verdict, so
-the proposer received the bare \code{unsat} it would have had anyway. The
+The second query of \S\ref{sec:pipeline} shows what happened to the rejected proposals. Over
+the run, \cexnamed{}\% of the rejections came back naming a different marker, \cexvalid{}\% reported that the proposal was
+simply a valid TOML document, and on \cexnone{}\% the observation itself returned nothing, so
+the proposer received the bare \code{unsat}. The
 failures are systematic rather than scattered. The usual cause is that the
-proposed document contains an earlier violation, so that the parser stops before
-the intended branch; one marker alone accounted for the largest share, the
-proposer having repeatedly written a bare value with no \code{key =} in front of
-it, which is exactly the kind of error that a counterexample can correct and
-that a rejection cannot.
-
-The converse also needs to be said. On a fully pinned input, Z3 is deciding rather than searching, so on the
-\toml{} suite the model carries generation and the solver carries acceptance;
-what the solver supplies is the labelling, under the argument of
-\S\ref{sec:trust} rather than under trust in the reference. Acceptance is itself
-substitutable: replaying the compiled reference agreed with Z3 on every
-candidate this run produced, so a replay-only pipeline would have yielded the
-same \certcount{} inputs. We keep Z3 in the accepting position because it is
-what makes the argument a fact about conjunction rather than an appeal to the
-correctness of the reference, and not because it outperformed the alternative;
-the ablation that would settle the question (the same loop with the SMT-LIB
-withheld and the proposer given only the marker name and replay feedback) we
-did not run.
+proposed TOML document contains an earlier violation, so that the parser stops before
+the intended branch.
 
 \paragraph{RQ3: what the suite found}
-Two findings live in this comparison, and they are not the same claim. An
-implementation that disagrees with the \emph{oracle} is a conformance result:
-the executable specification says that the document violates a named rule and
-the implementation accepts it, so it is a candidate bug against the
-specification, which is only as good as our formalisation of it (hence the
-triage below). Implementations that disagree with \emph{each other} are a
-differential-testing result~\cite{mckeeman1998differential}, and it is the weaker but
-more robust one, since it shows that the generated suite discriminates between
-production parsers whether or not our reference is right.
+
+We want to clarify that a disagreement between an implementation and the \emph{oracle} is a conformance finding relative to the specification. The quality of our conformance testing, however, is only as good as our formalization of the specification. Implementations that disagree with \emph{each other} are a differential-testing result~\cite{mckeeman1998differential}, which shows that the generated suite discriminates between implementations.
 
 We ran the \certcount{} generated documents against four implementations, each
 the latest release at the time of writing: the Rust \code{toml} crate
 \code{1.1.4+spec-1.1.0}, the \code{tomllib} module of CPython~3.14.7,
 BurntSushi's \code{toml}~v1.6.0 for Go, and \code{smol-toml}~1.8.0 for Node.
-Every document in the suite is one that the \rusmt{} oracle rejects, so a
-divergence is an implementation that accepts it. Table~\ref{tab:diff} gives the
+Every document in the suite is rejected by the \rusmt{} oracle, so a divergence occurs when an implementation accepts it. Table~\ref{tab:diff} gives the
 per-parser counts. All four parsers agreed with the oracle on \allagree{} of the
 \certcount{} documents; on the remaining \divmarkers{} inputs the parsers and
-the oracle did not all agree, and on $10$ of those the parsers also disagreed
-with each other. Table~\ref{tab:triage} accounts for all \divmarkers{} inputs,
+the oracle did not all agree. Table~\ref{tab:triage} accounts for all \divmarkers{} inputs,
 which fall into three groups.
 
 \begin{table}[t]
@@ -975,52 +663,44 @@ Node \code{smol-toml} 1.8.0 & $\agreenode/\certcount$ & \divnode{} \\
 
 \begin{table}[t]
 \caption{The \divmarkers{} inputs on which the parsers and the oracle did not
-all agree, and the \diffcount{} parser-level divergences they produced. Group~A
-is not an obligation of the standard and group~B is already tracked upstream, so
+all agree. Group~A
+is not an obligation of the specification and group~B is already tracked upstream, so
 only group~C was filed.}
 \label{tab:triage}
 \small
-\begin{tabular}{@{}llrrl@{}}
+\begin{tabular}{@{}llrl@{}}
 \toprule
-& Group & Inp. & Div. & Filed \\
+& Group & Inp. & Filed \\
 \midrule
-A & Standard leaves it open           & \specopen{} & \specopendiv{} & no \\
-B & Implementation defect, tracked    & 2 &  2 & no \\
-C & Implementation defect, unreported & \newbugcount{} &  \newbugcount{} & \textbf{yes} \\
+A & Standard leaves it open           & \specopen{} & no \\
+B & Implementation defect, tracked    & 2 & no \\
+C & Implementation defect, unreported & \newbugcount{} & \textbf{yes} \\
 \midrule
-  & Total                              & \divmarkers{} & \diffcount{} & \newbugcount{} \\
+  & Total                              & \divmarkers{} & \newbugcount{} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \emph{Group A: the standard leaves it open (\specopen{} inputs).} This is the
-largest group, and it contains no defect on either side. Six inputs are the
-\code{tomllib} module accepting integers outside the 64-bit signed range.
+largest group, and it contains no defect on either side. Six inputs are cases where the \code{tomllib} module accepts integers outside the 64-bit signed range.
 \toml{} states that ``implementations are free to support any integer
 size''~\cite{tomlspec}, recommends at least 64-bit signed, and requires an error
 only when a value ``cannot be represented losslessly''. Our reference uses
 \code{i64}, so \code{18446744073709551616} genuinely cannot be represented and
 we \emph{must} error; the arbitrary-precision integers of CPython represent it
-exactly, so it need not. Both follow the text. The other three inputs concern our
-\code{i32} bound on the float exponent, and here the standard is not merely
-permissive but silent: it says only that implementations are ``free to support
+exactly, so CPython need not. Both are compliant with the specification. The other three inputs concern our
+\code{i32} bound on the float exponent, and here the specification says only that implementations are ``free to support
 any precision level''~\cite{tomlspec}, and it states nothing about exponent
-range, overflow to infinity, or underflow to zero. Where the specification
-mandates nothing, no behaviour can violate it. The finding is therefore not
-about these parsers but about our own marker catalog. \specopen{} of the markers
+range. Where the specification imposes no requirement, neither behaviour can be considered non-conforming. \specopen{} of the markers
 in the suite (\specopencat{} in the catalog as a whole, once misses are
 included) name branches that exist because of a representation \emph{we} chose,
-and not because the standard distinguishes them. They are legitimate branches of
-our semantics and useless as conformance obligations, and a suite that ships
-them will fail implementations for making a different legal choice. For this
-reason we report them separately instead of folding them into a divergence
-count.
+and not because the standard distinguishes them. They are legitimate branches of our semantics, but they do not define conformance obligations.
 
 \emph{Group B: tracked defects (2 inputs).} BurntSushi accepts
-\code{a = \{ b = 1 \}\textbackslash{}n a.c = 2}, which extends an inline table
+\code{a = \{ b = 1 \}\textbackslash{}na.c = 2}, which extends an inline table
 that the standard calls self-contained, and \code{a.b = 1\textbackslash{}n[a]},
 where a header redefines a table that a dotted key created implicitly. Unlike
-group~A, the standard is explicit in both cases. Both are also already known to
+group~A, the standard is explicit in both cases, and both are prohibited by the specification. Both are also already known to
 the maintainers: the project's \code{toml\_test.go} skips
 \code{invalid/table/redefine-02}, \code{redefine-03}, and
 \code{invalid/inline-table/overwrite-02} beneath the comment ``\code{TODO: fix
@@ -1028,115 +708,61 @@ this; we allow appending to tables, but shouldn't}''. Our suite reached them
 from the specification rather than from the test corpus, which is a check on the
 method; nevertheless, they are not new, and we do not file them.
 
-\emph{Group C: the unreported defect (\newbugcount{} input).}
-\code{smol-toml}~1.8.0 accepts an array-of-tables header that is closed by a
-single bracket. The suite document is the running example \code{[[a]x}, which
-minimizes to \code{[[a]} and is parsed as \code{\{"a":[\{\}]\}}, while
-\code{[[a]]x}, \code{[a]x}, \code{[[a]x]}, and \code{[[a] x} are all correctly
-rejected, as is \code{[[a]} by the other three parsers. The case appears neither
-in \code{toml-test} nor in the project's own skip list, and the reason is
-instructive: \code{smol-toml} \emph{passes} all five existing \code{toml-test}
-cases for unclosed table headers, every one of which places a line after the
-malformed header, so that none of them reaches the end-of-input path. A corpus
-can be passed in full and still leave a branch untested. The grammar of
-\toml{}~1.1.0 settles the case, since \code{array-table-close = ws \%x5D.5D}
-requires two brackets, and this is the one divergence that we reported
-upstream.\footnote{Reported as \code{squirrelchat/smol-toml}
+\emph{Group C: the unreported defect (\newbugcount{} input).} We found one previously unreported defect in \code{smol-toml}~1.8.0: it accepts \code{[[a]} even though an array-of-tables header requires two closing brackets. The generated witness was \code{[[a]x}, which minimizes to \code{[[a]} and is parsed by \code{smol-toml} as \code{\{"a":[\{\}]\}}. The other three parsers reject it. Note that \code{smol-toml} passes all five \code{toml-test} cases for unclosed table headers, but each places another line after the malformed header, so none exercises the end-of-input case. Thus, passing the existing tests does not imply that this branch is covered. The \toml{}~1.1.0 grammar explicitly requires two closing brackets through \code{array-table-close = ws \%x5D.5D}, confirming the divergence. We reported the defect upstream and contributed the missing cases to \code{toml-test}.\footnote{Reported as \code{squirrelchat/smol-toml}
 issue~\#\smolissue{}; the two missing cases were also contributed to
 \code{toml-test} as pull request~\#\tomltestpr{}.}
-
-We report this distribution rather than a headline count. One property of
-the suite made the triage possible at all, namely that every divergence arrived
-as a minimal document already labelled with the rule at issue, so that deciding
-which group it belonged to was a matter of reading one line against one clause
-of the standard.
 
 % =====================================================================
 \section{Related Work}
 \label{sec:related}
 
 \paragraph{Solver-aided executable semantics}
-Rosette~\cite{torlak2013rosette,torlak2014rosette} is the closest solver-aided
-host: a symbolic virtual machine compiles a language subset to constraints, while
-concrete evaluation strips away ordinary host code. \rusmt{} is narrower and
-more conformance-oriented; the user writes a reference interpreter, marks
-specification obligations, and receives tests that were accepted by a solver.
-SyGuS~\cite{alur2013sygus} and SemGuS~\cite{kim2021semgus} synthesize against a
-separately authored grammar or a semantics encoded as constrained Horn clauses,
-whereas in \rusmt{} the unknown is simply an input to the interpreter that the
-user has already written. Synantic~\cite{liu2024synantic} runs in the opposite
-direction, synthesizing a formal semantics from a black-box interpreter, which is
-complementary to our source-to-SMT route.
+Several systems combine executable semantics with solver-based reasoning. Rosette~\cite{torlak2013rosette,torlak2014rosette} is the closest general-purpose host: it symbolically executes supported language constructs while evaluating the rest concretely, allowing client analyses to use the resulting constraints. SyGuS~\cite{alur2013sygus} and SemGuS~\cite{kim2021semgus} instead synthesize the program itself, against a grammar or a semantics supplied separately, while Synantic~\cite{liu2024synantic} synthesizes semantics from a black-box interpreter. \rusmt{} keeps both the program and its semantics fixed: the unknown is the input to the executable specification. The solver is used to find an input that reaches a marked path condition in that specification.
+
+SCALE~\cite{kakarla2022scale} is the closest prior system to this approach. It encodes executable models of the DNS RFCs in Zen, a solver-backed DSL embedded in C\#, and symbolically executes them to generate zone files and queries, which are then run against eight nameservers. The key difference is how tests are selected. SCALE explores the model by enumerating bounded scopes, whereas in \rusmt{} we target error conditions for which tests should be generated, producing one witness per marked branch.
 
 \paragraph{Specification-derived testing}
-Executable-semantics frameworks such as K~\cite{rosu2010k}, PLT
-Redex~\cite{felleisen2009redex}, and Ott/Lem~\cite{sewell2007ott,mulligan2014lem}
-derive a tool suite from rewrite or inference-rule specifications, and \rusmt{}
-derives a narrower tool from direct-style Rust, namely conformance tests aimed at
-named markers. JEST~\cite{park2021jest} is the closest in purpose, using a
-mechanized ECMAScript specification as oracle, synthesizer, and conformance
-tester; our distinction is the acceptance of each test by a solver verdict on an
-author-named marker, and the explicit sound-but-incomplete split that the
-\toml{} case study exposes. Grammar-driven generators such as
-Csmith~\cite{yang2011csmith} remain the application domain rather than the
-technique.
+Once a specification is executable, it can serve not only as an oracle but also as a source of test requirements. K~\cite{rosu2010k}, PLT Redex~\cite{felleisen2009redex}, and Ott/Lem~\cite{sewell2007ott,mulligan2014lem} derive executable tools from formal rules and specifications. JEST~\cite{park2021jest} is closest in purpose to \rusmt{}: from a mechanized ECMAScript specification, it derives an oracle, a test synthesizer, and a conformance tester. Its successor introduces feature-sensitive coverage~\cite{park2023fscoverage}, which refines test requirements using the innermost enclosing language feature. Our test requirements are instead explicit error conditions in the executable specification: a marker identifies the branch for which \rusmt{} should generate a test. Thus, the granularity of the generated suite is determined by marker placement rather than by aggregate coverage or the syntactic structure of the specification. Csmith~\cite{yang2011csmith} likewise targets differential testing, but generates programs from a grammar.
 
 \paragraph{Conformance testing from formal specifications}
-Deriving a conformance suite from a formal specification is a mature line of
-work, and we claim no novelty for the goal; TGV~\cite{jard2005tgv}, for
-instance, synthesizes conformance test cases from specifications of
-non-deterministic reactive systems. What differs here is the packaging rather
-than the principle: the specification is an ordinary Rust program rather than a
-separate formalism, the same source compiles to the oracle so that no second
-artifact has to be kept in step with it, and the coverage criterion is carried
-by markers written inline in the semantics instead of by a coverage model
-maintained alongside it.
+Deriving a conformance suite from a formal specification is a mature goal; TGV~\cite{jard2005tgv} synthesizes conformance tests
+from specifications of non-deterministic reactive systems. What we change is the
+packaging. The specification is an ordinary Rust program rather than a separate
+formalism, so the oracle is a compilation of the same source and there is no
+second artifact to keep in step with it. The coverage criterion travels with it:
+the markers are written inline in the semantics rather than maintained as a
+coverage model beside it.
 
 \paragraph{Whole-program versus per-path encodings}
-Our unconstrained query places us on the bounded-model-checking
-side~\cite{clarke2004cbmc} of a long-standing division: one query for the whole
-program, unrolled to a bound, versus one query per explored path. Symbolic and
-concolic executors~\cite{cadar2008klee,poeplau2020symcc} take the other side, and
-the difference in constraint size is the reason they do not hit the wall
-reported in \S\ref{sec:stages}; their dominant cost is path explosion rather
-than the difficulty of any single path's constraint~\cite{cadar2008klee}. Recent
-work pairs language models with either side. Cottontail~\cite{tu2025cottontail}
-drives concolic execution on structured inputs, and AutoBug~\cite{meng2025autobug}
-decomposes the analysis path-wise and asks a model to do the reasoning that a
-solver would. We differ from both in what the model is shown, namely the emitted SMT-LIB
-and the verdicts of the solver rather than the program.
+Encodings divide by granularity: one query for the whole program, unrolled to a
+bound, or one query for each explored path. Our unconstrained query is on the
+first side, which is bounded model checking~\cite{clarke2004cbmc}. Symbolic and
+concolic executors~\cite{cadar2008klee,poeplau2020symcc} are on the second, and
+that is why they do not meet the wall we report in \S\ref{sec:stages}: each of
+their formulas covers one path, so the cost moves from formula size to path
+explosion~\cite{cadar2008klee}. Language models have been attached to both
+sides. Cottontail~\cite{tu2025cottontail} drives concolic execution over
+structured inputs, and AutoBug~\cite{meng2025autobug} splits the analysis path
+by path and asks a model for the reasoning a solver would perform. In both, the model reads the program. In \rusmt{} we give it the emitted
+SMT-LIB and Z3's verdicts.
 
 \paragraph{Language models behind a solver}
-We claim no novelty for the propose-then-check pattern. It is
+The propose-then-check pattern is not new either: it is
 CEGIS~\cite{solarlezama2006sketching} with a language model in the generator
-position, as in Jha et al.~\cite{jha2023cegisllm}. Lemur~\cite{wu2024lemur} uses
-LLM-proposed verification structure, and AquaForte~\cite{lv2026aquaforte} has a
-model propose SMT instantiations that the solver then rechecks. Test-generation
-portfolios such as CodaMOSA~\cite{lemieux2023codamosa} and
-Cottontail~\cite{tu2025cottontail} likewise call a model only once conventional
-generation stalls. Our modest difference is where the checked obligation lives:
-the same executable specification is both the oracle and the synthesis source,
-and the accepted obligation is a stable named marker rather than generic
-coverage.
+position~\cite{jha2023cegisllm}. What varies is what the model proposes.
+Lemur~\cite{wu2024lemur} proposes verification structure;
+AquaForte~\cite{lv2026aquaforte} proposes SMT instantiations that the solver
+rechecks; CodaMOSA~\cite{lemieux2023codamosa} and
+Cottontail~\cite{tu2025cottontail} propose test inputs once conventional
+generation stalls. \rusmt{} proposes one input and adds it to the original query
+as an equality, so the obligation Z3 discharges is still the marked error condition. The language model never widens what counts as success.
 
 % =====================================================================
 \section{Limitations and Threats to Validity}
 \label{sec:limits}
 
-\paragraph{A marker covers what the author wrote}
-A marker covers only an error condition that the author actually wrote; a
-violation that the standard implies but our reference omits is simply not
-marked. Hence, the \toml{} suite is marker-complete relative to our
-formalisation and not to \toml{}~1.1.0. In the other direction, a marker may
-name a branch of our semantics that the standard does not require an
-implementation to have. The differential run identified \specopen{} such
-markers in the suite (\specopencat{} in the catalog, once misses are counted),
-namely those bounding a float exponent by \code{i32} and an integer by
-\code{i64}, and it identified them only because the four parsers disagreed with
-the oracle on exactly those inputs. There may be others that no implementation
-happens to contradict, and our coverage figures count them as obligations like
-any other; disagreement between independent implementations and the reference
-is, at present, the only detector we have for this class.
+\paragraph{Validity depends on the formalization}
+The validity of a conformance result is relative to the executable formalization. In other words, the formalization must faithfully implement the specification's behaviour; if it does not, an input may produce a different result in the formalization than it should under the specification, and a conformance test based on that input can therefore report a false divergence or miss a real one. The coverage of the generated test suite, however, depends on the markers in the formalization. If an error branch is not marked, \rusmt{} cannot generate a test targeting that branch, and an implementation that accepts an input exercising that error may therefore go undetected. Conversely, if a marker is attached to a branch whose behaviour is permitted by the specification, the resulting test can report an implementation as non-conforming even though its behaviour is permitted by the specification.
 
 \paragraph{A miss is not a proof of unreachability}
 A marker reported as uncovered is one for which no input was \emph{found}, not
@@ -1144,124 +770,52 @@ one for which none exists. Only an \code{unsat} on the unmodified, unbounded
 query would establish the latter, and the unconstrained solve returned no
 verdict on the \toml{} queries. We wrote every marker to be reachable and
 expect none of the \misscount{} misses to be a dead branch, but the pipeline
-cannot confirm this, and we do not claim it.
+cannot confirm this.
 
 \paragraph{One witness per marker}
-The reported run generated one witness per marker, and this is by design: a
-marker names one condition, and one input that reaches it exercises that
-condition. A rule that can be violated in several distinct ways should be given
-several markers rather than several witnesses, which is how the \toml{} catalog
-is organized; integer overflow, for instance, is one marker per radix and sign.
-The driver can nevertheless request more witnesses per marker, at the cost of
-one blocking assertion and a re-solve each; we did not, in order to bound the
-number of model calls across \markers{} markers.
+A marker identifies a specific condition in the executable specification, and the suite contains one witness that reaches that marker. The markers are fine-grained enough that distinct conditions are represented by distinct markers; for example, the \toml{} catalog uses separate markers for different error conditions. Thus, multiple witnesses for the same marker are not needed and we use one witness per marker in the reported run, which also limits the number of model calls across the suite. The driver nevertheless supports multiple witnesses per marker by adding a blocking assertion after each accepted witness and re-solving.
 
 \paragraph{The authoring cost}
 The author writes one Rust program, of $1{,}084$ non-blank lines for \imp{} and
 $5{,}878$ for the \toml{} reference, and marks the error branches in it; from
-that single source, the framework derives the oracle, one query per marker, and
-the suite. The cost is therefore that of writing the executable specification
-once. It is real, and it is what the authoring mode below is aimed at.
+that single source, the framework derives the oracle and the conformance suite. The cost is therefore that of writing the executable specification
+once. It is real, and it is what the authoring mode below aims to reduce.
 
-\paragraph{Authoring the specification with a model}
-The framework also contains an authoring mode, in which a proposer drafts a
-specification in the DSL from a prose standard. Each draft passes through the
-same front end and backend as a hand-written one, through a reachability check
-(every declared marker must be reachable under the draft's own semantics), and
-through a set of author-supplied examples, with every failure fed back to the
-proposer; the propose-and-check loop follows the pattern of
-AutoSpec~\cite{wen2024autospec} and SpecGen~\cite{ma2024specgen}. Its evaluation
-is future work, and the experiment is designed as follows. The proposer is
-given the integer section of the \toml{} standard and the DSL, and neither our
-reference nor our marker names, since all but one of the $57$ integer marker
-names contain an explicit rule word and would give away what is being measured.
-The draft is then scored on two quantities that do not depend on names:
-accept/reject agreement with the reference over the invalid documents of this
-run together with a set of valid ones, and the number of distinct markers that
-the draft raises across the invalid documents, which asks whether a
-fine-grained error taxonomy is recoverable from prose. The harness is in the
-artifact.
+\paragraph{Authoring the specification with a language model}
+The framework also includes an authoring mode that uses a language model to draft a specification from a prose standard. Each generated specification is checked for validity, and failures are fed back to the model to guide subsequent drafts. This propose-and-check workflow follows the approach of AutoSpec~\cite{wen2024autospec} and SpecGen~\cite{ma2024specgen}. We do not evaluate this mode in the present work. Instead, we provide the harness as a basis for future evaluation, where the model is given the \toml{} standard and the DSL, but neither our reference implementation nor its marker names. Its output can then be compared with the reference on two dimensions: whether it agrees on acceptance and rejection of valid and invalid TOML documents, and how many distinct error markers it recovers. The complete harness is included in the artifact. Note that the final draft still requires human review, since the model can misread the standard and produce a specification that is not faithful to it.
 
 \paragraph{The solver frontier}
-The dominant limitation is the whole-program encoding. Because the entire
-semantics is lowered into one query, every marker inherits the growth of BMC,
-and the measurement of \S\ref{sec:stages} shows that the penalty arrives with
-the first free variable. The remedy used by concolic and dynamic-symbolic
-tools~\cite{cadar2008klee,poeplau2020symcc} is to explore one path at a time,
-handing the solver only the branch conditions of that path. For \rusmt{}, this
-means a second backend: a symbolic walker over the syntax tree of the DSL, which
-\code{remark} already produces, that carries a path condition and forks at each
-conditional. The misses indicate where it would pay, since \missnum{} of the
-\misscount{} are numeric-literal markers whose documents are structurally
-trivial and whose difficulty lies in a numeric value that the proposer has to
-guess and that a solver, given the path, could compute.
+The dominant limitation is the whole-program encoding. Because the entire semantics is lowered into a single query, the solver must reason about all paths through the program at once. The measurements in \S\ref{sec:stages} show that the cost increases sharply as soon as the first free variable is introduced. A natural remedy, used by concolic and dynamic-symbolic tools~\cite{cadar2008klee,poeplau2020symcc}, is to explore one path at a time, giving the solver only the branch conditions along that path. For \rusmt{}, this suggests a symbolic walker over the DSL's syntax tree that maintains a path condition and forks at each conditional.
 
 \paragraph{The synthesis alphabet stops at U+2FFFF}
 The Unicode Strings theory of Z3 is defined over the code points
 $\mathrm{U{+}0000}$--$\mathrm{U{+}2FFFF}$~\cite{smtlibunicode}, so the backend
 bounds every synthesized character to $[\mathrm{U{+}0000},\mathrm{U{+}D7FF}]
 \cup [\mathrm{U{+}E000},\mathrm{U{+}2FFFF}]$, i.e., that alphabet intersected
-with the scalar values that Rust can hold. We re-measured both ends on Z3~4.15.4:
-\code{str.from\_code} returns the empty string from $\mathrm{0x30000}$ upward.
-This costs completeness and not soundness; a witness we accept is still a
+with the scalar values that Rust can hold. This costs completeness and not soundness; a witness we accept is still a
 witness, but a divergence that only appears above $\mathrm{U{+}2FFFF}$ is not
 found.
-
-\paragraph{Threats to validity}
-Following the usual taxonomy~\cite{wohlin2012experimentation,runeson2009casestudy},
-we see four threats. The construct threat is that a marker measures an error
-condition that we wrote into the reference, not the error space of the
-standard, and that the correspondence between the standard library and Z3
-(\S\ref{sec:trust}) is assumed rather than proven. The internal threat is that a
-test could be filed under the wrong marker; acceptance is on the named marker,
-whose id is computed by the same function on both sides, and replay must fire
-that same marker, which is what rules this out. The external threat is that we
-have two languages, one machine, one solver version, and one model, and we make
-no claim beyond them. The conclusion threat is that every coverage count is
-relative to a budget on one machine and to a single recorded run of a
-nondeterministic model; a timeout can only turn a covered marker into a miss,
-never produce a witness, and the run is content-addressed so that it replays,
-but a fresh run may cover a different set of markers.
 
 % =====================================================================
 \section{Conclusion}
 \label{sec:concl}
 
-\rusmt{} lets an author write the reference semantics of a language once, as an
-ordinary recursive Rust program that is both the conformance oracle and the
-source of one reachability query per marked branch. For \toml{}~1.1.0, the
-product is a generated suite covering \certcount{} of \markers{} markers, with
-the \misscount{} misses named. Running it against four production parsers found
+\rusmt{} demonstrates a practical approach to generating conformance tests from executable specifications. For \toml{}~1.1.0, the result is a generated suite covering \certcount{} of \markers{} markers. Running it against four production parsers found
 \divmarkers{} inputs on which the parsers and the oracle did not all agree, and
 among them a defect in \code{smol-toml} that had not been reported before: an
 array-of-tables header closed by a single bracket is accepted. The other
 divergences are two defects that the maintainers already track and \specopen{}
-inputs that test behaviour the standard leaves to the implementation.
+inputs that test behaviour the specification leaves open.
 
-We are also able to say what did not work. Lowering the whole semantics into one
-query and asking Z3 to invert it closes the loop for \imp{} in under a quarter of
-a second and produces nothing for \toml{}; this is the known cost of a
-whole-program encoding, and what this artifact adds is a measurement of how
-abruptly the cost arrives. Generation is therefore carried by a language model,
-and acceptance stays with the solver on the unmodified query. Whether a
-per-path encoding moves that frontier is the question we would take up next.
+The evaluation also exposes a limitation of whole-program synthesis. Asking Z3 to generate a complete input by inverting the lowered semantics works well when the resulting formula remains small, but becomes impractical as the symbolic execution grows. The language model therefore serves as a proposer when direct synthesis fails, while the solver remains responsible for deciding whether each proposed input satisfies the original query. A next step could be to avoid lowering the entire semantics into a single query and instead generate constraints along individual execution paths.
 
 \section*{Data-Availability Statement}
 The framework, the two executable specifications, the generated suites, the
 differential-testing harness, and the recorded run behind every number in this
-paper (the per-marker ledger, the four-parser differential result, and all
-recorded proposer exchanges) are archived at Zenodo~\cite{rusmt-artifact}. The
-emitted SMT-LIB queries are not archived, since they regenerate
+paper are archived at Zenodo~\cite{rusmt-artifact}. The
+emitted SMT-LIB queries are not archived, since they can be regenerated
 deterministically from the specifications.
 
-\begin{acks}
-We thank the SpecOps~2026 reviewers, whose comments on the submitted version
-prompted the implementation comparison of \S\ref{sec:eval}, the removal of a
-fixed candidate table in favour of live proposer calls, and the reframing of
-\S\ref{sec:trust}.
-\end{acks}
-
-\balance
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{refs}
 

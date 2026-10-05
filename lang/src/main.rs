@@ -56,6 +56,9 @@ enum Command {
     ///   ERR <marker>  it was rejected, naming the error that fired
     ///   NOMATCH       the parser did not match
     ///   TIMEOUT       the parse exceeded its budget
+    ///
+    /// With --all, a rejection names every marker that fired, not just the
+    /// first. One parse can fire several, so a coverage count needs --all.
     #[command(verbatim_doc_comment)]
     Observe {
         /// Object language.
@@ -64,6 +67,9 @@ enum Command {
         /// The input file.
         #[arg(required = true)]
         path: PathBuf,
+        /// Name every marker that fired, not just the first (TOML only).
+        #[arg(long)]
+        all: bool,
     },
 }
 
@@ -90,12 +96,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         // `cargo run observe <toml|imp> <FILE>`
-        Command::Observe { language, path } => {
+        Command::Observe {
+            language,
+            path,
+            all,
+        } => {
             let source = fs::read_to_string(&path)?;
+            let budget = rusmt_lang::certify::DEFAULT_BUDGET;
             let line = match language {
-                Language::Toml => {
-                    rusmt_lang::certify::observe_toml(&source, rusmt_lang::certify::DEFAULT_BUDGET)
-                }
+                Language::Toml if all => rusmt_lang::certify::observe_toml_all(&source, budget),
+                Language::Toml => rusmt_lang::certify::observe_toml(&source, budget),
                 Language::Imp => rusmt_lang::certify::observe_imp(&source),
             };
             println!("{line}");

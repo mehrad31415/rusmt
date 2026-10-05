@@ -421,10 +421,9 @@ fn toml_codepoints(source: &str) -> Seq<U32> {
     seq
 }
 
-/// Run the trusted TOML reference parser on `source` (under a wall-clock budget)
-/// and report which marker ids fired. `Ok(None)` means the document parsed or no
-/// marker fired; `Err(())` means the budget was exceeded.
-pub fn toml_markers_fired(source: &str, budget: Duration) -> Result<Option<BTreeSet<usize>>, ()> {
+/// Run the trusted TOML reference parser on `source` under a wall-clock budget.
+/// `Err(())` means the budget was exceeded.
+fn toml_outcome(source: &str, budget: Duration) -> Result<TomlOutcome, ()> {
     let input = toml_codepoints(source);
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -435,10 +434,16 @@ pub fn toml_markers_fired(source: &str, budget: Duration) -> Result<Option<BTree
         };
         let _ = tx.send(outcome);
     });
-    match rx.recv_timeout(budget) {
-        Ok(TomlOutcome::Err(ids)) => Ok(Some(ids)),
-        Ok(TomlOutcome::Ok) | Ok(TomlOutcome::NoMatch) => Ok(None),
-        Err(_) => Err(()),
+    rx.recv_timeout(budget).map_err(|_| ())
+}
+
+/// Run the trusted TOML reference parser on `source` (under a wall-clock budget)
+/// and report which marker ids fired. `Ok(None)` means the document parsed or no
+/// marker fired; `Err(())` means the budget was exceeded.
+pub fn toml_markers_fired(source: &str, budget: Duration) -> Result<Option<BTreeSet<usize>>, ()> {
+    match toml_outcome(source, budget)? {
+        TomlOutcome::Err(ids) => Ok(Some(ids)),
+        TomlOutcome::Ok | TomlOutcome::NoMatch => Ok(None),
     }
 }
 
@@ -465,28 +470,34 @@ pub fn certify_toml(source: &str, target: &str, budget: Duration) -> Verdict {
 ///  * `NOMATCH`       — rejected with no production matching;
 ///  * `TIMEOUT`       — replay exceeded the budget.
 pub fn observe_toml(source: &str, budget: Duration) -> String {
-    let input = toml_codepoints(source);
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let outcome = match parse_toml(input) {
-            TomlParseResult::Ok(_v, _) => TomlOutcome::Ok,
-            TomlParseResult::Err(path) => TomlOutcome::Err(marker_ids(path)),
-            TomlParseResult::NoMatch => TomlOutcome::NoMatch,
-        };
-        let _ = tx.send(outcome);
-    });
-    match rx.recv_timeout(budget) {
-        Ok(TomlOutcome::Ok) => "OK".to_string(),
-        Ok(TomlOutcome::NoMatch) => "NOMATCH".to_string(),
-        Ok(TomlOutcome::Err(ids)) => {
-            for name in TOML_NAMED_MARKERS {
-                if ids.contains(&marker_id(name)) {
-                    return format!("ERR {name}");
-                }
-            }
-            "ERR unnamed".to_string()
-        }
-        Err(_) => "TIMEOUT".to_string(),
+    observe(source, budget, false)
+}
+
+/// Like [`observe_toml`], but a rejection names *every* catalog marker that
+/// fired, space-separated in catalog order.
+///
+/// One parse routinely fires several markers, since `Path` accumulates. A
+/// coverage count over a corpus must read this rather than the first name, or
+/// it undercounts the markers the corpus reached.
+pub fn observe_toml_all(source: &str, budget: Duration) -> String {
+    observe(source, budget, true)
+}
+
+fn observe(source: &str, budget: Duration, all: bool) -> String {
+    let ids = match toml_outcome(source, budget) {
+        Ok(TomlOutcome::Ok) => return "OK".to_string(),
+        Ok(TomlOutcome::NoMatch) => return "NOMATCH".to_string(),
+        Ok(TomlOutcome::Err(ids)) => ids,
+        Err(()) => return "TIMEOUT".to_string(),
+    };
+    let named: Vec<&str> = TOML_NAMED_MARKERS
+        .into_iter()
+        .filter(|n| ids.contains(&marker_id(n)))
+        .collect();
+    match named.as_slice() {
+        [] => "ERR unnamed".to_string(),
+        [first, ..] if !all => format!("ERR {first}"),
+        _ => format!("ERR {}", named.join(" ")),
     }
 }
 

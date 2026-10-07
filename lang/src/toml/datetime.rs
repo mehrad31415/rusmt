@@ -3,10 +3,37 @@
 use crate::toml::float::parse_float;
 use crate::toml::{
     Optional, ParseResult, State, advance, ast::DateTime, cp_to_str, current_char, is_dec_digit,
-    peek,
 };
 use rusmt_smt_remark_derive::smt_fn;
 use rusmt_smt_stdlib::{Boolean, Integer, Path, String, U32, smt::SMT};
+
+/// Date/time probes must not inspect delimiters or the next value/expression.
+#[smt_fn]
+fn peek_scalar(state: State, n: Integer) -> Optional<U32> {
+    match current_char(state) {
+        Optional::None => Optional::None,
+        Optional::Some(c) => {
+            if *c
+                .eq(U32::from(0x20))
+                .or(c.eq(U32::from(0x09)))
+                .or(c.eq(U32::from(0x0A)))
+                .or(c.eq(U32::from(0x0D)))
+                .or(c.eq(U32::from(0x23)))
+                .or(c.eq(U32::from(0x2C)))
+                .or(c.eq(U32::from(0x5D)))
+                .or(c.eq(U32::from(0x7D)))
+            {
+                Optional::None
+            } else {
+                if *n.eq(0.into()) {
+                    Optional::Some(c)
+                } else {
+                    peek_scalar(advance(state), n.sub(1.into()))
+                }
+            }
+        }
+    }
+}
 
 /// date-time = offset-date-time / local-date-time / local-date / local-time
 /// offset-date-time = full-date time-delim partial-time ("Z" / time-numoffset)
@@ -304,7 +331,7 @@ fn parse_digit_sequence_rest(input: State, acc: String) -> ParseResult<String> {
 /// `HH:MM` at end-of-input is accepted and `HH:MM.frac` (a fractional minute) is rejected.
 #[smt_fn]
 fn partial_time(input: State) -> ParseResult<String> {
-    let first_colon = peek(input, 2.into());
+    let first_colon = peek_scalar(input, 2.into());
     match first_colon {
         Optional::None => ParseResult::NoMatch,
         Optional::Some(c1) => {
@@ -398,7 +425,7 @@ fn partial_time(input: State) -> ParseResult<String> {
                     }
                 }
             } else {
-                let second_colon = peek(input, 5.into());
+                let second_colon = peek_scalar(input, 5.into());
                 match second_colon {
                     Optional::None => ParseResult::NoMatch,
                     Optional::Some(c2) => {
@@ -421,8 +448,8 @@ fn partial_time(input: State) -> ParseResult<String> {
 #[smt_fn]
 fn parse_full_date(input: State) -> ParseResult<String> {
     // peek
-    let first_dash = peek(input, 4.into());
-    let second_dash = peek(input, 7.into());
+    let first_dash = peek_scalar(input, 4.into());
+    let second_dash = peek_scalar(input, 7.into());
     match first_dash {
         Optional::None => ParseResult::NoMatch,
         Optional::Some(c1) => {

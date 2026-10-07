@@ -210,5 +210,6 @@
 - `inline_table_open_eof`
 - `inline_table_unterminated`
 - `inline_table_conflicting_keys`
+- `inline_table_extends_closed`
 - `inline_table_sep_expected_comma`
 - `inline_table_sep_eof`

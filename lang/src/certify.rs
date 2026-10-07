@@ -219,7 +219,7 @@ pub fn certify_imp(source: &str, target: &str, budget: Duration) -> Verdict {
 
 /// The named TOML markers. Every TOML `ParseResult::Err(Path::...)` branch is
 /// named, giving each target a stable id shared between SMT and replay.
-pub const TOML_NAMED_MARKERS: [&str; 183] = [
+pub const TOML_NAMED_MARKERS: [&str; 184] = [
     "array_comment_missing_newline",
     "array_of_tables_inline_array",
     "array_open_after_ws_eof",
@@ -290,6 +290,7 @@ pub const TOML_NAMED_MARKERS: [&str; 183] = [
     "full_date_first_dash_wrong_char",
     "full_date_second_dash_wrong_char",
     "inline_table_conflicting_keys",
+    "inline_table_extends_closed",
     "inline_table_open_eof",
     "inline_table_redefined_closed",
     "inline_table_redefined_explicit",

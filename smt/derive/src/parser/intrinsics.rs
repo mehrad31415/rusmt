@@ -1623,7 +1623,10 @@ impl Intrinsic {
             Exp::Lit(expr_lit) => {
                 let ExprLit { attrs: _, lit } = expr_lit;
                 match lit {
-                    Lit::Str(val) => val.token().to_string(),
+                    // The IR stores the string value, not its Rust spelling.
+                    // Keeping the token also keeps surrounding quotes and
+                    // escapes, which the SMT emitter would encode as data.
+                    Lit::Str(val) => val.value(),
                     _ => bail_on!(lit, "not a string literal"),
                 }
             }
@@ -2250,6 +2253,24 @@ impl Intrinsic {
             bail!("expect 3 arguments");
         }
         Ok((e1, e2, e3))
+    }
+}
+
+#[cfg(test)]
+mod string_literal_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_string_from_preserves_values_instead_of_rust_token_spelling() {
+        for (source, expected) in [
+            (r#"String::from("00")"#, "00"),
+            (r#"String::from("")"#, ""),
+            (r#"String::from("a\n\"\\\u{03bb}")"#, "a\n\"\\λ"),
+            (r##"String::from(r#"a\n"b"#)"##, "a\\n\"b"),
+        ] {
+            let call: syn::ExprCall = syn::parse_str(source).unwrap();
+            assert_eq!(Intrinsic::unpack_lit_str(&call.args).unwrap(), expected);
+        }
     }
 }
 
